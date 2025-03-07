@@ -1,0 +1,15 @@
+image: python:3.12
+
+before_script:
+  - pip install -r docs/requirements.txt
+  - pip install mkdocs mkdocs-material
+  - pip install mkdocs-mermaid2-plugin
+
+pages:
+  script:
+    - mkdocs build --site-dir public
+  artifacts:
+    paths:
+      - public
+  only:
+    - main

@@ -1,0 +1,34 @@
+
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+  
+dependencies:
+  - python=3.12  
+  - pip
+  - diamond=2.1.9
+  - seqkit=2.8.2
+  - pigz=2.8
+  - blast=2.15.0
+  - bzip2
+
+
+  #  Python libraries (pip)
+  - pip:
+    - polars==1.4.1
+    - scipy==1.14.0
+    - numpy>=2.1.0
+    - rich-click==1.8.3
+    - rich==13.7.1
+    - pyhmmer>=0.10.14
+    - pyrodigal-gv>=0.3.1
+    - biopython==1.84
+    - multiprocess==0.70.16
+    - pyfastx
+    - mappy
+    - bbmapy
+    - sh
+    - pymsaviz
+    
+

@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rolypoly"
+version = "0.0.1"
+authors = [
+    {name = "Uri Neri", email = "uneri@lbl.gov"},
+    {name = "Simon Roux", email = "sroux@lbl.gov"},
+    {name = "Brian Bushnell", email = "bbushnell@lbl.gov"},
+    {name = "Antonio Camargo", email = "antoniop.camargo@lbl.gov"},
+    {name = "Andrei Stecca Steindorff", email = "andreiss@jgi.doe.gov"},
+    {name = "Clement Coclet", email = "cclement@jgi.doe.gov"}
+]
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.8"
+dependencies = [] # all moved to the env files.
+
+[project.urls]
+Source = "https://code.jgi.doe.gov/UNeri/rolypoly"
+
+[project.scripts]
+rolypoly = "rolypoly.rolypoly:rolypoly"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["rolypoly*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+rolypoly = ["*.json"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["*.pyc", "*.pyo", "*.pyd", "__pycache__"]
+

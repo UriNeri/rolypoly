@@ -1,0 +1,37 @@
+# Changelog
+
+##  07.02.2025 [Unreleased]
+
+### Added
+- Added placeholders documentation (MkDocs) for the under development features:
+  - Binning (termini, correlation)
+  - Co-assembly
+  - Annotation
+  - Host classification
+- Added workflow charts to the docs (mermaid)
+
+### Changed
+- Dependency management moved to an env_file instead of pyproject.toml
+- Recommended installation now curls the quick_setup.sh script and uses micromamba. 
+- Restructured project layout (src/, docs/, misc/)
+- Added a logging level flag to the command line interface / internals for more/less verbose output (i.e. for debugging)
+- Configuration handling: 
+- ROLOPOLY_DATA is now set on installation. The citations json is now bundled with the data.
+
+### Fixed
+- Assembly pipeline error handling.
+- Assembly pipeline uses seqkit rmdup instead of mmseqs linclust to remove duplicates, as it appears that chimeras from one assmebler tend to be longer than the non-chimeric contigs outputted by another assmebler, thus in linclust they are "absorbed" by the chimeric contigs.
+
+### Infrastructure
+- GitLab CI/CD for documentation
+- Development environment setup scripts
+- Benchmarking utilities
+
+### Dependencies
+  - BBMap, FastQC, MultiQC
+  - MMseqs2, BLAST, Prodigal
+  - Minimap2, Bowtie
+
+### Notes
+- Project under active development
+- Some features experimental/incomplete

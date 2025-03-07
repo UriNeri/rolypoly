@@ -1,0 +1,23 @@
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12  # Specify the Python version you need
+  - pip
+
+  # Python libraries (pip)
+  - pip:
+    - polars==1.4.1
+    - scipy==1.14.0
+    - numpy==2.0.0
+    - rich-click==1.8.3
+    - rich==13.7.1
+    - pyhmmer==0.10.14
+    - pyrodigal-gv==0.3.1
+    - biopython==1.84
+    - multiprocess==0.70.16
+    - requests==2.32.3
+    # - py7zr==0.21.1
+    # - pgzip==0.3.5
+    # - rarfile==4.2
+

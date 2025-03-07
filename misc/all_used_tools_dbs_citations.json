@@ -1,0 +1,207 @@
+{
+  "comment": {
+    "name": "COMMENT!!!",
+    "citation": "Key values must be lower case"
+  },
+  "rolypoly": {
+    "name": "RolyPoly",
+    "citation": "Neri, U., Bushnell, B., Roux, S., & Camargo, A. P., Steindorff, A.S., Coclet, C., David P., (2024). RolyPoly: A pipeline for RNA virus identification from RNA-seq data. [Software]. Available from https://code.jgi.doe.gov/UNeri/rolypoly"
+  },
+  "rnafold": {
+    "name": "ViennaRNA Package",
+    "citation": "https://doi.org/10.1186/1748-7188-6-26"
+  },
+  "linearfold": {
+    "name": "LinearFold",
+    "citation": "https://doi.org/10.1093/bioinformatics/btz375"
+  },
+  "iresfinder": {
+    "name": "IRESfinder",
+    "citation": "https://doi.org/10.1016/j.jgg.2018.07.006"
+  },
+  "irespy": {
+    "name": "IRESpy",
+    "citation": "https://doi.org/10.1186/s12859-019-2999-7"
+  },
+  "trnascan-se": {
+    "name": "tRNAscan-SE",
+    "citation": "https://doi.org/10.1007%2F978-1-4939-9173-0_1"
+  },
+  "aragorn": {
+    "name": "ARAGORN",
+    "citation": "https://doi.org/10.1093/nar/gkh152"
+  },
+  "cmsearch": {
+    "name": "cmsearch",
+    "citation": "https://doi.org/10.1093/bioinformatics/btw271"
+  },
+  "rfam": {
+    "name": "Rfam",
+    "citation": "https://doi.org/10.1093/nar/gkaa1047"
+  },
+  "orffinder": {
+    "name": "NCBI ORFfinder",
+    "citation": "https://www.ncbi.nlm.nih.gov/orffinder/"
+  },
+  "hmmer": {
+    "name": "HMMER",
+    "citation": "https://doi.org/10.1371/journal.pcbi.1002195"
+  },
+  "mmseqs2": {
+    "name": "MMseqs2",
+    "citation": "https://doi.org/10.1038/nbt.3988"
+  },
+  "diamond": {
+    "name": "DIAMOND",
+    "citation": "https://doi.org/10.1038/nmeth.3176"
+  },
+  "pfam": {
+    "name": "Pfam",
+    "citation": "https://doi.org/10.1093/nar/gkaa913"
+  },
+  "interpro": {
+    "name": "InterPro",
+    "citation": "https://doi.org/10.1093/nar/gkac993"
+  },
+  "spades": {
+    "name": "SPAdes",
+    "citation": "https://doi.org/10.1089/cmb.2012.0021"
+  },
+  "megahit": {
+    "name": "MEGAHIT",
+    "citation": "https://doi.org/10.1093/bioinformatics/btv033"
+  },
+  "seqkit": {
+    "name": "seqkit",
+    "citation": " https://doi.org/10.1002/imt2.191"
+  },
+  "datasets": {
+    "name": "datasets",
+    "citation": "https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/v2/linux-amd64/datasets"
+  },
+  "bbmap": {
+    "name": "bbmap",
+    "citation": "https://sourceforge.net/projects/bbmap/files/BBMap_39.08.tar.gz"
+  },
+  "fastqc": {
+    "name": "fastqc",
+    "citation": "https://www.bioinformatics.babraham.ac.uk/projects/fastqc/fastqc_v0.12.1.zip"
+  },
+  "multiqc": {
+    "name": "multiqc",
+    "citation": "http://dx.doi.org/10.1093/bioinformatics/btw354"
+  },
+  "mmseqs": {
+    "name": "mmseqs",
+    "citation": "https://doi.org/10.1038/nbt.3988"
+  },
+  "penguin": {
+    "name": "penguin",
+    "citation": "https://doi.org/10.1101/2024.03.29.587318"
+  },
+  "blast": {
+    "name": "blast",
+    "citation": "https://doi.org/10.1016/s0022-2836(05)80360-2"
+  },
+  "pigz": {
+    "name": "pigz",
+    "citation": "https://github.com/madler/pigz/archive/refs/tags/v2.8.tar.gz"
+  },
+  "prodigal": {
+    "name": "prodigal",
+    "citation": "https://doi.org/10.1186/1471-2105-11-119"
+  },
+  "psi_blast": {
+    "name": "PSI-BLAST",
+    "citation": "https://doi.org/10.1093%2Fnar%2F25.17.3389"
+  },
+  "minimap2": {
+    "name": "minimap2",
+    "citation": "https://doi.org/10.1093/bioinformatics/bty191"
+  },
+  "bowtie": {
+    "name": "Bowtie",
+    "citation": "https://doi.org/10.1186/gb-2009-10-3-r25"
+  },
+  "neordrp_v2.1": {
+    "name": "NeoRdRp_v2.1",
+    "citation": "https://doi.org/10.1264/jsme2.ME22001",
+    "github": "https://github.com/shoichisakaguchi/NeoRdRp"
+  },
+  "pyfastx": {
+    "name": "pyfastx",
+    "citation": "https://doi.org/10.1093/bib/bbaa368"
+  },
+  "rvmt": {
+    "name": "RVMT",
+    "citation": "https://doi.org/10.1016/j.cell.2022.08.023",
+    "github": "https://github.com/UriNeri/RVMT",
+    "zenodo": "https://zenodo.org/record/7368133"
+  },
+  "rdrp-scan": {
+    "name": "RdRp-Scan",
+    "citation": "https://doi.org/10.1093/ve/veac082",
+    "github": "https://github.com/JustineCharon/RdRp-scan",
+    "note": "Incorporated PALMdb (https://github.com/rcedgar/palmdb, https://doi.org/10.7717/peerj.14055)"
+  },
+  "tsa_2018": {
+    "name": "TSA_Olendraite",
+    "citation": "https://doi.org/10.1093/molbev/msad060",
+    "data": "https://drive.google.com/drive/folders/1liPyP9Qt_qh0Y2MBvBPZQS6Jrh9X0gyZ?usp=drive_link",
+    "thesis": "https://www.repository.cam.ac.uk/items/1fabebd2-429b-45c9-b6eb-41d27d0a90c2"
+  },
+  "palmdb_v2": {
+    "name": "PALMdb_v2",
+    "citation": "https://github.com/ababaian/palmdb2"
+  },
+  "pfam_a_37": {
+    "name": "Pfam_A_37",
+    "citation": "https://doi.org/10.1093/nar/gkaa913",
+    "data": "https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam37.0/Pfam-A.hmm.gz",
+    "note": "RdRps and RT profiles from PFAM_A v.37: PF04197.17, PF04196.17, PF22212.1, PF22152.1, PF22260.1, PF05183.17, PF00680.25, PF00978.26, PF00998.28, PF02123.21, PF07925.16, PF00078.32, PF07727.19, PF13456.11"
+  },
+  "palmdb_v1": {
+    "name": "PALMdb_v1",
+    "citation": "https://doi.org/10.7717/peerj.14055",
+    "github": "https://github.com/rcedgar/palmdb"
+  },
+  "silva": {
+    "name": "SILVA",
+    "citation": "https://doi.org/10.1093/nar/gks1219",
+    "data": "https://www.arb-silva.de/fileadmin/silva_databases/release_140/Exports/SILVA_140_LSURef_tax_silva_trunc.fasta.gz"
+  },
+  "refseq": {
+    "name": "RefSeq",
+    "citation": "https://doi.org/10.1093%2Fnar%2Fgkv1189",
+    "data": "https://ftp.ncbi.nlm.nih.gov/refseq/release/viral/"
+  },
+  "pyhmmer": {
+    "name": "pyhmmer",
+    "citation": "https://doi.org/10.1093/bioinformatics/btad214",
+    "github": "https://github.com/althonos/pyhmmer"
+  },
+  "pyrodigal": {
+    "name": "pyrodigal",
+    "citation": "https://doi.org/10.21105/joss.04296",
+    "github": "https://github.com/althonos/pyrodigal-gv"
+  },
+  "lightmotif": {
+    "name": "lightmotif",
+    "github": "https://github.com/althonos/lightmotif"
+  },
+  "vogdb": {
+    "name": "VOGDB",
+    "citation": "https://doi.org/10.3390/v16081191"
+  },
+  "genomad": {
+    "name": "geNomad",
+    "citation": "https://doi.org/10.1038/s41587-023-01953-y",
+    "github": "https://github.com/apcamargo/genomad",
+    "data": "https://doi.org/10.5281/zenodo.6994741"
+  },
+  "taxonkit": {
+    "name": "taxonkit",
+    "citation": "https://doi.org/10.1016/j.jgg.2021.03.006",
+    "github": "https://github.com/shenwei356/taxonkit"
+  }
+}
