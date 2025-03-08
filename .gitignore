@@ -9,11 +9,16 @@ external_dependencies/
 external_dependencies/*
 data
 data/*
+
+obsolete/
+obsolete/*
+misc/bash_scripts/*
 __pycache__/*
 *.pyc
 __pycache__/
 **/__pycache__/**
 misc/exprimental/litrature_mining
+misc//obsolete
 build
 rolypoly/build/*
 *build/*
