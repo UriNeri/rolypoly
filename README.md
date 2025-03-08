@@ -65,19 +65,20 @@ rolypoly [OPTIONS] COMMAND [ARGS]...
 
 ## Project Status
 Active development. Currently implemented features:
-- ✅ Read filtering and quality control [(`filter-reads`)](docs/mkdocs_docs/commands/read_processing.md)
-- ✅ Assembly with multiple assemblers [(`assembly`)](docs/mkdocs_docs/commands/assembly.md)
-- ✅ Assembly filtering and clustering [(`filter-contigs`)](docs/mkdocs_docs/commands/assembly_filtering.md)
-- ✅ Marker gene search with pyhmmer [(`marker-search`)](docs/mkdocs_docs/commands/marker_search.md)
-- ✅ RNA structure prediction, annotation and ribozyme identification [(`annotate-rna`)](docs/mkdocs_docs/commands/annotate_rna.md)
+- ✅ NGS raw read filtering (Host, rRNA, adapters, artefacts) and quality control report[(`filter-reads`)](docs/mkdocs_docs/commands/read_processing.md)
+- ✅ Assembly (SPAdes, MEGAHIT and penguin) [(`assembly`)](docs/mkdocs_docs/commands/assembly.md)
+- ✅ Contig filtering and clustering [(`filter-contigs`)](docs/mkdocs_docs/commands/assembly_filtering.md)
+- ✅ Marker gene search with pyhmmer (mainly RdRps, genomad VV's or user-provided) [(`marker-search`)](docs/mkdocs_docs/commands/marker_search.md)
+- ✅ RNA secondary structure prediction, annotation and ribozyme identification [(`annotate-rna`)](docs/mkdocs_docs/commands/annotate_rna.md)
 - ✅ Nucleotide search vs known viruses [(`search-viruses`)](docs/mkdocs_docs/commands/search_viruses.md)
-- ✅ Prepare external data [(`prepare-external-data`)](docs/mkdocs_docs/commands/prepare_external_data.md)  
+<!-- - ✅ Prepare external data [(`prepare-external-data`)](docs/mkdocs_docs/commands/prepare_external_data.md)   -->
 
 Under development:
 - 🚧 Protein annotation (`annotate-protein`)
 - 🚧 Host prediction (`host-predict`)
 - 🚧 Genome binning and refinement (`TBD`)
-- 🚧 Life-style prediction (`TBD`)
+- 🚧 Virus taxonomic classification (`TBD`)
+- 🚧 Virus feature prediction (+/-ssRNA/dsRNA, circular/linear, mono/poly-segmented, capsid type, etc.) (`TBD`)
 - 🚧 Cross-sample analysis (`TBD`)
 
 For more details about the implementation status, roadmap, additional commands, and more, see the [workflow documentation](./docs/mkdocs_docs/workflow.md) and the [API reference](./docs/mkdocs_docs/api/utils/various.md).
@@ -135,7 +136,7 @@ By default, the ["quick_setup.sh"](./misc/quick_setup.sh) option will install al
 </details>
 
 ### Databases used by rolypoly  
-RolyPoly will try to remind you to cite these (along with tools) based on the commands you run. For more details, see the [remind_citations.py](./src/rolypoly/commands/utils/remind_citations.py) script.
+RolyPoly will try to remind you to cite these (along with tools) based on the commands you run. For more details, see the [citation_reminder.py](./src/rolypoly/utils/citation_reminder.py) script.
 
 <details><summary>Click to show databases</summary>
 

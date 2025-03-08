@@ -170,7 +170,9 @@ def virus_mapping(threads, memory,  output, keep_tmp,  db, db_path, log_file, in
     logger.info(f"Finished virus mapping for: {og_input}")
     logger.info(f"Final output: {output}")
     tools.append("mmseqs2")
-    remind_citations(tools)
+    # remind_citations(tools)
+    with open(f"{log_file}","a") as f_out:
+        f_out.write(remind_citations(tools,return_bibtex=True)) 
 
 if __name__ == "__main__":
     virus_mapping()

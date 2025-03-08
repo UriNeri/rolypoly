@@ -331,9 +331,9 @@ def assembly(threads, memory, output, keep_tmp, log_file, input, assembler,overr
     config.logger.info(f"Reads unassembled from the assembly are in {config.output_dir}/assembly_bbw_unassembled.fq.gz")
     config.logger.info(f"Reads aligned to the assembly (interleaved and merged) are in {config.output_dir}/assembly_bowtie_interleaved.sam.gz and {config.output_dir}/assembly_bowtie_merged_reads.sam.gz")
 
-    remind_citations(tools)
+    # remind_citations(tools)
     with open(f"{config.log_file}","w") as f_out:
-        f_out.write(remind_citations(tools,return_as_text=True))
+        f_out.write(remind_citations(tools,return_bibtex=True))
         
 if __name__ == "__main__":
     assembly()

@@ -296,7 +296,9 @@ def marker_search(input, output, resolve_mode, min_overlap_positions, inc_evalue
     tools.append("pyhmmer")
     tools.append("hmmer")
 
-    remind_citations(tools)
+    # remind_citations(tools)
+    with open(f"{config.log_file}","w") as f_out:
+        f_out.write(remind_citations(tools,return_bibtex=True))
 
 def custom_help():
     console.print(r"""RNA virus search - translates input contigs into either ORFs or to six end to end frames (with stops replaced by `X`),  

@@ -569,6 +569,29 @@ def mask_nuc_range(input_fasta: str, input_table: str, output_fasta: str) -> Non
                         current_seq = revcomp(current_seq)
             out_f.write(f'>{current_id}\n{current_seq}\n')
 
+
+def read_fasta_needletail(fasta_file):
+    from needletail import parse_fastx_file
+    seqs=[]
+    seq_ids=[]
+    for record in parse_fastx_file(fasta_file):
+        seqs.append(record.seq)
+        seq_ids.append(record.id)
+    return seq_ids, seqs
+
+def read_fasta_polars(fasta_file, idcol="contig_id", seqcol="contig_seq", add_length=False, add_gc_content=False):
+    # read fasta file with needletail
+    import polars as pl
+    seq_ids, seqs = read_fasta_needletail(fasta_file)
+    df = pl.DataFrame({idcol: seq_ids, seqcol: seqs})
+    if add_length:
+        df = df.with_columns(pl.col(seqcol).str.len().alias("length"))
+    if add_gc_content:
+        df = df.with_columns(pl.col(seqcol).str.count("G|C").alias("gc_content"))
+    return df
+
+
+
 def read_fasta2polars_df(file_path: str):   
     """Reads a FASTA file into a Polars DataFrame.
 
@@ -1059,7 +1082,94 @@ def hmmdb_from_directory(msa_dir, output, msa_pattern="*.faa",info_table=None,na
     # Press all HMMs into a database
     # pyhmmer.hmmer.hmmpress(hmms, output) # this is bugged =\ using cat as a workaround for now.
 
+       
+def populate_pldf_withseqs_needletail(pldf , seqfile, chunk_size=20000000, trim_to_region=False, reverse_by_strand_col=False, idcol="contig_id",seqcol="contig_seq", start_col="start", end_col="end", strand_col="strand"): 
+    import polars as pl
+    from needletail import parse_fastx_file
+    import subprocess
+    merge_cols = [idcol]
+    if reverse_by_strand_col:
+        merge_cols.append(strand_col)
+    if trim_to_region:
+        merge_cols.extend([start_col, end_col])
+    
+    print(f"Initial pldf shape: {pldf.shape}")
+    minipldf = pldf.select(merge_cols).unique()
+    print(f"Unique entries in minipldf: {minipldf.shape}")
+    
+    minipldf = minipldf.filter(~pl.col(idcol).is_in([None, "", "nan"]))
+    print(f"After filtering nulls: {minipldf.shape}")
+    
+    minipldf = minipldf.with_columns(pl.lit(None).alias(seqcol))
+    
+    seqs = []
+    seq_ids = []
+    
+    # Get actual sequence count from file
+    seq_count =int(subprocess.run(f"grep -F '>'  {seqfile} -c ", shell=True,capture_output=True, text=True).stdout.strip())
+    # seq_count = 0
+    # for _ in parse_fastx_file(seqfile):
+    #     seq_count += 1
+    print(f"Actual number of sequences in file: {seq_count}")
+    
+    # Reset file iterator
+    index = 0
+    for record in parse_fastx_file(seqfile):
+        seqs.append(record.seq)
+        seq_ids.append(record.id)
+        index += 1
         
+        # Process chunk when we hit chunk_size or end of file
+        if len(seqs) >= chunk_size or index == seq_count:
+            print(f"\nProcessing chunk {index}/{seq_count}")
+            print(f"Number of sequences in chunk: {len(seqs)}")
+            
+            chunk_seqs = pl.DataFrame({
+                idcol: seq_ids,
+                seqcol: seqs
+            })
+            
+            chunk_seqs = chunk_seqs.join(minipldf.select(merge_cols), on=idcol, how="inner") #this join get's the info columns (start, end, strand) if needed, only for the entires in this chunk that are in the minipldf.
+            
+            if trim_to_region:
+                print("Trimming sequences")
+                # print(chunk_seqs.columns)
+                chunk_seqs = chunk_seqs.with_columns(
+                    pl.struct(pl.col(seqcol), pl.col(start_col), pl.col(end_col))
+                    .map_elements(lambda x: str(x[seqcol][x[start_col]:x[end_col]]) if x[seqcol] is not None else None, return_dtype=pl.Utf8)
+                    .alias(seqcol)
+                )
+            
+            if reverse_by_strand_col:
+                print("Reversing sequences")
+                # print(chunk_seqs.columns)
+                chunk_seqs = chunk_seqs.with_columns(
+                    pl.when(pl.col(strand_col))
+                    .then(pl.col(seqcol).map_elements(lambda x: revcomp(x) if x is not None else None, return_dtype=pl.Utf8))
+                    .otherwise(pl.col(seqcol))
+                    .alias(seqcol)
+                )
+            
+            print("Joining with nascent df")
+            minipldf = minipldf.join(chunk_seqs, on=merge_cols, how="left")
+            minipldf = minipldf.with_columns(
+                pl.coalesce([pl.col(seqcol), pl.col(f"{seqcol}_right")]).alias(seqcol)
+            ).drop(f"{seqcol}_right")
+            
+            print(f"Null count in seqcol after chunk: {minipldf[seqcol].null_count()}")
+            
+            seqs = []
+            seq_ids = []
+            # get count for remaining nulls, if zero, break - should be useful when fetching just a few sequences from a large file, at least if the needed seqs are closer to the start of the input fasta.
+            if minipldf[seqcol].null_count() == 0:
+                break
+    
+    print("\nFinal merge with original df")
+    pldf = pldf.join(minipldf, on=merge_cols, how="left")
+    print(f"Final null count in seqcol: {pldf[seqcol].null_count()}")
+    
+    return pldf
+
         
 #ValueError: Index contains duplicate keys.
 # seen = set()
