@@ -6,6 +6,18 @@ from .utils.lazy_group import LazyGroup
 from importlib import resources
 from .utils.loggit import get_version_info
 
+# Configure rich_click for nice formatting
+click.rich_click.USE_RICH_MARKUP = True
+click.rich_click.GROUP_ARGUMENTS_OPTIONS = True
+click.rich_click.SHOW_ARGUMENTS = True
+click.rich_click.GROUP_ARGUMENTS_OPTIONS = True
+click.rich_click.STYLE_COMMANDS_LIST = "bold cyan"
+click.rich_click.STYLE_COMMANDS_TABLE_GRID = "dim"
+click.rich_click.STYLE_COMMANDS_TABLE_SHOW_LINES = True
+click.rich_click.STYLE_COMMANDS_TABLE_PAD_EDGE = True
+click.rich_click.STYLE_COMMANDS_TABLE_PADDING = (0, 2)
+click.rich_click.STYLE_OPTIONS_LIST_ALIGN_IN_COLUMNS = True
+
 # load config
 with resources.files("rolypoly").joinpath("rpconfig.json").open("r") as conff:
     config = load(conff)
@@ -13,42 +25,80 @@ data_dir = config['ROLYPOLY_DATA']
 os.environ['ROLYPOLY_DATA'] =  data_dir   
 os.environ['citation_file'] =  resources.files("rolypoly").joinpath("../../misc/all_used_tools_dbs_citations.json").as_posix()
 
-@click.group(name="Main",
-             cls=LazyGroup,
-             context_settings={'show_default': True, "help_option_names" : ['-h',"-H", '--help']},
-             lazy_subcommands={
-                                "help" : "rolypoly.utils.lazy_group.help_long",
-                                "update" : "rolypoly.commands.misc.update.update",
-                                "end-2-end" : "rolypoly.commands.misc.end_2_end.run_pipeline",
-                                "prepare-external-data" : "rolypoly.commands.misc.prepare_external_data.prepare_external_data",
-                                "filter-reads" : "rolypoly.commands.reads.filter_reads.filter_reads",
-                                "mask-dna": "rolypoly.utils.fax.mask_dna",
-                                "search-viruses" : "rolypoly.commands.identify_virus.search_viruses.virus_mapping",
-                                "assembly":"rolypoly.commands.assembly.assembly.assembly",
-                                "marker-search" : "rolypoly.commands.identify_virus.marker_search.marker_search",
-                                "filter-contigs" : "rolypoly.commands.assembly.filter_contigs.filter_contigs",
-                                "add-command" : "rolypoly.commands.misc.add_command.add_command",
-                                # "filter_assembly_nuc": "rolypoly.commands.assembly.filter_assembly_nuc.filter_assembly_nuc",
-                                # "filter_assembly_prot": "rolypoly.commands.assembly.filter_assembly_aa.filter_assembly_aa",
-                                "annotate": "rolypoly.commands.annotation.annotate.annotate",
-                                # "annotate_proteins": "rolypoly.commands.annotation.annotate_prot.annotate_prot",
-                                "annotate-rna": "rolypoly.commands.annotation.annotate_RNA.annotate_RNA",
-                                # "characterise": "rolypoly.commands.virotype.predict_characteristics.predict_characteristics",
-                                # "predict_host_range": "rolypoly.commands.host.classify.predict_host_range",
-                                # "dummy": "rolypoly.utils.dummy.dummy",
-                                # "corrolate": "rolypoly.commands.bining.corrolate.corrolate",
-                                # "summarize": "rolypoly.commands.virotype.summarize.summarise"
-                                #
-                               }
-             )
+@click.group(cls=LazyGroup, context_settings={"help_option_names": ["-h", "--help", "-help"]}, lazy_subcommands={
+    "data": {
+        "name": "Setup and Data",
+        "commands": {
+            "update": "rolypoly.commands.misc.update.update",
+            "prepare-data": "rolypoly.commands.misc.prepare_external_data.prepare_external_data"
+        }
+    },
+    "reads": {
+        "name": "Raw Reads Processing",
+        "commands": {
+            "filter-reads": "rolypoly.commands.reads.filter_reads.filter_reads",
+            "mask-dna": "rolypoly.utils.fax.mask_dna"  # Keeping this as is since it's in utils
+        }
+    },
+    "annotation": {
+        "name": "Genome Annotation",
+        "commands": {
+            "annotate": "rolypoly.commands.annotation.annotate.annotate",
+            "annotate-rna": "rolypoly.commands.annotation.annotate_RNA.annotate_RNA",
+            "annotate-prot": "hidden:rolypoly.commands.annotation.annotate_prot.annotate_prot"
+        }
+    },
+    "assembly": {
+        "name": "Genome/Meta Assembly",
+        "commands": {
+            "assemble": "rolypoly.commands.assembly.assemble.assembly",
+            "filter-contigs": "rolypoly.commands.assembly.filter_contigs.filter_contigs"
+            # Commenting out unimplemented commands
+            # "co-assembly": "rolypoly.commands.assembly.co_assembly.co_assembly",
+            # "refine": "rolypoly.commands.assembly.refinement.refine"
+        }
+    },
+    "misc": {
+        "name": "Miscellaneous",
+        "commands": {
+            "end2end": "rolypoly.commands.misc.end_2_end.run_pipeline",
+            "help": "rolypoly.utils.lazy_group.help_long",
+            "add-command": "hidden:rolypoly.commands.misc.add_command.add_command",
+            "dummy": "hidden:rolypoly.utils.dummy.dummy",
+            "fetch-sra": "rolypoly.commands.misc.fetch_sra_fastq.fetch_sra",  # Not  a click command (yet?)
+            "sequence-stats": "rolypoly.commands.misc.sequence_stats.sequence_stats",
+            "visualize": "rolypoly.commands.misc.visualize.visualize",
+            "quick-taxonomy": "rolypoly.commands.misc.quick_taxonomy.quick_taxonomy",
+        }
+    },
+    "characterise": {
+        "name": "Characterisation",
+        "commands": {
+            "characterise": "hidden:rolypoly.commands.virotype.predict_characteristics.predict_characteristics",
+            "predict-host": "hidden:rolypoly.commands.host.classify.predict_host_range",
+            "correlate": "hidden:rolypoly.commands.bining.corrolate.corrolate",
+            "marker-search": "rolypoly.commands.identify_virus.marker_search.marker_search",
+            "search-viruses": "rolypoly.commands.identify_virus.search_viruses.virus_mapping"
+            # Commenting out unimplemented/broken commands
+            # "summarize": "rolypoly.commands.virotype.summarize.summarize"
+        }
+    },
+    "identify": {
+        "name": "RNA Virus Identification",
+        "commands": {
+            "marker-search": "rolypoly.commands.identify_virus.marker_search.marker_search",
+            "search-viruses": "rolypoly.commands.identify_virus.search_viruses.virus_mapping"
+        }
+    }
+})
+
 @click.version_option(version=get_version_info(), prog_name="rolypoly")
 def rolypoly():
     """RolyPoly: RNA Virus analysis tookit.\n
     Use rolypoly `command` --help for more details \n"""
-    # RolyPoly version: {get_version_info()}"""
     pass
 
 if __name__ == "__main__":
     rolypoly()
-
+    
     
