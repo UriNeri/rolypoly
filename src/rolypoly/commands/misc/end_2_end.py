@@ -10,6 +10,8 @@ import os
 @click.option("-D","--host", help="Path to the user-supplied host/contamination fasta /// Fasta file of known DNA entities expected in the sample")
 @click.option("--keep-tmp", is_flag=True, help="Keep temporary files")
 @click.option("--log-file", default=lambda: f"{os.getcwd()}/rolypoly_pipeline.log", help="Path to log file")
+@click.option("-ll","--log-level", default="INFO", help="Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
+@click.option("--skip-existing", is_flag=True, help="Skip commands if output files already exist")
 
 # Assembly options
 @click.option("-A", "--assembler", default="spades,megahit,penguin", help="Assembler choice. For multiple, give a comma-separated list")
@@ -27,8 +29,8 @@ import os
 # Marker gene search options
 @click.option("--db", default="all", help="Database to use for marker gene search")
 
-def run_pipeline(input, output_dir, threads, memory,  host, keep_tmp, log_file,
-                 assembler, post_cluster, filter1_nuc, filter2_nuc, filter1_aa, filter2_aa, dont_mask, mmseqs_args, diamond_args, db):
+def run_pipeline(input, output_dir, threads, memory,  host, keep_tmp=False, log_file=None,
+                 assembler="spades,megahit,penguin", post_cluster=False, filter1_nuc="alnlen >= 120 & pident>=75", filter2_nuc="qcov >= 0.95 & pident>=95", filter1_aa="length >= 80 & pident>=75", filter2_aa="qcovhsp >= 95 & pident>=80", dont_mask=False, mmseqs_args=None, diamond_args="--id 50 --min-orf 50", db="all", skip_existing=False, log_level="INFO"):
     """End-to-end pipeline for RNA virus discovery from raw sequencing data.
 
     This pipeline performs a complete analysis workflow including:
@@ -71,130 +73,137 @@ def run_pipeline(input, output_dir, threads, memory,  host, keep_tmp, log_file,
              )
     """
     from rolypoly.commands.reads.filter_reads import filter_reads
-    from rolypoly.commands.assembly.assembly import assembly
+    from rolypoly.commands.assembly.assemble import assembly
     from rolypoly.commands.assembly.filter_contigs import filter_contigs
     from rolypoly.commands.identify_virus.marker_search import marker_search as marker_search
-    from rolypoly.utils.loggit import setup_logging #, check_file_exists, check_file_size
+    from rolypoly.utils.loggit import setup_logging, log_start_info #, check_file_exists, check_file_size
     from rolypoly.commands.virotype.predict_characteristics import predict_characteristics
     from rolypoly.commands.annotation.annotate import annotate  
+    from rolypoly.rolypoly import get_version_info
     known_dna=host
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     log_file = output_dir / "rolypoly_pipeline.log"
-    logger = setup_logging(log_file)
+    logger = setup_logging(log_file, log_level.upper())
 
-    logger.info("Starting RolyPoly pipeline    ")
-    logger.info(f"Input: {input}")
-    logger.info(f"Output directory: {output_dir}")
-    logger.info(f"Threads: {threads}")
-    logger.info(f"Memory: {memory}")
-    logger.info(f"Known DNA: {known_dna}")
-    logger.info(f"Host: {host}")
-    logger.info(f"Keep temporary files: {keep_tmp}")
-    logger.info(f"Log file: {log_file}")
-    logger.info(f"Assembler: {assembler}")
-    logger.info(f"Post-cluster: {post_cluster}")
-    logger.info(f"Filter1 (nucleotide): {filter1_nuc}")
-    logger.info(f"Filter2 (nucleotide): {filter2_nuc}")
-    logger.info(f"Filter1 (amino acid): {filter1_aa}")
-    logger.info(f"Filter2 (amino acid): {filter2_aa}")
-    logger.info(f"Don't mask: {dont_mask}")
-    logger.info(f"MMseqs2 args: {mmseqs_args}")
-    logger.info(f"Diamond args: {diamond_args}")
-    logger.info(f"Marker protein search database: {db}")
-
+    logger.info("Starting RolyPoly pipeline version: %s", get_version_info())
+    if log_level == "debug":
+        logger.debug("Debug mode enabled")
+        import sys
+        log_start_info(logger, dict(zip(sys.argv[1::2], sys.argv[2::2])))
+    
     # Step 1: Filter Reads
     logger.info("Step 1: Filtering reads    ")
     filtered_reads = output_dir / "filtered_reads"
-    filtered_reads.mkdir(parents=True, exist_ok=True)
-    ctx = click.Context(filter_reads)
-    ctx.invoke(filter_reads,
+    if skip_existing:
+        if filtered_reads.exists():
+            logger.info("Filtered reads already exist, skipping step")
+            pass
+    else:
+        filtered_reads.mkdir(parents=True, exist_ok=True)
+        ctx = click.Context(filter_reads)
+        ctx.invoke(filter_reads,
         input=input,
-        output_dir=str(filtered_reads),
+        output=str(filtered_reads),
         threads=threads,
         memory=memory,
         known_dna=known_dna,
         keep_tmp=keep_tmp,
         log_file=logger,
         speed=15
-    )
+        )
 
     # Step 2: Assembly
     logger.info("Step 2: Performing assembly    ")
     assembly_output = output_dir / "assembly"
-    assembly_output.mkdir(parents=True, exist_ok=True)
-    ctx = click.Context(assembly)
-    ctx.invoke(assembly,
-        threads=threads,
-        memory=memory,
-        output_dir=str(assembly_output),
-        keep_tmp=keep_tmp,
-        log_file=str(log_file),
-        input=str(filtered_reads),
-        assembler=assembler
-    )
     final_assembly = assembly_output / "final_assembly.fasta"
+    if skip_existing and final_assembly.exists():
+        logger.info("Assembly output already exists, skipping step")
+    else:
+        # assembly_output.mkdir(parents=True, exist_ok=True)
+        ctx = click.Context(assembly)
+        ctx.invoke(assembly,
+            threads=threads,
+            memory=memory,
+            output=str(assembly_output),
+            keep_tmp=keep_tmp,
+            log_file=str(log_file),
+            input=str(filtered_reads),
+            assembler=assembler
+        )
 
     # Step 3: Filter Assembly
     logger.info("Step 3: Filtering assembly    ")
     filtered_assembly = output_dir / "assemblies" / "filtered_assembly.fasta"
-    ctx = click.Context(filter_contigs)
-    ctx.invoke(filter_contigs,
-        input=str(final_assembly),
-        host=host,
-        output=str(filtered_assembly),
-        mode="both",
-        threads=threads,
-        memory=memory,
-        keep_tmp=keep_tmp,
-        log_file=str(log_file),
-        filter1_nuc=filter1_nuc,
-        filter2_nuc=filter2_nuc,
-        filter1_aa=filter1_aa,
-        filter2_aa=filter2_aa,
-        dont_mask=dont_mask,
-        mmseqs_args=mmseqs_args,
-        diamond_args=diamond_args
-    )
+    if skip_existing and filtered_assembly.exists():
+        logger.info("Filtered assembly already exists, skipping step")
+    else:
+        ctx = click.Context(filter_contigs)
+        ctx.invoke(filter_contigs,
+            input=str(final_assembly),
+            host=host,
+            output=str(filtered_assembly),
+            mode="both",
+            threads=threads,
+            memory=memory,
+            keep_tmp=keep_tmp,
+            log_file=str(log_file),
+            filter1_nuc=filter1_nuc,
+            filter2_nuc=filter2_nuc,
+            filter1_aa=filter1_aa,
+            filter2_aa=filter2_aa,
+            dont_mask=dont_mask,
+            mmseqs_args=mmseqs_args,
+            diamond_args=diamond_args
+        )
 
     # Step 4: marker protein Search
     logger.info("Step 4: Searching for marker protein sequences    ")
     marker_output = output_dir / "marker_search_results"
-    ctx = click.Context(marker_search)
-    ctx.invoke(marker_search,
-        input=str(filtered_assembly),
-        output=str(marker_output),
-        threads=threads,
-        memory=memory,
-        db=db,
-        keep_tmp=keep_tmp,
-        log_file=str(log_file)
-    )
+    if skip_existing and marker_output.exists():
+        logger.info("Marker search results already exist, skipping step")
+    else:
+        ctx = click.Context(marker_search)
+        ctx.invoke(marker_search,
+            input=str(filtered_assembly),
+            output=str(marker_output),
+            threads=threads,
+            memory=memory,
+            db=db,
+            keep_tmp=keep_tmp,
+            log_file=str(log_file)
+        )
 
-    # Step 5: Annotation (TODO: finish implementing)
-    logger.info("Step 5: Annotation (not yet implemented)    ")
+    # Step 5: Annotation
+    logger.info("Step 5: Annotation")
     annotation_output = output_dir / "annotation_results"
-    ctx = click.Context(annotate)
-    ctx.invoke(annotate,
-        input=str(marker_output),
-        output=str(annotation_output),
-        threads=threads,
-        memory=memory,
-        keep_tmp=keep_tmp,
-        log_file=str(log_file)
-    )
+    if skip_existing and annotation_output.exists():
+        logger.info("Annotation results already exist, skipping step")
+    else:
+        ctx = click.Context(annotate)
+        ctx.invoke(annotate,
+            input=str(marker_output),
+            output=str(annotation_output),
+            threads=threads,
+            memory=memory,
+            keep_tmp=keep_tmp,
+            log_file=str(log_file)
+        )
 
     # Step 6: Predict Virus Characteristics
     logger.info("Step 6: Predicting virus characteristics    ")
     characteristics_output = output_dir / "virus_characteristics.tsv"
-    ctx = click.Context(predict_characteristics)
-    ctx.invoke(predict_characteristics,
-        input=str(output_dir),
-        output=str(characteristics_output),
-        database=os.path.join(os.environ['datadir'], "virus_literature_database.tsv"),
-        threads=threads,
-        log_file=str(log_file)
-    )
+    if skip_existing and characteristics_output.exists():
+        logger.info("Virus characteristics already exist, skipping step")
+    else:
+        ctx = click.Context(predict_characteristics)
+        ctx.invoke(predict_characteristics,
+            input=str(output_dir),
+            output=str(characteristics_output),
+            database=os.path.join(os.environ['datadir'], "virus_literature_database.tsv"),
+            threads=threads,
+            log_file=str(log_file)
+        )
 
     logger.info("RolyPoly pipeline completed successfully!")
 

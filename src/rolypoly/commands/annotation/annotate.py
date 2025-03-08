@@ -129,7 +129,9 @@ def annotate(input, output, threads, log_file, memory, override_parameters, skip
     
     config.logger.info("Annotation process completed.")
     
-    remind_citations(tools)
-    
+    # remind_citations(tools)
+    with open(f"{config.log_file}","w") as f_out:
+        f_out.write(remind_citations(tools,return_bibtex=True))
+        
 if __name__ == "__main__":
     annotate()

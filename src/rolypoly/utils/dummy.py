@@ -1,5 +1,5 @@
 import os
-import click
+import rich_click as click
 from rich.console import Console
 # from utils.logging import setup_logging
 from rich.spinner import Spinner

@@ -104,7 +104,9 @@ def annotate_RNA(input, output_dir, threads, log_file, memory, override_params, 
         console.print(f"An error occurred during RNA annotation: {str(e)}")
         raise
     
-    remind_citations(tools)
+    # remind_citations(tools)
+    with open(f"{config.log_file}","w") as f_out:
+        f_out.write(remind_citations(tools,return_bibtex=True))
 
 def process_RNA_annotations(config):
     config.logger.info("Starting RNA annotation process")
