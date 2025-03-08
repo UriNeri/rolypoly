@@ -6,6 +6,8 @@ import rich_click as click
 from rolypoly.utils.loggit import log_start_info
 from rolypoly.utils.config import BaseConfig
 from rich.console import Console
+from typing import Tuple, Dict
+import re
 
 console = Console()
 
@@ -46,50 +48,138 @@ class AssemblyConfig(BaseConfig):
                 else:
                     self.logger.warning(f"Warning: Unknown step '{step}' in override_parameters. Ignoring.")
                     
+class LibraryInfo:
+    def __init__(self):
+        self.paired_end = {}  # {lib_num: (R1_path, R2_path)}
+        self.single_end = {}  # {lib_num: path}
+        self.merged = {}      # {lib_num: path}
+        self.long_read = {}   # {lib_num: path}
+        self.raw_fasta = []   # [paths]
+        self.rolypoly_data = {}  # {lib_name: {'interleaved': path, 'merged': path}}
+
+    def add_paired(self, lib_num: int, r1_path: str, r2_path: str):
+        self.paired_end[lib_num] = (r1_path, r2_path)
+
+    def add_single(self, lib_num: int, path: str):
+        self.single_end[lib_num] = path
+
+    def add_merged(self, lib_num: int, path: str):
+        self.merged[lib_num] = path
+
+    def add_long_read(self, lib_num: int, path: str):
+        self.long_read[lib_num] = path
+
+    def add_raw_fasta(self, path: str):
+        self.raw_fasta.append(path)
+
+    def add_rolypoly_data(self, lib_name: str, interleaved: str = None, merged: str = None):
+        if lib_name not in self.rolypoly_data:
+            self.rolypoly_data[lib_name] = {'interleaved': None, 'merged': None}
+        if interleaved:
+            self.rolypoly_data[lib_name]['interleaved'] = interleaved
+        if merged:
+            self.rolypoly_data[lib_name]['merged'] = merged
+
+    def to_assembly_dict(self) -> dict:
+        """Convert to format expected by assembly functions"""
+        libraries = {}
+        
+        # Add rolypoly data first
+        libraries.update(self.rolypoly_data)
+        
+        # Add other data types
+        for lib_num, (r1, r2) in self.paired_end.items():
+            lib_name = f"lib_{lib_num}_paired"
+            libraries[lib_name] = {'interleaved': None, 'merged': None}
+            # Convert to interleaved format
+            libraries[lib_name]['interleaved'] = r1  # Will need to be interleaved during processing
+            
+        for lib_num, path in self.merged.items():
+            lib_name = f"lib_{lib_num}_merged"
+            libraries[lib_name] = {'interleaved': None, 'merged': path}
+            
+        for lib_num, path in self.single_end.items():
+            lib_name = f"lib_{lib_num}_single"
+            libraries[lib_name] = {'interleaved': None, 'merged': path}
+            
+        return libraries
+
 global tools
 tools = []
 
-def handle_input_files(input_path):
+def handle_input_files(input_path: str | Path, library_info: LibraryInfo = None) -> Tuple[Dict, int]:
     """Process input files and identify libraries.
-    """ 
-    # Import modules needed only in this function
+    
+    Args:
+        input_path: Path to input directory or file
+        library_info: Optional pre-populated LibraryInfo object
+        
+    Returns:
+        Tuple containing libraries dict and number of libraries
+    """
     from pathlib import Path
-
+    import re
+    
+    if library_info is None:
+        library_info = LibraryInfo()
     
     input_path = Path(input_path)
-    if input_path.is_dir():
-        fastq_files = list(input_path.glob('*_interleaved*.fq.gz')) + list(input_path.glob('*_merged*.fq.gz')) # file names fitting rolypoly filter_reads output names. TODO: Check if this works for single-end data
-    else:
-        fastq_files = [input_path]
-        # bbmerge(
-        #     in_file=input_fastq,
-        #     out=f"{input}/input_fastq_final_merged.fq.gz",
-        #     outu=f"{input}/input_fastq_final_interleaved.fq.gz",
-        #     k=93,
-        #     extend2=80,
-        #     rem=True,
-        #     ordered=True,
-        #     memory=memory["giga"],
-        #     threads=threads,
-        #     overwrite=True
-        # ) # this was done to ensure proper interleaving, but it adds time and storage. Just trust the user to give us interleaved reads    
-    
     libraries = {}
-    for file in fastq_files:
-        library_name = file.stem.split('_final_')[0]
-        if library_name not in libraries:
-            libraries[library_name] = {'interleaved': None, 'merged': None}
-        if 'interleaved' in file.name:
-            libraries[library_name]['interleaved'] = file
-        elif 'merged' in file.name:
-            libraries[library_name]['merged'] = file
     
+    if input_path.is_dir():
+        # Look for rolypoly output first
+        rolypoly_files = list(input_path.glob('*_final_*.fq.gz'))
+        if rolypoly_files:
+            for file in rolypoly_files:
+                lib_name = file.stem.split('_final_')[0]
+                if 'interleaved' in file.name:
+                    library_info.add_rolypoly_data(lib_name, interleaved=str(file))
+                elif 'merged' in file.name:
+                    library_info.add_rolypoly_data(lib_name, merged=str(file))
+                    
+        # Look for other fastq files
+        all_fastq = list(input_path.glob('*.f*q*'))
+        r1_pattern = re.compile(r'.*_R1[._].*')
+        r2_pattern = re.compile(r'.*_R2[._].*')
+        
+        # Group paired files
+        r1_files = [f for f in all_fastq if r1_pattern.match(f.name)]
+        for r1 in r1_files:
+            r2 = r1.parent / r1.name.replace('_R1', '_R2')
+            if r2.exists():
+                lib_num = len(library_info.paired_end) + 1
+                library_info.add_paired(lib_num, str(r1), str(r2))
+                
+        # Handle remaining files
+        processed = set(r1_files)
+        processed.update([f.parent / f.name.replace('_R1', '_R2') for f in r1_files])
+        
+        for file in all_fastq:
+            if file not in processed:
+                if any(x in file.name.lower() for x in ['merged', 'single']):
+                    lib_num = len(library_info.merged) + 1
+                    library_info.add_merged(lib_num, str(file))
+                else:
+                    lib_num = len(library_info.single_end) + 1
+                    library_info.add_single(lib_num, str(file))
+                    
+        # Handle raw fasta files
+        fasta_files = list(input_path.glob('*.fa*'))
+        for fasta in fasta_files:
+            library_info.add_raw_fasta(str(fasta))
+            
+    else:
+        # Single file input - treat as merged/single-end
+        lib_name = input_path.stem.split('_final_')[0]  # Handle rolypoly naming if present
+        library_info.add_merged(1, str(input_path))
+        libraries[f"lib_1_merged"] = {'interleaved': None, 'merged': str(input_path)}
+
+    # Convert library_info to the expected libraries format
+    libraries = library_info.to_assembly_dict()
+        
     return libraries, len(libraries)
 
 def run_spades(config, libraries):
-    """Run SPAdes assembler.
-    """
-    # Import modules needed only in this function
     from rolypoly.utils.various import ensure_memory
     import subprocess
 
@@ -109,12 +199,15 @@ def run_spades(config, libraries):
                     with open(lib['interleaved'], 'rb') as infile:
                         outfile.write(infile.read())
         spades_cmd += f" --pe-12 1 {config.output_dir}/all_interleaved.fq.gz --s 1 {config.output_dir}/all_merged.fq.gz"
-    else: # this case shouldn't be entered in the current code as we always run SPAdes on meta now, but keeping it for legacy reasons, and in case we figure out why spades decides to ignore merged reads when supplied via the -pe-m #. 
+    else:
         for i, (lib_name, lib) in enumerate(libraries.items(), 1):
             if lib['interleaved']:
                 spades_cmd += f" --pe-12 {i} {lib['interleaved']}"
             if lib['merged']:
-                spades_cmd += f" --pe-s {i} {lib['merged']}" # this should be --pe-m, but spades decides to ignore it    
+                if config.step_params['spades']['mode'] == 'meta':
+                    # metaSPAdes only works with paired-end data, so switch to regular mode
+                    spades_cmd = spades_cmd.replace('--meta', '')
+                spades_cmd += f" --s {i} {lib['merged']}"
 
     subprocess.run(spades_cmd, shell=True, check=True)
     config.logger.info(f"Finished SPAdes assembly")
@@ -124,7 +217,7 @@ def run_spades(config, libraries):
 def run_megahit(config, libraries):
     """Run MEGAHIT assembly.
     """
-    # Import modules needed only in this function
+
     import glob
     from rolypoly.utils.various import ensure_memory
     import subprocess
@@ -164,7 +257,7 @@ def run_megahit(config, libraries):
 def run_penguin(config, libraries):
     """Run Penguin assembler.
     """
-    # Import modules needed only in this function
+
     import subprocess
     
     config.logger.info(f"Started Penguin assembly")
@@ -188,46 +281,56 @@ def run_penguin(config, libraries):
 @click.option("-o", "--output", default="RP_assembly_output", help="Output path (folder will be created if it doesn't exist)")
 @click.option("-k", "--keep-tmp", is_flag=True, default=False, help="Keep temporary files")
 @click.option("-g", "--log-file", default=lambda: f"{os.getcwd()}/assemble_logfile.txt", help="Path to a logfile, should exist and be writable (permission wise)")
-@click.option("-i", "--input", required=True, help="Input path to fastq files or directory containing fastq files")
+@click.option("-i", "--input", help="Input directory containing fastq files")
+@click.option("--paired-end", multiple=True, nargs=3, 
+              help="Library number and paired FASTQ files: <lib_num> <R1> <R2>")
+@click.option("--single-end", multiple=True, nargs=2,
+              help="Library number and single-end FASTQ: <lib_num> <fastq>")
+@click.option("--merged", multiple=True, nargs=2,
+              help="Library number and merged FASTQ: <lib_num> <fastq>")
+@click.option("--long-read", multiple=True, nargs=2,
+              help="Library number and long read FASTQ: <lib_num> <fastq>")
+@click.option("--raw-fasta", multiple=True, help="Raw FASTA file(s) to include")
 @click.option("-A", "--assembler", default="spades,megahit,penguin", help="Assembler choice. for multiple, give a comma-seperated list e.g. 'spades,penguin')")
 @click.option("-op","--override-parameters", default='{}', help='JSON-like string of parameters to override. Example: --override-parameters \'{"spades": {"k": "21,33,55"}, "megahit": {"k-min": 31}}\'')
 @click.option("-ss","--skip-steps", default='', help='Comma-separated list of steps to skip. Example: --skip-steps seqkit,bowtie')
 @click.option("-ow","--overwrite", is_flag=True, default=False, help='Do not overwrite the output directory if it already exists')
 @click.option("-ll","--log-level", default="info", hidden=True, help='Log level. Options: debug, info, warning, error, critical')
-def assembly(threads, memory, output, keep_tmp, log_file, input, assembler,override_parameters, skip_steps, overwrite, log_level): #
+def assembly(input=None, paired_end=None, single_end=None, merged=None, 
+            long_read=None, raw_fasta=None, **kwargs):
     """Assembly wrapper - takes in (presumably filtered) reads, and assembles them using one or more assemblers.
     Currently supported assemblers are:
     • SPAdes (metaSPAdes)
     • MEGAHIT
     • Penguin
     """
-    # Import modules needed only in this function
+
     import shutil
     import sh
     from rolypoly.utils.bwt1 import build_index, align_paired_end_interleaved, align_single_end
     from rolypoly.utils.citation_reminder import remind_citations
     from rolypoly.utils.various import check_dependencies
 
-    if not overwrite:
-        if Path(output).exists():
-            raise ValueError(f"Output directory {output} already exists. Use -ow to overwrite.")
+    if not kwargs.get("overwrite"):
+        if Path(kwargs.get("output")).exists():
+            raise ValueError(f"Output directory {kwargs.get('output')} already exists. Use -ow to overwrite.")
     else:
-        shutil.rmtree(output, ignore_errors=True)
+        shutil.rmtree(kwargs.get("output"), ignore_errors=True)
 
-    Path(output).mkdir(parents=True, exist_ok=True) 
-    # print(output)
+    Path(kwargs.get("output")).mkdir(parents=True, exist_ok=True) 
+    # print(kwargs.get("output"))
        
     config = AssemblyConfig(
         input=Path(input),
-        output=Path(output),
-        threads=threads,
-        log_file=Path(log_file),
-        memory=(memory),
-        assembler=assembler,
-        keep_tmp=keep_tmp,
-        override_params=(override_parameters),
-        skip_steps=(skip_steps),
-        log_level=log_level 
+        output=Path(kwargs.get("output")),
+        threads=kwargs.get("threads"),
+        log_file=Path(kwargs.get("log_file")),
+        memory=(kwargs.get("memory")),
+        assembler=kwargs.get("assembler"),
+        keep_tmp=kwargs.get("keep_tmp"),
+        override_params=(kwargs.get("override_parameters")),
+        skip_steps=(kwargs.get("skip_steps")),
+        log_level=kwargs.get("log_level") 
     )
     
     config.logger.info(f"Starting assembly process    ")
@@ -235,7 +338,34 @@ def assembly(threads, memory, output, keep_tmp, log_file, input, assembler,overr
     config.logger.info(f"Saving config to {config.output_dir / 'assembly_config.json'}")
     config.save(config.output_dir / "assembly_config.json")
 
-    libraries, n_libraries = handle_input_files(config.input)
+    library_info = LibraryInfo()
+    
+    # Handle explicit library specifications
+    if paired_end:
+        for lib_num, r1, r2 in paired_end:
+            library_info.add_paired(int(lib_num), r1, r2)
+    if single_end:
+        for lib_num, path in single_end:
+            library_info.add_single(int(lib_num), path)
+    if merged:
+        for lib_num, path in merged:
+            library_info.add_merged(int(lib_num), path)
+    if long_read:
+        for lib_num, path in long_read:
+            library_info.add_long_read(int(lib_num), path)
+    if raw_fasta:
+        for path in raw_fasta:
+            library_info.add_raw_fasta(path)
+            
+    # Process input directory if provided
+    if input:
+        libraries, n_libraries = handle_input_files(input, library_info)
+    else:
+        libraries = {}
+        for lib_name, data in library_info.rolypoly_data.items():
+            libraries[lib_name] = data
+        n_libraries = len(libraries)
+    
     config.logger.info(f"Found {n_libraries} libraries")
     config.logger.info(f"Libraries: {libraries}")
     contigs4eval = []

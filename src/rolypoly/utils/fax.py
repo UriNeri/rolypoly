@@ -250,7 +250,7 @@ def is_gzipped(file_path: str) -> bool:
     with open(file_path, 'rb') as test_f:
         return test_f.read(2).startswith(b'\x1f\x8b')
 
-def guess_fastq_properties(file_path: str) -> dict:
+def guess_fastq_properties(file_path: str, mb_to_read: int = 20) -> dict:
     """Analyze a FASTQ file to determine its properties.
     
     Examines the first 20MB of a FASTQ file to determine if it's gzipped,
@@ -270,7 +270,11 @@ def guess_fastq_properties(file_path: str) -> dict:
          print(props['paired_end'])
         True
     """
+    bytes_to_read = mb_to_read * 1024 * 1024
     is_gz = is_gzipped(file_path)
+    file_size = os.path.getsize(file_path)
+    if file_size < bytes_to_read:
+        bytes_to_read = file_size
     paired_end = False
     average_read_length = 0
     total_length = 0
@@ -280,10 +284,10 @@ def guess_fastq_properties(file_path: str) -> dict:
     if is_gz:
         import gzip
         with gzip.open(file_path, 'rb') as f:
-            data = f.read(20 * 1024 * 1024)  # Read the first 20MB
+            data = f.read(bytes_to_read)
     else:
         with open(file_path, 'rb') as f:
-            data = f.read(20 * 1024 * 1024)  # Read the first 20MB
+            data = f.read(bytes_to_read)
 
     # Decode the data
     data = data.decode('utf-8', errors='ignore')
@@ -1170,218 +1174,95 @@ def populate_pldf_withseqs_needletail(pldf , seqfile, chunk_size=20000000, trim_
     
     return pldf
 
-        
-#ValueError: Index contains duplicate keys.
-# seen = set()
-# new_hmms = []
-# for hmm in hmms:
-#     if hmm.name in seen:
-#         print(f"Duplicate HMM name: {hmm.name}")
-#     else:
-#         seen.add(hmm.name)
-#         print(hmm.accession)
-#         hmm.accession = ''.encode("utf-8")
-#         hmm.description = ''.encode("utf-8")
-#         new_hmms.append(hmm)
-
-
- #### OBSOLETE: ####
-
-# def hasty_wrap_up(some_path, keep_tmp=False):
-#     """Something went wrong and you got here"""
-#     if not keep_tmp:
-#         shutil.rmtree(str(some_path)+"/tmp", ignore_errors=True)
-#         for tmp_file in Path(str(some_path)).glob("tmp*"):
-#             if tmp_file.is_dir():
-#                 shutil.rmtree(tmp_file)
-#             else:
-#                 tmp_file.unlink()
-#     exit(127) # TODO: make a file or list somewhere with what error codes ought to be and try to be consistent please    
-
-
-# def reverse_complement(seq):
-#     # complement = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'}
-#     # return ''.join(complement.get(base.upper(), base) for base in reversed(seq))
-#     # CPU times: user 719 μs, sys: 64 μs, total: 783 μs for a 6169nt seq vs 
-#     # CPU times: user 11 μs, sys: 1 μs, total: 12 μs for the same seq with: mappy.revcomp()
-
-# def download_genome(taxid):
-# # Define the API endpoint URL
-#     url = "https://api.ncbi.nlm.nih.gov/datasets/v2alpha/genome"
-
-#     # Define the request payload
-#     payload = {
-#         "accessions": [taxid],
-#         "include_annotation_type": ["RNA_FASTA","GENOME_FASTA"],
-#         "hydrated": "FULLY_HYDRATED",
-#         "include_tsv": False,
-#         "_exp_debug_values": "debug_value"
-#     }
-#     # Convert the payload to JSON
-#     payload_json = json.dumps(payload)
-
-#     # Set the request headers
-#     headers = {"Content-Type": "application/json"}
-
-#     # Make the POST request
-#     response = requests.post(url, headers=headers, data=payload_json)
-#     response
-#     # Check the response status code
-#     if response.status_code == 200:
-#         # Parse the response JSON
-#         response_json = response.json()
-#         print(response_json)
-#     else:
-#         print(f"Error: {response.status_code}")
-
-
-
-
-# def download_genome_ebi(accession: str, output_dir: str = ".") -> None:
-#     """Download genome data from ENA for a given accession.
+def identify_fastq_files(input_path: str | Path, return_rolypoly: bool = True) -> dict:
+    """Identify and categorize FASTQ files from input path.
     
-#     Args:
-#         accession (str): ENA/EBI accession for the organism
-#         output_dir (str): Directory to save downloaded files
+    Args:
+        input_path: Path to input directory or file
+        return_rolypoly: Whether to look for and return rolypoly-formatted files first
         
-#     Returns:
-#         str or None: Path to downloaded file if successful, None otherwise
+    Returns:
+        dict: Dictionary containing:
+            - rolypoly_data: {lib_name: {'interleaved': path, 'merged': path}}
+            - R1_R2_pairs: [(r1_path, r2_path), ...]
+            - interleaved_files: [path, ...]
+            - single_end: [path, ...]
+            
+    Note:
+        When return_rolypoly is True and rolypoly files are found, other files
+        are ignored to maintain consistency with rolypoly pipeline.
+    """
+    from pathlib import Path
+    import re
+    
+    input_path = Path(input_path)
+    file_info = {
+        "rolypoly_data": {},
+        "R1_R2_pairs": [],
+        "interleaved_files": [],
+        "single_end": []
+    }
+    
+    def is_paired_filename(filename: str) -> tuple[bool, str]:
+        """Check if filename indicates paired-end data and extract pair info."""
+        patterns = [
+            (r'.*_R?1[._].*', r'.*_R?2[._].*'),  # Matches _R1/_R2, _1/_2
+            (r'.*_1\.f.*q.*', r'.*_2\.f.*q.*'),   # Matches _1.fastq/_2.fastq
+            (r'.*\.1\.f.*q.*', r'.*\.2\.f.*q.*')  # Matches .1.fastq/.2.fastq
+        ]
         
-#     Note:
-#         Uses ENA programmatic access to download data.
-#         Supports accession types:
-#         - Study: PRJxxxxx
-#         - Sample: SAMEAxxxxxx, SAMNxxxxxxxx, SAMDxxxxxxxx
-#         - Assembly: GCA_xxxxxx
-#         - Run: ERRxxxxxx, SRRxxxxxx, DRRxxxxxx
-#     """
-#     import requests
-#     from pathlib import Path
-#     import subprocess as sp
-    
-#     # Create output directory if it doesn't exist
-#     Path(output_dir).mkdir(exist_ok=True)
-    
-#     try:
-#         # Determine accession type and use appropriate endpoint
-#         if accession.startswith(('GCA_', 'GCF_')):
-#             # Assembly accession
-#             url = f"https://www.ebi.ac.uk/ena/portal/api/filereport?accession={accession}&result=assembly&fields=submitted_ftp,assembly_level"
-#         elif accession.startswith(('ERR', 'SRR', 'DRR')):
-#             # Run accession
-#             url = f"https://www.ebi.ac.uk/ena/portal/api/filereport?accession={accession}&result=read_run&fields=fastq_ftp,submitted_ftp"
-#         elif accession.startswith('PRJ'):
-#             # Study accession
-#             url = f"https://www.ebi.ac.uk/ena/portal/api/filereport?accession={accession}&result=assembly&fields=submitted_ftp,assembly_level"
-#         elif accession.startswith(('SAME', 'SAMN', 'SAMD')):
-#             # Sample accession
-#             url = f"https://www.ebi.ac.uk/ena/portal/api/filereport?accession={accession}&result=assembly&fields=submitted_ftp,assembly_level"
-#         else:
-#             print(f"Unsupported accession format: {accession}")
-#             return None
-            
-#         response = requests.get(url)
-#         if response.status_code != 200:
-#             print(f"Failed to get file report: {response.status_code}")
-#             return None
-            
-#         # Skip header and get first data line
-#         lines = response.text.strip().split('\n')
-#         if len(lines) < 2:
-#             print(f"No files found for accession {accession}")
-#             return None
-            
-#         # Parse file URLs
-#         data = lines[1].split('\t')
-#         if len(data) < 1:
-#             print(f"Invalid data format for accession {accession}")
-#             return None
-            
-#         # Get FTP URLs from the response
-#         ftp_fields = data[0].split(';')
-#         if not any(ftp_fields):
-#             print(f"No download URLs found for accession {accession}")
-#             return None
-            
-#         # Download each file
-#         output_files = []
-#         for ftp_url in ftp_fields:
-#             if not ftp_url:
-#                 continue
+        for p1, p2 in patterns:
+            if re.match(p1, filename):
+                pair_file = filename.replace('_R1', '_R2').replace('_1.', '_2.').replace('.1.', '.2.')
+                return True, pair_file
+        return False, ''
+
+    if input_path.is_dir():
+        # First look for rolypoly output files
+        if return_rolypoly:
+            rolypoly_files = list(input_path.glob('*_final_*.f*q*'))
+            if rolypoly_files:
+                for file in rolypoly_files:
+                    lib_name = file.stem.split('_final_')[0]
+                    if lib_name not in file_info["rolypoly_data"]:
+                        file_info["rolypoly_data"][lib_name] = {'interleaved': None, 'merged': None}
+                    if 'interleaved' in file.name:
+                        file_info["rolypoly_data"][lib_name]['interleaved'] = file
+                    elif 'merged' in file.name:
+                        file_info["rolypoly_data"][lib_name]['merged'] = file
+                return file_info
+        
+        # Process all fastq files
+        all_fastq = list(input_path.glob('*.f*q*'))
+        processed_files = set()
+        
+        # First pass - identify paired files by name
+        for file in all_fastq:
+            if file in processed_files:
+                continue
                 
-#             # Convert FTP URL to HTTPS
-#             if ftp_url.startswith('ftp://'):
-#                 ftp_url = 'https://' + ftp_url[6:]
-                
-#             filename = Path(ftp_url).name
-#             output_path = Path(output_dir) / filename
+            is_paired, pair_file = is_paired_filename(file.name)
+            if is_paired and (file.parent / pair_file).exists():
+                file_info["R1_R2_pairs"].append((file, file.parent / pair_file))
+                processed_files.add(file)
+                processed_files.add(file.parent / pair_file)
+                continue
             
-#             print(f"Downloading {filename}...")
-#             try:
-#                 # Use wget for reliable downloads
-#                 sp.run(['wget', '-q', '-O', str(output_path), ftp_url], check=True)
-#                 output_files.append(str(output_path))
-#             except sp.CalledProcessError as e:
-#                 print(f"Failed to download {filename}: {e}")
-#                 continue
-                
-#         if output_files:
-#             print(f"Successfully downloaded {len(output_files)} files to {output_dir}")
-#             return output_files[0]  # Return path to first downloaded file
-#         else:
-#             print("No files were successfully downloaded")
-#             return None
-            
-#     except Exception as e:
-#         print(f"An error occurred: {e}")
-#         return None
+            # Check remaining files obsolete 
+            props = guess_fastq_properties(str(file))
+            if props['paired_end']:  # Interleaved paired-end
+                file_info["interleaved_files"].append(file)
+            else:  # Single-end
+                file_info["single_end"].append(file)
+            processed_files.add(file)
+                    
+    else:
+        # Single file input
+        props = guess_fastq_properties(str(input_path))
+        if props['paired_end']:  # Interleaved paired-end
+            file_info["interleaved_files"].append(input_path)
+        else:  # Single-end
+            file_info["single_end"].append(input_path)
 
-# def download_cds_ebi(accession: str, output_dir: str = ".") -> None:
-#     """Download coding sequences (CDS) from ENA for a given accession.
-    
-#     Args:
-#         accession (str): ENA/EBI accession for the organism
-#         output_dir (str): Directory to save downloaded files
-        
-#     Returns:
-#         str or None: Path to downloaded file if successful, None otherwise
-        
-#     Note:
-#         Uses ENA programmatic access to download CDS data.
-#         Only supports coding accessions in format: XXXxxxxx[.version]
-#         where X is letter and x is digit, optional version number.
-#     """
-#     import requests
-#     from pathlib import Path
-#     import subprocess as sp
-#     import re
-    
-#     # Create output directory if it doesn't exist
-#     Path(output_dir).mkdir(exist_ok=True)
-    
-#     # Validate coding accession format
-#     if not re.match(r'^[A-Z]{3}[0-9]{5}(\.[0-9]{1,2})?$', accession):
-#         print(f"Invalid coding accession format: {accession}")
-#         print("Coding accessions must be in format: XXXxxxxx[.version]")
-#         return None
-    
-#     try:
-#         # Get coding sequence data
-#         url = f"https://www.ebi.ac.uk/ena/browser/api/embl/{accession}"
-#         response = requests.get(url)
-        
-#         if response.status_code != 200:
-#             print(f"Failed to get CDS data: {response.status_code}")
-#             return None
-            
-#         # Save the EMBL format file
-#         output_path = Path(output_dir) / f"{accession}.embl"
-#         with open(output_path, 'wb') as f:
-#             f.write(response.content)
-            
-#         print(f"Successfully downloaded CDS data to {output_path}")
-#         return str(output_path)
-            
-#     except Exception as e:
-#         print(f"An error occurred: {e}")
-#         return None
+    return file_info
+

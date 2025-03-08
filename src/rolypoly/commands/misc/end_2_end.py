@@ -120,7 +120,6 @@ def run_pipeline(input, output_dir, threads, memory,  host, keep_tmp=False, log_
     if skip_existing and final_assembly.exists():
         logger.info("Assembly output already exists, skipping step")
     else:
-        # assembly_output.mkdir(parents=True, exist_ok=True)
         ctx = click.Context(assembly)
         ctx.invoke(assembly,
             threads=threads,
@@ -129,7 +128,8 @@ def run_pipeline(input, output_dir, threads, memory,  host, keep_tmp=False, log_
             keep_tmp=keep_tmp,
             log_file=str(log_file),
             input=str(filtered_reads),
-            assembler=assembler
+            assembler=assembler,
+            overwrite=skip_existing
         )
 
     # Step 3: Filter Assembly
