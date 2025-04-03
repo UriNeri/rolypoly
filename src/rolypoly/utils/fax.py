@@ -14,6 +14,34 @@ from typing import Union
 global datadir
 datadir = Path(os.environ['ROLYPOLY_DATA'])
 
+
+def write_fasta_file(records = None,seqs = None, headers = None, output_file = None, format: str = "fasta") -> None:
+    """ if no output file is provided, it will print to stdout"""
+    if format == "fasta":
+        seq_delim="\n"
+        header_delim="\n>"
+    elif format == "tab":
+        seq_delim="\t"
+        header_delim="\n>"
+    else:
+        raise ValueError(f"Invalid format: {format}")
+
+    if output_file is None:
+        import sys
+        output_file = sys.stdout
+    else:
+        output_file = open(output_file, "w")
+
+    if records:
+        for record in records:
+            output_file.write(f"{header_delim}{record.id}{seq_delim}{str(record.seq)}")
+    elif seqs is not None and headers is not None:
+        for i, seq in enumerate(seqs):
+            output_file.write(f"{header_delim}{headers[i]}{seq_delim}{seq}")
+    else:
+        raise ValueError("No records, seqs, or headers provided")
+
+
 def read_fasta_needletail(fasta_file: str) -> tuple[list[str], list[str]]:
     """Read sequences from a FASTA/FASTQ file using needletail.
     
@@ -38,6 +66,16 @@ def read_fasta_needletail(fasta_file: str) -> tuple[list[str], list[str]]:
         seqs.append(record.seq)
         seq_ids.append(record.id)
     return seq_ids, seqs
+
+
+def add_fasta_to_gff(config, gff_file):
+    """Add FASTA section to GFF file.
+    """
+    from rolypoly.utils.fax import write_fasta_file
+    from needletail import parse_fastx_file
+    with open(gff_file, 'a') as f:
+        f.write("##FASTA\n")
+    write_fasta_file(records = parse_fastx_file(config.input, "fasta"), output_file = f, format = "fasta")
 
 def filter_fasta_by_headers(fasta_file: str, headers: Union[str, list[str]], output_file: str, invert: bool = False) -> None:
     """Filter sequences in a FASTA file based on their headers.
@@ -112,7 +150,7 @@ def translate_6frx_seqkit(input_file: str, output_file: str, threads: int) -> No
     sp.run(command, shell=True, check=True)
 
 def translate_with_bbmap(input_file: str, output_file: str, threads: int) -> None:
-    """Translate nucleotide sequences using BBMap's callgenes.sh.
+    """Translate nucleotide sequences using BBMap's callgenes.sh
     
     Predicts and translates genes from nucleotide sequences using BBMap's
     gene prediction and translation tools.
@@ -154,13 +192,13 @@ def pyro_predict_orfs(input_file: str, output_file: str, threads: int, gv_or_els
     """
     import pyrodigal_gv as pyro_gv
     from pyrodigal_gv import pyrodigal as pyro
-    from Bio import SeqIO
+    from needletail import parse_fastx_file
     import multiprocessing.pool
 
     sequences = []
     ids = []
     with open(input_file, "r") as f:
-        for record in SeqIO.parse(f, "fasta"):
+        for record in parse_fastx_file(f, "fasta"):
             sequences.append(bytes(record.seq))
             ids.append((record.id))
 

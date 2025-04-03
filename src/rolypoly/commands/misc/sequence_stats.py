@@ -12,7 +12,7 @@ def calculate_sequence_stats(sequence, include_structure=False):
     """Calculate basic statistics for a sequence.
     
     Args:
-        sequence (Bio.Seq.Seq): Input sequence
+        sequence (str or similar): Input sequence
         include_structure (bool): Whether to calculate RNA structure potential
         
     Returns:
@@ -45,7 +45,7 @@ def calculate_codon_usage(sequence):
     """Calculate codon usage frequencies for a sequence.
     
     Args:
-        sequence (Bio.Seq.Seq): Input sequence
+        sequence (str): Input sequence
         
     Returns:
         dict: Dictionary containing codon frequencies

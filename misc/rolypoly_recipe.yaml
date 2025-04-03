@@ -34,7 +34,6 @@ dependencies:
     - rich
     - pyhmmer
     - pyrodigal-gv
-    - biopython
     - multiprocess
     - requests
     - multiqc

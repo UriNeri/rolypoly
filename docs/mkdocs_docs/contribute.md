@@ -12,8 +12,8 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
 - **Secondary Languages**: Bash, C++, Rust (rarely)
 - **Visualization Scripts**: R or Python
 - **Dependency Management**:
-  - Prefer using existing dependencies over adding new ones, and avoid biopython if possible.
-  - Example: Use `mappy.revcomp` instead of adding biopython just for reverse complement
+  - Prefer using existing dependencies over adding new ones, and avoid bio-python if possible.
+  - Example: Use `mappy.revcomp` instead of adding bi opython just for reverse complement
   - Avoid compiled dependencies unless available through conda channels
   - Prefer slim Python bindings over full packages
   - Use/add-to `rolypoly.utils.various` for general-purpose functions that don't fit into other categories (e.g. dataframe operations)

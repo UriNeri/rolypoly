@@ -167,10 +167,10 @@ def predict_secondary_structure_rnafold(config, input_fasta, output_file):
     """
 
     import RNA
-    from Bio import SeqIO
+    from needletail import parse_fastx_file
     
     with open(output_file, 'w') as out_f:
-        for record in SeqIO.parse(str(input_fasta), "fasta"):
+        for record in parse_fastx_file(str(input_fasta), "fasta"):
             sequence = str(record.seq)
             
             #convert to RNA
@@ -519,7 +519,7 @@ def search_rna_elements(config):
     """Search for RNA structural elements using lightmotif.
     """
     import lightmotif
-    from Bio import SeqIO
+    from needletail import parse_fastx_file
     from pathlib import Path
     config.logger.info(f"Searching for RNA structural elements using {config.motif_db} database")
     datadir = Path(os.environ['ROLYPOLY_DATA']) 
@@ -562,7 +562,7 @@ def search_rna_elements(config):
         out.write("Sequence\tMotif\tStart\tEnd\tScore\tStrand\n")
         
         # Process each sequence
-        for record in SeqIO.parse(str(input_fasta), "fasta"):
+        for record in parse_fastx_file(str(input_fasta), "fasta"):
             sequence = str(record.seq)
             
             try:
@@ -854,6 +854,8 @@ def combine_results(config):
         raise
 
 def write_combined_results_to_gff(config, combined_data):
+    from rolypoly.utils.fax import add_fasta_to_gff
+
     output_file = config.output_dir / "combined_annotations.gff3"
     with open(output_file, 'w') as f:
         f.write("##gff-version 3\n")
@@ -920,25 +922,6 @@ def convert_record_to_gff3_record(row): # for dict objects expected to be coherc
     ]
     
     return "\t".join(gff3_fields)
-
-def add_fasta_to_gff(config, gff_file):
-    """Add FASTA section to GFF file.
-    """
-
-    from Bio import SeqIO
-    
-    with open(gff_file, 'a') as f:
-        f.write("##FASTA\n")
-        for record in SeqIO.parse(config.input, "fasta"):
-            f.write(f">{record.id}\n{str(record.seq)}\n")
-
-def process_error(line):
-    from logging import error
-    error(line.strip())
-
-def process_output(line):
-    from logging import info
-    info(line.strip())
 
 def add_missing_gff_columns(dataframe):
     # check if the dataframe has the columns 'attributes',"source", "type", "score", "strand", "phase", if not add them

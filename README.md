@@ -116,7 +116,6 @@ By default, the ["quick_setup.sh"](./misc/quick_setup.sh) option will install al
 * [rich](https://github.com/Textualize/rich)
 * [pyhmmer](https://github.com/althonos/pyhmmer)
 * [pyrodigal-gv](https://github.com/althonos/pyrodigal-gv)
-* [biopython](https://biopython.org/)
 * [multiprocess](https://github.com/uqfoundation/multiprocess)
 * [requests](https://requests.readthedocs.io)
 * [pgzip](https://github.com/pgzip/pgzip)

@@ -27,10 +27,8 @@ All of these should be installed by mamba, if you are curios or prefer to instal
 * [rich](https://github.com/Textualize/rich)
 * [pyhmmer](https://github.com/althonos/pyhmmer)
 * [pyrodigal-gv](https://github.com/althonos/pyrodigal-gv)
-* [biopython](https://biopython.org/)
 * [multiprocess](https://github.com/uqfoundation/multiprocess)
 * [requests](https://requests.readthedocs.io)
 <!-- * [rarfile](https://github.com/markokr/rarfile) -->
 <!-- * [py7zr](https://pypi.org/project/py7zr/) -->
 * [pgzip](https://github.com/pgzip/pgzip)
-* [biopython](https://biopython.org/)
