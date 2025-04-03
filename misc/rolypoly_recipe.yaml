@@ -12,7 +12,7 @@ dependencies:
   - fastqc
   - mmseqs2
   - plass
-  - megahit=1.2.9
+  - megahit
   - pigz
   - ncbi-datasets-cli
   - entrez-direct
@@ -41,7 +41,6 @@ dependencies:
     - pyfastx
     - mappy
     - bbmapy
-    - sh
     - pymsaviz
     - viennarna
     - pyranges

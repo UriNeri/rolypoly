@@ -247,23 +247,38 @@ def predict_secondary_structure_rnastructure(config, input_fasta, output_file):
 def predict_secondary_structure_linearfold(config, input_fasta, output_file):
     """Predict RNA secondary structure using LinearFold.
     """
-    import sh
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from needletail import parse_fastx_file
-    linearfold = sh.Command("linearfold")
+    from rolypoly.utils.various import run_command_comp
+    import tempfile
 
     def process_sequence(record):
         sequence = str(record.seq).replace('T', 'U')
         try:
-            params = config.step_params['LinearFold']
-            result = str(linearfold("--beamsize", str(params.get('beamsize', 100)), _in=sequence)).strip().split('\n')
-            structure, mfe = result[1].split(" ")
-            mfe = float(mfe.replace('(', '').replace(')', ''))
-            return (record.id, sequence, structure, mfe)
-        
-        except sh.ErrorReturnCode as e:
-            config.logger.error(f"LinearFold failed for sequence {record.id}: {e}")
+            with tempfile.NamedTemporaryFile(mode='w+', delete=True) as temp_in:
+                temp_in.write(sequence)
+                temp_in.flush()
+                
+                with tempfile.NamedTemporaryFile(mode='r+', delete=True) as temp_out:
+                    params = config.step_params['LinearFold']
+                    success = run_command_comp(
+                        "linearfold",
+                        params={"beamsize": params.get('beamsize', 100)},
+                        positional_args=[temp_in.name],
+                        output_file=temp_out.name,
+                        check_output=True,
+                        logger=config.logger
+                    )
+                    
+                    if success:
+                        temp_out.seek(0)
+                        result = temp_out.read().strip().split('\n')
+                        structure, mfe = result[1].split(" ")
+                        mfe = float(mfe.replace('(', '').replace(')', ''))
+                        return (record.id, sequence, structure, mfe)
+                    
             return (record.id, sequence, "Error", 0.0)
+            
         except Exception as e:
             config.logger.error(f"Error processing sequence {record.id}: {str(e)}")
             return (record.id, sequence, "Error", 0.0)
