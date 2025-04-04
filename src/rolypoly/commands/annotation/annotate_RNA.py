@@ -5,6 +5,13 @@ from pathlib import Path
 from rolypoly.utils.config import BaseConfig
 import polars as pl
 from rolypoly.utils.citation_reminder import remind_citations
+from rolypoly.utils.various import run_command_comp
+# from rolypoly.utils.fax import (
+#     read_fasta_df,
+#     process_sequences,
+#     write_fasta_file,
+#     add_fasta_to_gff
+# )
 
 global tools
 tools = []
@@ -199,7 +206,7 @@ def predict_secondary_structure_rnafold(config, input_fasta, output_file):
             out_f.write(f"Ensemble free energy: {fe:.2f} kcal/mol\n\n")
 
     config.logger.info(f"Secondary structure prediction completed. Output written to {output_file}")
-    tools.append("RNAfold")
+    tools.append("rnafold")
 
 def predict_secondary_structure_rnastructure(config, input_fasta, output_file):
     """Predict RNA secondary structure using RNAstructure.

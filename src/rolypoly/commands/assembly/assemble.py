@@ -6,6 +6,11 @@ import rich_click as click
 from rolypoly.utils.loggit import log_start_info
 from rolypoly.utils.config import BaseConfig
 from rolypoly.utils.various import run_command_comp
+from rolypoly.utils.fax import (
+    read_fasta_df,
+    rename_sequences,
+    process_sequences
+)
 from rich.console import Console
 from typing import Tuple, Dict
 import re
@@ -396,15 +401,14 @@ def assembly(input=None, paired_end=None, single_end=None, merged=None,
         
         try:
             # Rename sequences
-            from rolypoly.commands.misc.rename_seqs import read_fasta2polars_df, rename_sequences, calculate_sequence_stats
             config.logger.info("Reading and parsing FASTA file")
-            df = read_fasta2polars_df(concat_file)
+            df = read_fasta_df(concat_file)
             config.logger.info(f"Found {len(df)} sequences")
             
             config.logger.info("Renaming sequences")
             df_renamed, id_map = rename_sequences(df, prefix="CID", use_hash=False)
             config.logger.info("Calculating sequence statistics")
-            df_renamed = calculate_sequence_stats(df_renamed)
+            df_renamed = process_sequences(df_renamed)
             
             # Write renamed sequences
             renamed_file = str(config.output_dir / "all_contigs_renamed.fasta")
