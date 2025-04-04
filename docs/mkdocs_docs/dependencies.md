@@ -20,7 +20,6 @@ All of these should be installed by mamba, if you are curios or prefer to instal
 ### Python Libraries
 
 * [polars](https://pola.rs/)
-* [scipy](https://scipy.org/)
 * [numpy](https://numpy.org/)
 <!-- * [multiprocessing (built-in)](https://docs.python.org/3/library/multiprocessing.html) -->
 * [rich_click](https://pypi.org/project/rich-click/)

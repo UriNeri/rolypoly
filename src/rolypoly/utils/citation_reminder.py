@@ -36,7 +36,7 @@ def load_citations():
     """
     citation_file = os.environ.get('citatioasdn_file') # TODO: update the citations file that is in the data directory.
     if citation_file is None:
-        citation_file = Path(__file__).parent.parent.parent.parent / "misc" / "all_used_tools_dbs_citations.json"
+        citation_file = Path(__file__).parent/ "all_used_tools_dbs_citations.json"
     with open(citation_file, "r") as f:
         return json.load(f)
 

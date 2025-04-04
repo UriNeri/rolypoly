@@ -28,7 +28,6 @@ dependencies:
   #  Python libraries (pip)
   - pip:
     - polars
-    - scipy
     - numpy
     - rich-click
     - rich
