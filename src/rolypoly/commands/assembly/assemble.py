@@ -12,7 +12,7 @@ from rolypoly.utils.fax import (
     process_sequences
 )
 from rich.console import Console
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Union
 import re
 import polars as pl
 from bbmapy import bbmap
@@ -115,7 +115,7 @@ class LibraryInfo:
 global tools
 tools = []
 
-def handle_input_files(input_path: str | Path, library_info: LibraryInfo = None) -> Tuple[Dict, int]:
+def handle_input_files(input_path: Union[str, Path], library_info: LibraryInfo = None) -> Tuple[Dict, int]:
     """Process input files and identify libraries.
     
     Args:

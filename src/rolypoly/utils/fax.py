@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import rich_click as click
 from rich.console import Console
-from typing import Union, Dict, Tuple, Iterator, Optional
+from typing import Union, Dict, Tuple
 import polars as pl
 from collections import defaultdict
 from needletail import parse_fastx_file
@@ -1514,7 +1514,7 @@ def populate_pldf_withseqs_needletail(pldf , seqfile, chunk_size=20000000, trim_
     
     return pldf
 
-def identify_fastq_files(input_path: str | Path, return_rolypoly: bool = True) -> dict:
+def identify_fastq_files(input_path: Union[str, Path], return_rolypoly: bool = True) -> dict:
     """Identify and categorize FASTQ files from input path.
     
     Args:
