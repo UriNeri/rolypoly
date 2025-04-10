@@ -1,22 +1,40 @@
-[build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "rolypoly"
-version = "0.0.1"
 authors = [
-    {name = "Uri Neri", email = "uneri@lbl.gov"},
-    {name = "Simon Roux", email = "sroux@lbl.gov"},
-    {name = "Brian Bushnell", email = "bbushnell@lbl.gov"},
-    {name = "Antonio Camargo", email = "antoniop.camargo@lbl.gov"},
-    {name = "Andrei Stecca Steindorff", email = "andreiss@jgi.doe.gov"},
-    {name = "Clement Coclet", email = "cclement@jgi.doe.gov"}
+    { name = "Uri Neri", email = "uneri@lbl.gov" },
+    { name = "Simon Roux", email = "sroux@lbl.gov" },
+    { name = "Brian Bushnell", email = "bbushnell@lbl.gov" },
+    { name = "Antonio Camargo", email = "antoniop.camargo@lbl.gov" },
+    { name = "Andrei Stecca Steindorff", email = "andreiss@jgi.doe.gov" },
+    { name = "Clement Coclet", email = "cclement@jgi.doe.gov" },
 ]
+description = "RNA virus analysis toolkit"
 readme = "README.md"
-license = {file = "LICENSE"}
-requires-python = ">=3.8"
-dependencies = [] # all moved to the env files.
+dynamic = ["version"]
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+    "bbmapy>=0.0.41,<0.0.42",
+    "dna-features-viewer>=3.1.4,<4",
+    "genomicranges>=0.6.3,<0.7",
+    "iranges>=0.4.2,<0.5",
+    "lightmotif>=0.9.1,<0.10",
+    "mappy>=2.28,<3",
+    "matplotlib>=3.10.1,<4",
+    "needletail>=0.6.3,<0.7",
+    "numpy>=2.2.4,<3",
+    "polars>=1.26.0,<2",
+    "psutil>=6.1.1,<7",
+    "pyfastx>=2.2.0,<3",
+    "pyhmmer>=0.11.0,<0.12",
+    "pymsaviz>=0.5.0,<0.6",
+    "pyranges>=0.1.4,<0.2",
+    "pyrodigal-gv>=0.3.2,<0.4",
+    "requests>=2.32.3,<3",
+    "rich-click>=1.8.8,<2",
+    "rich>=14.0.0,<15",
+    "viennarna>=2.7.0,<3",
+]
 
 [project.urls]
 Source = "https://code.jgi.doe.gov/UNeri/rolypoly"
@@ -24,18 +42,57 @@ Source = "https://code.jgi.doe.gov/UNeri/rolypoly"
 [project.scripts]
 rolypoly = "rolypoly.rolypoly:rolypoly"
 
-[tool.setuptools]
-package-dir = {"" = "src"}
+[dependency-groups]
+build = ["hatch >=1.14.0,<2", "pip >=25.0.1,<26"]
+format = ["ruff >=0.11.3,<0.12"]
+publish = ["twine >=6.1.0,<7"]
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.setuptools.packages.find]
-where = ["src"]
-include = ["rolypoly*"]
-namespaces = true
+[tool.hatch.version]
+path = "src/rolypoly/__init__.py"
 
-[tool.setuptools.package-data]
-rolypoly = ["*.json"]
+[tool.pixi.workspace]
+channels = ["conda-forge", "bioconda"]
+platforms = ["linux-64"]
 
-[tool.setuptools.exclude-package-data]
-"*" = ["*.pyc", "*.pyo", "*.pyd", "__pycache__"]
+[tool.pixi.dependencies]
+aragorn = ">=1.2.41,<2"
+aria2 = ">=1.37.0,<2"
+blast = ">=2.16.0,<3"
+bowtie = ">=1.3.0,<2"
+diamond = ">=2.1.10,<3"
+fastqc = ">=0.12.1,<0.13"
+linearfold = ">=1.0.1.dev20220829,<2"
+megahit = ">=1.2.9,<2"
+mmseqs2 = ">=16.747c6,<18"
+ncbi-datasets-cli = ">=17.3.0,<18"
+pigz = ">=2.8,<3"
+plass = ">=5.cf8933,<6"
+seqkit = ">=2.10.0,<3"
+spades = ">=4.0.0,<5"
+trnascan-se = ">=2.0.12,<3"
 
+[tool.pixi.feature.py310.dependencies]
+python = "~=3.10.0"
+
+[tool.pixi.pypi-dependencies]
+rolypoly = { path = ".", editable = true }
+
+[tool.pixi.environments]
+default = { features = ["py310"] }
+dev = { features = ["build", "format", "publish"] }
+
+[tool.pixi.tasks]
+test-import = "python -c 'import rolypoly; print(rolypoly.__version__)'"
+
+[tool.pixi.feature.format.tasks]
+format = "ruff check --select I --fix src && ruff format src"
+
+[tool.pixi.feature.build.tasks]
+build-pypi = "hatch build"
+
+[tool.pixi.feature.publish.tasks]
+publish-pypi = "twine upload dist/*"

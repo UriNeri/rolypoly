@@ -89,7 +89,7 @@ fi
 
 # Create and activate conda environment
 logit "$LOGFILE" "Creating conda environment    "
-micromamba create -y -p "$CONDA_ENV_PATH" -f misc/env_files/env_big.yaml
+micromamba create -y -p "$CONDA_ENV_PATH" -f rolypoly_recipe.yaml
 source "$(dirname "$(dirname "$CONDA_ENV_PATH")")/etc/profile.d/conda.sh"
 micromamba activate "$CONDA_ENV_PATH"
 

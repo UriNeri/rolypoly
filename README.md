@@ -14,7 +14,7 @@ There are several ways to install RolyPoly:
 <details><summary>The fastest way to get started. Downloads and installs everything automatically, including mamba if needed.</summary>
 
 ```bash
-curl -O https://code.jgi.doe.gov/UNeri/rolypoly/-/raw/main/misc/quick_setup.sh && \
+curl -O https://code.jgi.doe.gov/UNeri/rolypoly/-/raw/main/src/rolypoly/utils/quick_setup.sh && \
 bash quick_setup.sh
 ```
 
@@ -106,17 +106,15 @@ By default, the ["quick_setup.sh"](./misc/quick_setup.sh) option will install al
 16. [infernal](https://github.com/EddyRivasLab/infernal)
 17. [aragorn](http://130.235.244.92/ARAGORN/)
 18. [tRNAscan-SE](http://lowelab.ucsc.edu/tRNAscan-SE/)
-19. [bowtie](https://github.com/BenLangmead/bowtie)
+19. [bowtie1](https://github.com/BenLangmead/bowtie)
 
 ### Python Libraries
 * [polars](https://pola.rs/)
-* [scipy](https://scipy.org/)
 * [numpy](https://numpy.org/)
 * [rich_click](https://pypi.org/project/rich-click/)
 * [rich](https://github.com/Textualize/rich)
 * [pyhmmer](https://github.com/althonos/pyhmmer)
 * [pyrodigal-gv](https://github.com/althonos/pyrodigal-gv)
-* [biopython](https://biopython.org/)
 * [multiprocess](https://github.com/uqfoundation/multiprocess)
 * [requests](https://requests.readthedocs.io)
 * [pgzip](https://github.com/pgzip/pgzip)

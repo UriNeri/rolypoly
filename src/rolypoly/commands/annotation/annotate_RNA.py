@@ -5,6 +5,13 @@ from pathlib import Path
 from rolypoly.utils.config import BaseConfig
 import polars as pl
 from rolypoly.utils.citation_reminder import remind_citations
+from rolypoly.utils.various import run_command_comp
+# from rolypoly.utils.fax import (
+#     read_fasta_df,
+#     process_sequences,
+#     write_fasta_file,
+#     add_fasta_to_gff
+# )
 
 global tools
 tools = []
@@ -167,10 +174,10 @@ def predict_secondary_structure_rnafold(config, input_fasta, output_file):
     """
 
     import RNA
-    from Bio import SeqIO
+    from needletail import parse_fastx_file
     
     with open(output_file, 'w') as out_f:
-        for record in SeqIO.parse(str(input_fasta), "fasta"):
+        for record in parse_fastx_file(str(input_fasta), "fasta"):
             sequence = str(record.seq)
             
             #convert to RNA
@@ -199,7 +206,7 @@ def predict_secondary_structure_rnafold(config, input_fasta, output_file):
             out_f.write(f"Ensemble free energy: {fe:.2f} kcal/mol\n\n")
 
     config.logger.info(f"Secondary structure prediction completed. Output written to {output_file}")
-    tools.append("RNAfold")
+    tools.append("rnafold")
 
 def predict_secondary_structure_rnastructure(config, input_fasta, output_file):
     """Predict RNA secondary structure using RNAstructure.
@@ -247,23 +254,38 @@ def predict_secondary_structure_rnastructure(config, input_fasta, output_file):
 def predict_secondary_structure_linearfold(config, input_fasta, output_file):
     """Predict RNA secondary structure using LinearFold.
     """
-    import sh
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from needletail import parse_fastx_file
-    linearfold = sh.Command("linearfold")
+    from rolypoly.utils.various import run_command_comp
+    import tempfile
 
     def process_sequence(record):
         sequence = str(record.seq).replace('T', 'U')
         try:
-            params = config.step_params['LinearFold']
-            result = str(linearfold("--beamsize", str(params.get('beamsize', 100)), _in=sequence)).strip().split('\n')
-            structure, mfe = result[1].split(" ")
-            mfe = float(mfe.replace('(', '').replace(')', ''))
-            return (record.id, sequence, structure, mfe)
-        
-        except sh.ErrorReturnCode as e:
-            config.logger.error(f"LinearFold failed for sequence {record.id}: {e}")
+            with tempfile.NamedTemporaryFile(mode='w+', delete=True) as temp_in:
+                temp_in.write(sequence)
+                temp_in.flush()
+                
+                with tempfile.NamedTemporaryFile(mode='r+', delete=True) as temp_out:
+                    params = config.step_params['LinearFold']
+                    success = run_command_comp(
+                        "linearfold",
+                        params={"beamsize": params.get('beamsize', 100)},
+                        positional_args=[temp_in.name],
+                        output_file=temp_out.name,
+                        check_output=True,
+                        logger=config.logger
+                    )
+                    
+                    if success:
+                        temp_out.seek(0)
+                        result = temp_out.read().strip().split('\n')
+                        structure, mfe = result[1].split(" ")
+                        mfe = float(mfe.replace('(', '').replace(')', ''))
+                        return (record.id, sequence, structure, mfe)
+                    
             return (record.id, sequence, "Error", 0.0)
+            
         except Exception as e:
             config.logger.error(f"Error processing sequence {record.id}: {str(e)}")
             return (record.id, sequence, "Error", 0.0)
@@ -504,7 +526,7 @@ def search_rna_elements(config):
     """Search for RNA structural elements using lightmotif.
     """
     import lightmotif
-    from Bio import SeqIO
+    from needletail import parse_fastx_file
     from pathlib import Path
     config.logger.info(f"Searching for RNA structural elements using {config.motif_db} database")
     datadir = Path(os.environ['ROLYPOLY_DATA']) 
@@ -547,7 +569,7 @@ def search_rna_elements(config):
         out.write("Sequence\tMotif\tStart\tEnd\tScore\tStrand\n")
         
         # Process each sequence
-        for record in SeqIO.parse(str(input_fasta), "fasta"):
+        for record in parse_fastx_file(str(input_fasta), "fasta"):
             sequence = str(record.seq)
             
             try:
@@ -839,6 +861,8 @@ def combine_results(config):
         raise
 
 def write_combined_results_to_gff(config, combined_data):
+    from rolypoly.utils.fax import add_fasta_to_gff
+
     output_file = config.output_dir / "combined_annotations.gff3"
     with open(output_file, 'w') as f:
         f.write("##gff-version 3\n")
@@ -905,25 +929,6 @@ def convert_record_to_gff3_record(row): # for dict objects expected to be coherc
     ]
     
     return "\t".join(gff3_fields)
-
-def add_fasta_to_gff(config, gff_file):
-    """Add FASTA section to GFF file.
-    """
-
-    from Bio import SeqIO
-    
-    with open(gff_file, 'a') as f:
-        f.write("##FASTA\n")
-        for record in SeqIO.parse(config.input, "fasta"):
-            f.write(f">{record.id}\n{str(record.seq)}\n")
-
-def process_error(line):
-    from logging import error
-    error(line.strip())
-
-def process_output(line):
-    from logging import info
-    info(line.strip())
 
 def add_missing_gff_columns(dataframe):
     # check if the dataframe has the columns 'attributes',"source", "type", "score", "strand", "phase", if not add them

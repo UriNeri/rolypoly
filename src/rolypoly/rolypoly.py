@@ -62,7 +62,6 @@ os.environ['citation_file'] =  resources.files("rolypoly").joinpath("../../misc/
         "name": "Miscellaneous",
         "commands": {
             "end2end": "rolypoly.commands.misc.end_2_end.run_pipeline",
-            "help": "rolypoly.utils.lazy_group.help_long",
             "add-command": "hidden:rolypoly.commands.misc.add_command.add_command",
             "dummy": "hidden:rolypoly.utils.dummy.dummy",
             "fetch-sra": "rolypoly.commands.misc.fetch_sra_fastq.fetch_sra",  # Not  a click command (yet?)

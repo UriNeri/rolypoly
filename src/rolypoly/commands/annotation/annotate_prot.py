@@ -6,6 +6,7 @@ from rich.console import Console
 from rolypoly.utils.config import BaseConfig
 import polars as pl
 
+
 class ProteinAnnotationConfig(BaseConfig):
     def __init__(self, input: Path, output_dir: Path, threads: int, log_file: Path, memory: str,
                  override_params: dict[str, any] = None, skip_steps: list[str] = None,
@@ -125,20 +126,13 @@ def predict_orfs_with_pyrodigal(config):
 def predict_orfs_with_six_frame(config):
     """Translate 6-frame reading frames of a DNA sequence using seqkit.
     """
-    # Import modules needed only in this function
-    import sh
-    
-    seqkit = sh.Command("seqkit")
-    seqkit(
-        "translate",
-        "-x",
-        "-F",
-        "--clean",
-        "-w", "20000",
-        "-f", "6",
-        config.input,
-        "--id-regexp", "'(\\*)'",
-        "--clean",  "--threads", config.threads, ">", config.output_dir / "predicted_orfs.faa")
+    from rolypoly.utils.various import run_command_comp
+    run_command_comp(
+        "seqkit",
+        positional_args=["translate", "-x", "-F", "--clean", "-w", "20000", "-f", "6", str(config.input)],
+        params={"id-regexp": "'(\\*)'", "clean": True, "threads": config.threads},
+        output_file=str(config.output_dir / "predicted_orfs.faa")
+    )
 
 def search_protein_domains_hmmscan(config):
     """Search protein domains using hmmscan.
@@ -151,12 +145,10 @@ def search_protein_domains_hmmscan(config):
 def predict_orfs_with_orffinder(config):
     """Predict ORFs using ORFfinder.
     """
-    # Import modules needed only in this function
-    import sh
+    from shutil import which
+    from rolypoly.utils.various import run_command_comp
     
-    try:
-        exists = sh.which("ORFfinder") 
-    except Exception as e:
+    if not which("ORFfinder"):
         config.logger.error("ORFfinder not found. Please install ORFfinder and add it to your PATH (it isn't a conda/mamba installable package, but you can do the following:  wget ftp://ftp.ncbi.nlm.nih.gov/genomes/TOOLS/ORFfinder/linux-i64/ORFfinder.gz; gunzip ORFfinder.gz; chmod a+x ORFfinder; mv ORFfinder $CONDA_PREFIX/bin).")
         lazy=input("Do you want to install ORFfinder for you (i.e. ran the above commands)? [yes/no]  ")
         if lazy.lower() == "yes":
@@ -166,23 +158,21 @@ def predict_orfs_with_orffinder(config):
             config.logger.error("ORFfinder not found, you don't want me to install it, and you don't want to use another tool         seriously. Exiting    ")
             exit(1)
     
-    
     config.logger.info("Predicting ORFs")
     input_fasta = Path(config.input)
     output_file = config.output_dir / "predicted_orfs.faa"
 
-    orf_finder = sh.Command("ORFfinder")
-    orf_finder(
-        "-in", str(input_fasta),
-        "-out", str(output_file),
-        "-ml", config.min_orf_length,
-        "-s", config.genetic_code,  # standard genetic code or user defined
-        "-n", "true",  # include nested ORFs
-        "-outfmt", 0,  # FASTA output format
-        _err=process_error,
-        _out=process_output,
-        _bg=True,
-        _done=lambda cmd, success, exit_code: config.logger.info(f"ORFfinder completed with exit code {exit_code}")
+    run_command_comp(
+        "ORFfinder",
+        params={
+            "in": str(input_fasta),
+            "out": str(output_file),
+            "ml": config.min_orf_length,
+            "s": config.genetic_code,
+            "n": "true",
+            "outfmt": 0
+        },
+        logger=config.logger
     )
 
 def search_protein_domains(config):
@@ -201,62 +191,47 @@ def search_protein_domains(config):
     else:
         config.logger.info(f"Skipping protein domain search as {config.search_tool} is not supported")
 
-def search_protein_domains_hmmsearch(config, input_fasta, output_file): # TODO: replace with pyhmmer
+def search_protein_domains_hmmsearch(config, input_fasta, output_file):
     """Search protein domains using hmmsearch.
     """
-    # Import modules needed only in this function
-    import sh
+    from rolypoly.utils.various import run_command_comp
     
-    hmmsearch = sh.Command("hmmsearch")
-    hmmsearch(
-        "--cpu", config.threads,
-        "--tblout", output_file,
-        config.domain_db,
-        input_fasta,
-        _err=process_error,
-        _out=process_output,
-        _bg=True,
-        _done=lambda cmd, success, exit_code: config.logger.info(f"hmmsearch completed with exit code {exit_code}")
+    run_command_comp(
+        "hmmsearch",
+        params={
+            "cpu": config.threads,
+            "tblout": output_file
+        },
+        positional_args=[str(config.domain_db), str(input_fasta)],
+        logger=config.logger
     )
 
 def search_protein_domains_mmseqs2(config, input_fasta, output_file):
     """Search protein domains using mmseqs2.
     """
-    # Import modules needed only in this function
-    import sh
-    
-    mmseqs = sh.Command("mmseqs")
-    mmseqs(
-        "easy-search",
-        input_fasta,
-        config.domain_db,
-        output_file,
-        config.output_dir / "tmp",
-        "--threads", config.threads,
-        _err=process_error,
-        _out=process_output,
-        _bg=True,
-        _done=lambda cmd, success, exit_code: config.logger.info(f"mmseqs2 completed with exit code {exit_code}")
+    from rolypoly.utils.various import run_command_comp
+    run_command_comp(
+        "mmseqs",
+        positional_args=["easy-search", str(input_fasta), str(config.domain_db), str(output_file), str(config.output_dir / "tmp")],
+        params={"threads": config.threads},
+        logger=config.logger
     )
 
 def search_protein_domains_diamond(config, input_fasta, output_file):
     """Search protein domains using DIAMOND.
     """
-    # Import modules needed only in this function
-    import sh
-    
-    diamond = sh.Command("diamond")
-    diamond(
-        "blastp",
-        "--query", input_fasta,
-        "--db", config.domain_db,
-        "--out", output_file,
-        "--threads", config.threads,
-        "--outfmt", 6,
-        _err=process_error,
-        _out=process_output,
-        _bg=True,
-        _done=lambda cmd, success, exit_code: config.logger.info(f"DIAMOND completed with exit code {exit_code}")
+    from rolypoly.utils.various import run_command_comp
+    run_command_comp(
+        "diamond",
+        positional_args=["blastp"],
+        params={
+            "query": str(input_fasta),
+            "db": str(config.domain_db),
+            "out": str(output_file),
+            "threads": config.threads,
+            "outfmt": 6
+        },
+        logger=config.logger
     )
 
 def predict_protein_function(config):

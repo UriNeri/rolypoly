@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import time
 import signal
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Union
 # import ast
 
 global tools
@@ -272,7 +272,7 @@ def generate_reports(file_name: str, threads: int, skip_existing: bool, logger):
     shutil.rmtree(fastqc_output)
    
    
-def identify_read_pair_files_in_folder(input: str | Path) -> Dict[str, list[Path]]:
+def identify_read_pair_files_in_folder(input: Union[str, Path]) -> Dict[str, list[Path]]:
     """Identify if the input is paired end or single end."""
 
     import glob
@@ -481,7 +481,7 @@ def decontaminate_rrna(input_file: Path, config: ReadFilterConfig, output_tracke
         config.logger.error(f"Error in decontaminate_rrna: {str(e)}")
         return input_file
 
-def fetch_and_mask_genomes(input_file: Path, config: ReadFilterConfig, output_tracker: OutputTracker) -> str | Path:
+def fetch_and_mask_genomes(input_file: Path, config: ReadFilterConfig, output_tracker: OutputTracker) -> Union[str, Path]:
     """Fetch and mask genomes."""
 
     from rolypoly.utils.fax import mask_dna, fetch_genomes
@@ -516,7 +516,7 @@ def fetch_and_mask_genomes(input_file: Path, config: ReadFilterConfig, output_tr
     return (gbs_file)
 
 
-def filter_identified_dna(input_file: Path, config: ReadFilterConfig, output_tracker: OutputTracker) -> Path | str:
+def filter_identified_dna(input_file: Path, config: ReadFilterConfig, output_tracker: OutputTracker) -> Union[Path, str]:
     """Filter fetched DNA genomes."""
 
     from bbmapy import bbduk

@@ -190,7 +190,6 @@ def quick_taxonomy(input, output, threads,  log_file, log_level, marker_results,
     output_path = Path(output)
     output_path.mkdir(parents=True, exist_ok=True)
     
-    # Read sequences using needletail instead of BioPython
     sequences = []
     for record in parse_fastx_file(input):
         sequences.append({'id': record.id, 'seq': record.seq})

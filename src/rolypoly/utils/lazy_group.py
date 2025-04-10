@@ -215,23 +215,4 @@ class LazyGroup(click.RichGroup):
                 )
                 console.print(panel)
 
-@click.command()
-def help_long(**kwargs):
-    """Long and detailed description of commands and options (lazy loaded)."""
-    console.print("""
-    RolyPoly is a command-line tool with subcommands for different stages of the RNA virus identification pipeline. 
-    Many commands share common options:
 
-    [bold yellow]- [green]-t[/green], [cyan]--threads[/cyan][/bold yellow]: Number of threads to use. [i](int, default: 1)[/i]
-    [bold yellow]- [green]-M[/green], [cyan]--memory[/cyan][/bold yellow]: Memory allocation in GB. [i](string, default: "6gb")[/i]
-    [bold yellow]- [green]-o[/green], [cyan]--output[/cyan] or [cyan]--output-dir[/cyan][/bold yellow]: Output file or directory location. [i](string, default: current working directory + command-specific suffix)[/i]
-    [bold yellow]- [green]-r[/green], [cyan]--keep-tmp[/cyan][/bold yellow]: Keep temporary files. [i](bool, default: False)[/i]
-    [bold yellow]- [green]-g[/green], [cyan]--log-file[/cyan][/bold yellow]: Path to the log file. [i](string, default: command-specific log file in the current working directory)[/i]
-    [bold yellow]- [green]-i[/green], [cyan]--input[/cyan][/bold yellow]: Input file or directory. [i](string, required)[/i]
-
-    For detailed usage of each command, use the [bold]--help[/bold] option:
-
-    ```bash
-    rolypoly [COMMAND] --help
-    ```
-    """)

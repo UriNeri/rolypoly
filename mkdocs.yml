@@ -110,17 +110,6 @@ nav:
     - Binning:
       - Termini Analysis: commands/binning_termini.md
       - Correlation Analysis: commands/binning_correlate.md
-  - API Reference:
-    - Utils:
-      - Configuration: api/utils/config.md
-      - Error Handling: api/utils/error_handling.md
-      - FASTA/FASTQ Operations: api/utils/fax.md
-      - Interval Operations: api/utils/interval_ops.md
-      - Lazy Loading: api/utils/lazy_group.md
-      - Logging: api/utils/loggit.md
-      - Output Tracking: api/utils/output_tracker.md
-      - Citation Management: api/utils/citation_reminder.md
-      - Various: api/utils/various.md
   - Workflow: workflow.md
   # - Examples: examples.md
   - Resource Usage: resource_usage.md

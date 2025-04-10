@@ -20,7 +20,7 @@ import rich_click as click
 import os
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy") # see https://moyix.blogspot.com/2022/09/someones-been-messing-with-my-subnormals.html
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Union
 import polars as pl
 import intervaltree as itree
 
@@ -35,8 +35,8 @@ import intervaltree as itree
 @click.option("-d", "-drop","--drop-contained", default=False, is_flag=True, help="Drop hits that are contained within other hits")
 @click.option("-s", "--split", default=False, is_flag=True, help="Split every pair of overlapping hit")
 @click.option("-m", "--merge", default=False, is_flag=True, help="Merge overlapping domains/profiles hits into one - not recommended unless the profiles are from the same functional family")
-def consolidate_hits_rich(input: str | pl.DataFrame,
-                     output: str | None,
+def consolidate_hits_rich(input: Union[str, pl.DataFrame],
+                     output: Optional[str],
                      rank_columns: str,
                      one_per_query: bool,
                      one_per_range: bool, 
@@ -52,7 +52,7 @@ def consolidate_hits_rich(input: str | pl.DataFrame,
     or splitting overlapping regions.
 
     Args:
-        input (str | pl.DataFrame): Input hit table file or Polars DataFrame
+        input (Union[str, pl.DataFrame]): Input hit table file or Polars DataFrame
         output (str, optional): Output file path. If None, returns DataFrame.
         rank_columns (str): Columns for ranking hits with sort direction prefix
         one_per_query (bool): Keep only the best hit per query
@@ -91,7 +91,7 @@ def consolidate_hits_rich(input: str | pl.DataFrame,
     else:
         return tmpdf
     
-def consolidate_hits(input: str | pl.DataFrame,
+def consolidate_hits(input: Union[str, pl.DataFrame],
                      rank_columns: str = "-score",
                      one_per_query: bool = False,
                      one_per_range: bool = False, 
@@ -310,7 +310,7 @@ def clip_intersecting_ranges(range1: list[int, int], range2: list[int, int]) -> 
     tree.chop(range2[0], range2[1])     
     return [(start, end) for start, end, data in tree]    
     
-def clip_overlapping_ranges_pl(input_df: pl.DataFrame, min_overlap: int = 0, id_col: str | None = None) -> pl.DataFrame:
+def clip_overlapping_ranges_pl(input_df: pl.DataFrame, min_overlap: int = 0, id_col: Optional[str] = None) -> pl.DataFrame:
     """
     Clip overlapping ranges in a polars dataframe.
     
@@ -353,7 +353,7 @@ def set_column_order(df: pl.DataFrame, ref_df: pl.DataFrame) -> pl.DataFrame:
     """Set the column order of df to match ref_df."""
     return df.select([col for col in ref_df.columns if col in df.columns])
 
-def get_all_envelopes_pl(input_df: pl.DataFrame, id_col: str | None = None) -> pl.DataFrame:
+def get_all_envelopes_pl(input_df: pl.DataFrame, id_col: Optional[str] = None) -> pl.DataFrame:
     """
     Given a polars dataframe with start and end columns, return a dataframe with an additional column
     containing lists of indices of the entries that envelope each row.
@@ -413,7 +413,7 @@ def drop_all_contained_intervals_pl(input_df: pl.DataFrame) -> pl.DataFrame:
     return df
 
 
-def get_all_overlaps_pl(input_df: pl.DataFrame, min_overlap: int = 0, id_col: str | None = None) -> pl.DataFrame:
+def get_all_overlaps_pl(input_df: pl.DataFrame, min_overlap: int = 0, id_col: Optional[str] = None) -> pl.DataFrame:
     """Find all overlapping intervals in a DataFrame.
 
     Args:
@@ -470,7 +470,7 @@ def get_all_overlaps_pl(input_df: pl.DataFrame, min_overlap: int = 0, id_col: st
 #     tree.merge_overlaps()
 #     merged_df = interval_tree_to_df(tree)
     
-def return_or_write(df: pl.DataFrame, output: str | None):
+def return_or_write(df: pl.DataFrame, output: Optional[str]):
     """Write output or return dataframe."""
     if isinstance(output, str):
         df.write_csv(output, separator='\t')

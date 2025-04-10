@@ -13,71 +13,14 @@ import os
 from pathlib import Path
 import rich_click as click
 from rich.console import Console
-import hashlib
-from typing import Dict, Tuple
 import polars as pl
-
-from rolypoly.utils.fax import read_fasta2polars_df
+from rolypoly.utils.fax import (
+    read_fasta_df,
+    rename_sequences,
+    process_sequences
+)
 
 console = Console()
-
-def generate_hash(sequence: str, length: int = 32) -> str:
-    """Generate a hash for a sequence.
-    
-    Args:
-        sequence (str): Input sequence
-        length (int, optional): Length of hash to return. Defaults to all (32).
-    
-    Returns:
-        str: Hash string of specified length
-    """
-    return hashlib.md5(sequence.encode()).hexdigest()[:length]
-
-def rename_sequences(df: pl.DataFrame, 
-                    prefix: str = "CID", 
-                    use_hash: bool = False) -> Tuple[pl.DataFrame, Dict[str, str]]:
-    """Rename sequences with consistent IDs.
-    
-    Args:
-        df (pl.DataFrame): DataFrame with 'header' and 'sequence' columns
-        prefix (str, optional): Prefix for new IDs. Defaults to "CID".
-        use_hash (bool, optional): Use hash instead of numbers. Defaults to False.
-    
-    Returns:
-        Tuple[pl.DataFrame, Dict[str, str]]: 
-            - DataFrame with renamed sequences
-            - Dictionary mapping old IDs to new IDs
-    """
-    id_map = {}
-    new_headers = []
-    
-    # Calculate padding based on total number of sequences
-    padding = len(str(len(df)))
-    
-    for i, (header, seq) in enumerate(zip(df['header'], df['sequence'])):
-        if use_hash:
-            new_id = f"{prefix}_{generate_hash(seq)}"
-        else:
-            new_id = f"{prefix}_{str(i+1).zfill(padding)}"
-        id_map[header] = new_id
-        new_headers.append(new_id)
-    
-    return df.with_columns(pl.Series("header", new_headers)), id_map
-
-def calculate_sequence_stats(df: pl.DataFrame) -> pl.DataFrame:
-    """Calculate basic sequence statistics.
-    
-    Args:
-        df (pl.DataFrame): DataFrame with 'header' and 'sequence' columns
-    
-    Returns:
-        pl.DataFrame: DataFrame with added statistics columns
-    """
-    return df.with_columns([
-        pl.col("sequence").str.lengths().alias("length"),
-        (pl.col("sequence").str.count_matches("G|C").cast(pl.Float64) / 
-        pl.col("sequence").str.lengths() * 100.0).alias("gc_content")
-    ])
 
 @click.command()
 @click.option('-i', '--input', required=True, help='Input FASTA file')
@@ -96,7 +39,7 @@ def main(input: str, output: str, mapping: str, prefix: str,
     """
     # Read input FASTA
     console.print(f"Reading sequences from {input}")
-    df = read_fasta2polars_df(input)
+    df = read_fasta_df(input)
     
     # Rename sequences
     console.print(f"Renaming sequences with prefix '{prefix}'")
@@ -105,7 +48,7 @@ def main(input: str, output: str, mapping: str, prefix: str,
     # Calculate stats if requested
     if stats:
         console.print("Calculating sequence statistics")
-        df_renamed = calculate_sequence_stats(df_renamed)
+        df_renamed = process_sequences(df_renamed)
         
         # Prepare mapping DataFrame with stats
         mapping_df = pl.DataFrame({
