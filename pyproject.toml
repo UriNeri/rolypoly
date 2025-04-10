@@ -14,7 +14,7 @@ dynamic = ["version"]
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
-    "bbmapy>=0.0.41,<0.0.42",
+    "bbmapy>=0.0.46,<0.0.48",
     "dna-features-viewer>=3.1.4,<4",
     "genomicranges>=0.6.3,<0.7",
     "iranges>=0.4.2,<0.5",
@@ -34,6 +34,8 @@ dependencies = [
     "rich-click>=1.8.8,<2",
     "rich>=14.0.0,<15",
     "viennarna>=2.7.0,<3",
+    "intervaltree>=3.1.0,<4",
+    
 ]
 
 [project.urls]
