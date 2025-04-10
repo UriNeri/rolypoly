@@ -55,7 +55,7 @@
 
 #     # Pad sequences to ensure they are all the same length
 #     # sequences = pad_sequences(sequences)
-    
+
 #     # # Convert sequences into a Polars DataFrame
 #     # msa_df = pl.DataFrame(sequences)
 
@@ -96,7 +96,6 @@
 
 # if __name__ == "__main__":
 #     main()
-
 
 
 # from msa_viz import draw_msa

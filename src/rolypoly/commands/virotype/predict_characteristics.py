@@ -1,24 +1,49 @@
 import os
+from pathlib import Path
+
 import rich_click as click
 from rich.console import Console
-from pathlib import Path
+
 from rolypoly.utils.loggit import setup_logging
+
 # import polars as pl
 
 console = Console()
 
+
 @click.command()
-@click.option("-i", "--input", required=True, help="Input directory containing rolypoly's virus identification and annotation results")
-@click.option("-o", "--output", default=lambda: f"{os.getcwd()}_virus_characteristics", help="Path to a tsv where the summmary info for virus characteristics would be written into")
-@click.option("-d", "--database", required=True, help="Path to precompiled database of literature information")
+@click.option(
+    "-i",
+    "--input",
+    required=True,
+    help="Input directory containing rolypoly's virus identification and annotation results",
+)
+@click.option(
+    "-o",
+    "--output",
+    default=lambda: f"{os.getcwd()}_virus_characteristics",
+    help="Path to a tsv where the summmary info for virus characteristics would be written into",
+)
+@click.option(
+    "-d",
+    "--database",
+    required=True,
+    help="Path to precompiled database of literature information",
+)
 @click.option("-t", "--threads", default=1, help="Number of threads")
-@click.option("-g", "--log-file", default=lambda: f"{os.getcwd()}/predict_characteristics_logfile.txt", help="Path to log file")
+@click.option(
+    "-g",
+    "--log-file",
+    default=lambda: f"{os.getcwd()}/predict_characteristics_logfile.txt",
+    help="Path to log file",
+)
 def predict_characteristics(input, output, database, threads, log_file):
     """WIP WIP WIP Predict characteristics based on annotation and ""taxonomy"" results, and if possible by literature mined data."""
-    
+
     logger = setup_logging(log_file)
     logger.info("Starting virus characteristic prediction    ")
     logger.info("Sorry! command noit yet implemented!")
+
 
 #     # Load virus identification results
 #     virus_id_file = Path(input) / "marker_search_results" / "virus_identification.tsv"

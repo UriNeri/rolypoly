@@ -1,10 +1,12 @@
 import os
-from typing import Dict, List, Union, Optional, Generator, Any
-from rich.console import Console
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, Dict, Generator, List, Optional, Union
+
+from rich.console import Console
 
 console = Console()
+
 
 @contextmanager
 def change_directory(path: Union[str, Path]) -> Generator[None, None, None]:
@@ -32,6 +34,7 @@ def change_directory(path: Union[str, Path]) -> Generator[None, None, None]:
     finally:
         os.chdir(origin)
 
+
 def modify_params(default_params: Dict, override_params: Dict) -> Dict:
     """Modify default parameters with user-specified overrides.
 
@@ -55,7 +58,10 @@ def modify_params(default_params: Dict, override_params: Dict) -> Dict:
     params.update(override_params)
     return params
 
-def extract(archive_path: Union[str, Path], extract_to: Optional[Union[str, Path]] = None) -> None:
+
+def extract(
+    archive_path: Union[str, Path], extract_to: Optional[Union[str, Path]] = None
+) -> None:
     """Extract compressed and/or archived files.
 
     Handles various compression formats (.gz, .bz2, .xz, .Z) and archive formats
@@ -65,7 +71,7 @@ def extract(archive_path: Union[str, Path], extract_to: Optional[Union[str, Path
     Args:
         archive_path (Union[str, Path]): Path to the compressed/archived file
         extract_to (Optional[Union[str, Path]], optional): Destination directory.
-            If None, extracts to the same directory as the archive. 
+            If None, extracts to the same directory as the archive.
 
     Supported formats:
         Compression: .gz, .bz2, .xz, .Z
@@ -76,13 +82,13 @@ def extract(archive_path: Union[str, Path], extract_to: Optional[Union[str, Path
          extract("data.tar.gz", "output_dir")
          extract("archive.zip")  # Extracts to same directory
     """
-    import subprocess
-    import shutil
+    import bz2
     import gzip
+    import lzma
+    import shutil
+    import subprocess
     import tarfile
     import zipfile
-    import bz2
-    import lzma
 
     archive_path = Path(archive_path)
     if not archive_path.is_file():
@@ -98,43 +104,52 @@ def extract(archive_path: Union[str, Path], extract_to: Optional[Union[str, Path
         is_compressed = False
 
         # Check for compression type
-        if archive_path.suffix in ['.bz2', '.gz', '.xz', '.Z']:
+        if archive_path.suffix in [".bz2", ".gz", ".xz", ".Z"]:
             is_compressed = True
             compression_type = archive_path.suffix[1:]  # Remove the dot
             decompressed_path = extract_to / archive_path.stem
 
-            if compression_type == 'Z':
-                subprocess.run(['uncompress', '-c', str(archive_path)], 
-                             stdout=open(decompressed_path, 'wb'), 
-                             check=True)
+            if compression_type == "Z":
+                subprocess.run(
+                    ["uncompress", "-c", str(archive_path)],
+                    stdout=open(decompressed_path, "wb"),
+                    check=True,
+                )
             else:
-                open_func = {
-                    'bz2': bz2.open,
-                    'gz': gzip.open,
-                    'xz': lzma.open
-                }[compression_type]
-                
-                with open_func(archive_path, 'rb') as source, open(decompressed_path, 'wb') as dest:
+                open_func = {"bz2": bz2.open, "gz": gzip.open, "xz": lzma.open}[
+                    compression_type
+                ]
+
+                with (
+                    open_func(archive_path, "rb") as source,
+                    open(decompressed_path, "wb") as dest,
+                ):
                     shutil.copyfileobj(source, dest)
 
         # Then handle archive format (if any)
         final_path = decompressed_path
-        if (decompressed_path.suffix == '.tar' or 
-            (not is_compressed and archive_path.suffix == '.tar')):
-            with tarfile.open(decompressed_path, 'r:*') as tar:
+        if decompressed_path.suffix == ".tar" or (
+            not is_compressed and archive_path.suffix == ".tar"
+        ):
+            with tarfile.open(decompressed_path, "r:*") as tar:
                 tar.extractall(path=extract_to)
             if is_compressed:
                 decompressed_path.unlink()  # Remove intermediate decompressed file
-        elif (not is_compressed and archive_path.suffix == '.zip'):
-            with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+        elif not is_compressed and archive_path.suffix == ".zip":
+            with zipfile.ZipFile(archive_path, "r") as zip_ref:
                 zip_ref.extractall(extract_to)
 
-        console.print(f"[green]Successfully processed '{archive_path}' to '{extract_to}'[/green]")
+        console.print(
+            f"[green]Successfully processed '{archive_path}' to '{extract_to}'[/green]"
+        )
 
     except Exception as e:
-        console.print(f"[bold red]Error processing '{archive_path}': {str(e)}[/bold red]")
+        console.print(
+            f"[bold red]Error processing '{archive_path}': {str(e)}[/bold red]"
+        )
         if is_compressed and decompressed_path.exists():
             decompressed_path.unlink()  # Cleanup on error
+
 
 def check_dependencies(dependencies: List[str], silent: bool = True) -> None:
     """Check if required command-line dependencies are installed.
@@ -152,16 +167,19 @@ def check_dependencies(dependencies: List[str], silent: bool = True) -> None:
          check_dependencies(["samtools", "minimap2", "seqkit"])
     """
     import shutil
-    
+
     for dep in dependencies:
-        if(shutil.which(cmd=dep) == None):
+        if shutil.which(cmd=dep) == None:
             console.print(f"    [bold red]{dep} Not Found! Exiting!!![/bold red]")
-            raise SystemExit(1) 
+            raise SystemExit(1)
         else:
             if not silent:
                 console.print(f"    [green]{dep} Found![/green]")
 
-def fetch_and_extract(url: str, fetched_to: str = "downloaded_file", extract_to: Optional[str] = None) -> None:
+
+def fetch_and_extract(
+    url: str, fetched_to: str = "downloaded_file", extract_to: Optional[str] = None
+) -> None:
     """Fetch a file from a URL and optionally extract it.
 
     Downloads a file from a URL and optionally extracts it if an extraction path is provided.
@@ -176,15 +194,18 @@ def fetch_and_extract(url: str, fetched_to: str = "downloaded_file", extract_to:
          fetch_and_extract("https://example.com/data.tar.gz", "data.tar.gz", "output_dir")
          fetch_and_extract("https://example.com/file.txt", "file.txt")  # No extraction
     """
-    import requests
     import shutil
+
+    import requests
+
     console.print(f"Fetching {url}")
     response = requests.get(url, stream=True)
-    with open(fetched_to, 'wb') as file:
+    with open(fetched_to, "wb") as file:
         shutil.copyfileobj(response.raw, file)
 
     if extract_to:
         extract(fetched_to, extract_to)
+
 
 def parse_memory(mem_str) -> int:
     """
@@ -200,17 +221,25 @@ def parse_memory(mem_str) -> int:
         ValueError: If the memory format is invalid.
     """
     import re
-    
+
     units = {
-        "b": 1, "kb": 1024, "mb": 1024**2, "gb": 1024**3, "tb": 1024**4,
-        "": 1, "k": 1024, "m": 1024**2, "g": 1024**3, "t": 1024**4
+        "b": 1,
+        "kb": 1024,
+        "mb": 1024**2,
+        "gb": 1024**3,
+        "tb": 1024**4,
+        "": 1,
+        "k": 1024,
+        "m": 1024**2,
+        "g": 1024**3,
+        "t": 1024**4,
     }
-    
-    if(type(mem_str)== dict):
+
+    if type(mem_str) == dict:
         return parse_memory(mem_str.get("bytes"))
-    elif(type(mem_str)== int):
+    elif type(mem_str) == int:
         return mem_str
-    
+
     mem_str = mem_str.lower().strip()
     match = re.match(r"(\d+(?:\.\d+)?)([kmgt]?b?)", mem_str)
 
@@ -219,6 +248,7 @@ def parse_memory(mem_str) -> int:
 
     value, unit = match.groups()
     return int(float(value) * units[unit])
+
 
 def convert_bytes_to_units(byte_size: int) -> Dict[str, str]:
     """
@@ -240,15 +270,16 @@ def convert_bytes_to_units(byte_size: int) -> Dict[str, str]:
         "giga": f"{byte_size / 1024**3:.0f}g",
     }
 
+
 def ensure_memory(memory: str, file_path: Optional[str] = None) -> Dict[str, str]:
     """
     Ensure the requested memory is within system limits and optionally larger than some file's size.
     If the memory argument has no suffix, it is assumed to be in bytes.
-    
+
     Args:
         memory (str): Requested memory (e.g., '1GB', '500MB', '2G', '1.5T').
         file_path (Optional[str]): Path to a file to compare memory against.
-        
+
     Returns:
         Dict[str, str]: Dictionary with various unit representations of the memory.
     """
@@ -258,14 +289,19 @@ def ensure_memory(memory: str, file_path: Optional[str] = None) -> Dict[str, str
     available_memory_bytes = psutil.virtual_memory().total
 
     if requested_memory_bytes > available_memory_bytes:
-        console.print(f"[yellow]Warning: Requested memory ({memory}) exceeds available system memory ({convert_bytes_to_units(available_memory_bytes)['giga']}).[/yellow]")
+        console.print(
+            f"[yellow]Warning: Requested memory ({memory}) exceeds available system memory ({convert_bytes_to_units(available_memory_bytes)['giga']}).[/yellow]"
+        )
 
     if file_path and Path(file_path).is_file():
         file_size_bytes = Path(file_path).stat().st_size
         if requested_memory_bytes <= file_size_bytes:
-            console.print(f"[yellow]Warning: Requested memory ({memory}) is less than or equal to the file size ({convert_bytes_to_units(file_size_bytes)['giga']}).[/yellow]")
+            console.print(
+                f"[yellow]Warning: Requested memory ({memory}) is less than or equal to the file size ({convert_bytes_to_units(file_size_bytes)['giga']}).[/yellow]"
+            )
 
     return convert_bytes_to_units(requested_memory_bytes)
+
 
 def create_bash_script(command: List[str], script_name: str) -> None:
     """
@@ -275,10 +311,11 @@ def create_bash_script(command: List[str], script_name: str) -> None:
         command (List[str]): Command to write to the script.
         script_name (str): Name of the script file to create.
     """
-    with open(script_name, 'w') as f:
+    with open(script_name, "w") as f:
         f.write("#!/bin/bash\n")
         f.write(f"{' '.join(command)}\n")
     os.chmod(script_name, 0o755)
+
 
 def run_bash_script_with_time(script_name: str) -> Dict[str, str]:
     """
@@ -291,40 +328,49 @@ def run_bash_script_with_time(script_name: str) -> Dict[str, str]:
         Dict[str, str]: Dictionary containing time information.
     """
     import subprocess
-    
-    time_command = ["/usr/bin/time", "-v", "-o", f"{script_name}.time", "bash", script_name]
+
+    time_command = [
+        "/usr/bin/time",
+        "-v",
+        "-o",
+        f"{script_name}.time",
+        "bash",
+        script_name,
+    ]
     process = subprocess.Popen(time_command)
     process.wait()
     time_info = {}
-    with open(f"{script_name}.time", 'r') as f:
+    with open(f"{script_name}.time", "r") as f:
         for line in f:
             if ":" in line:
-                key, value = line.split(':', 1)
+                key, value = line.split(":", 1)
                 time_info[key.strip()] = value.strip()
     return time_info
+
 
 def extract_zip(zip_file):
     """Extract a zip file."""
     import zipfile
-    
+
     try:
-        with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+        with zipfile.ZipFile(zip_file, "r") as zip_ref:
             zip_ref.extractall(os.path.dirname(zip_file))
         return True
     except Exception as e:
         print(f"Error extracting {zip_file}: {e}")
         return False
 
+
 def parse_filter(filter_str):
     """Convert a filter string into parsed conditions and operators.
 
-    Takes a filter string in the format "[column operator value & column operator value]" 
+    Takes a filter string in the format "[column operator value & column operator value]"
     and parses it into a list of conditions and logical operators.
 
     Args:
         filter_str (str): Filter string to parse. Format examples:
             - "[qlen >= 100 & alnlen < 50]"
-            - "alnlen >= 120 & pident >= 75" 
+            - "alnlen >= 120 & pident >= 75"
             - "length > 1000 | width < 50"
 
     Returns:
@@ -346,35 +392,42 @@ def parse_filter(filter_str):
         )
     """
     import re
-    
+
     # Remove any surrounding brackets
-    filter_str = filter_str.strip('[]')
+    filter_str = filter_str.strip("[]")
     # Add space around operators and after each variable/condition name
     # filter_str="alnlen >= 120 & pident>=75"
-    modified_str = re.sub(r'([><=!]=|[><])', r' \1 ', filter_str)  # Space around comparison operators
-    modified_str = re.sub(r'([&|])', r' \1 ', modified_str)        # Space around logical operators
-    modified_str = re.sub(r'  ', r' ', modified_str)  # Remove duplicated spaces - TODO: this but smartly.
+    modified_str = re.sub(
+        r"([><=!]=|[><])", r" \1 ", filter_str
+    )  # Space around comparison operators
+    modified_str = re.sub(
+        r"([&|])", r" \1 ", modified_str
+    )  # Space around logical operators
+    modified_str = re.sub(
+        r"  ", r" ", modified_str
+    )  # Remove duplicated spaces - TODO: this but smartly.
 
     # Split the string into individual conditions
-    conditions = re.split(r'\s+(\&|\|)\s+', modified_str)
+    conditions = re.split(r"\s+(\&|\|)\s+", modified_str)
     parsed_conditions = []
     operators = []
-    
+
     for i, condition in enumerate(conditions):
-        if condition.lower() in ['&', '|']:
+        if condition.lower() in ["&", "|"]:
             operators.append(condition.lower())
         else:
             # Split the condition into column, operator, and value
-            match = re.match(r'(\w+)\s*([<>=!]+)\s*([\d.]+)', condition.strip())
+            match = re.match(r"(\w+)\s*([<>=!]+)\s*([\d.]+)", condition.strip())
             if match:
                 col, op, val = match.groups()
                 # Convert value to appropriate type
-                val = float(val) if '.' in val else int(val)
+                val = float(val) if "." in val else int(val)
                 parsed_conditions.append((col, op, val))
             else:
                 raise ValueError(f"Invalid condition: {condition}")
-    
+
     return parsed_conditions, operators
+
 
 def apply_filter(df, filter_str):
     """Apply filter conditions to a Polars DataFrame.
@@ -401,36 +454,37 @@ def apply_filter(df, filter_str):
         └────────┴───────┘
     """
     import polars as pl
-    
+
     conditions, operators = parse_filter(filter_str)
     if not conditions:
         return df
-    
+
     expr = None
     for i, (col, op, val) in enumerate(conditions):
         condition = None
-        if op == '>=':
+        if op == ">=":
             condition = pl.col(col) >= val
-        elif op == '<=':
+        elif op == "<=":
             condition = pl.col(col) <= val
-        elif op == '>':
+        elif op == ">":
             condition = pl.col(col) > val
-        elif op == '<':
+        elif op == "<":
             condition = pl.col(col) < val
-        elif op == '==':
+        elif op == "==":
             condition = pl.col(col) == val
-        elif op == '!=':
+        elif op == "!=":
             condition = pl.col(col) != val
-        
+
         if expr is None:
             expr = condition
-        elif i-1 < len(operators):
-            if operators[i-1] == '&':
+        elif i - 1 < len(operators):
+            if operators[i - 1] == "&":
                 expr = expr & condition
-            elif operators[i-1] == '|':
+            elif operators[i - 1] == "|":
                 expr = expr | condition
-    
+
     return df.filter(expr)
+
 
 def find_most_recent_folder(path):
     """Find the most recently modified folder in a directory.
@@ -447,8 +501,9 @@ def find_most_recent_folder(path):
              print(f"Most recent folder: {newest}")
     """
     import glob
+
     # Get a list of all directories in the specified path
-    folders = [f for f in glob.glob(os.path.join(path, '*')) if os.path.isdir(f)]
+    folders = [f for f in glob.glob(os.path.join(path, "*")) if os.path.isdir(f)]
     # Return None if no folders found
     if not folders:
         return None
@@ -456,13 +511,14 @@ def find_most_recent_folder(path):
     most_recent_folder = max(folders, key=os.path.getmtime)
     return most_recent_folder
 
+
 def move_contents_to_parent(folder, overwrite=True):
     """Move all contents of a folder to its parent directory.
 
     Args:
         folder (str): Path to the source folder
         overwrite (bool, optional): If True, overwrite existing files in parent.
-            If False, skip files that already exist. 
+            If False, skip files that already exist.
 
     Note:
         - The source folder will be removed after moving all contents
@@ -473,22 +529,25 @@ def move_contents_to_parent(folder, overwrite=True):
              move_contents_to_parent("subdir", overwrite=False)
     """
     import shutil
-    
+
     parent_dir = os.path.dirname(folder)
     for item in os.listdir(folder):
         s = os.path.join(folder, item)
         d = os.path.join(parent_dir, item)
-        if(overwrite):
-            if(os.path.exists(d)):
+        if overwrite:
+            if os.path.exists(d):
                 os.remove(d)
             shutil.move(s, d)
         else:
-            if(not os.path.exists(d)):
+            if not os.path.exists(d):
                 shutil.move(s, d)
             else:
-                console.print(f"[bold red]File {d} already exists! Skipping    [/bold red]")
+                console.print(
+                    f"[bold red]File {d} already exists! Skipping    [/bold red]"
+                )
     #  remove the now empty folder
-    os.rmdir(folder) # only works on empty dir
+    os.rmdir(folder)  # only works on empty dir
+
 
 def check_file_exists(file_path):
     """Check if a file exists and raise an error if it doesn't.
@@ -508,6 +567,7 @@ def check_file_exists(file_path):
     if not Path(file_path).exists():
         console.print(f"[bold red]File not found: {file_path} Tüdelü![/bold red]")
         raise FileNotFoundError(f"File not found: {file_path}")
+
 
 def check_file_size(file_path):
     """Check and print the size of a file.
@@ -530,6 +590,7 @@ def check_file_size(file_path):
     else:
         console.print(f"File '{file_path}' size is {file_size}")
 
+
 def is_file_empty(file_path):
     """Check if a file is empty or very small.
 
@@ -551,17 +612,20 @@ def is_file_empty(file_path):
         console.print(f"[bold red]File '{file_path}' does not exist.[/bold red]")
         return True
     file_size = Path(file_path).stat().st_size
-    return file_size < 28 # 28b is around the size of an empty <long-name>fastq.gz file
+    return file_size < 28  # 28b is around the size of an empty <long-name>fastq.gz file
 
-def run_command(cmd, logger, to_check, skip_existing = False, check=True): # TODO: add an option "try-hard" that save hash of the input /+ code.
+
+def run_command(
+    cmd, logger, to_check, skip_existing=False, check=True
+):  # TODO: add an option "try-hard" that save hash of the input /+ code.
     """Run a shell command and verify its output.
 
     Args:
         cmd (list): Command to run as a list of strings
         logger: Logger object for output messages
         to_check (str): Path to output file to verify
-        skip_existing (bool, optional): Skip if output exists. 
-        check (bool, optional): Check command return status. 
+        skip_existing (bool, optional): Skip if output exists.
+        check (bool, optional): Check command return status.
 
     Returns:
         bool: True if command succeeded and output exists/non-empty
@@ -575,13 +639,15 @@ def run_command(cmd, logger, to_check, skip_existing = False, check=True): # TOD
              )
     """
     import subprocess
-    
-    if (skip_existing == True):
-        if (Path(to_check).exists()):
-            if (Path(to_check).stat().st_size > 28):
-                logger.info(f"{to_check} seems to exist and isn't empty, and --skip-existing flag was set     so skipppingggg yolo! ")
+
+    if skip_existing == True:
+        if Path(to_check).exists():
+            if Path(to_check).stat().st_size > 28:
+                logger.info(
+                    f"{to_check} seems to exist and isn't empty, and --skip-existing flag was set     so skipppingggg yolo! "
+                )
                 return True
-        
+
     logger.info(f"Running command: {' '.join(cmd)}")
     try:
         subprocess.run(cmd, check=check)
@@ -590,6 +656,7 @@ def run_command(cmd, logger, to_check, skip_existing = False, check=True): # TOD
         return False
 
     return check_file_exist_isempty(f"{to_check}")
+
 
 def check_file_exist_isempty(file_path):
     """Check if a file exists and is not empty.
@@ -617,8 +684,11 @@ def check_file_exist_isempty(file_path):
         # console.print("This might mean all reads were filtered. Exiting without proceeding to downstream steps.")
         # raise ValueError(f"File {file_path} is empty")
     else:
-        console.print(f"[green]File '{file_path}' size is {Path(file_path).stat().st_size} bytes (not empty). [/green]")
+        console.print(
+            f"[green]File '{file_path}' size is {Path(file_path).stat().st_size} bytes (not empty). [/green]"
+        )
         return True
+
 
 def create_output_dataframe():
     """Create an empty DataFrame for tracking output files.
@@ -637,15 +707,18 @@ def create_output_dataframe():
              print(df.schema)
     """
     import polars as pl
-    
-    return pl.DataFrame(schema={
-        "filename": pl.Utf8,
-        "absolute_path": pl.Utf8,
-        "command_name": pl.Utf8,
-        "cmd": pl.Utf8,
-        "file_type": pl.Utf8,
-        "file_size": pl.UInt32
-    } )
+
+    return pl.DataFrame(
+        schema={
+            "filename": pl.Utf8,
+            "absolute_path": pl.Utf8,
+            "command_name": pl.Utf8,
+            "cmd": pl.Utf8,
+            "file_type": pl.Utf8,
+            "file_size": pl.UInt32,
+        }
+    )
+
 
 def add_output_file(df, filename, command_name, command, file_type):
     """Add a new output file record to the tracking DataFrame.
@@ -670,23 +743,25 @@ def add_output_file(df, filename, command_name, command, file_type):
              )
     """
     import polars as pl
-    
+
     absolute_path = os.path.abspath(filename)
     file_size = os.path.getsize(absolute_path)
-    
-    new_row = pl.DataFrame({
-        "filename": [filename],
-        "absolute_path": [absolute_path],
-        "command_name": [command_name],
-        "command": [command],
-        "file_type": [file_type],
-        "file_size": [file_size]
-    })
-    
+
+    new_row = pl.DataFrame(
+        {
+            "filename": [filename],
+            "absolute_path": [absolute_path],
+            "command_name": [command_name],
+            "command": [command],
+            "file_type": [file_type],
+            "file_size": [file_size],
+        }
+    )
+
     return pl.concat([df, new_row])
 
 
-def read_fwf(filename, widths, columns, dtypes, comment_prefix = None, **kwargs):
+def read_fwf(filename, widths, columns, dtypes, comment_prefix=None, **kwargs):
     """Read a fixed-width formatted text file into a Polars DataFrame.
 
     Args:
@@ -709,6 +784,7 @@ def read_fwf(filename, widths, columns, dtypes, comment_prefix = None, **kwargs)
              )
     """
     import polars as pl
+
     # if widths is None:
     #     # infer widths from the file
     #     peek = pl.scan_csv(filename, separator="\n", has_header=False)
@@ -719,10 +795,22 @@ def read_fwf(filename, widths, columns, dtypes, comment_prefix = None, **kwargs)
     #     dtypes = [pl.Utf8]
     column_information = [(*x, y, z) for x, y, z in zip(widths, columns, dtypes)]
 
-    return pl.read_csv(filename, separator="\n", new_columns=["header"], has_header=False, comment_prefix=comment_prefix, **kwargs).select(
-        pl.col("header").str.slice(col_offset, col_len).str.strip_chars(characters=" ").cast(col_type).alias(col_name)
+    return pl.read_csv(
+        filename,
+        separator="\n",
+        new_columns=["header"],
+        has_header=False,
+        comment_prefix=comment_prefix,
+        **kwargs,
+    ).select(
+        pl.col("header")
+        .str.slice(col_offset, col_len)
+        .str.strip_chars(characters=" ")
+        .cast(col_type)
+        .alias(col_name)
         for col_offset, col_len, col_name, col_type in (column_information)
     )
+
 
 def get_file_type(filename: str) -> str:
     """Determine the type of a file based on its extension.
@@ -744,23 +832,24 @@ def get_file_type(filename: str) -> str:
         'unknown'
     """
     ext = os.path.splitext(filename)[1].lower()
-    if ext == '.gz':
-        ext = os.path.splitext(filename[:-3])[1].lower() + '.gz'
-    
+    if ext == ".gz":
+        ext = os.path.splitext(filename[:-3])[1].lower() + ".gz"
+
     file_types = {
-        '.fq': 'fastq',
-        '.fastq': 'fastq',
-        '.fq.gz': 'fastq_gzipped',
-        '.fastq.gz': 'fastq_gzipped',
-        '.fa': 'fasta',
-        '.fasta': 'fasta',
-        '.fa.gz': 'fasta_gzipped',
-        '.fasta.gz': 'fasta_gzipped',
-        '.txt': 'text',
-        '.txt.gz': 'text_gzipped'
+        ".fq": "fastq",
+        ".fastq": "fastq",
+        ".fq.gz": "fastq_gzipped",
+        ".fastq.gz": "fastq_gzipped",
+        ".fa": "fasta",
+        ".fasta": "fasta",
+        ".fa.gz": "fasta_gzipped",
+        ".fasta.gz": "fasta_gzipped",
+        ".txt": "text",
+        ".txt.gz": "text_gzipped",
     }
-    
-    return file_types.get(ext, 'unknown')
+
+    return file_types.get(ext, "unknown")
+
 
 def update_output_files(df, new_filename, command_name, command):
     """Update output tracking DataFrame with a new file.
@@ -785,6 +874,7 @@ def update_output_files(df, new_filename, command_name, command):
     file_type = get_file_type(new_filename)
     return add_output_file(df, new_filename, command_name, command, file_type)
 
+
 def get_latest_output(df, file_type=None):
     """Get the filename of the most recently added output file.
 
@@ -800,13 +890,14 @@ def get_latest_output(df, file_type=None):
         print(f"Latest FASTA file: {latest}")
     """
     import polars as pl
-    
+
     if file_type:
         filtered_df = df.filter(pl.col("file_type") == file_type)
     else:
         filtered_df = df
-    
+
     return filtered_df.tail(1)["filename"][0]
+
 
 def order_columns_to_match(df1_to_order, df2_to_match):
     """Reorder columns in one DataFrame to match another DataFrame's column order.
@@ -827,6 +918,7 @@ def order_columns_to_match(df1_to_order, df2_to_match):
     """
     return df1_to_order.select(df2_to_match.columns)
 
+
 def cast_cols_to_match(df1_to_cast, df2_to_match):
     """Cast columns of one DataFrame to match the data types of another DataFrame.
 
@@ -846,10 +938,13 @@ def cast_cols_to_match(df1_to_cast, df2_to_match):
         ```
     """
     import polars as pl
-    
+
     for col in df2_to_match.columns:
-        df1_to_cast = df1_to_cast.with_columns(pl.col(col).cast(df2_to_match.schema[col]))
+        df1_to_cast = df1_to_cast.with_columns(
+            pl.col(col).cast(df2_to_match.schema[col])
+        )
     return df1_to_cast
+
 
 def vstack_easy(df1_to_stack, df2_to_stack):
     """Stack two DataFrames vertically after matching their column types and order.
@@ -874,16 +969,29 @@ def vstack_easy(df1_to_stack, df2_to_stack):
         ```
     """
     import polars as pl
-    
+
     df2_to_stack = cast_cols_to_match(df2_to_stack, df1_to_stack)
     df2_to_stack = order_columns_to_match(df2_to_stack, df1_to_stack)
     return df1_to_stack.vstack(df2_to_stack)
 
-def run_command_comp(base_cmd: str, positional_args: list[str] = [], positional_args_location: str = 'end', params: dict = {}, logger = None, output_file: str = "", 
-                    skip_existing: bool = False, check_status: bool = True, check_output: bool = True, 
-                    prefix_style: str = 'auto', param_sep: str = ' ', assign_operator: str = ' ', resource_monitoring: bool = False) -> bool:
+
+def run_command_comp(
+    base_cmd: str,
+    positional_args: list[str] = [],
+    positional_args_location: str = "end",
+    params: dict = {},
+    logger=None,
+    output_file: str = "",
+    skip_existing: bool = False,
+    check_status: bool = True,
+    check_output: bool = True,
+    prefix_style: str = "auto",
+    param_sep: str = " ",
+    assign_operator: str = " ",
+    resource_monitoring: bool = False,
+) -> bool:
     """Run a command with mixed parameter styles, with resource monitoring, and output verification. comp is abbrev for comprehensive,complex,complicated,complicated-ass, compounding.
-     
+
     Args:
         base_cmd (str): Base command name (e.g., "samtools", "minimap2")
         positional_args (list[str], optional): List of positional arguments
@@ -891,9 +999,9 @@ def run_command_comp(base_cmd: str, positional_args: list[str] = [], positional_
         params (dict, optional): Named parameters and their values
         logger (Logger, optional): Logger for output messages
         output_file (str, optional): Expected output file to verify
-        skip_existing (bool, optional): Skip if output exists. 
-        check_status (bool, optional): Verify command exit status. 
-        check_output (bool, optional): Verify output file exists. 
+        skip_existing (bool, optional): Skip if output exists.
+        check_status (bool, optional): Verify command exit status.
+        check_output (bool, optional): Verify output file exists.
         prefix_style (str, optional): How to prefix parameters:
             - 'auto': Guess based on length (- or --)
             - 'single': Always use single dash
@@ -916,19 +1024,26 @@ def run_command_comp(base_cmd: str, positional_args: list[str] = [], positional_
         )
     """
     import subprocess
-    from pathlib import Path
-    from psutil import cpu_percent, NoSuchProcess, Process
-    from time import time, sleep
-    from logging import INFO, Logger, StreamHandler
     import sys
+    from logging import INFO, Logger, StreamHandler
+    from pathlib import Path
+    from time import sleep, time
+
+    from psutil import NoSuchProcess, Process, cpu_percent
 
     if logger is None:
         logger = Logger(__name__, level=INFO)
         logger.addHandler(StreamHandler(sys.stdout))
 
     if output_file != "":
-        if skip_existing and Path(output_file).exists() and Path(output_file).stat().st_size > 28:
-            logger.info(f"{output_file} exists and isn't empty, skipping due to --skip-existing flag")
+        if (
+            skip_existing
+            and Path(output_file).exists()
+            and Path(output_file).stat().st_size > 28
+        ):
+            logger.info(
+                f"{output_file} exists and isn't empty, skipping due to --skip-existing flag"
+            )
             return True
 
     cmd = [base_cmd]
@@ -936,34 +1051,36 @@ def run_command_comp(base_cmd: str, positional_args: list[str] = [], positional_
     reg_param_str = ""
 
     for param, value in params.items():
-        if prefix_style == 'auto':
-            prefix = '-' if len(param) == 1 else '--'
-        elif prefix_style == 'single':
-            prefix = '-'
-        elif prefix_style == 'double':
-            prefix = '--'
+        if prefix_style == "auto":
+            prefix = "-" if len(param) == 1 else "--"
+        elif prefix_style == "single":
+            prefix = "-"
+        elif prefix_style == "double":
+            prefix = "--"
         else:  # 'none'
-            prefix = ''
-            
+            prefix = ""
+
         if value is True:
             flag_str += f"{param_sep}{prefix}{param}"
             continue
-            
+
         reg_param_str += f"{param_sep}{prefix}{param}{assign_operator}{value}"
-            
+
     cmd.append(reg_param_str)
     cmd.append(flag_str)
     positional_args_str = param_sep.join(positional_args)
-    
-    if positional_args_location == 'end':
+
+    if positional_args_location == "end":
         cmd.extend([positional_args_str])
-    elif positional_args_location == 'start':
+    elif positional_args_location == "start":
         cmd.insert(1, positional_args_str)
     else:
-        raise ValueError(f"Invalid positional_args_location: {positional_args_location}")
-    
-    cmd_str = ' '.join(cmd)
-    
+        raise ValueError(
+            f"Invalid positional_args_location: {positional_args_location}"
+        )
+
+    cmd_str = " ".join(cmd)
+
     logger.info(f"Running command: {cmd_str}")
     try:
         if resource_monitoring:
@@ -973,10 +1090,13 @@ def run_command_comp(base_cmd: str, positional_args: list[str] = [], positional_
                 try:
                     proc = Process(process.pid)
                     cpu_percent = proc.cpu_percent()
-                    memory_info = sum(child.memory_info().rss for child in proc.children(recursive=True))
+                    memory_info = sum(
+                        child.memory_info().rss
+                        for child in proc.children(recursive=True)
+                    )
                     memory_info += proc.memory_info().rss
                     logger.info(f"Current CPU Usage: {cpu_percent}%")
-                    logger.info(f"Current Memory Usage: {memory_info / 1024 :.2f} KB")
+                    logger.info(f"Current Memory Usage: {memory_info / 1024:.2f} KB")
                     sleep(0.01)
                 except NoSuchProcess:
                     break

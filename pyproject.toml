@@ -12,7 +12,7 @@ description = "RNA virus analysis toolkit"
 readme = "README.md"
 dynamic = ["version"]
 license = { file = "LICENSE" }
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 dependencies = [
     "bbmapy>=0.0.46,<0.0.48",
     "dna-features-viewer>=3.1.4,<4",

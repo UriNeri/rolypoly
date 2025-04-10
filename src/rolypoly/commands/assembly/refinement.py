@@ -2,23 +2,46 @@
 import os
 import subprocess
 from pathlib import Path
-from rich_click import command, option
+
 from rich.console import Console
-from rolypoly.utils.various import check_dependencies #, apply_filter 
+from rich_click import command, option
+
+from rolypoly.utils.various import check_dependencies  # , apply_filter
 
 # from utils.fax import guess_fasta_alpha, ensure_faidx#, get_resource_usage
 # import shutil
 
 console = Console()
 
+
 @command()
 @option("-i", "--input", required=True, help="Input assembly file (FASTA)")
-@option("-r", "--reads", required=True, help="Input reads file(s) (FASTQ). For paired-end, separate with comma.")
-@option("-o", "--output", default=lambda: f"{os.getcwd()}_refined_assembly", help="Output directory")
+@option(
+    "-r",
+    "--reads",
+    required=True,
+    help="Input reads file(s) (FASTQ). For paired-end, separate with comma.",
+)
+@option(
+    "-o",
+    "--output",
+    default=lambda: f"{os.getcwd()}_refined_assembly",
+    help="Output directory",
+)
 @option("-t", "--threads", default=1, help="Number of threads to use")
 @option("-M", "--memory", default="6g", help="Maximum memory to use")
-@option("-v", "--variant-caller", default="freebayes", help="Variant caller to use (freebayes, bcftools)")
-@option("-g", "--log-file", default=lambda: f"{os.getcwd()}/refinement_logfile.txt", help="Path to log file")
+@option(
+    "-v",
+    "--variant-caller",
+    default="freebayes",
+    help="Variant caller to use (freebayes, bcftools)",
+)
+@option(
+    "-g",
+    "--log-file",
+    default=lambda: f"{os.getcwd()}/refinement_logfile.txt",
+    help="Path to log file",
+)
 def refinement(input, reads, output, threads, memory, variant_caller, log_file):
     """
     Refine assembly by de-entangling strains and rerunning assembly - post host removal.
@@ -39,16 +62,21 @@ def refinement(input, reads, output, threads, memory, variant_caller, log_file):
     bam_file = align_reads(input, reads, output, threads, logger)
 
     # Call variants
-    vcf_file = call_variants(input, bam_file, output, threads, memory, variant_caller, logger)
+    vcf_file = call_variants(
+        input, bam_file, output, threads, memory, variant_caller, logger
+    )
 
     # Apply variants to improve assembly
     improved_assembly = apply_variants(input, vcf_file, output, logger)
 
     # De-entangle strains (if multiple strains are present)
-    final_assemblies = de_entangle_strains(improved_assembly, bam_file, output, threads, logger)
+    final_assemblies = de_entangle_strains(
+        improved_assembly, bam_file, output, threads, logger
+    )
 
     logger.info("Assembly refinement completed")
     console.print(f"Refined assembly(ies) saved in: {output}")
+
 
 def align_reads(assembly, reads, output_dir, threads, logger):
     logger.info("Aligning reads to assembly")
@@ -64,7 +92,10 @@ def align_reads(assembly, reads, output_dir, threads, logger):
 
     return bam_file
 
-def call_variants(assembly, bam_file, output_dir, threads, memory, variant_caller, logger):
+
+def call_variants(
+    assembly, bam_file, output_dir, threads, memory, variant_caller, logger
+):
     logger.info(f"Calling variants using {variant_caller}")
     vcf_file = os.path.join(output_dir, "variants.vcf")
 
@@ -78,6 +109,7 @@ def call_variants(assembly, bam_file, output_dir, threads, memory, variant_calle
     subprocess.run(cmd, shell=True, check=True)
     return vcf_file
 
+
 def apply_variants(assembly, vcf_file, output_dir, logger):
     logger.info("Applying variants to improve assembly")
     improved_assembly = os.path.join(output_dir, "improved_assembly.fasta")
@@ -85,11 +117,12 @@ def apply_variants(assembly, vcf_file, output_dir, logger):
     subprocess.run(cmd, shell=True, check=True)
     return improved_assembly
 
+
 def de_entangle_strains(assembly, bam_file, output_dir, threads, logger):
     logger.info("De-entangling strains")
     # placeholder for strain de-entanglement logic
     # TODO: implement a more sophisticated approach here
-    
+
     strain_dir = os.path.join(output_dir, "strains")
     os.makedirs(strain_dir, exist_ok=True)
 
@@ -97,6 +130,7 @@ def de_entangle_strains(assembly, bam_file, output_dir, threads, logger):
     # shutil.copy(assembly, os.path.join(strain_dir, "strain_1.fasta"))
 
     # return [os.path.join(strain_dir, "strain_1.fasta")]
+
 
 if __name__ == "__main__":
     refinement()

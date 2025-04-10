@@ -28,14 +28,17 @@ Example:
 """
 
 import importlib
+import pathlib as pt
+import sys
+from importlib.util import find_spec
+
 import rich_click as click
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-import pathlib as pt
-import sys
-from importlib.util import find_spec
+
 console = Console()
+
 
 class LazyGroup(click.RichGroup):
     """Click Group subclass that lazily loads commands.
@@ -70,17 +73,14 @@ class LazyGroup(click.RichGroup):
         for name, value in list(self.lazy_subcommands.items()):
             if isinstance(value, dict) and "name" in value and "commands" in value:
                 # Store group info for help display
-                self._command_groups[name] = {
-                    "name": value["name"],
-                    "commands": {}
-                }
-                
+                self._command_groups[name] = {"name": value["name"], "commands": {}}
+
                 # Add commands directly to main group but track their group
                 for cmd_name, cmd_path in value["commands"].items():
                     if not cmd_path.startswith("hidden:"):
                         self.lazy_subcommands[cmd_name] = cmd_path
                         self._command_groups[name]["commands"][cmd_name] = cmd_path
-                
+
                 # Remove the group definition from lazy_subcommands
                 del self.lazy_subcommands[name]
 
@@ -95,8 +95,11 @@ class LazyGroup(click.RichGroup):
         """
         base = super().list_commands(ctx)
         # Only include lazy commands that aren't marked as hidden
-        lazy = sorted(name for name, path in self.lazy_subcommands.items() 
-                     if not path.startswith("hidden:"))
+        lazy = sorted(
+            name
+            for name, path in self.lazy_subcommands.items()
+            if not path.startswith("hidden:")
+        )
         return base + lazy
 
     def get_command(self, ctx, cmd_name):
@@ -118,7 +121,9 @@ class LazyGroup(click.RichGroup):
             except (ImportError, AttributeError) as e:
                 # If loading fails, remove the command from listings
                 if not self.lazy_subcommands[cmd_name].startswith("hidden:"):
-                    console.print(f"[yellow]Warning:[/yellow] Failed to load command '{cmd_name}': {str(e)}")
+                    console.print(
+                        f"[yellow]Warning:[/yellow] Failed to load command '{cmd_name}': {str(e)}"
+                    )
                 return None
         return super().get_command(ctx, cmd_name)
 
@@ -140,32 +145,38 @@ class LazyGroup(click.RichGroup):
         # Remove the "hidden:" prefix if present
         if import_path.startswith("hidden:"):
             import_path = import_path[7:]
-        
+
         try:
             modname, cmd_object_name = import_path.rsplit(".", 1)
-            
+
             # Check if module exists first
             if find_spec(modname) is None:
                 raise ImportError(f"Module '{modname}' not found")
-            
+
             # Try to import the module
             mod = importlib.import_module(modname)
-            
+
             # Try to get the command object
             if not hasattr(mod, cmd_object_name):
-                raise AttributeError(f"Module '{modname}' has no attribute '{cmd_object_name}'")
-            
+                raise AttributeError(
+                    f"Module '{modname}' has no attribute '{cmd_object_name}'"
+                )
+
             cmd_object = getattr(mod, cmd_object_name)
-            
+
             # Verify it's a Click command
             if not isinstance(cmd_object, click.BaseCommand):
-                raise ValueError(f"Object '{cmd_object_name}' in module '{modname}' is not a Click command")
-            
+                raise ValueError(
+                    f"Object '{cmd_object_name}' in module '{modname}' is not a Click command"
+                )
+
             return cmd_object
-            
+
         except Exception as e:
             if not import_path.startswith("hidden:"):
-                console.print(f"[red]Error loading command '{cmd_name}':[/red] {str(e)}")
+                console.print(
+                    f"[red]Error loading command '{cmd_name}':[/red] {str(e)}"
+                )
             raise
 
     def format_commands(self, ctx, formatter):
@@ -195,24 +206,24 @@ class LazyGroup(click.RichGroup):
                 if cmd is None:
                     continue
                 # Get full help string without truncation
-                help_str = cmd.get_short_help_str(limit=float('inf'))
+                help_str = cmd.get_short_help_str(limit=float("inf"))
                 valid_commands.append((cmd_name, help_str))
-            
+
             if valid_commands:  # Only show groups that have valid commands
-                table = Table(show_header=False, box=None, padding=(0, 2), show_edge=False)
+                table = Table(
+                    show_header=False, box=None, padding=(0, 2), show_edge=False
+                )
                 table.add_column("Command", style="bold cyan", width=20)
                 table.add_column("Description", no_wrap=False)  # Allow text wrapping
-                
+
                 for cmd_name, help_str in sorted(valid_commands):
                     table.add_row(cmd_name, help_str or "")
-                
+
                 # Create a panel for the group
                 panel = Panel(
                     table,
                     title=f"[bold]{group_info['name']}[/bold]",
                     title_align="left",
-                    border_style="dim"
+                    border_style="dim",
                 )
                 console.print(panel)
-
-

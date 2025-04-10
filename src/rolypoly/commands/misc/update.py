@@ -1,12 +1,16 @@
 import os
+
 import rich_click as click
 from rich.console import Console
 
 console = Console()
 
+
 @click.command()
-@click.argument('update_type', type=click.Choice(['code', 'data', 'all']))
-@click.option("-g", "--log-file", default="./update_logfile.txt", help="Path to log file")
+@click.argument("update_type", type=click.Choice(["code", "data", "all"]))
+@click.option(
+    "-g", "--log-file", default="./update_logfile.txt", help="Path to log file"
+)
 def update(update_type, log_file):
     """Update RolyPoly code, data, or both components.
 
@@ -32,49 +36,60 @@ def update(update_type, log_file):
              # Update only reference data
              update('data', log_file='update.log')
     """
-    from rolypoly.utils.loggit import setup_logging
     import subprocess
-    
+
+    from rolypoly.utils.loggit import setup_logging
+
     logger = setup_logging(log_file)
     logger.info(f"Starting RolyPoly update for: {update_type}")
-    
+
     # Get package location - go up 3 directories from utils/update.py to reach the root
-    package_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
-    data_dir = os.getenv('ROLYPOLY_DATA')
-    
+    package_path = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+    )
+    data_dir = os.getenv("ROLYPOLY_DATA")
+
     if not data_dir:
-        logger.error("ROLYPOLY_DATA environment variable not set. Please set it before updating data.")
+        logger.error(
+            "ROLYPOLY_DATA environment variable not set. Please set it before updating data."
+        )
         return
-    
-    if update_type in ['code', 'all']:
+
+    if update_type in ["code", "all"]:
         logger.info("Updating RolyPoly code    ")
         try:
             # Change to package directory
             os.chdir(package_path)
-            
+
             # Pull latest code
-            subprocess.run(['git', 'pull'], check=True)
-            
+            subprocess.run(["git", "pull"], check=True)
+
             # Reinstall package
-            subprocess.run(['pip', 'install', '-e', '.'], check=True)
-            
+            subprocess.run(["pip", "install", "-e", "."], check=True)
+
             logger.info("Code update completed successfully")
         except subprocess.CalledProcessError as e:
             logger.error(f"Error updating code: {str(e)}")
             return
-    
-    if update_type in ['data', 'all']:
+
+    if update_type in ["data", "all"]:
         logger.info("Updating RolyPoly data    ")
         try:
             # Run prepare-external-data command
-            from rolypoly.commands.misc.prepare_external_data import prepare_external_data
-            prepare_external_data(try_hard=False, data_dir=data_dir, threads=4, log_file=log_file)
+            from rolypoly.commands.misc.prepare_external_data import (
+                prepare_external_data,
+            )
+
+            prepare_external_data(
+                try_hard=False, data_dir=data_dir, threads=4, log_file=log_file
+            )
             logger.info("Data update completed successfully")
         except Exception as e:
             logger.error(f"Error updating data: {str(e)}")
             return
-    
+
     logger.info("Update completed successfully!")
+
 
 if __name__ == "__main__":
     update()

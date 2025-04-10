@@ -2699,7 +2699,7 @@ packages:
 - pypi: .
   name: rolypoly
   version: 0.0.1
-  sha256: 89a656a0ab76815a701d8bf20c4478ea8d55c7f20177d59ff1cd253dcafc68ca
+  sha256: f6c25ad3cbff8512ed700ae03d64f776c62fe40382dc8a13aea69153b76b5f98
   requires_dist:
   - bbmapy>=0.0.46,<0.0.48
   - dna-features-viewer>=3.1.4,<4
@@ -2722,7 +2722,7 @@ packages:
   - rich-click>=1.8.8,<2
   - rich>=14.0.0,<15
   - viennarna>=2.7.0,<3
-  requires_python: '>=3.10'
+  requires_python: '>=3.9'
   editable: true
 - conda: https://conda.anaconda.org/bioconda/linux-64/rpsbproc-0.5.0-hd6d6fdc_3.tar.bz2
   sha256: 00d2231659f0d878cec80c4e40c555a840342e8e6add237e969654bfa0e33b00
