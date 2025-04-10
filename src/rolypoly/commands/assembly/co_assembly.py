@@ -43,14 +43,9 @@ def refinement(input, reads, output, threads, memory, variant_caller, log_file):
     Refine assembly by de-entangling strains and rerunning assembly - post host removal.
     """
     from rolypoly.utils.loggit import setup_logging
-    from rolypoly.utils.various import check_dependencies  # , apply_filter
 
     logger = setup_logging(log_file)
     logger.info("Starting assembly refinement process")
-
-    # Check dependencies
-    dependencies = ["bwa", "samtools", variant_caller, "bcftools"]
-    check_dependencies(dependencies)
 
     # Create output directory
     os.makedirs(output, exist_ok=True)

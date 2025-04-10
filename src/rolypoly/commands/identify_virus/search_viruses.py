@@ -54,7 +54,6 @@ def virus_mapping(threads, memory, output, keep_tmp, db, db_path, log_file, inpu
 
     from rolypoly.utils.citation_reminder import remind_citations
     from rolypoly.utils.loggit import log_start_info, setup_logging
-    from rolypoly.utils.various import check_dependencies
 
     # TODO: functionalize / use wrappers for mmseqs2.
     input = pt(input).absolute().resolve()
@@ -84,10 +83,6 @@ def virus_mapping(threads, memory, output, keep_tmp, db, db_path, log_file, inpu
 
     os.environ["MEMORY"] = memory
     os.environ["THREADS"] = str(threads)
-
-    # Check dependencies
-    dependency_list = ["mmseqs"]
-    check_dependencies(dependency_list)
 
     # Main logic
     output = pt(output).absolute().resolve()

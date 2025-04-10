@@ -4,7 +4,7 @@ from pathlib import Path
 import requests
 import rich_click as click
 
-from rolypoly.utils.various import check_dependencies, console, run_command_comp
+from rolypoly.utils.various import console, run_command_comp
 
 
 def get_downloader():
@@ -204,8 +204,6 @@ def fetch_sra(input, output_dir, report):
     # Download multiple runs with metadata:
     rolypoly fetch-sra -i run_ids.txt -o output_dir --report
     """
-    # Check for required tools
-    check_dependencies(["wget"], silent=True)
 
     # Validate input
     run_ids = []

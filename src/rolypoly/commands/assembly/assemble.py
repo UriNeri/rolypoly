@@ -2,15 +2,12 @@ import os
 from pathlib import Path
 from typing import Dict, Tuple, Union
 
-import polars as pl
 import rich_click as click
 from bbmapy import bbmap
 from rich.console import Console
 
 from rolypoly.utils.config import BaseConfig
-from rolypoly.utils.fax import process_sequences, read_fasta_df, rename_sequences
 from rolypoly.utils.loggit import log_start_info
-from rolypoly.utils.various import run_command_comp
 
 console = Console()
 
@@ -424,7 +421,12 @@ def assembly(
     import shutil
 
     from rolypoly.utils.citation_reminder import remind_citations
-    from rolypoly.utils.various import check_dependencies
+    from rolypoly.utils.various import run_command_comp
+    
+    from rolypoly.utils.fax import process_sequences, read_fasta_df, rename_sequences
+    import polars as pl
+
+
 
     if not kwargs.get("overwrite"):
         if Path(kwargs.get("output")).exists():
@@ -488,15 +490,12 @@ def assembly(
     contigs4eval = []
 
     if "spades" in config.assembler.lower() and "spades" not in config.skip_steps:
-        check_dependencies(["spades.py"])
         contigs4eval.append(run_spades(config, libraries))
         tools.append("spades")
     if "megahit" in config.assembler.lower() and "megahit" not in config.skip_steps:
-        check_dependencies(["megahit"])
         contigs4eval.append(run_megahit(config, libraries))
         tools.append("megahit")
     if "penguin" in config.assembler.lower() and "penguin" not in config.skip_steps:
-        check_dependencies(["penguin"])
         contigs4eval.append(run_penguin(config, libraries))
         tools.append("penguin")
 

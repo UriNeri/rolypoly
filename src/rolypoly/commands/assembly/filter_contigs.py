@@ -231,12 +231,10 @@ def filter_contigs_nuc(config: FilterContigsConfig):
     import pyfastx
 
     from rolypoly.utils.fax import ensure_faidx, guess_fasta_alpha, mask_dna
-    from rolypoly.utils.various import apply_filter, check_dependencies, ensure_memory
+    from rolypoly.utils.various import apply_filter, ensure_memory
 
     config.logger.info(f"Started nucleotide host filtering for: {config.input}")
 
-    # Check dependencies
-    check_dependencies(["mmseqs"])
 
     # Ensure input and host fasta files are indexed
     ensure_faidx(str(config.input))
@@ -398,12 +396,9 @@ def filter_contigs_aa(config: FilterContigsConfig):
     from bbmapy import callgenes
 
     from rolypoly.utils.fax import ensure_faidx, guess_fasta_alpha, mask_dna
-    from rolypoly.utils.various import apply_filter, check_dependencies, ensure_memory
+    from rolypoly.utils.various import apply_filter,  ensure_memory
 
     config.logger.info(f"Started amino acid host filtering for: {config.input}")
-
-    # Check dependencies
-    check_dependencies(["diamond"])
 
     # Ensure input fasta file is indexed
     ensure_faidx(str(config.input))
