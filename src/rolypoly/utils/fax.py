@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import rich_click as click
 from rich.console import Console
-from typing import Union, Dict, Tuple
+from typing import Union, Dict, Tuple, List
 import polars as pl
 from collections import defaultdict
 from needletail import parse_fastx_file
@@ -234,7 +234,7 @@ def add_fasta_to_gff(config, gff_file):
         f.write("##FASTA\n")
         write_fasta_file(records=parse_fastx_file(config.input, "fasta"), output_file=f, format="fasta")
 
-def filter_fasta_by_headers(fasta_file: str, headers: Union[str, list[str]], output_file: str, invert: bool = False) -> None:
+def filter_fasta_by_headers(fasta_file: str, headers: Union[str, List[str]], output_file: str, invert: bool = False) -> None:
     """Filter sequences in a FASTA file based on their headers.
     
     Extracts sequences whose headers match (or don't match if inverted) any of
@@ -242,7 +242,7 @@ def filter_fasta_by_headers(fasta_file: str, headers: Union[str, list[str]], out
 
     Args:
         fasta_file (str): Path to input FASTA file
-        headers (Union[str, list[str]]): Either a file containing headers (one per line)
+        headers (Union[str, List[str]]): Either a file containing headers (one per line)
             or a list of header patterns to match
         output_file (str): Path to write filtered sequences
         invert (bool, optional): If True, keep sequences that don't match. 

@@ -13,7 +13,6 @@ from rolypoly.utils.fax import (
 )
 from rich.console import Console
 from typing import Tuple, Dict, Union
-import re
 import polars as pl
 from bbmapy import bbmap
 

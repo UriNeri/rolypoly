@@ -174,7 +174,7 @@ run_command("cat *fq.gz > cated_fastq.gz")
 
 # Download Dataset_9.fastq.gz.zip from Dryad - I can't understand how to download it using the API so just copy pasting the url from the browser.
 run_command("wget 'https://dryad-assetstore-merritt-west.s3.us-west-2.amazonaws.com/ark%3A/13030/m5tr2r1q%7C1%7Cproducer/Dataset_9.fastq.gz.zip?response-content-disposition=attachment%3B filename%3DDataset_9.fastq.gz.zip&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2KERHV5E3OITXZXC%2F20240919%2Fus-west-2%2Fs3%2Faws4_request&X-Amz-Date=20240919T180623Z&X-Amz-Expires=86400&X-Amz-SignedHeaders=host&X-Amz-Signature=0d6053b9495a1e005c000775da37a592359c502f6bf408ad411658b63ea576a5'")
-run_command(" mv Dataset_9.fastq.gz.zip\?response-content-disposition=attachment\;\ filename=Dataset_9.fastq.gz.zip\&X-Amz-Algorithm=AWS4-HMAC-SHA256\&X-Amz-Credential=AKIA2KERHV5E3OITXZXC%2F20240919%2Fus-west-2%2Fs3%2Faws4_request\&X-Amz-Date=20240919T180623 Dataset_9.fastq.gz.zip")
+# run_command(" mv Dataset_9.fastq.gz.zip\?response-content-disposition=attachment\;\ filename=Dataset_9.fastq.gz.zip\&X-Amz-Algorithm=AWS4-HMAC-SHA256\&X-Amz-Credential=AKIA2KERHV5E3OITXZXC%2F20240919%2Fus-west-2%2Fs3%2Faws4_request\&X-Amz-Date=20240919T180623 Dataset_9.fastq.gz.zip")
 run_command("unzip Dataset_9.fastq.gz.zip")
 run_command("mv Dataset_9_R1.fastq.gz ./inputs/reads/plant_R1.fq.gz")
 run_command("mv Dataset_9_R2.fastq.gz ./inputs/reads/plant_R2.fq.gz")
