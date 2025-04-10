@@ -6,7 +6,6 @@ from pathlib import Path
 from rich.console import Console
 from rich_click import command, option
 
-from rolypoly.utils.various import check_dependencies  # , apply_filter
 
 # from utils.fax import guess_fasta_alpha, ensure_faidx#, get_resource_usage
 # import shutil
@@ -53,7 +52,6 @@ def refinement(input, reads, output, threads, memory, variant_caller, log_file):
 
     # Check dependencies
     dependencies = ["bwa", "samtools", variant_caller, "bcftools"]
-    check_dependencies(dependencies)
 
     # Create output directory
     os.makedirs(output, exist_ok=True)

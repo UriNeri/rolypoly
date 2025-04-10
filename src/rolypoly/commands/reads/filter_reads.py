@@ -13,7 +13,7 @@ from rolypoly.utils.citation_reminder import remind_citations
 from rolypoly.utils.config import BaseConfig
 from rolypoly.utils.loggit import log_start_info
 from rolypoly.utils.output_tracker import OutputTracker
-from rolypoly.utils.various import change_directory, check_dependencies, ensure_memory
+from rolypoly.utils.various import change_directory, ensure_memory
 
 # import ast
 
@@ -125,7 +125,6 @@ def process_reads(
 ) -> OutputTracker:
     """Main function to orchestrate the preprocessing steps."""
     config.logger.info(f"Checking dependencies    ")
-    check_dependencies(["seqkit", "datasets"])
     with change_directory(config.tmp_dir):
         config.save("rp_filter_reads_config.json")  # type: ignore
         fastq_file, config.file_name = handle_input_fastq(config)

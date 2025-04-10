@@ -160,10 +160,8 @@ def annotate_prot(
 def process_protein_annotations(config):
     """Process protein annotations."""
     # Import modules needed only in this function
-    from rolypoly.utils.various import check_dependencies
 
     config.logger.info("Starting protein annotation process")
-    check_dependencies([config.search_tool, "ORFfinder"])
 
     steps = [
         predict_orfs,  # i.e. call genes

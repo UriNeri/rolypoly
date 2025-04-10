@@ -151,32 +151,6 @@ def extract(
             decompressed_path.unlink()  # Cleanup on error
 
 
-def check_dependencies(dependencies: List[str], silent: bool = True) -> None:
-    """Check if required command-line dependencies are installed.
-
-    Verifies that each command in the dependencies list is available in the system PATH.
-    Prints colored status messages using rich console.
-
-    Args:
-        dependencies (List[str]): List of command names to check
-
-    Raises:
-        SystemExit: If any required dependency is not found
-
-    Example:
-         check_dependencies(["samtools", "minimap2", "seqkit"])
-    """
-    import shutil
-
-    for dep in dependencies:
-        if shutil.which(cmd=dep) == None:
-            console.print(f"    [bold red]{dep} Not Found! Exiting!!![/bold red]")
-            raise SystemExit(1)
-        else:
-            if not silent:
-                console.print(f"    [green]{dep} Found![/green]")
-
-
 def fetch_and_extract(
     url: str, fetched_to: str = "downloaded_file", extract_to: Optional[str] = None
 ) -> None:
