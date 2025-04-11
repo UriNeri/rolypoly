@@ -24,6 +24,9 @@ rolypoly/build/*
 *build/*
 *.egg-info
 
+
+.ruff_cache
+
 dist
 *.egg-info
 tests
