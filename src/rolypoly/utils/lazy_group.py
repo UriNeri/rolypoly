@@ -1,4 +1,3 @@
-import importlib
 import rich_click as click
 from rich.console import Console
 
@@ -70,7 +69,7 @@ class LazyGroup(click.RichGroup):
 
     def _lazy_load(self, cmd_name):
         """Load a command lazily from its module."""
-        from importlib.util import find_spec, import_module
+        from importlib import util, import_module
         import_path = self.lazy_subcommands[cmd_name]
         # Remove the "hidden:" prefix if present
         if import_path.startswith("hidden:"):
@@ -80,7 +79,7 @@ class LazyGroup(click.RichGroup):
             modname, cmd_object_name = import_path.rsplit(".", 1)
 
             # Check if module exists first
-            if find_spec(modname) is None:
+            if util.find_spec(modname) is None:
                 raise ImportError(f"Module '{modname}' not found")
 
             # Try to import the module
