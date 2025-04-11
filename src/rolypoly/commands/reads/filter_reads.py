@@ -105,11 +105,15 @@ class ReadFilterConfig(BaseConfig):
                         f"Warning: Unknown step '{step}' in override_parameters. Ignoring."
                     )
 
+
 def timeout_handler(signum, frame):
     raise TimeoutError("Function call timed out")
 
+
 def check_existing_file(output_file: Path, min_size: int = 20) -> bool:
+    """Check if a file exists and is larger than min_size bytes"""
     return output_file.exists() and output_file.stat().st_size > min_size
+
 
 def process_reads(
     config: ReadFilterConfig, output_tracker: OutputTracker
@@ -151,7 +155,6 @@ def process_reads(
         from rich.spinner import SPINNERS, Spinner
 
         SPINNERS["myspinner"] = {"interval": 2500, "frames": ["🦠 ", "🧬 ", "🔬 "]}
-        console = Console(width=150)
 
         with console.status(
             f"[bold green] Working on     ", spinner="myspinner"
@@ -406,7 +409,6 @@ def filter_reads(
         raise
 
     config.logger.info(f"Read processing completed, probably successfully.")
-    # remind_citations(tools)
     with open(f"{config.log_file}", "w") as f_out:
         f_out.write(remind_citations(tools, return_bibtex=True))
 

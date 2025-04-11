@@ -4,20 +4,16 @@ import rich_click as click
 from rich.console import Console
 from rolypoly.utils.citation_reminder import remind_citations
 from rolypoly.utils.config import BaseConfig
-# from rolypoly.utils.various import run_command_comp
-
-# from rolypoly.utils.fax import (
-#     read_fasta_df,
-#     process_sequences,
-#     write_fasta_file,
-#     add_fasta_to_gff
-# )
+from rolypoly.utils.various import ensure_memory
 
 global tools
 tools = []
 
+console = Console(width=150)
+
 
 class RNAAnnotationConfig(BaseConfig):
+    """Configuration for RNA annotation pipeline"""
     def __init__(
         self,
         input: Path,
@@ -69,7 +65,7 @@ class RNAAnnotationConfig(BaseConfig):
             "IRESfinder": {"min_score": 0.5},
             "IRESpy": {"min_score": 0.6},
             "tRNAscan-SE": {"forceow": True, "G": True},
-            "lightmotif": {},  # 19.02.2025: Using lightmotif instead of RNAMotif and meme.
+            "lightmotif": {},
             "aragorn": {"l": True},
         }
         if override_params:
@@ -80,9 +76,6 @@ class RNAAnnotationConfig(BaseConfig):
                     print(
                         f"Warning: Unknown step '{step}' in override_parameters. Ignoring."
                     )
-
-
-console = Console(width=150)
 
 
 @click.command(name="annotate_RNA")
@@ -117,7 +110,7 @@ console = Console(width=150)
     default="LinearFold",
     type=click.Choice(["RNAfold", "LinearFold"], case_sensitive=False),
     help="Tool for secondary structure prediction. LinearFold is faster but less configurable.",
-)  # 'SQUARNA', 'RNAstructure',
+)
 @click.option(
     "--ires-tool",
     default="IRESfinder",
@@ -179,8 +172,6 @@ def annotate_RNA(
     By default, the following steps are run in the following order: predict_secondary_structure, search_ribozymes, detect_ires, predict_trnas, search_rna_elements.
     Use --skip-steps to skip specific steps."""
     import json
-    from rolypoly.utils.various import ensure_memory
-
 
     config = RNAAnnotationConfig(
         input=input,

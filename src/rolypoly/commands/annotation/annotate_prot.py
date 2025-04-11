@@ -1,12 +1,12 @@
-### place holder ###
-import os
 from pathlib import Path
 import rich_click as click
 from rich.console import Console
 from rolypoly.utils.config import BaseConfig
+from rolypoly.utils.various import run_command_comp
 
 
 class ProteinAnnotationConfig(BaseConfig):
+    """Configuration for protein annotation pipeline"""
     def __init__(
         self,
         input: Path,
@@ -153,7 +153,7 @@ def annotate_prot(
 
 
 def process_protein_annotations(config):
-    """Process protein annotations."""
+    """Process protein annotations"""
     config.logger.info("Starting protein annotation process")
 
     steps = [
@@ -171,11 +171,11 @@ def process_protein_annotations(config):
             config.logger.info(f"Skipping step: {step_name}")
 
     combine_results(config)
-
     config.logger.info("Protein annotation process completed successfully")
 
 
 def predict_orfs(config):
+    """Predict open reading frames using selected tool"""
     if config.search_tool == "ORFfinder":
         predict_orfs_with_orffinder(config)
     elif config.search_tool == "pyrodigal":
@@ -189,7 +189,15 @@ def predict_orfs(config):
 
 
 def predict_orfs_with_pyrodigal(config):
-    pass
+    """Predict ORFs using pyrodigal"""
+    from rolypoly.utils.fax import pyro_predict_orfs
+    pyro_predict_orfs(
+        input_file=config.input,
+        output_file=config.output_dir / "predicted_orfs.faa",
+        threads=config.threads,
+        gv_or_else="gv",
+        genetic_code=config.genetic_code,
+    )
 
 
 def predict_orfs_with_six_frame(config):
@@ -234,6 +242,7 @@ def search_protein_domains_hmmscan(config):
 def predict_orfs_with_orffinder(config):
     """Predict ORFs using ORFfinder."""
     from shutil import which
+    import os
     from rolypoly.utils.various import run_command_comp
 
     if not which("ORFfinder"):
@@ -293,8 +302,6 @@ def search_protein_domains(config):
 
 def search_protein_domains_hmmsearch(config, input_fasta, output_file):
     """Search protein domains using hmmsearch."""
-    from rolypoly.utils.various import run_command_comp
-
     run_command_comp(
         "hmmsearch",
         params={"cpu": config.threads, "tblout": output_file},
@@ -305,8 +312,6 @@ def search_protein_domains_hmmsearch(config, input_fasta, output_file):
 
 def search_protein_domains_mmseqs2(config, input_fasta, output_file):
     """Search protein domains using mmseqs2."""
-    from rolypoly.utils.various import run_command_comp
-
     run_command_comp(
         "mmseqs",
         positional_args=[
@@ -323,8 +328,6 @@ def search_protein_domains_mmseqs2(config, input_fasta, output_file):
 
 def search_protein_domains_diamond(config, input_fasta, output_file):
     """Search protein domains using DIAMOND."""
-    from rolypoly.utils.various import run_command_comp
-
     run_command_comp(
         "diamond",
         positional_args=["blastp"],
