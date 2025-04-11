@@ -1,2 +1,2 @@
-# rolypoly/__init__.py
+# rolypoly/utils/__init__.py
 
