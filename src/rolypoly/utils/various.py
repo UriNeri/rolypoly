@@ -19,11 +19,6 @@ def change_directory(path: Union[str, Path]) -> Generator[None, None, None]:
 
     Yields:
         None: The context manager yields nothing.
-
-    Example:
-         with change_directory("/path/to/dir"):
-        ...     # Operations in new directory
-        ...     pass  # Returns to original directory after block
     """
     origin = os.getcwd()
     try:
@@ -46,12 +41,6 @@ def modify_params(default_params: Dict, override_params: Dict) -> Dict:
 
     Returns:
         Dict: A new dictionary with updated parameter values
-
-    Example:
-         defaults = {"threads": 1, "memory": "1G"}
-         overrides = {"threads": 4}
-         modify_params(defaults, overrides)
-        {"threads": 4, "memory": "1G"}
     """
     params = default_params.copy()
     params.update(override_params)
@@ -76,10 +65,6 @@ def extract(
         Compression: .gz, .bz2, .xz, .Z
         Archives: .tar, .zip
         Combined: .tar.gz, .tar.bz2, etc.
-
-    Example:
-         extract("data.tar.gz", "output_dir")
-         extract("archive.zip")  # Extracts to same directory
     """
     import bz2
     import gzip
@@ -88,13 +73,7 @@ def extract(
     import subprocess
     import tarfile
     import zipfile
-    import bz2
-    import gzip
-    import lzma
-    import shutil
-    import subprocess
-    import tarfile
-    import zipfile
+
 
     archive_path = Path(archive_path)
     if not archive_path.is_file():
@@ -170,12 +149,7 @@ def fetch_and_extract(
         fetched_to (str, optional): Path to save the fetched file. Defaults to "downloaded_file"
         extract_to (Optional[str], optional): Path to extract the file to. If None, the file is not extracted
 
-    Example:
-         fetch_and_extract("https://example.com/data.tar.gz", "data.tar.gz", "output_dir")
-         fetch_and_extract("https://example.com/file.txt", "file.txt")  # No extraction
     """
-    import shutil
-    import requests
     import shutil
     import requests
 
@@ -233,15 +207,6 @@ def parse_memory(mem_str) -> int:
 
 
 def convert_bytes_to_units(byte_size: int) -> Dict[str, str]:
-    """
-    Convert bytes to a dictionary of units: bytes, kb, mb, gb, etc.
-
-    Args:
-        byte_size (int): Size in bytes.
-
-    Returns:
-        Dict[str, str]: Dictionary with various unit representations.
-    """
     return {
         "bytes": f"{byte_size}b",
         "kilobytes": f"{byte_size / 1024:.2f}kb",
@@ -254,18 +219,6 @@ def convert_bytes_to_units(byte_size: int) -> Dict[str, str]:
 
 
 def ensure_memory(memory: str, file_path: Optional[str] = None) -> Dict[str, str]:
-    """
-    Ensure the requested memory is within system limits and optionally larger than some file's size.
-    If the memory argument has no suffix, it is assumed to be in bytes.
-
-    Args:
-        memory (str): Requested memory (e.g., '1GB', '500MB', '2G', '1.5T').
-        file_path (Optional[str]): Path to a file to compare memory against.
-
-    Returns:
-        Dict[str, str]: Dictionary with various unit representations of the memory.
-    """
-    import psutil
     import psutil
 
     requested_memory_bytes = parse_memory(memory)
@@ -287,13 +240,6 @@ def ensure_memory(memory: str, file_path: Optional[str] = None) -> Dict[str, str
 
 
 def create_bash_script(command: List[str], script_name: str) -> None:
-    """
-    Create a bash script with the given command.
-
-    Args:
-        command (List[str]): Command to write to the script.
-        script_name (str): Name of the script file to create.
-    """
     with open(script_name, "w") as f:
         f.write("#!/bin/bash\n")
         f.write(f"{' '.join(command)}\n")
@@ -301,16 +247,6 @@ def create_bash_script(command: List[str], script_name: str) -> None:
 
 
 def run_bash_script_with_time(script_name: str) -> Dict[str, str]:
-    """
-    Run a bash script with time measurement.
-
-    Args:
-        script_name (str): Name of the script file to run.
-
-    Returns:
-        Dict[str, str]: Dictionary containing time information.
-    """
-    import subprocess
     import subprocess
 
     time_command = [
@@ -333,10 +269,7 @@ def run_bash_script_with_time(script_name: str) -> Dict[str, str]:
 
 
 def extract_zip(zip_file):
-    """Extract a zip file."""
     import zipfile
-    import zipfile
-
     try:
         with zipfile.ZipFile(zip_file, "r") as zip_ref:
             zip_ref.extractall(os.path.dirname(zip_file))
@@ -377,7 +310,6 @@ def parse_filter(filter_str):
         )
     """
     import re
-    import re
 
     # Remove any surrounding brackets
     filter_str = filter_str.strip("[]")
@@ -416,30 +348,6 @@ def parse_filter(filter_str):
 
 
 def apply_filter(df, filter_str):
-    """Apply filter conditions to a Polars DataFrame.
-
-    Parses a filter string and applies the conditions to filter rows in a DataFrame.
-
-    Args:
-        df (polars.DataFrame): DataFrame to filter
-        filter_str (str): Filter string in the format "column operator value & column operator value"
-
-    Returns:
-        polars.DataFrame: Filtered DataFrame meeting all conditions
-
-    Example:
-             df = pl.DataFrame({"length": [100, 200, 300], "width": [10, 20, 30]})
-             apply_filter(df, "length >= 200 & width < 25")
-        shape: (1, 2)
-        ┌────────┬───────┐
-        │ length ┆ width │
-        │ ---    ┆ ---   │
-        │ i64    ┆ i64   │
-        ╞════════╪═══════╡
-        │ 200    ┆ 20    │
-        └────────┴───────┘
-    """
-    import polars as pl
     import polars as pl
 
     conditions, operators = parse_filter(filter_str)
@@ -474,20 +382,6 @@ def apply_filter(df, filter_str):
 
 
 def find_most_recent_folder(path):
-    """Find the most recently modified folder in a directory.
-
-    Args:
-        path (str): Path to the directory to search in
-
-    Returns:
-        str or None: Path to the most recently modified folder,
-            or None if no folders are found
-
-    Example:
-             newest = find_most_recent_folder("/path/to/dir")
-             print(f"Most recent folder: {newest}")
-    """
-    import glob
     import glob
 
     # Get a list of all directories in the specified path
@@ -501,22 +395,6 @@ def find_most_recent_folder(path):
 
 
 def move_contents_to_parent(folder, overwrite=True):
-    """Move all contents of a folder to its parent directory.
-
-    Args:
-        folder (str): Path to the source folder
-        overwrite (bool, optional): If True, overwrite existing files in parent.
-            If False, skip files that already exist.
-
-    Note:
-        - The source folder will be removed after moving all contents
-        - Only works if the source folder is empty after moving files
-        - Prints status messages using rich console
-
-    Example:
-             move_contents_to_parent("subdir", overwrite=False)
-    """
-    import shutil
     import shutil
 
     parent_dir = os.path.dirname(folder)
@@ -539,40 +417,12 @@ def move_contents_to_parent(folder, overwrite=True):
 
 
 def check_file_exists(file_path):
-    """Check if a file exists and raise an error if it doesn't.
-
-    Args:
-        file_path (str): Path to the file to check
-
-    Raises:
-        FileNotFoundError: If the file does not exist
-
-    Example:
-             try:
-                 check_file_exists("data.txt")
-             except FileNotFoundError:
-                 print("File missing!")
-    """
     if not Path(file_path).exists():
         console.print(f"[bold red]File not found: {file_path} Tüdelü![/bold red]")
         raise FileNotFoundError(f"File not found: {file_path}")
 
 
 def check_file_size(file_path):
-    """Check and print the size of a file.
-
-    Args:
-        file_path (str): Path to the file to check
-
-    Note:
-        Prints colored status messages using rich console:
-        - Yellow warning if file is empty
-        - Normal message with file size if not empty
-
-    Example:
-             check_file_size("data.txt")
-        File 'data.txt' size is 1024
-    """
     file_size = Path(file_path).stat().st_size
     if file_size == 0:
         console.print(f"[yellow]File '{file_path}' is empty[/yellow]")
@@ -581,22 +431,6 @@ def check_file_size(file_path):
 
 
 def is_file_empty(file_path):
-    """Check if a file is empty or very small.
-
-    Args:
-        file_path (str): Path to the file to check
-
-    Returns:
-        bool: True if file doesn't exist or is smaller than 28 bytes
-            (minimum size for a non-empty fastq.gz file)
-
-    Note:
-        Prints colored status messages using rich console
-
-    Example:
-             if is_file_empty("data.fastq.gz"):
-                 print("File is empty or too small")
-    """
     if not Path(file_path).exists():
         console.print(f"[bold red]File '{file_path}' does not exist.[/bold red]")
         return True
@@ -619,15 +453,7 @@ def run_command(
     Returns:
         bool: True if command succeeded and output exists/non-empty
 
-    Example:
-             run_command(
-                 ["samtools", "sort", "input.bam", "-o", "sorted.bam"],
-                 logger,
-                 "sorted.bam",
-                 skip_existing=True
-             )
     """
-    import subprocess
     import subprocess
 
     if skip_existing == True:
@@ -649,24 +475,6 @@ def run_command(
 
 
 def check_file_exist_isempty(file_path):
-    """Check if a file exists and is not empty.
-
-    Args:
-        file_path (str): Path to the file to check
-
-    Returns:
-        bool: True if file exists and is not empty
-
-    Note:
-        Prints colored status messages using rich console:
-        - Red error if file not found
-        - Yellow warning if file is empty
-        - Green success with file size if not empty
-
-    Example:
-             if check_file_exist_isempty("data.txt"):
-                 print("File exists and has content")
-    """
     check_file_exists(file_path)
     if is_file_empty(file_path):
         console.print(f"[yellow]File {file_path} exists, but is empty.[/yellow]")
@@ -681,22 +489,7 @@ def check_file_exist_isempty(file_path):
 
 
 def create_output_dataframe():
-    """Create an empty DataFrame for tracking output files.
-
-    Returns:
-        polars.DataFrame: DataFrame with columns:
-            - filename: Output file name
-            - absolute_path: Full path to file
-            - command_name: Name of command that created file
-            - cmd: Full command used to create file
-            - file_type: Type of file (e.g., "fasta", "fastq")
-            - file_size: Size of file in bytes
-
-    Example:
-             df = create_output_dataframe()
-             print(df.schema)
-    """
-    import polars as pl
+    # for output tracking
     import polars as pl
 
     return pl.DataFrame(
@@ -723,17 +516,7 @@ def add_output_file(df, filename, command_name, command, file_type):
 
     Returns:
         polars.DataFrame: Updated DataFrame with new row added
-
-    Example:
-             df = add_output_file(
-                 df,
-                 "output.fasta",
-                 "assembly",
-                 "spades.py -1 reads_1.fq -2 reads_2.fq",
-                 "fasta"
-             )
     """
-    import polars as pl
     import polars as pl
 
     absolute_path = os.path.abspath(filename)
@@ -776,7 +559,6 @@ def read_fwf(filename, widths, columns, dtypes, comment_prefix=None, **kwargs):
              )
     """
     import polars as pl
-    import polars as pl
 
     # if widths is None:
     #     # infer widths from the file
@@ -818,11 +600,6 @@ def get_file_type(filename: str) -> str:
             - "text", "text_gzipped"
             - "unknown" for unrecognized extensions
 
-    Example:
-             get_file_type("reads.fastq.gz")
-        'fastq_gzipped'
-             get_file_type("unknown.xyz")
-        'unknown'
     """
     ext = os.path.splitext(filename)[1].lower()
     if ext == ".gz":
@@ -855,14 +632,6 @@ def update_output_files(df, new_filename, command_name, command):
 
     Returns:
         polars.DataFrame: Updated DataFrame with new file added
-
-    Example:
-             df = update_output_files(
-                 df,
-                 "assembly.fasta",
-                 "spades",
-                 "spades.py -1 reads_1.fq -2 reads_2.fq"
-             )
     """
     file_type = get_file_type(new_filename)
     return add_output_file(df, new_filename, command_name, command, file_type)
@@ -878,11 +647,7 @@ def get_latest_output(df, file_type=None):
     Returns:
         str: Filename of the most recent output file
 
-    Example:
-        latest = get_latest_output(df, file_type="fasta")
-        print(f"Latest FASTA file: {latest}")
     """
-    import polars as pl
     import polars as pl
 
     if file_type:
@@ -903,12 +668,6 @@ def order_columns_to_match(df1_to_order, df2_to_match):
     Returns:
         polars.DataFrame: DataFrame with columns reordered to match df2_to_match
 
-    Example:
-        ```python
-        df1 = pl.DataFrame({"b": [1, 2], "a": [3, 4]})
-        df2 = pl.DataFrame({"a": [5, 6], "b": [7, 8]})
-        ordered_df = order_columns_to_match(df1, df2)
-        ```
     """
     return df1_to_order.select(df2_to_match.columns)
 
@@ -922,16 +681,7 @@ def cast_cols_to_match(df1_to_cast, df2_to_match):
 
     Returns:
         polars.DataFrame: DataFrame with column types matching df2_to_match
-
-    Example:
-        ```python
-        df1 = pl.DataFrame({"a": ["1", "2"], "b": ["3", "4"]})
-        df2 = pl.DataFrame({"a": [5, 6], "b": [7, 8]})
-        cast_df = cast_cols_to_match(df1, df2)
-        # cast_df now has integer columns instead of strings
-        ```
     """
-    import polars as pl
     import polars as pl
 
     for col in df2_to_match.columns:
@@ -954,16 +704,7 @@ def vstack_easy(df1_to_stack, df2_to_stack):
 
     Returns:
         polars.DataFrame: Combined DataFrame with df2_to_stack appended below df1_to_stack
-
-    Example:
-        ```python
-        df1 = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
-        df2 = pl.DataFrame({"b": ["5", "6"], "a": ["7", "8"]})
-        combined = vstack_easy(df1, df2)
-        # Combined DataFrame with proper types and column order
-        ```
     """
-    import polars as pl
 
     df2_to_stack = cast_cols_to_match(df2_to_stack, df1_to_stack)
     df2_to_stack = order_columns_to_match(df2_to_stack, df1_to_stack)
@@ -1008,15 +749,6 @@ def run_command_comp(
 
     Returns:
         bool: True if command succeeded and output verification passed
-
-    Example:
-        success = run_command_comp(
-            "minimap2",
-            positional_args=["ref.fa", "reads.fq"],
-            params={"t": 4, "ax": "map-pb"},
-            output_file="aln.sam",
-            resource_monitoring=True
-        )
     """
     import subprocess
     import sys
@@ -1024,12 +756,7 @@ def run_command_comp(
     from pathlib import Path
     from time import sleep, time
     from psutil import NoSuchProcess, Process, cpu_percent
-    import subprocess
-    import sys
-    from logging import INFO, Logger, StreamHandler
-    from pathlib import Path
-    from time import sleep, time
-    from psutil import NoSuchProcess, Process, cpu_percent
+
 
     if logger is None:
         logger = Logger(__name__, level=INFO)

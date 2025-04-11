@@ -1,13 +1,9 @@
-# import json
 import logging
 import os
-import re
 from pathlib import Path
 from typing import Any, Dict, Optional
-# from rich.console import Console
 from rolypoly.utils.loggit import setup_logging
 
-# console = Console()
 
 
 class BaseConfig:
@@ -160,7 +156,6 @@ class BaseConfig:
 
     def parse_memory(self, memory_str: str) -> Dict[str, str]:
         """Parse memory string (e.g., '6gb', '6000mb', '6g') into a dictionary with bytes, mega, giga."""
-        import re
         import re
 
         # Convert memory string to lowercase and remove spaces

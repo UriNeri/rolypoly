@@ -1,7 +1,6 @@
 from pathlib import Path
 import rich_click as click
 from rolypoly.utils.citation_reminder import remind_citations
-from rolypoly.utils.loggit import log_start_info, setup_logging
 
 
 def parse_annotations(annotation_file):
@@ -139,85 +138,81 @@ def create_linear_plot(sequence_length, features, width=None, height=None):
     return fig
 
 
-def create_circular_plot(sequence_length, features, width=None, height=None):
-    """Create a circular genome plot.
+# def create_circular_plot(sequence_length, features, width=None, height=None):
+#     """Create a circular genome plot.
 
-    Args:
-        sequence_length (int): Length of the sequence
-        features (list): List of feature dictionaries
-        width (int): Plot width
-        height (int): Plot height
+#     Args:
+#         sequence_length (int): Length of the sequence
+#         features (list): List of feature dictionaries
+#         width (int): Plot width
+#         height (int): Plot height
 
-    Returns:
-        matplotlib.figure.Figure: The plot figure
-    """
-    import matplotlib.patches as patches
-    import matplotlib.pyplot as plt
-    import numpy as np
-    import matplotlib.patches as patches
-    import matplotlib.pyplot as plt
-    import numpy as np
+#     Returns:
+#         matplotlib.figure.Figure: The plot figure
+#     """
+#     import matplotlib.patches as patches
+#     import matplotlib.pyplot as plt
 
-    # Create figure
-    fig, ax = plt.subplots(1, figsize=(width or 8, height or 8))
-    ax.set_aspect("equal")
+#     # Create figure
+#     fig, ax = plt.subplots(1, figsize=(width or 8, height or 8))
+#     ax.set_aspect("equal")
 
-    # Calculate circle properties
-    radius = 1
-    center = (0, 0)
+#     # Calculate circle properties
+#     radius = 1
+#     center = (0, 0)
 
-    # Draw base circle
-    circle = plt.Circle(center, radius, fill=False, color="black")
-    ax.add_patch(circle)
+#     # Draw base circle
+#     circle = plt.Circle(center, radius, fill=False, color="black")
+#     ax.add_patch(circle)
 
-    # Draw features
-    for feature in features:
-        start_angle = (feature["start"] / sequence_length) * 2 * np.pi
-        end_angle = (feature["end"] / sequence_length) * 2 * np.pi
+#     # Draw features
+#     for feature in features:
+#         start_angle = (feature["start"] / sequence_length) * 2 * np.pi
+#         end_angle = (feature["end"] / sequence_length) * 2 * np.pi
 
-        # Create arc for the feature
-        arc = patches.Arc(
-            center,
-            2 * radius,
-            2 * radius,
-            theta1=np.degrees(start_angle),
-            theta2=np.degrees(end_angle),
-            color=feature["color"],
-            linewidth=2,
-        )
-        ax.add_patch(arc)
+#         # Create arc for the feature
+#         arc = patches.Arc(
+#             center,
+#             2 * radius,
+#             2 * radius,
+#             theta1=np.degrees(start_angle),
+#             theta2=np.degrees(end_angle),
+#             color=feature["color"],
+#             linewidth=2,
+#         )
+#         ax.add_patch(arc)
 
-        # Add label
-        mid_angle = (start_angle + end_angle) / 2
-        label_radius = radius + 0.1
-        label_x = label_radius * np.cos(mid_angle)
-        label_y = label_radius * np.sin(mid_angle)
+#         # Add label
+#         mid_angle = (start_angle + end_angle) / 2
+#         label_radius = radius + 0.1
+#         label_x = label_radius * np.cos(mid_angle)
+#         label_y = label_radius * np.sin(mid_angle)
 
-        # Rotate text based on position
-        rotation = np.degrees(mid_angle)
-        if rotation > 90 and rotation < 270:
-            rotation += 180
+#         # Rotate text based on position
+#         rotation = np.degrees(mid_angle)
+#         if rotation > 90 and rotation < 270:
+#             rotation += 180
 
-        ax.text(
-            label_x,
-            label_y,
-            feature["label"],
-            rotation=rotation,
-            ha="center",
-            va="center",
-            rotation_mode="anchor",
-            fontsize=8,
-        )
+#         ax.text(
+#             label_x,
+#             label_y,
+#             feature["label"],
+#             rotation=rotation,
+#             ha="center",
+#             va="center",
+#             rotation_mode="anchor",
+#             fontsize=8,
+#         )
 
-    # Set plot limits
-    ax.set_xlim(-1.5, 1.5)
-    ax.set_ylim(-1.5, 1.5)
-    ax.axis("off")
+#     # Set plot limits
+#     ax.set_xlim(-1.5, 1.5)
+#     ax.set_ylim(-1.5, 1.5)
+#     ax.axis("off")
 
-    plt.title(f"Circular genome visualization ({sequence_length} bp)")
-    plt.tight_layout()
+#     plt.title(f"Circular genome visualization ({sequence_length} bp)")
+#     plt.tight_layout()
 
-    return fig
+#     return fig
 
 
 @click.command()
@@ -240,8 +235,6 @@ def visualize(
     """
     Generate visualization of viral genome features including ORFs, domains, and other annotations
     """
-    import matplotlib.pyplot as plt
-    from needletail import parse_fastx_file
     from rolypoly.utils.loggit import log_start_info, setup_logging
     import matplotlib.pyplot as plt
     from needletail import parse_fastx_file
@@ -278,8 +271,8 @@ def visualize(
     try:
         if style == "linear":
             fig = create_linear_plot(sequence_length, features, width, height)
-        else:
-            fig = create_circular_plot(sequence_length, features, width, height)
+        # else:
+        #     fig = create_circular_plot(sequence_length, features, width, height)
 
         # Save plot
         output_file = output_path / f"genome_visualization.{format}"

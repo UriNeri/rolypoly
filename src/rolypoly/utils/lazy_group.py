@@ -1,9 +1,5 @@
-# import importlib
-# from importlib.util import find_spec
 import rich_click as click
 from rich.console import Console
-# from rich.panel import Panel
-# from rich.table import Table
 
 console = Console()
 
