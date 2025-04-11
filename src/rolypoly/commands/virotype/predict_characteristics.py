@@ -1,13 +1,8 @@
 import os
-from pathlib import Path
 import rich_click as click
 from rich.console import Console
-# from rolypoly.utils.loggit import setup_logging
-
-# import polars as pl
 
 console = Console()
-
 
 @click.command()
 @click.option(

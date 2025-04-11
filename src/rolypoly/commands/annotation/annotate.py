@@ -1,4 +1,3 @@
-# import json
 import os
 from pathlib import Path
 import rich_click as click
@@ -135,7 +134,7 @@ def annotate(
     ires_tool,
     trna_tool,
     rnamotif_tool,
-    gene_prediction_tool,
+    gene_prediction_tool, # TODO: ADD SUPPORT FOR THIS
     domain_db,
     custom_domain_db,
     min_orf_length,
@@ -217,7 +216,7 @@ def annotate(
     else:
         config.logger.info("Skipping RNA annotation")
 
-    # TODO: logic to combine RNA and protein annotation results - either stack the tables or combine the gff3s.
+    # TODO: logic to combine RNA and protein annotation results - either stack the tables or combine the gff3s (both?)
 
     config.logger.info("Annotation process completed.")
 

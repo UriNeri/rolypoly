@@ -1,9 +1,8 @@
 import os
 import rich_click as click
 from rich.console import Console
-# from rolypoly.utils.loggit import setup_logging
 
-# console = Console()
+console = Console()
 
 
 @click.command()

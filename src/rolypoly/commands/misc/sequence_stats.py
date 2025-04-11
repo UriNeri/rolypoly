@@ -1,5 +1,3 @@
-# import json
-from collections import defaultdict
 from pathlib import Path
 import polars as pl
 import rich_click as click
@@ -11,7 +9,6 @@ from rolypoly.utils.fax import (
     is_nucl_string,
     read_fasta_df,
 )
-from rolypoly.utils.loggit import log_start_info, setup_logging
 
 # show all columns
 pl.Config().set_tbl_cols(-1)

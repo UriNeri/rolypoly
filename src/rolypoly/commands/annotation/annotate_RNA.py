@@ -1,11 +1,10 @@
 import os
 from pathlib import Path
-import polars as pl
 import rich_click as click
 from rich.console import Console
 from rolypoly.utils.citation_reminder import remind_citations
 from rolypoly.utils.config import BaseConfig
-from rolypoly.utils.various import run_command_comp
+# from rolypoly.utils.various import run_command_comp
 
 # from rolypoly.utils.fax import (
 #     read_fasta_df,
@@ -181,8 +180,7 @@ def annotate_RNA(
     Use --skip-steps to skip specific steps."""
     import json
     from rolypoly.utils.various import ensure_memory
-    import json
-    from rolypoly.utils.various import ensure_memory
+
 
     config = RNAAnnotationConfig(
         input=input,
@@ -274,8 +272,6 @@ def predict_secondary_structure_rnafold(config, input_fasta, output_file):
     """Predict RNA secondary structure using RNAfold."""
     import RNA
     from needletail import parse_fastx_file
-    import RNA
-    from needletail import parse_fastx_file
 
     with open(output_file, "w") as out_f:
         for record in parse_fastx_file(str(input_fasta), "fasta"):
@@ -316,8 +312,6 @@ def predict_secondary_structure_rnafold(config, input_fasta, output_file):
 
 def predict_secondary_structure_rnastructure(config, input_fasta, output_file):
     """Predict RNA secondary structure using RNAstructure."""
-    import subprocess
-    from needletail import parse_fastx_file
     import subprocess
     from needletail import parse_fastx_file
 
@@ -374,14 +368,10 @@ def predict_secondary_structure_linearfold(config, input_fasta, output_file):
     """Predict RNA secondary structure using LinearFold."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from needletail import parse_fastx_file
-    import tempfile
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    from needletail import parse_fastx_file
     from rolypoly.utils.various import run_command_comp
 
     def process_sequence(record):
         import tempfile
-        from rolypoly.utils.various import run_command_comp
         sequence = str(record.seq).replace("T", "U")
         try:
             with tempfile.NamedTemporaryFile(mode="w+", delete=True) as temp_in:
@@ -436,9 +426,6 @@ def predict_secondary_structure_linearfold(config, input_fasta, output_file):
 
 def search_ribozymes(config):
     """Search for ribozymes using Rfam or a custom cm database."""
-    import os
-    from pathlib import Path
-    from rolypoly.utils.various import run_command_comp
     import os
     from pathlib import Path
     from rolypoly.utils.various import run_command_comp
@@ -498,8 +485,6 @@ def detect_ires(config):
 def detect_ires_iresfinder(config, input_fasta, output_file):
     import shutil
     from rolypoly.utils.various import run_command_comp
-    import shutil
-    from rolypoly.utils.various import run_command_comp
 
     # Check if IRESfinder is available in PATH
     if not shutil.which("IRESfinder.py"):
@@ -532,9 +517,7 @@ def detect_ires_irespy(config, input_fasta, output_file):
     import polars as pl
     from needletail import parse_fastx_file
     from rolypoly.utils.various import run_command_comp
-    import polars as pl
-    from needletail import parse_fastx_file
-    from rolypoly.utils.various import run_command_comp
+
 
     with open(input_fasta, "r") as f:
         sequences = parse_fastx_file(str(input_fasta))
@@ -589,7 +572,6 @@ def predict_trnas(config):
 def predict_trnas_with_aragorn(config):
     """Predict tRNAs using Aragorn."""
     from rolypoly.utils.various import run_command_comp
-    from rolypoly.utils.various import run_command_comp
 
     config.logger.info("Predicting tRNAs")
     input_fasta = config.input
@@ -624,7 +606,6 @@ def predict_trnas_with_aragorn(config):
 
 def predict_trnas_with_tRNAscan(config):
     """Predict tRNAs using tRNAscan-SE."""
-    from rolypoly.utils.various import run_command_comp
     from rolypoly.utils.various import run_command_comp
 
     config.logger.info("Predicting tRNAs")
@@ -666,9 +647,6 @@ def predict_trnas_with_tRNAscan(config):
 
 def search_rna_elements(config):
     """Search for RNA structural elements using lightmotif."""
-    from pathlib import Path
-    import lightmotif
-    from needletail import parse_fastx_file
     from pathlib import Path
     import lightmotif
     from needletail import parse_fastx_file
@@ -772,8 +750,6 @@ def process_ribozymes_data(config, ribozymes_file):
     """Process ribozymes data from cmscan output.
     Returns an empty DataFrame if the file is empty or has no valid data.
     """
-    import polars as pl
-    from rolypoly.utils.various import read_fwf
     import polars as pl
     from rolypoly.utils.various import read_fwf
 
@@ -1016,7 +992,6 @@ def combine_results(config):
     """Combine annotation results from different steps."""
     import polars as pl
     from rolypoly.utils.various import vstack_easy
-    from rolypoly.utils.various import vstack_easy
 
     config.logger.info("Combining annotation results")
 
@@ -1118,7 +1093,6 @@ def combine_results(config):
 
 
 def write_combined_results_to_gff(config, combined_data):
-    from rolypoly.utils.fax import add_fasta_to_gff
     from rolypoly.utils.fax import add_fasta_to_gff
 
     output_file = config.output_dir / "combined_annotations.gff3"

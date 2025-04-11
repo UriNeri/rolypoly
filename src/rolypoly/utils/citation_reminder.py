@@ -8,14 +8,7 @@ console = Console(width=150)
 
 
 def load_citations():
-    """Load citation information from the configured citation file.
-
-    Returns:
-        dict: Dictionary containing citation information for various tools and databases
-
-    Note:
-        Expects the citation file path to be set in the 'citation_file' environment variable.
-    """
+    """Load citation information from the configured citation file"""
     import json
     citation_file = os.environ.get(
         "citatioasdn_file"
@@ -27,21 +20,7 @@ def load_citations():
 
 
 def get_citations(tools: Union[str, List[str]]):
-    """Get citation information for specified tools.
-
-    Args:
-        tools (Union[str, List[str]]): Tool name(s) to get citations for
-
-    Returns:
-        list: List of tuples containing (tool_name, citation) pairs
-
-    Example:
-        ```python
-        citations = get_citations(["spades", "megahit"])
-        for name, citation in citations:
-            print(f"{name}: {citation}")
-        ```
-    """
+    """Get citation information for specified tools"""
     all_citations = load_citations()
     if isinstance(tools, str):
         tools = [tools]
@@ -67,15 +46,7 @@ def get_citations(tools: Union[str, List[str]]):
 
 
 def get_citation_from_doi(doi_or_url, return_bibtex=False):
-    """Fetch and format citation information from a DOI using the CrossRef API.
-
-    Args:
-        doi_or_url (str): DOI or URL to fetch citation for
-        return_bibtex (bool): Whether to return citation in BibTeX format
-
-    Returns:
-        str: Formatted citation string or BibTeX entry
-    """
+    """Fetch and format citation information from a DOI using the CrossRef API"""
     url = f"https://api.crossref.org/works/{doi_or_url}"
     try:
         response = requests.get(url)
@@ -145,15 +116,7 @@ def get_citation_from_doi(doi_or_url, return_bibtex=False):
 
 
 def display_citations(citations):
-    """Display citations in a formatted table.
-
-    Args:
-        citations (list): List of (name, citation) tuples to display
-
-    Example:
-             display_citations([("SPAdes", "10.1093/bioinformatics/btu170")])
-        # Displays formatted table with SPAdes citation
-    """
+    """Display citations in a formatted table"""
     from rich.panel import Panel
     from rich.table import Table
     table = Table(
@@ -172,16 +135,7 @@ def display_citations(citations):
 def remind_citations(
     tools: Union[str, List[str]], return_as_text=False, return_bibtex=False
 ):
-    """Display or return citation reminders for used tools.
-
-    Args:
-        tools (Union[str, List[str]]): Tool name(s) to get citations for
-        return_as_text (bool, optional): Whether to return citations as text instead of displaying.
-        return_bibtex (bool, optional): Whether to return citations in BibTeX format.
-
-    Returns:
-        str, optional: Formatted citation text if return_as_text is True
-    """
+    """Display or return citation reminders for used tools"""
     from rich.text import Text
     tools = list(set(tools))
     citations = get_citations(tools)

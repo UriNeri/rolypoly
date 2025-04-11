@@ -49,7 +49,6 @@ class SequenceExpr:
 
     def codon_usage(self) -> pl.Expr:
         """Calculate codon usage frequencies"""
-
         def _calc_codons(seq: str) -> dict:
             if not is_nucl_string(seq) or len(seq) % 3 != 0:
                 return {}
@@ -65,7 +64,6 @@ class SequenceExpr:
 
     def generate_hash(self, length: int = 32) -> pl.Expr:
         """Generate a hash for a sequence"""
-        
         import hashlib
 
         def _hash(seq: str) -> str:
@@ -75,8 +73,6 @@ class SequenceExpr:
 
     def calculate_kmer_frequencies(self, k: int = 3) -> pl.Expr:
         """Calculate k-mer frequencies in the sequence"""
-        
-
         def _calc_kmers(seq: str, k: int) -> dict:
             if not seq or len(seq) < k:
                 return {}
@@ -99,16 +95,12 @@ class RNAStructureExpr:
         self._expr = expr
 
     def predict_structure(self) -> pl.Expr:
-        """predict RNA structure and minimum free energy"""
-        
-
+        """Predict RNA structure and minimum free energy"""
+        import RNA
         def _predict(seq: str) -> dict:
-            import RNA
             if len(seq) > 10000:
                 return {"structure": None, "mfe": None}
             try:
-                import RNA
-
                 ss_string, mfe = RNA.fold_compound(seq).mfe()
                 return {"structure": ss_string, "mfe": mfe}
             except Exception:
@@ -123,28 +115,23 @@ class RNAStructureExpr:
     def predict_structure_with_tool(self, tool: str = "ViennaRNA") -> pl.Expr:
         """Predict RNA structure using specified tool"""
         def _predict_vienna(seq: str) -> dict:
-            import RNA
             if len(seq) > 10000:
                 return {"structure": None, "mfe": None}
             try:
                 import RNA
-
                 ss_string, mfe = RNA.fold_compound(seq).mfe()
                 return {"structure": ss_string, "mfe": mfe}
             except Exception:
                 return {"structure": None, "mfe": None}
 
         def _predict_linearfold(seq: str) -> dict:
-            import os
             import subprocess
             import tempfile
             if len(seq) > 10000:
                 return {"structure": None, "mfe": None}
             try:
-
                 # Convert T to U for RNA folding
                 seq = seq.replace("T", "U")
-
                 with tempfile.NamedTemporaryFile(mode="w+", delete=False) as temp_in:
                     # Write sequence directly without FASTA header
                     temp_in.write(seq)
@@ -200,7 +187,7 @@ class RNAStructureExpr:
 def write_fasta_file(
     records=None, seqs=None, headers=None, output_file=None, format: str = "fasta"
 ) -> None:
-    """if no output file is provided, it will print to stdout"""
+    """Write sequences to a FASTA file or stdout if no output file is provided"""
     import sys
     if format == "fasta":
         seq_delim = "\n"
@@ -212,8 +199,6 @@ def write_fasta_file(
         raise ValueError(f"Invalid format: {format}")
 
     if output_file is None:
-        import sys
-
         output_file = sys.stdout
     else:
         output_file = open(output_file, "w")
@@ -229,20 +214,7 @@ def write_fasta_file(
 
 
 def read_fasta_needletail(fasta_file: str) -> tuple[list[str], list[str]]:
-    """Read sequences from a FASTA/FASTQ file using needletail.
-
-    A fast and memory-efficient function to parse FASTA/FASTQ files using
-    the Rust-based needletail library.
-
-    Args:
-        fasta_file (str): Path to the input FASTA/FASTQ file
-
-    Returns:
-        tuple[list[str], list[str]]: A tuple containing:
-            - List of sequence identifiers
-            - List of sequences
-    """
-    from needletail import parse_fastx_file
+    """Read sequences from a FASTA/FASTQ file using needletail"""
     from needletail import parse_fastx_file
 
     seqs = []
@@ -254,7 +226,7 @@ def read_fasta_needletail(fasta_file: str) -> tuple[list[str], list[str]]:
 
 
 def add_fasta_to_gff(config, gff_file):
-    """Add FASTA section to GFF file."""
+    """Add FASTA section to GFF file"""
     from needletail import parse_fastx_file
     with open(gff_file, "a") as f:
         f.write("##FASTA\n")
@@ -282,12 +254,6 @@ def filter_fasta_by_headers(
             or a list of header patterns to match
         output_file (str): Path to write filtered sequences
         invert (bool, optional): If True, keep sequences that don't match.
-
-    Example:
-         # Keep only sequences with specified headers
-         filter_fasta_by_headers("all.fasta", ["seq1", "seq2"], "filtered.fasta")
-         # Exclude sequences with specified headers
-         filter_fasta_by_headers("all.fasta", "headers.txt", "filtered.fasta", invert=True)
     """
     from needletail import parse_fastx_file
 
@@ -318,7 +284,6 @@ def read_fasta_polars(fasta_file: str, idcol: str = "seq_id", seqcol: str = "seq
 
     Returns:
         polars.DataFrame: DataFrame with two columns for IDs and sequences
-
     """
     
     seq_ids, seqs = read_fasta_needletail(fasta_file)
@@ -336,7 +301,6 @@ def translate_6frx_seqkit(input_file: str, output_file: str, threads: int) -> No
     Note:
         Requires seqkit to be installed and available in PATH.
         The output sequences are formatted with 20000bp line width.
-
     """
     import subprocess as sp
 
@@ -347,9 +311,6 @@ def translate_6frx_seqkit(input_file: str, output_file: str, threads: int) -> No
 def translate_with_bbmap(input_file: str, output_file: str, threads: int) -> None:
     """Translate nucleotide sequences using BBMap's callgenes.sh
 
-    Predicts and translates genes from nucleotide sequences using BBMap's
-    gene prediction and translation tools.
-
     Args:
         input_file (str): Path to input nucleotide FASTA file
         output_file (str): Path to output amino acid FASTA file
@@ -359,7 +320,6 @@ def translate_with_bbmap(input_file: str, output_file: str, threads: int) -> Non
         - Requires BBMap to be installed and available in PATH
         - Generates both protein sequences (.faa) and gene annotations (.gff)
         - The GFF output file is named by replacing .faa with .gff
-
     """
     import subprocess as sp
 
@@ -399,7 +359,6 @@ def pyro_predict_orfs(
     import pyrodigal_gv as pyro_gv
     from needletail import parse_fastx_file
     from pyrodigal_gv import pyrodigal as pyro
-
 
     sequences = []
     ids = []
@@ -518,8 +477,6 @@ def guess_fastq_properties(file_path: str, mb_to_read: int = 20) -> dict:
 
     # Open the file accordingly
     if is_gz:
-        import gzip
-
         with gzip.open(file_path, "rb") as f:
             data = f.read(bytes_to_read)
     else:
@@ -957,8 +914,6 @@ class FastxNameSpace:
             df = lf.collect()
             ```
         """
-        
-
         def read_chunks():
             
             from needletail import parse_fastx_file
@@ -1400,7 +1355,6 @@ def search_hmmdb(
       inc_e=0.01, match_region=True, ali_str=True)
 
     """
-    import pyhmmer
     import pyhmmer
 
     if logger:

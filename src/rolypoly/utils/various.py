@@ -9,17 +9,7 @@ console = Console()
 
 @contextmanager
 def change_directory(path: Union[str, Path]) -> Generator[None, None, None]:
-    """Temporarily change the current working directory.
-
-    A context manager that changes the working directory to the specified path
-    and returns to the original directory when exiting the context.
-
-    Args:
-        path (Union[str, Path]): The directory path to change to. Will be created if it doesn't exist.
-
-    Yields:
-        None: The context manager yields nothing.
-    """
+    """Temporarily change the current working directory"""
     origin = os.getcwd()
     try:
         os.makedirs(path, exist_ok=True)
@@ -30,18 +20,7 @@ def change_directory(path: Union[str, Path]) -> Generator[None, None, None]:
 
 
 def modify_params(default_params: Dict, override_params: Dict) -> Dict:
-    """Modify default parameters with user-specified overrides.
-
-    Creates a new dictionary by copying default parameters and updating them
-    with user-provided override values.
-
-    Args:
-        default_params (Dict): Dictionary containing default parameter values
-        override_params (Dict): Dictionary containing parameter values to override
-
-    Returns:
-        Dict: A new dictionary with updated parameter values
-    """
+    """Modify default parameters with user-specified overrides"""
     params = default_params.copy()
     params.update(override_params)
     return params
@@ -50,22 +29,7 @@ def modify_params(default_params: Dict, override_params: Dict) -> Dict:
 def extract(
     archive_path: Union[str, Path], extract_to: Optional[Union[str, Path]] = None
 ) -> None:
-    """Extract compressed and/or archived files.
-
-    Handles various compression formats (.gz, .bz2, .xz, .Z) and archive formats
-    (.tar, .zip). Performs decompression and extraction in a two-step process
-    if necessary.
-
-    Args:
-        archive_path (Union[str, Path]): Path to the compressed/archived file
-        extract_to (Optional[Union[str, Path]], optional): Destination directory.
-            If None, extracts to the same directory as the archive.
-
-    Supported formats:
-        Compression: .gz, .bz2, .xz, .Z
-        Archives: .tar, .zip
-        Combined: .tar.gz, .tar.bz2, etc.
-    """
+    """Extract compressed and/or archived files"""
     import bz2
     import gzip
     import lzma
@@ -139,17 +103,7 @@ def extract(
 def fetch_and_extract(
     url: str, fetched_to: str = "downloaded_file", extract_to: Optional[str] = None
 ) -> None:
-    """Fetch a file from a URL and optionally extract it.
-
-    Downloads a file from a URL and optionally extracts it if an extraction path is provided.
-    Supports various archive formats through the extract() function.
-
-    Args:
-        url (str): URL to fetch the file from
-        fetched_to (str, optional): Path to save the fetched file. Defaults to "downloaded_file"
-        extract_to (Optional[str], optional): Path to extract the file to. If None, the file is not extracted
-
-    """
+    """Fetch a file from a URL and optionally extract it"""
     import shutil
     import requests
 
@@ -163,19 +117,7 @@ def fetch_and_extract(
 
 
 def parse_memory(mem_str) -> int:
-    """
-    Convert a memory string with units to bytes.
-    If the memory argument has no suffix, it is assumed to be in bytes.
-    Args:
-        mem_str (str): Memory string (e.g., '1GB', '500MB', '2G', '1.5T').
-
-    Returns:
-        int: Memory size in bytes.
-
-    Raises:
-        ValueError: If the memory format is invalid.
-    """
-    import re
+    """Convert a memory string with units to bytes"""
     import re
 
     units = {
@@ -207,6 +149,7 @@ def parse_memory(mem_str) -> int:
 
 
 def convert_bytes_to_units(byte_size: int) -> Dict[str, str]:
+    """Convert bytes to various units"""
     return {
         "bytes": f"{byte_size}b",
         "kilobytes": f"{byte_size / 1024:.2f}kb",
@@ -219,6 +162,7 @@ def convert_bytes_to_units(byte_size: int) -> Dict[str, str]:
 
 
 def ensure_memory(memory: str, file_path: Optional[str] = None) -> Dict[str, str]:
+    """Check if requested memory is available and appropriate"""
     import psutil
 
     requested_memory_bytes = parse_memory(memory)
@@ -240,6 +184,7 @@ def ensure_memory(memory: str, file_path: Optional[str] = None) -> Dict[str, str
 
 
 def create_bash_script(command: List[str], script_name: str) -> None:
+    """Create a bash script with the given command"""
     with open(script_name, "w") as f:
         f.write("#!/bin/bash\n")
         f.write(f"{' '.join(command)}\n")
@@ -383,7 +328,7 @@ def apply_filter(df, filter_str):
 
 def find_most_recent_folder(path):
     import glob
-
+    import os
     # Get a list of all directories in the specified path
     folders = [f for f in glob.glob(os.path.join(path, "*")) if os.path.isdir(f)]
     # Return None if no folders found
@@ -415,7 +360,6 @@ def move_contents_to_parent(folder, overwrite=True):
     #  remove the now empty folder
     os.rmdir(folder)  # only works on empty dir
 
-
 def check_file_exists(file_path):
     if not Path(file_path).exists():
         console.print(f"[bold red]File not found: {file_path} Tüdelü![/bold red]")
@@ -441,19 +385,7 @@ def is_file_empty(file_path):
 def run_command(
     cmd, logger, to_check, skip_existing=False, check=True
 ):  # TODO: add an option "try-hard" that save hash of the input /+ code.
-    """Run a shell command and verify its output.
-
-    Args:
-        cmd (list): Command to run as a list of strings
-        logger: Logger object for output messages
-        to_check (str): Path to output file to verify
-        skip_existing (bool, optional): Skip if output exists.
-        check (bool, optional): Check command return status.
-
-    Returns:
-        bool: True if command succeeded and output exists/non-empty
-
-    """
+    """Run a command and log its output"""
     import subprocess
 
     if skip_existing == True:
@@ -506,16 +438,11 @@ def create_output_dataframe():
 
 def add_output_file(df, filename, command_name, command, file_type):
     """Add a new output file record to the tracking DataFrame.
-
     Args:
-        df (polars.DataFrame): Output tracking DataFrame
         filename (str): Name of the output file
         command_name (str): Name of the command that created the file
         command (str): Full command used to create the file
         file_type (str): Type of file (e.g., "fasta", "fastq")
-
-    Returns:
-        polars.DataFrame: Updated DataFrame with new row added
     """
     import polars as pl
 
@@ -532,7 +459,6 @@ def add_output_file(df, filename, command_name, command, file_type):
             "file_size": [file_size],
         }
     )
-
     return pl.concat([df, new_row])
 
 
@@ -550,13 +476,6 @@ def read_fwf(filename, widths, columns, dtypes, comment_prefix=None, **kwargs):
     Returns:
         polars.DataFrame: DataFrame containing the parsed data
 
-    Example:
-             df = read_fwf(
-                 "data.txt",
-                 [(0, 10), (10, 20)],
-                 ["name", "value"],
-                 [pl.Utf8, pl.Int64]
-             )
     """
     import polars as pl
 
@@ -589,17 +508,6 @@ def read_fwf(filename, widths, columns, dtypes, comment_prefix=None, **kwargs):
 
 def get_file_type(filename: str) -> str:
     """Determine the type of a file based on its extension.
-
-    Args:
-        filename (str): Name or path of the file
-
-    Returns:
-        str: File type identifier, one of:
-            - "fastq", "fastq_gzipped"
-            - "fasta", "fasta_gzipped"
-            - "text", "text_gzipped"
-            - "unknown" for unrecognized extensions
-
     """
     ext = os.path.splitext(filename)[1].lower()
     if ext == ".gz":
@@ -623,15 +531,6 @@ def get_file_type(filename: str) -> str:
 
 def update_output_files(df, new_filename, command_name, command):
     """Update output tracking DataFrame with a new file.
-
-    Args:
-        df (polars.DataFrame): Output tracking DataFrame
-        new_filename (str): Name of the new output file
-        command_name (str): Name of the command that created the file
-        command (str): Full command used to create the file
-
-    Returns:
-        polars.DataFrame: Updated DataFrame with new file added
     """
     file_type = get_file_type(new_filename)
     return add_output_file(df, new_filename, command_name, command, file_type)
@@ -659,31 +558,14 @@ def get_latest_output(df, file_type=None):
 
 
 def order_columns_to_match(df1_to_order, df2_to_match):
-    """Reorder columns in one DataFrame to match another DataFrame's column order.
-
-    Args:
-        df1_to_order (polars.DataFrame): DataFrame whose columns need to be reordered
-        df2_to_match (polars.DataFrame): DataFrame with the desired column order
-
-    Returns:
-        polars.DataFrame: DataFrame with columns reordered to match df2_to_match
-
-    """
-    return df1_to_order.select(df2_to_match.columns)
+    """Order columns of df1 to match df2"""
+    return df1_to_order[df2_to_match.columns]
 
 
 def cast_cols_to_match(df1_to_cast, df2_to_match):
     """Cast columns of one DataFrame to match the data types of another DataFrame.
-
-    Args:
-        df1_to_cast (polars.DataFrame): DataFrame whose column types need to be cast
-        df2_to_match (polars.DataFrame): DataFrame with the desired column types
-
-    Returns:
-        polars.DataFrame: DataFrame with column types matching df2_to_match
     """
     import polars as pl
-
     for col in df2_to_match.columns:
         df1_to_cast = df1_to_cast.with_columns(
             pl.col(col).cast(df2_to_match.schema[col])
@@ -693,19 +575,7 @@ def cast_cols_to_match(df1_to_cast, df2_to_match):
 
 def vstack_easy(df1_to_stack, df2_to_stack):
     """Stack two DataFrames vertically after matching their column types and order.
-
-    A convenience function that handles type casting and column ordering before
-    vertically stacking two DataFrames. This ensures compatibility even when
-    the DataFrames have different column types or orders.
-
-    Args:
-        df1_to_stack (polars.DataFrame): First DataFrame to stack
-        df2_to_stack (polars.DataFrame): Second DataFrame to stack below the first
-
-    Returns:
-        polars.DataFrame: Combined DataFrame with df2_to_stack appended below df1_to_stack
     """
-
     df2_to_stack = cast_cols_to_match(df2_to_stack, df1_to_stack)
     df2_to_stack = order_columns_to_match(df2_to_stack, df1_to_stack)
     return df1_to_stack.vstack(df2_to_stack)
@@ -720,7 +590,7 @@ def run_command_comp(
     output_file: str = "",
     skip_existing: bool = False,
     check_status: bool = True,
-    check_output: bool = True,
+    check_output: bool = True, 
     prefix_style: str = "auto",
     param_sep: str = " ",
     assign_operator: str = " ",
@@ -837,8 +707,8 @@ def run_command_comp(
     except subprocess.CalledProcessError as e:
         logger.warning(f"Error: {e}")
         return False
-
     if check_output:
         return check_file_exist_isempty(output_file)
     else:
         return True
+

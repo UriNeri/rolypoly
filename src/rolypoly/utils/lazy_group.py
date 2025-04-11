@@ -1,3 +1,4 @@
+import importlib
 import rich_click as click
 from rich.console import Console
 
@@ -5,15 +6,10 @@ console = Console()
 
 
 class LazyGroup(click.RichGroup):
-    """Click Group subclass that lazily loads commands.
-
-    This class extends Click's Group to provide lazy loading of subcommands,
-    importing them only when needed. improve startup time
-    for large CLI applications with many subcommands.
-
+    """Click Group subclass that lazily loads commands to improve startup time for large CLI applications.
+    
     Args:
-        *args: Variable length argument list passed to Click.Group
-        lazy_subcommands (dict, optional): Mapping of command names to either:
+        lazy_subcommands: Mapping of command names to either:
             - A string import path: "module.command-object-name"
             - A dict defining a command group: {
                 "name": "Group Display Name",
@@ -23,7 +19,6 @@ class LazyGroup(click.RichGroup):
                 }
             }
             Hidden commands can be specified by prefixing the import path with "hidden:"
-        **kwargs: Arbitrary keyword arguments passed to Click.Group
     """
 
     def __init__(self, *args, lazy_subcommands=None, **kwargs):
@@ -49,14 +44,7 @@ class LazyGroup(click.RichGroup):
                 del self.lazy_subcommands[name]
 
     def list_commands(self, ctx):
-        """List all available commands, excluding hidden ones.
-
-        Args:
-            ctx (click.Context): The current Click context
-
-        Returns:
-            list: Sorted list of all visible command names
-        """
+        """List all available commands, excluding hidden ones."""
         base = super().list_commands(ctx)
         # Only include lazy commands that aren't marked as hidden
         lazy = sorted(
@@ -67,18 +55,7 @@ class LazyGroup(click.RichGroup):
         return base + lazy
 
     def get_command(self, ctx, cmd_name):
-        """Get a command by name, loading it if necessary.
-
-        Args:
-            ctx (click.Context): The current Click context
-            cmd_name (str): Name of the command to get
-
-        Returns:
-            click.Command: The requested command object
-
-        Raises:
-            ValueError: If lazy loading fails or returns an invalid command object
-        """
+        """Get a command by name, loading it if necessary."""
         if cmd_name in self.lazy_subcommands:
             try:
                 return self._lazy_load(cmd_name)
@@ -92,21 +69,8 @@ class LazyGroup(click.RichGroup):
         return super().get_command(ctx, cmd_name)
 
     def _lazy_load(self, cmd_name):
-        """Load a command lazily from its module.
-
-        Args:
-            cmd_name (str): Name of the command to load
-
-        Returns:
-            click.Command: The loaded command object
-
-        Raises:
-            ImportError: If the module cannot be imported
-            AttributeError: If the command object is not found in the module
-            ValueError: If the loaded object is not a valid Click command
-        """
-        import importlib
-        from importlib.util import find_spec
+        """Load a command lazily from its module."""
+        from importlib.util import find_spec, import_module
         import_path = self.lazy_subcommands[cmd_name]
         # Remove the "hidden:" prefix if present
         if import_path.startswith("hidden:"):
@@ -120,7 +84,7 @@ class LazyGroup(click.RichGroup):
                 raise ImportError(f"Module '{modname}' not found")
 
             # Try to import the module
-            mod = importlib.import_module(modname)
+            mod = import_module(modname)
 
             # Try to get the command object
             if not hasattr(mod, cmd_object_name):

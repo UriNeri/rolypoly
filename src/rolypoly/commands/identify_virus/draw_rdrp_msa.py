@@ -1,7 +1,3 @@
-# import argparse
-from pymsaviz import MsaViz
-
-
 def parse_args():
     import argparse
     parser = argparse.ArgumentParser(

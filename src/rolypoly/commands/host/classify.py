@@ -1,8 +1,6 @@
-### place holder ###
-
 import os
 import rich_click as click
-from rich.console import Console
+# from rich.console import Console
 
 # console = Console()
 
@@ -33,7 +31,7 @@ def predict_host_range(input, output, threads, log_file):
 
     logger = setup_logging(log_file)
     logger.info("Starting to predict      ")
-    logger.info("Sorry! command noit yet implemented!")
+    logger.info("Sorry! command not yet implemented!")
 
 
 if __name__ == "main":

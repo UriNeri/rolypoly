@@ -13,7 +13,6 @@ def parse_annotations(annotation_file):
         list: List of feature dictionaries
     """
     import json
-    import json
 
     features = []
     ext = Path(annotation_file).suffix.lower()
@@ -106,8 +105,6 @@ def create_linear_plot(sequence_length, features, width=None, height=None):
     Returns:
         matplotlib.figure.Figure: The plot figure
     """
-    import matplotlib.pyplot as plt
-    from dna_features_viewer import GraphicFeature, GraphicRecord
     import matplotlib.pyplot as plt
     from dna_features_viewer import GraphicFeature, GraphicRecord
 

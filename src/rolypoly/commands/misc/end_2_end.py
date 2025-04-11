@@ -97,7 +97,7 @@ def run_pipeline(
     keep_tmp=False,
     log_file=None,
     assembler="spades,megahit,penguin",
-    post_cluster=False,
+    post_cluster=False, # TODO: add or remove this, decide.
     filter1_nuc="alnlen >= 120 & pident>=75",
     filter2_nuc="qcov >= 0.95 & pident>=95",
     filter1_aa="length >= 80 & pident>=75",
@@ -140,32 +140,7 @@ def run_pipeline(
 
     Returns:
         None: Results are written to the specified output directory
-
-    Example:
-             run_pipeline(
-                 input="reads.fastq",
-                 output_dir="results",
-                 threads=8,
-                 memory="16g",
-                 host="host.fasta"
-             )
     """
-    from rolypoly.commands.annotation.annotate import annotate
-    from rolypoly.commands.assembly.assemble import assembly
-    from rolypoly.commands.assembly.filter_contigs import filter_contigs
-    from rolypoly.commands.identify_virus.marker_search import (
-        marker_search as marker_search,
-    )
-    from rolypoly.commands.reads.filter_reads import filter_reads
-    from rolypoly.commands.virotype.predict_characteristics import (
-        predict_characteristics,
-    )
-    from rolypoly.rolypoly import get_version_info
-    from rolypoly.utils.loggit import (  # , check_file_exists, check_file_size
-        log_start_info,
-        setup_logging,
-    )
-    import sys
     from rolypoly.commands.annotation.annotate import annotate
     from rolypoly.commands.assembly.assemble import assembly
     from rolypoly.commands.assembly.filter_contigs import filter_contigs

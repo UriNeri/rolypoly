@@ -1,15 +1,13 @@
-##################################################################################################
-# Written by Uri Neri
-# Description: Cleaning an assembly (TODO cleaning assembly graph directly?) by mmseqs nucleic / diamond amino searching against user supplied host sequence (TODO precompiled contamination DB? Masked RefSeq?)
 import os
 import shutil
-# import subprocess
 from pathlib import Path
 import rich_click as click
-# from rich_click import Context
 from rolypoly.utils.config import BaseConfig
 
-# global tools
+# TODO: cleaning assembly graph directly? by mmseqs nucleic / diamond amino searching against user supplied host sequence 
+# TODO: precompiled contamination DB? Masked RefSeq?
+
+global tools
 tools = []
 
 
@@ -156,9 +154,7 @@ def filter_contigs(
     Filter contigs based on user-supplied host sequences. Wrapper for both nucleotide and amino acid filtering.
     """
     from rolypoly.utils.citation_reminder import remind_citations
-    from rolypoly.utils.loggit import log_start_info, setup_logging
-    from rolypoly.utils.citation_reminder import remind_citations
-    from rolypoly.utils.loggit import log_start_info, setup_logging
+    from rolypoly.utils.loggit import log_start_info
 
     output = Path(output).absolute().resolve()
     host = Path(known_dna).absolute().resolve()
@@ -228,15 +224,11 @@ def filter_contigs(
 
 def filter_contigs_nuc(config: FilterContigsConfig):
     import subprocess
+    import pyfastx
+    import polars as pl
     from rich_click import Context
-    import polars as pl
-    import pyfastx
-    from rolypoly.utils.fax import ensure_faidx, guess_fasta_alpha, mask_dna
     from rolypoly.utils.various import apply_filter, ensure_memory
-    import polars as pl
-    import pyfastx
-    from rolypoly.utils.fax import ensure_faidx, guess_fasta_alpha, mask_dna
-    from rolypoly.utils.various import apply_filter, ensure_memory
+    from rolypoly.utils.fax import ensure_faidx, mask_dna
 
     config.logger.info(f"Started nucleotide host filtering for: {config.input}")
 
@@ -400,13 +392,9 @@ def filter_contigs_aa(config: FilterContigsConfig):
     import polars as pl
     import pyfastx
     from bbmapy import callgenes
-    from rolypoly.utils.fax import ensure_faidx, guess_fasta_alpha, mask_dna
+    from rolypoly.utils.fax import ensure_faidx, guess_fasta_alpha
     from rolypoly.utils.various import apply_filter,  ensure_memory
-    import polars as pl
-    import pyfastx
-    from bbmapy import callgenes
-    from rolypoly.utils.fax import ensure_faidx, guess_fasta_alpha, mask_dna
-    from rolypoly.utils.various import apply_filter,  ensure_memory
+
 
     config.logger.info(f"Started amino acid host filtering for: {config.input}")
 

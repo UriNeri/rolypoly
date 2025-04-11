@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 from rich.console import Console
 from rich_click import Choice, command, option
-from rolypoly.utils.citation_reminder import remind_citations
 from rolypoly.utils.config import BaseConfig
 
 
@@ -207,7 +206,6 @@ def marker_search(
     For custom path, either an .hmm file, a directory with .hmm files, or a folder with MSA files (which would be used to build an HMM DB).
     """
     import json
-    import shutil
     import polars as pl
     from rolypoly.utils.fax import (
         guess_fasta_alpha,
@@ -216,21 +214,11 @@ def marker_search(
         translate_6frx_seqkit,
         translate_with_bbmap,
     )
+    from rolypoly.utils.citation_reminder import remind_citations
     from rolypoly.utils.interval_ops import consolidate_hits
     from rolypoly.utils.fax import hmm_from_msa
     from rolypoly.utils.fax import hmmdb_from_directory
     from rolypoly.utils.loggit import log_start_info
-    import json
-    import shutil
-    import polars as pl
-    from rolypoly.utils.fax import (
-        guess_fasta_alpha,
-        pyro_predict_orfs,
-        search_hmmdb,
-        translate_6frx_seqkit,
-        translate_with_bbmap,
-    )
-    from rolypoly.utils.interval_ops import consolidate_hits
 
     if help_proper:
         custom_help()
@@ -463,7 +451,6 @@ def marker_search(
     tools.append("pyhmmer")
     tools.append("hmmer")
 
-    # remind_citations(tools)
     with open(f"{config.log_file}", "w") as f_out:
         f_out.write(remind_citations(tools, return_bibtex=True))
 

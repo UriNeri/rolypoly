@@ -1,7 +1,6 @@
 ### place holder ###
 import os
 from pathlib import Path
-import polars as pl
 import rich_click as click
 from rich.console import Console
 from rolypoly.utils.config import BaseConfig
@@ -124,11 +123,9 @@ def annotate_prot(
     domain_db,
     custom_domain_db,
     min_orf_length,
-    genetic_code,
+    genetic_code, # TODO: ADD SUPPORT FOR THIS
 ):
     """Identify coding sequences (ORFs) in a genome, and attempt to predict their translated seq (protein) function via (py)hmmsearches against a collection of DBs (or user supplied one)"""
-    import json
-    from rolypoly.utils.various import ensure_memory
     import json
     from rolypoly.utils.various import ensure_memory
 
@@ -157,8 +154,6 @@ def annotate_prot(
 
 def process_protein_annotations(config):
     """Process protein annotations."""
-    # Import modules needed only in this function
-
     config.logger.info("Starting protein annotation process")
 
     steps = [
@@ -200,7 +195,6 @@ def predict_orfs_with_pyrodigal(config):
 def predict_orfs_with_six_frame(config):
     """Translate 6-frame reading frames of a DNA sequence using seqkit."""
     from rolypoly.utils.various import run_command_comp
-    from rolypoly.utils.various import run_command_comp
 
     run_command_comp(
         "seqkit",
@@ -223,7 +217,6 @@ def predict_orfs_with_six_frame(config):
 def search_protein_domains_hmmscan(config):
     """Search protein domains using hmmscan."""
     from rolypoly.utils.fax import search_hmmdb
-    from rolypoly.utils.fax import search_hmmdb
 
     search_hmmdb(
         config.input,
@@ -240,8 +233,6 @@ def search_protein_domains_hmmscan(config):
 
 def predict_orfs_with_orffinder(config):
     """Predict ORFs using ORFfinder."""
-    from shutil import which
-    from rolypoly.utils.various import run_command_comp
     from shutil import which
     from rolypoly.utils.various import run_command_comp
 
@@ -303,7 +294,6 @@ def search_protein_domains(config):
 def search_protein_domains_hmmsearch(config, input_fasta, output_file):
     """Search protein domains using hmmsearch."""
     from rolypoly.utils.various import run_command_comp
-    from rolypoly.utils.various import run_command_comp
 
     run_command_comp(
         "hmmsearch",
@@ -315,7 +305,6 @@ def search_protein_domains_hmmsearch(config, input_fasta, output_file):
 
 def search_protein_domains_mmseqs2(config, input_fasta, output_file):
     """Search protein domains using mmseqs2."""
-    from rolypoly.utils.various import run_command_comp
     from rolypoly.utils.various import run_command_comp
 
     run_command_comp(
@@ -335,7 +324,6 @@ def search_protein_domains_mmseqs2(config, input_fasta, output_file):
 def search_protein_domains_diamond(config, input_fasta, output_file):
     """Search protein domains using DIAMOND."""
     from rolypoly.utils.various import run_command_comp
-    from rolypoly.utils.various import run_command_comp
 
     run_command_comp(
         "diamond",
@@ -353,8 +341,7 @@ def search_protein_domains_diamond(config, input_fasta, output_file):
 
 def predict_protein_function(config):
     config.logger.info("Predicting protein function")
-    # Implement protein function prediction logic here
-    # This could involve using tools like InterProScan, eggNOG-mapper, or custom logic based on domain search results
+    # TODO: decide how this should be done 
 
 
 def combine_results(config):
@@ -466,22 +453,6 @@ def process_diamond_data(domain_file):
         ],
     )
     return df
-
-
-def process_error(line):
-    """Process error messages."""
-    import logging
-    import logging
-
-    logging.error(line.strip())
-
-
-def process_output(line):
-    """Process output messages."""
-    import logging
-    import logging
-
-    logging.info(line.strip())
 
 
 if __name__ == "__main__":

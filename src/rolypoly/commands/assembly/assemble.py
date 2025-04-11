@@ -2,13 +2,12 @@ import os
 from pathlib import Path
 from typing import Dict, Tuple, Union
 import rich_click as click
-# from bbmapy import bbmap
-# from rich.console import Console
 from rolypoly.utils.config import BaseConfig
 from rolypoly.utils.loggit import log_start_info
 
-# console = Console()
 
+global tools
+tools = []
 
 class AssemblyConfig(BaseConfig):
     def __init__(self, **kwargs):
@@ -123,10 +122,6 @@ class LibraryInfo:
         return libraries
 
 
-global tools
-tools = []
-
-
 def handle_input_files(
     input_path: Union[str, Path], library_info: LibraryInfo = None
 ) -> Tuple[Dict, int]:
@@ -139,8 +134,6 @@ def handle_input_files(
     Returns:
         Tuple containing libraries dict and number of libraries
     """
-    import re
-    from pathlib import Path
     import re
     from pathlib import Path
 
@@ -249,9 +242,6 @@ def run_megahit(config, libraries):
     import glob
     import subprocess
     from rolypoly.utils.various import ensure_memory
-    import glob
-    import subprocess
-    from rolypoly.utils.various import ensure_memory
 
     config.logger.info(f"Started Megahit assembly")
     megahit_output = config.output_dir / "megahit_custom_out"
@@ -302,7 +292,6 @@ def run_megahit(config, libraries):
 
 def run_penguin(config, libraries):
     """Run Penguin assembler."""
-    import subprocess
     import subprocess
 
     config.logger.info(f"Started Penguin assembly")
@@ -419,13 +408,7 @@ def assembly(
     • MEGAHIT
     • Penguin
     """
-    import shutil
-    from rolypoly.utils.citation_reminder import remind_citations
-    from rolypoly.utils.various import run_command_comp
-    from rolypoly.utils.fax import process_sequences, read_fasta_df, rename_sequences
-    import polars as pl
     from bbmapy import bbmap
-    from rolypoly.utils.loggit import log_start_info
     import shutil
     from rolypoly.utils.citation_reminder import remind_citations
     from rolypoly.utils.various import run_command_comp

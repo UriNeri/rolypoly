@@ -1,7 +1,4 @@
-# import json
-import os
 from pathlib import Path
-from typing import List, Tuple
 import rich_click as click
 from rich.console import Console
 

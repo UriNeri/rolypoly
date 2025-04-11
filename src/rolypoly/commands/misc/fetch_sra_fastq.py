@@ -116,7 +116,6 @@ def download_fastq(run_id, output_path):
                 # Verify MD5 if available
                 if i < len(md5s) and md5s[i]:
                     expected_md5 = md5s[i]
-                    import hashlib
 
                     with open(output_file, "rb") as f:
                         actual_md5 = hashlib.md5(f.read()).hexdigest()

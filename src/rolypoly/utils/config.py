@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional
 from rolypoly.utils.loggit import setup_logging
 
 
-
 class BaseConfig:
     """Configuration manager for RolyPoly commands.
 
@@ -25,20 +24,7 @@ class BaseConfig:
         datadir (str, optional): Data directory path.
         log_level (str, optional): Logging level ("debug", "info", "warning", "error", "critical").
         keep_tmp (bool, optional): Whether to keep temporary files.
-
-    Example:
-        ```python
-        config = BaseConfig(
-            output="results",
-            threads=4,
-            memory="8gb",
-            log_level="debug"
-        )
-        print(config.memory["giga"])
-        # Output: 8
-        ```
     """
-
     def __init__(
         self,
         output: Optional[str] = "rp_out",
@@ -100,8 +86,6 @@ class BaseConfig:
                     f"Temporary directory {self.tmp_dir} already exists, using it as is"
                 )
                 if overwrite:
-                    import shutil
-
                     self.logger.debug(
                         f"overwrite set to True, Overwriting temporary directory {self.tmp_dir}"
                     )
@@ -123,11 +107,13 @@ class BaseConfig:
             self.tmp_dir.mkdir(parents=True, exist_ok=True)
 
     def setup_logger(self) -> logging.Logger:
+        """Setup logger for the configuration"""
         if isinstance(self.log_file, logging.Logger):
             return self.log_file
         return setup_logging(self.log_file, log_level=self.log_level)
 
     def to_dict(self) -> Dict[str, Any]:
+        """Convert configuration to dictionary"""
         return {
             k: str(v) if isinstance(v, Path) else v
             for k, v in self.__dict__.items()
@@ -136,12 +122,14 @@ class BaseConfig:
 
     @classmethod
     def read(cls, config_file: Path):
+        """Read configuration from JSON file"""
         import json
         with open(config_file, "r") as f:
             config_dict = json.load(f)
         return cls(**config_dict)
 
     def save(self, output_path: Path):
+        """Save configuration to JSON file"""
         import json
         with open(output_path, "w") as f:
             tmp_dict = self.to_dict()
@@ -151,11 +139,12 @@ class BaseConfig:
             json.dump(tmp_dict, f, indent=4)
 
     def update(self, **kwargs):
+        """Update configuration with new values"""
         for key, value in kwargs.items():
             setattr(self, key, value)
 
     def parse_memory(self, memory_str: str) -> Dict[str, str]:
-        """Parse memory string (e.g., '6gb', '6000mb', '6g') into a dictionary with bytes, mega, giga."""
+        """Parse memory string (e.g., '6gb', '6000mb', '6g') into a dictionary with bytes, mega, giga"""
         import re
 
         # Convert memory string to lowercase and remove spaces

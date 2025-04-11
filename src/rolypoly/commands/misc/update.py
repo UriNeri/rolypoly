@@ -37,11 +37,6 @@ def update(update_type, log_file):
     """
     import subprocess
     from rolypoly.utils.loggit import setup_logging
-    from rolypoly.commands.misc.prepare_external_data import (
-        prepare_external_data,
-    )
-    import subprocess
-    from rolypoly.utils.loggit import setup_logging
 
     logger = setup_logging(log_file)
     logger.info(f"Starting RolyPoly update for: {update_type}")
@@ -78,9 +73,7 @@ def update(update_type, log_file):
     if update_type in ["data", "all"]:
         logger.info("Updating RolyPoly data    ")
         try:
-            from rolypoly.commands.misc.prepare_external_data import (
-                prepare_external_data,
-            )
+            from rolypoly.commands.misc.prepare_external_data import prepare_external_data
 
             prepare_external_data(
                 try_hard=False, data_dir=data_dir, threads=4, log_file=log_file

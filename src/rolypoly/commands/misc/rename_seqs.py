@@ -1,19 +1,5 @@
-"""Rename sequences in a FASTA file with consistent IDs.
-
-This script provides functionality to rename sequences in FASTA files with consistent
-IDs, either using sequential numbers or hashes. It also generates a lookup table
-mapping old IDs to new IDs and optionally includes sequence statistics.
-
-Note on naming: to be consiset, the default for the raw assembly outputs sets new names as "CID_####" (CID is contig ID, and the ### is a padded running number).
-Subsequent steps in the pipeline will prepend additional identifiers to the contig IDs - after binning we add Bin_####, and after marker search we add vid_####.
-ORFs/CDS, get a unique name regardless of their position in the genome or the contig ID - they can be traced back to the CIDs in the GFF or some table.
-"""
-import os
-from pathlib import Path
-# import polars as pl
 import rich_click as click
 from rich.console import Console
-from rolypoly.utils.fax import process_sequences, read_fasta_df, rename_sequences
 
 console = Console()
 
@@ -41,6 +27,8 @@ def main(input: str, output: str, mapping: str, prefix: str, hash: bool, stats: 
     Optionally includes sequence statistics (length, GC content).
     """
     import polars as pl
+    from rolypoly.utils.fax import process_sequences, read_fasta_df, rename_sequences
+
     # Read input FASTA
     console.print(f"Reading sequences from {input}")
     df = read_fasta_df(input)
@@ -83,3 +71,17 @@ def main(input: str, output: str, mapping: str, prefix: str, hash: bool, stats: 
 
 if __name__ == "__main__":
     main()
+
+
+
+
+# """Rename sequences in a FASTA file with consistent IDs.
+
+# This script provides functionality to rename sequences in FASTA files with consistent
+# IDs, either using sequential numbers or hashes. It also generates a lookup table
+# mapping old IDs to new IDs and optionally includes sequence statistics.
+
+# Note on naming: to be consiset, the default for the raw assembly outputs sets new names as "CID_####" (CID is contig ID, and the ### is a padded running number).
+# Subsequent steps in the pipeline will prepend additional identifiers to the contig IDs - after binning we add Bin_####, and after marker search we add vid_####.
+# ORFs/CDS, get a unique name regardless of their position in the genome or the contig ID - they can be traced back to the CIDs in the GFF or some table.
+# """

@@ -6,14 +6,7 @@ from rich.logging import RichHandler
 
 
 def get_version_info():
-    """Get the current git version of RolyPoly.
-
-    Returns:
-        str: Short git hash of current version, or "Unknown" if not in a git repository
-
-    Note:
-        Temporarily changes directory to the rolypoly package directory to get version info
-    """
+    """Get the current git version of RolyPoly. Returns short git hash or 'Unknown' if not in a git repository."""
     import os
     import subprocess
     from importlib import resources
@@ -39,19 +32,7 @@ def setup_logging(
     log_level: int = logging.INFO,
     logger_name: str = "RolyPoly",
 ) -> logging.Logger:
-    """Setup logging configuration for RolyPoly.
-
-    Configures both file and console logging with rich formatting. Console output
-    uses rich formatting while file output uses a standard format.
-
-    Args:
-        log_file (Union[str, Path, logging.Logger]): Path to log file or existing logger
-        log_level (int, optional): Logging level (e.g., logging.INFO).
-        logger_name (str, optional): Name for the logger.
-
-    Returns:
-        logging.Logger: Configured logger instance
-    """
+    """Setup logging configuration for RolyPoly with both file and console logging using rich formatting."""
     import subprocess
     # If log_file is already a logger, return it
     if isinstance(log_file, logging.Logger):
@@ -107,16 +88,7 @@ def setup_logging(
 
 
 def log_start_info(logger: logging.Logger, config_dict: Dict):
-    """Log initial information about the RolyPoly run.
-
-    Logs version information, command line arguments, and configuration parameters
-    at the start of a RolyPoly run.
-
-    Args:
-        logger (logging.Logger): Logger instance to use
-        config_dict (Dict): Dictionary containing configuration parameters
-
-    """
+    """Log initial information about the RolyPoly run including version, command line args, and config parameters."""
     import subprocess
     from sys import argv as sys_argv
     # Log command and launch location

@@ -1,15 +1,11 @@
 import os
 import shutil
-# import signal
-# import subprocess
-# import time
 from pathlib import Path
 from typing import Dict, Tuple, Union
 import rich_click as click
 from rich.console import Console
 from rolypoly.utils.citation_reminder import remind_citations
 from rolypoly.utils.config import BaseConfig
-# from rolypoly.utils.loggit import log_start_info
 from rolypoly.utils.output_tracker import OutputTracker
 from rolypoly.utils.various import change_directory, ensure_memory
 
@@ -19,6 +15,8 @@ tools = ["bbmap", "seqkit", "datasets"]
 
 global output_tracker
 output_tracker = OutputTracker()
+
+console = Console()
 
 
 class ReadFilterConfig(BaseConfig):
@@ -238,11 +236,6 @@ def process_reads(
         config.logger.info("Read processing completed successfully.")
 
 
-# monitor=f
-
-console = Console()
-
-
 @click.command(no_args_is_help=True)
 @click.option(
     "-t",
@@ -369,9 +362,6 @@ def filter_reads(
     """
     from rolypoly.utils.loggit import log_start_info
 
-    # from bbmapy import bbduk, bbmerge, clumpify, filterbytile, bbmap, rename, reformat
-    # from rolypoly.utils.fax import fetch_genomes, mask_dna
-
     if (input is None) and (config_file is None):
         click.echo("Either input or config-file must be provided.")
         raise click.Abort
@@ -424,7 +414,6 @@ def filter_reads(
 def generate_reports(file_name: str, threads: int, skip_existing: bool, logger):
     import glob
     import subprocess
-    import glob
 
     # Generate FastQC report
     fastqc_output = Path("FastQC_post_trim_reads")
@@ -467,9 +456,6 @@ def identify_read_pair_files_in_folder(
 ) -> Dict[str, list[Path]]:
     """Identify if the input is paired end or single end."""
     import glob
-    from pathlib import Path
-    import glob
-    from pathlib import Path
 
     if not Path(input).is_dir():
         print(f"input: {input} is not a directory")
@@ -506,7 +492,6 @@ def identify_read_pair_files_in_folder(
 
 
 def handle_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
-    from bbmapy import reformat
     from bbmapy import reformat
 
     # Create a temporary file for intermediate concatenation
@@ -586,7 +571,6 @@ def filter_by_tile(
     """Filter reads by tile."""  # this commands tends to break so it has extra logging and is skipped if error occurs.
     from bbmapy import filterbytile
     import time
-    from bbmapy import filterbytile
 
     config.logger.info(f"Starting: Filter by Tile for file {input_file}")
     output_file = f"filter_by_tile_{config.file_name}.fq.gz"
@@ -634,8 +618,6 @@ def filter_known_dna(
     """Filter known DNA sequences."""
     from bbmapy import bbduk
     from rolypoly.utils.fax import mask_dna
-    from bbmapy import bbduk
-    from rolypoly.utils.fax import mask_dna
 
     ref_file = str(config.known_dna)
     if "mask_known_dna" not in config.skip_steps:
@@ -678,7 +660,6 @@ def decontaminate_rrna(
 ) -> Path:
     """Decontaminate rRNA sequences."""
     from bbmapy import bbduk
-    from bbmapy import bbduk
 
     output_file = f"decontaminate_rrna_{config.file_name}.fq.gz"
     rrna_fas1 = Path(config.datadir) / "rRNA/SILVA_138_merged_masked.fa"  # type: ignore
@@ -709,7 +690,6 @@ def fetch_and_mask_genomes(
     input_file: Path, config: ReadFilterConfig, output_tracker: OutputTracker
 ) -> Union[str, Path]:
     """Fetch and mask genomes."""
-    from rolypoly.utils.fax import fetch_genomes, mask_dna
     from rolypoly.utils.fax import fetch_genomes, mask_dna
 
     if "filter_rp_identified_DNA_genomes" not in config.skip_steps:
@@ -752,7 +732,6 @@ def filter_identified_dna(
 ) -> Union[Path, str]:
     """Filter fetched DNA genomes."""
     from bbmapy import bbduk
-    from bbmapy import bbduk
 
     host_file = fetch_and_mask_genomes(input_file, config, output_tracker)
     if host_file == "host_empty":
@@ -787,7 +766,6 @@ def dedupe(
     phase="first",
 ) -> Path:
     """Remove duplicate reads."""
-    from bbmapy import clumpify
     from bbmapy import clumpify
 
     if phase == "first":
@@ -825,7 +803,6 @@ def trim_adapters(
 ) -> Path:
     """Trim adapters from reads."""
     from bbmapy import bbduk
-    from bbmapy import bbduk
 
     output_file = f"trim_adapters_{config.file_name}.fq.gz"
     adapters_new = Path(config.datadir) / "contam/AFire_illuminatetritis1223.fa"
@@ -858,7 +835,6 @@ def remove_synthetic_artifacts(
 ) -> Path:
     """Remove synthetic artifacts (phix etc) from reads."""
     from bbmapy import bbduk
-    from bbmapy import bbduk
 
     output_file = f"remove_synthetic_artifacts_{config.file_name}.fq.gz"
     try:
@@ -888,7 +864,6 @@ def entropy_filter(
 ) -> Path:
     """Apply entropy filter to reads."""
     from bbmapy import bbduk
-    from bbmapy import bbduk
 
     output_file = f"entropy_filter_{config.file_name}.fq.gz"
     try:
@@ -916,7 +891,6 @@ def error_correct_1(
     input_file: Path, config: ReadFilterConfig, output_tracker: OutputTracker
 ) -> Path:
     """Perform error correction on reads."""
-    from bbmapy import bbmerge
     from bbmapy import bbmerge
 
     output_file = f"error_correct_1{config.file_name}.fq.gz"
@@ -946,7 +920,6 @@ def error_correct_2(
 ) -> Path:
     """Perform error correction on reads."""
     from bbmapy import clumpify
-    from bbmapy import clumpify
 
     output_file = f"error_correct_2{config.file_name}.fq.gz"
     try:
@@ -974,7 +947,6 @@ def merge_reads(
     input_file: Path, config: ReadFilterConfig, output_tracker: OutputTracker
 ) -> Tuple[Path, Path]:
     """Merge paired-end reads."""
-    from bbmapy import bbmerge
     from bbmapy import bbmerge
 
     output_file = f"merged_{config.file_name}.fq.gz"
@@ -1009,7 +981,6 @@ def quality_trim_unmerged(
     input_file: Path, config: ReadFilterConfig, output_tracker: OutputTracker
 ) -> Path:
     """Quality trim unmerged reads."""
-    from bbmapy import bbduk
     from bbmapy import bbduk
 
     input_file = Path(output_tracker.get_latest_non_merged_file())

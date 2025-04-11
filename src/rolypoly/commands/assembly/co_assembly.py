@@ -1,6 +1,4 @@
-### place holder ###
 import os
-# import subprocess
 from rich.console import Console
 from rich_click import command, option
 
@@ -39,7 +37,6 @@ def refinement(input, reads, output, threads, memory, variant_caller, log_file):
     """
     Refine assembly by de-entangling strains and rerunning assembly - post host removal.
     """
-    from rolypoly.utils.loggit import setup_logging
     from rolypoly.utils.loggit import setup_logging
 
     logger = setup_logging(log_file)

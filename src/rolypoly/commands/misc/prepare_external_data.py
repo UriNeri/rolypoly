@@ -65,13 +65,6 @@ def prepare_external_data(try_hard, ROLYPOLY_DATA, threads, log_file):
     from importlib import resources
     import requests
     from rolypoly.utils.loggit import setup_logging
-    import pyhmmer
-    import json
-    import shutil
-    import subprocess
-    from importlib import resources
-    import requests
-    from rolypoly.utils.loggit import setup_logging
 
     if ROLYPOLY_DATA == None:
         ROLYPOLY_DATA = pt(resources.files("rolypoly")) / "data"
@@ -224,7 +217,6 @@ def prepare_rvmt_mmseqs(ROLYPOLY_DATA, threads, log_file):
         extracted to the appropriate location in ROLYPOLY_DATA.
     """
     import subprocess
-    import subprocess
 
     console.print("Preparing RVMT mmseqs database")
     rvmt_dir = os.path.join(ROLYPOLY_DATA, "RVMT")
@@ -269,7 +261,6 @@ def prepare_rrna_db(ROLYPOLY_DATA, log_file):
         and taxonomic classification.
     """
     import subprocess
-    import subprocess
 
     console.print("Preparing rRNA database")
     rrna_dir = os.path.join(ROLYPOLY_DATA, "rRNA")
@@ -313,7 +304,6 @@ def create_hmm_from_msa(msa, alphabet, set_ga):
         on the provided alphabet.
     """
     import pyhmmer
-    import pyhmmer
 
     builder = pyhmmer.plan7.Builder(alphabet)
     background = pyhmmer.plan7.Background(alphabet)
@@ -342,7 +332,6 @@ def generate_hmms(input_msas, input_format, set_ga):
              hmms = generate_hmms(["msa1.sto", "msa2.sto"], "stockholm", True)
     """
     import pyhmmer
-    import pyhmmer
 
     alphabet = pyhmmer.easel.Alphabet.amino()
     hmm_list = []
@@ -368,9 +357,6 @@ def write_hmms(hmms, output_hmm, write_ascii):
         hmms (list): List of HMM profiles to write
         output_hmm (str): Path to output HMM file
         write_ascii (bool): If True, write in ASCII format; otherwise binary
-
-    Example:
-             write_hmms(hmms, "profiles.hmm", write_ascii=True)
     """
     binary = not write_ascii
     with open(output_hmm, "wb") as fo:
@@ -392,8 +378,6 @@ def download_and_extract_rfam(ROLYPOLY_DATA, logger):
         Downloads both the sequence database and covariance models,
         and processes them for use with Infernal.
     """
-    import subprocess
-    import requests
     import subprocess
     import requests
 
@@ -431,14 +415,9 @@ def tar_everything_and_upload_to_NERSC(ROLYPOLY_DATA, version=""):
     import datetime
     import subprocess
     from rolypoly.utils.citation_reminder import remind_citations
-    from rolypoly.utils.loggit import get_version_info
-    import datetime
-    import subprocess
-    from rolypoly.utils.citation_reminder import remind_citations
 
     if version == "":
         from rolypoly.utils.loggit import get_version_info
-
         version = get_version_info()
     with open(ROLYPOLY_DATA / "README.md", "w") as f_out:
         f_out.write(f"RolyPoly version: {version}")
@@ -493,13 +472,6 @@ def prepare_genomad_rna_viral_hmms(ROLYPOLY_DATA, threads, logger=None):
     import tarfile
     import polars as pl
     from rolypoly.utils.fax import hmmdb_from_directory
-    import os
-    import shutil
-    import subprocess
-    import tarfile
-    import zipfile
-    import polars as pl
-    import requests
 
     logger.info("Starting geNomad RNA viral HMM preparation")
 
@@ -585,7 +557,6 @@ def prepare_genomad_rna_viral_hmms(ROLYPOLY_DATA, threads, logger=None):
             )
         # remove the genomad_msa_v1.9 directory
         shutil.rmtree(genomad_alignments_dir + "/genomad_msa_v1.9")
-        from rolypoly.utils.fax import hmmdb_from_directory
 
         output_hmm = os.path.join(
             os.path.join(ROLYPOLY_DATA, "hmmdbs"), "genomad_rna_viral_markers.hmm"
