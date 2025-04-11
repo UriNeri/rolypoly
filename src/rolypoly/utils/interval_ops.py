@@ -153,20 +153,12 @@ def consolidate_hits(
 ):
     """Resolves overlaps in a tabular hit table file or polars dataframe.
     Notes: some flags are mutually exclusive, e.g. you cannot set both split and merge, or rather - if you do that, you'll get unexpected results."""
+    from iranges import IRanges
     import polars as pl
     import pyranges as pr
     from genomicranges import (
         GenomicRanges,  # broken until iranges pulls https://github.com/BiocPy/IRanges/pull/44 and the stack is updated.
     )
-    from iranges import IRanges
-    from numpy import unique as nunique
-    import polars as pl
-    import pyranges as pr
-    from genomicranges import (
-        GenomicRanges,  # broken until iranges pulls https://github.com/BiocPy/IRanges/pull/44 and the stack is updated.
-    )
-    from iranges import IRanges
-    from numpy import unique as nunique
 
     # Read the input hit table
     hit_table = pl.read_csv(input, separator="\t") if isinstance(input, str) else input
@@ -267,7 +259,7 @@ def consolidate_hits(
         )
         # get the unique values of the index
         envoloping_hits_names = gr_hits[
-            nunique(envlopping_hits_rng_idx)
+            list(set(envlopping_hits_rng_idx))
         ].names.as_list()
         work_table_culled = work_table.filter(
             pl.col("uid").cast(pl.Utf8).is_in(envoloping_hits_names)
@@ -362,15 +354,6 @@ def interval_tree_from_df(df: pl.DataFrame, data_col: str = "id") -> itree.Inter
     Returns:
         itree.IntervalTree: Interval tree containing the intervals
 
-    Example:
-        ```python
-        df = pl.DataFrame({
-            "start": [1, 5],
-            "end": [4, 8],
-            "id": ["a", "b"]
-        })
-        tree = interval_tree_from_df(df)
-        ```
     """
     tree = itree.IntervalTree()
     for row in df.iter_rows(named=True):
@@ -387,12 +370,6 @@ def interval_tree_to_df(tree: itree.IntervalTree) -> pl.DataFrame:
     Returns:
         pl.DataFrame: DataFrame with 'start', 'end', and 'id' columns
 
-    Example:
-        ```python
-        tree = itree.IntervalTree()
-        tree.addi(1, 4, "a")
-        df = interval_tree_to_df(tree)
-        ```
     """
     import polars as pl
     return pl.DataFrame(

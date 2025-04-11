@@ -73,7 +73,6 @@ os.environ["citation_file"] = (
             "commands": {
                 "end2end": "rolypoly.commands.misc.end_2_end.run_pipeline",
                 # "add-command": "hidden:rolypoly.commands.misc.add_command.add_command",
-                # "dummy": "hidden:rolypoly.utils.dummy.dummy",
                 "fetch-sra": "rolypoly.commands.misc.fetch_sra_fastq.fetch_sra",  # Not  a click command (yet?)
                 "sequence-stats": "rolypoly.commands.misc.sequence_stats.sequence_stats",
                 "visualize": "rolypoly.commands.misc.visualize.visualize",

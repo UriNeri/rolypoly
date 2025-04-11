@@ -1,7 +1,6 @@
 import logging
-from typing import Dict
 from pathlib import Path
-from typing import Union
+from typing import Union, Dict
 from rich.console import Console
 from rich.logging import RichHandler
 
@@ -15,10 +14,8 @@ def get_version_info():
     Note:
         Temporarily changes directory to the rolypoly package directory to get version info
     """
+    import os
     import subprocess
-    import os
-    from importlib import resources
-    import os
     from importlib import resources
 
     cwd = os.getcwd()
@@ -54,13 +51,6 @@ def setup_logging(
 
     Returns:
         logging.Logger: Configured logger instance
-
-    Example:
-        ```python
-        logger = setup_logging("process.log", logging.DEBUG)
-        logger.info("Process started")
-        logger.debug("Detailed information")
-        ```
     """
     import subprocess
     # If log_file is already a logger, return it
@@ -126,12 +116,6 @@ def log_start_info(logger: logging.Logger, config_dict: Dict):
         logger (logging.Logger): Logger instance to use
         config_dict (Dict): Dictionary containing configuration parameters
 
-    Example:
-        ```python
-        logger = setup_logging("process.log")
-        config = {"threads": 4, "memory": "8gb"}
-        log_start_info(logger, config)
-        ```
     """
     import subprocess
     from sys import argv as sys_argv
