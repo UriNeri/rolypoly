@@ -6,55 +6,23 @@ RolyPoly is an RNA virus analysis toolkit, including a variety of commands and w
 For more detailed information, please refer to the [docs](https://pages.jgi.doe.gov/uneri/rolypoly/).
 
 ## Installation
-
-There are several ways to install RolyPoly:
-
-### Option 1: Quick Setup (Recommended)
-
-<details><summary>The fastest way to get started. Downloads and installs everything automatically, including mamba if needed.</summary>
+We hope to have rolypoly available from bioconda in the near future.  
+In the meantime, it can be installed with the [`quick_setup.sh`](src/rolypoly/utils/quick_setup.sh) script which which will also fetch the pre-generated data rolypoly will require.
 
 ```bash
 curl -O https://code.jgi.doe.gov/UNeri/rolypoly/-/raw/main/src/rolypoly/utils/quick_setup.sh && \
-bash quick_setup.sh
+bash quick_setup.sh 
 ```
 
-Or with custom paths:
+You can specify custom paths for the code, databases, and conda enviroment location:
 ```bash
 bash quick_setup.sh /path/to/conda/env /path/to/install/rolypoly_code /path/to/store/databases /path/to/logfile
 ```
-  
-*The logfile will be saved to the path you provide, or to `~/RolyPoly_quick_setup.log` if you don't provide a path.
-</details>
-
-### Option 2: Manual Installation with Custom Data Directory
-
-<details><summary>Install RolyPoly but specify where to store the external databases</summary>
-
-```bash
-git clone https://code.jgi.doe.gov/UNeri/rolypoly.git
-cd rolypoly
-mamba create -n rolypoly -f misc/env_files/env_big.yaml 
-mamba activate rolypoly
-pip install . # Use pip install -e .[dev] for development installation
-rolypoly prepare-external-data --data_dir /path/to/data/dir
-conda env config vars set ROLYPOLY_DATA=$ROLYPOLY_DATA
-```
-</details>
-
-### Option 3: Minimal Installation
-
-<details><summary>Create smaller conda environments, each containing dependencies for specific commands.</summary>
-
-```bash
-mamba create -n rolypoly_filter_reads -f misc/env_files/filter_reads.yaml
-mamba create -n rolypoly_assembly -f misc/env_files/assembly.yaml
-mamba create -n rolypoly_annotation -f misc/env_files/annotation.yaml 
-mamba create -n rolypoly_rdrp -f misc/env_files/marker_searchyaml 
-mamba activate rolypoly_<command_name>
-pip install .
-rolypoly prepare-external-data
-```
-</details>
+By default if no positional arguments are supplied, rolypoly is installed into the user's home folder: 
+- database in `~/rolypoly_data/`
+- code in `~/rolypoly/ `
+- conda enviroment in `~/micromamba/envs/rolypoly`
+- log file in `~/RolyPoly_quick_setup.log` 
 
 ## Usage
 RolyPoly is a command-line tool with subcommands for different stages of the RNA virus identification pipeline. For a detailed help (in terminal), use `rolypoly help`. For more specific help, see the [docs](./docs/mkdocs_docs/commands/index.md).
@@ -81,32 +49,29 @@ Under development:
 - 🚧 Virus feature prediction (+/-ssRNA/dsRNA, circular/linear, mono/poly-segmented, capsid type, etc.) (`TBD`)
 - 🚧 Cross-sample analysis (`TBD`)
 
-For more details about the implementation status, roadmap, additional commands, and more, see the [workflow documentation](./docs/mkdocs_docs/workflow.md) and the [API reference](./docs/mkdocs_docs/api/utils/various.md).
+For more details about the implementation status, roadmap, additional commands, and more, see the [workflow documentation](./docs/mkdocs_docs/workflow.md).
 
 ## Dependencies
 <details><summary>Click to show dependencies</summary>
-
-By default, the ["quick_setup.sh"](./misc/quick_setup.sh) option will install all of these with mamba/conda or pip. If you are curios or prefer to install them/get the binaries alternatively, see the [setup*.py scripts](/misc/). Not all commands require all the dependencies, hence we made some slimmer conda environments for specific purposes - but that is not recommended.
-
-1. [SPAdes](https://github.com/ablab/spades)
-2. [seqkit](https://github.com/shenwei356/seqkit)
-3. [datasets](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/download-and-install/)
-4. [bbmap](https://sourceforge.net/projects/bbmap/) - via [bbmapy](https://github.com/urineri/bbmapy)
-5. [megahit](https://github.com/voutcn/megahit)
-6. [fastqc](https://www.bioinformatics.babraham.ac.uk/projects/fastqc)
-7. [mmseqs2](https://github.com/soedinglab/MMseqs2)
-8. [plass and penguin](https://github.com/soedinglab/plass)
-9. [blast](https://blast.ncbi.nlm.nih.gov/doc/blast-help/)
-10. [diamond](https://github.com/bbuchfink/diamond)
-11. [pigz](https://github.com/madler/pigz)
-12. [prodigal/gv](https://github.com/hyattpd/Prodigal) - via pyrodigal-gv
-13. [linearfold](https://github.com/LinearFold/LinearFold)
-14. [HMMER](https://github.com/EddyRivasLab/hmmer) - via pyhmmer
-15. [needletail](https://github.com/onecodex/needletail)
-16. [infernal](https://github.com/EddyRivasLab/infernal)
-17. [aragorn](http://130.235.244.92/ARAGORN/)
-18. [tRNAscan-SE](http://lowelab.ucsc.edu/tRNAscan-SE/)
-19. [bowtie1](https://github.com/BenLangmead/bowtie)
+Non-Python 
+- [SPAdes](https://github.com/ablab/spades).
+- [seqkit](https://github.com/shenwei356/seqkit)
+- [datasets](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/download-and-install/)
+- [bbmap](https://sourceforge.net/projects/bbmap/) - via [bbmapy](https://github.com/urineri/bbmapy)
+- [megahit](https://github.com/voutcn/megahit)
+- [mmseqs2](https://github.com/soedinglab/MMseqs2)
+- [plass and penguin](https://github.com/soedinglab/plass)
+- [diamond](https://github.com/bbuchfink/diamond)
+- [pigz](https://github.com/madler/pigz)
+- [prodigal/gv](https://github.com/hyattpd/Prodigal) - via pyrodigal-gv
+- [linearfold](https://github.com/LinearFold/LinearFold)
+- [HMMER](https://github.com/EddyRivasLab/hmmer) - via pyhmmer
+- [needletail](https://github.com/onecodex/needletail)
+- [infernal](https://github.com/EddyRivasLab/infernal)
+- [aragorn](http://130.235.244.92/ARAGORN/)
+- [tRNAscan-SE](http://lowelab.ucsc.edu/tRNAscan-SE/)
+- [bowtie1](https://github.com/BenLangmead/bowtie)
+- [falco](https://github.com/smithlabcode/falco/)
 
 ### Python Libraries
 * [polars](https://pola.rs/)
@@ -121,7 +86,6 @@ By default, the ["quick_setup.sh"](./misc/quick_setup.sh) option will install al
 * [pyfastx](https://github.com/lmdu/pyfastx)
 * [psutil](https://pypi.org/project/psutil/)
 * [bbmapy](https://github.com/urineri/bbmapy)
-* [sh](https://github.com/amoffat/sh)
 * [pymsaviz](https://github.com/aziele/pymsaviz)
 * [viennarna](https://github.com/ViennaRNA/ViennaRNA)
 * [pyranges](https://github.com/biocore-ntnu/pyranges)

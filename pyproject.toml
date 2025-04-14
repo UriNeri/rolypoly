@@ -7,6 +7,7 @@ authors = [
     { name = "Antonio Camargo", email = "antoniop.camargo@lbl.gov" },
     { name = "Andrei Stecca Steindorff", email = "andreiss@jgi.doe.gov" },
     { name = "Clement Coclet", email = "cclement@jgi.doe.gov" },
+    { name = "David Parker", email = "dparker@carnegiescience.edu" },
 ]
 description = "RNA virus analysis toolkit"
 readme = "README.md"
@@ -74,6 +75,7 @@ seqkit = ">=2.10.0,<3"
 spades = ">=4.0.1,<5"
 trnascan-se = ">=2.0.12,<3"
 falco = ">=1.2.5,<2"
+multiqc = ">=1.28,<2"
 
 [tool.pixi.feature.py310.dependencies]
 python = "~=3.10.0"
