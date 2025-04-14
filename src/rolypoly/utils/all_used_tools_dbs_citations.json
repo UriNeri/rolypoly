@@ -5,7 +5,7 @@
   },
   "rolypoly": {
     "name": "RolyPoly",
-    "citation": "Neri, U., Bushnell, B., Roux, S., & Camargo, A. P., Steindorff, A.S., Coclet, C., David P., (2024). RolyPoly: A pipeline for RNA virus identification from RNA-seq data. [Software]. Available from https://code.jgi.doe.gov/UNeri/rolypoly"
+    "citation": "Neri, U., Bushnell, B., Roux, S., & Camargo, A. P., Steindorff, A.S., Coclet, C., David P., (2025). RolyPoly: A pipeline for RNA virus identification from RNA-seq data. [Software]. Available from https://code.jgi.doe.gov/UNeri/rolypoly"
   },
   "rnafold": {
     "name": "ViennaRNA Package",
@@ -13,7 +13,8 @@
   },
   "linearfold": {
     "name": "LinearFold",
-    "citation": "https://doi.org/10.1093/bioinformatics/btz375"
+    "citation": "https://doi.org/10.1093/bioinformatics/btz375",
+    "code": "https://github.com/LinearFold/LinearFold"
   },
   "iresfinder": {
     "name": "IRESfinder",
@@ -37,7 +38,8 @@
   },
   "rfam": {
     "name": "Rfam",
-    "citation": "https://doi.org/10.1093/nar/gkaa1047"
+    "citation": "https://doi.org/10.1093/nar/gkaa1047",
+    "note": "version nn"
   },
   "orffinder": {
     "name": "NCBI ORFfinder",
@@ -57,7 +59,8 @@
   },
   "pfam": {
     "name": "Pfam",
-    "citation": "https://doi.org/10.1093/nar/gkaa913"
+    "citation": "https://doi.org/10.1093/nar/gkaa913",
+    "note": "version nn"
   },
   "interpro": {
     "name": "InterPro",
@@ -65,7 +68,8 @@
   },
   "spades": {
     "name": "SPAdes",
-    "citation": "https://doi.org/10.1089/cmb.2012.0021"
+    "citation": "https://doi.org/10.1089/cmb.2012.0021",
+    "code": "https://github.com/ablab/spades"
   },
   "megahit": {
     "name": "MEGAHIT",
@@ -73,15 +77,23 @@
   },
   "seqkit": {
     "name": "seqkit",
-    "citation": " https://doi.org/10.1002/imt2.191"
+    "citation": " https://doi.org/10.1002/imt2.191",
+    "code": "https://github.com/shenwei356/seqkit"
   },
   "datasets": {
     "name": "datasets",
-    "citation": "https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/v2/linux-amd64/datasets"
+    "citation": "https://doi.org/10.1038/s41597-024-03571-y",
+    "code": "https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/v2/linux-amd64/datasets"
   },
   "bbmap": {
     "name": "bbmap",
-    "citation": "https://sourceforge.net/projects/bbmap/files/BBMap_39.08.tar.gz"
+    "citation": "https://doi.org/10.1371/journal.pone.0185056",
+    "code": "https://sourceforge.net/projects/bbmap/files/BBMap_39.20.tar.gz"
+  },
+  "falco": {
+    "name": "falco",
+    "code": "https://github.com/smithlabcode/falco",
+    "citation": "https://doi.org/10.12688/f1000research.21142.2"
   },
   "fastqc": {
     "name": "fastqc",
@@ -93,11 +105,13 @@
   },
   "mmseqs": {
     "name": "mmseqs",
-    "citation": "https://doi.org/10.1038/nbt.3988"
+    "citation": "https://doi.org/10.1038/nbt.3988",
+    "code": "https://github.com/soedinglab/MMseqs2"
   },
   "penguin": {
     "name": "penguin",
-    "citation": "https://doi.org/10.1101/2024.03.29.587318"
+    "citation": "https://doi.org/10.1101/2024.03.29.587318",
+    "code": "https://github.com/soedinglab/plass"
   },
   "blast": {
     "name": "blast",
@@ -126,7 +140,7 @@
   "neordrp_v2.1": {
     "name": "NeoRdRp_v2.1",
     "citation": "https://doi.org/10.1264/jsme2.ME22001",
-    "github": "https://github.com/shoichisakaguchi/NeoRdRp"
+    "code": "https://github.com/shoichisakaguchi/NeoRdRp"
   },
   "pyfastx": {
     "name": "pyfastx",
@@ -135,13 +149,13 @@
   "rvmt": {
     "name": "RVMT",
     "citation": "https://doi.org/10.1016/j.cell.2022.08.023",
-    "github": "https://github.com/UriNeri/RVMT",
+    "code": "https://github.com/UriNeri/RVMT",
     "zenodo": "https://zenodo.org/record/7368133"
   },
   "rdrp-scan": {
     "name": "RdRp-Scan",
     "citation": "https://doi.org/10.1093/ve/veac082",
-    "github": "https://github.com/JustineCharon/RdRp-scan",
+    "code": "https://github.com/JustineCharon/RdRp-scan",
     "note": "Incorporated PALMdb (https://github.com/rcedgar/palmdb, https://doi.org/10.7717/peerj.14055)"
   },
   "tsa_2018": {
@@ -163,7 +177,7 @@
   "palmdb_v1": {
     "name": "PALMdb_v1",
     "citation": "https://doi.org/10.7717/peerj.14055",
-    "github": "https://github.com/rcedgar/palmdb"
+    "code": "https://github.com/rcedgar/palmdb"
   },
   "silva": {
     "name": "SILVA",
@@ -178,16 +192,16 @@
   "pyhmmer": {
     "name": "pyhmmer",
     "citation": "https://doi.org/10.1093/bioinformatics/btad214",
-    "github": "https://github.com/althonos/pyhmmer"
+    "code": "https://github.com/althonos/pyhmmer"
   },
   "pyrodigal": {
     "name": "pyrodigal",
     "citation": "https://doi.org/10.21105/joss.04296",
-    "github": "https://github.com/althonos/pyrodigal-gv"
+    "code": "https://github.com/althonos/pyrodigal-gv"
   },
   "lightmotif": {
     "name": "lightmotif",
-    "github": "https://github.com/althonos/lightmotif"
+    "code": "https://github.com/althonos/lightmotif"
   },
   "vogdb": {
     "name": "VOGDB",
@@ -196,12 +210,12 @@
   "genomad": {
     "name": "geNomad",
     "citation": "https://doi.org/10.1038/s41587-023-01953-y",
-    "github": "https://github.com/apcamargo/genomad",
+    "code": "https://github.com/apcamargo/genomad",
     "data": "https://doi.org/10.5281/zenodo.6994741"
   },
   "taxonkit": {
     "name": "taxonkit",
     "citation": "https://doi.org/10.1016/j.jgg.2021.03.006",
-    "github": "https://github.com/shenwei356/taxonkit"
+    "code": "https://github.com/shenwei356/taxonkit"
   }
 }
