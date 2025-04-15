@@ -1,5 +1,18 @@
 # Changelog
 
+## 14.04.2025 [Unreleased]
+
+### Changed
+- Improved path handling in read filtering pipeline:
+  - All temporary files now use absolute paths.
+  - Removed dependency on change_directory (dropped)
+- Added zip_reports option to compress run_info directory after processing
+- Dropped fastqc and multiqc - moved to falco.
+
+### Fixed
+- filter-reads cleanup phase
+
+
 ##  07.02.2025 [Unreleased]
 
 ### Added

@@ -92,7 +92,6 @@ Non-Python
 * [intervaltree](https://github.com/chaimleib/intervaltree)
 * [genomicranges](https://github.com/CoreyMSchafer/genomicranges)
 * [lightmotif](https://github.com/dincarnato/LightMotif)
-* [multiqc](https://github.com/ewels/MultiQC)
 * [mappy](https://github.com/lh3/minimap2/tree/master/python)
 
 </details>

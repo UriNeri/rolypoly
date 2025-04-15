@@ -475,30 +475,6 @@ def generate_reports(file_name: str, threads: int, skip_existing: bool, logger):
     else:
         logger.info("falco report already exists, skipping")
 
-    # Run MultiQC
-    multiqc_output =  config.temp_dir / Path(f"{file_name}_multiqc")
-
-    if not skip_existing or not (multiqc_output / "multiqc_report.html").exists():
-        run_command_comp(
-            base_cmd="multiqc",
-            positional_args=["--clean-up", "--force", "./"],
-            params={
-                "outdir": str(multiqc_output)
-            },
-            assign_operator=" ",
-            positional_args_location="end",
-            logger=logger,
-            output_file=str(multiqc_output / "multiqc_report.html"),
-            skip_existing=skip_existing,
-            check_status=True,
-            check_output=True
-        )
-        logger.info("MultiQC report generated")
-        tools.append("multiqc")
-    else:
-        logger.info("MultiQC report already exists, skipping")
-
-    # shutil.rmtree(falco_output)
 
 
 def identify_read_pair_files_in_folder(
@@ -1091,8 +1067,8 @@ def cleanup_and_move_files(
     config.save(run_info_dir / "rp_filter_reads_config.json")
     output_tracker.to_csv(run_info_dir / "output_tracker.csv")
 
-    # Move MultiQC and fastqc/falco reports to run_info
-    for pattern in ["*multiqc", "*fastqc*", "falco*"]:
+    # Move fastqc/falco reports to run_info
+    for pattern in ["*fastqc*", "falco*"]:
         for qc_dir in temp_dir.glob(pattern):
             if qc_dir.exists():
                 # breakpoint()
@@ -1150,8 +1126,10 @@ def cleanup_and_move_files(
             config.logger.info(f"Temporary directory {temp_dir} cleaned up and removed")
         except Exception as e:
             config.logger.error(f"Error removing temporary directory: {str(e)}")
-            # Don't raise the error since we've already moved the important files
+            # Don't raise the error since the important files *should* have been moved
     if config.zip_reports:
-        shutil.make_archive(base_dir=str(run_info_dir / "run_info"),format= "gztar",base_name=f"{config.file_name}_run_info")
-        breakpoint()
+        shutil.make_archive(base_name=config.output_dir / f"{config.file_name}_run_info", format="gztar", root_dir=str(run_info_dir))
+        config.logger.info(f"Zipped run_info directory to {config.output_dir / f'{config.file_name}_run_info.tar.gz'}")
+        shutil.rmtree(run_info_dir)
+        # breakpoint()
 

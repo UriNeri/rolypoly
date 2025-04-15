@@ -75,7 +75,6 @@ seqkit = ">=2.10.0,<3"
 spades = ">=4.0.1,<5"
 trnascan-se = ">=2.0.12,<3"
 falco = ">=1.2.5,<2"
-multiqc = ">=1.28,<2"
 
 [tool.pixi.feature.py310.dependencies]
 python = "~=3.10.0"

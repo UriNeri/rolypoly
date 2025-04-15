@@ -14,7 +14,7 @@ Pre-assembly
 1. The user supplied host genome is masked for kmers shared with known RNA viruses, and then used to filter reads mapping to it, followed by standard QA read processing (adapter trimming, overlapping PE read merging, quality filtering, error correction and read deduplication).
 2. The input reads are filtered against an rRNA collection (SILVA + NCBI RefSeq rRNAs). Depending on the input (i.e. metagenomic or not, rRNA depletion efficiency, polyA selection, etc), this step can remove 5-97% of the data.
 3. Based on the rRNA stats file, the top genomes from NCBI that had the highest percentage of mapped reads are fetched, masked to remove kmers shared with known RNA viruses, and used to further filter the input reads.
-4. Run FastQC and MultiQC to generate an HTML report aggregating stats from previous steps.
+4. Run Falco to generate an HTML report.
 
 Assembly
 --------

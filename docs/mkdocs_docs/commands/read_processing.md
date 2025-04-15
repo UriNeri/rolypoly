@@ -119,7 +119,7 @@ graph TD
     O --> P[Merge Reads]
     P --> Q[Remove Duplicates - Post]
     Q --> R[Quality Trim Unmerged Reads]
-    R --> S[Run MultiQC]
+    R --> S[Run Falco]
     S --> T[Clean Up and Move Files]
     %% Optional steps
     W[*Skip-Steps / Override internal default parameters?*] .-> C & D & E & F & G & H & I & J & K & L & M & N & O & P & Q & R & S

@@ -202,9 +202,9 @@ def filter_contigs(
 
     elif config.mode == "both":
         og_output = config.output
-        config.output = config.tmp_dir / "filtered_contigs_nuc.fasta"
+        config.output = config.temp_dir / "filtered_contigs_nuc.fasta"
         filter_contigs_nuc(config)
-        config.input = config.tmp_dir / "filtered_contigs_nuc.fasta"
+        config.input = config.temp_dir / "filtered_contigs_nuc.fasta"
         config.output = og_output
         filter_contigs_aa(config)
         tools.append("diamond")
@@ -213,7 +213,7 @@ def filter_contigs(
         tools.append("bbmap")
 
     if not config.keep_tmp:
-        shutil.rmtree(config.tmp_dir, ignore_errors=True)
+        shutil.rmtree(config.temp_dir, ignore_errors=True)
     config.logger.info(
         f"Contig filtering completed. Final output saved to {config.output}"
     )
@@ -238,15 +238,15 @@ def filter_contigs_nuc(config: FilterContigsConfig):
     ensure_faidx(str(config.host))
 
     # Create folders for MMseqs2 to use
-    tmpdir = config.tmp_dir / "tmp_nuc"
-    resdb = config.tmp_dir / "filter_assembly_mmdb"
+    tmpdir = config.temp_dir / "tmp_nuc"
+    resdb = config.temp_dir / "filter_assembly_mmdb"
     tmpdir.mkdir(parents=True, exist_ok=True)
     resdb.mkdir(parents=True, exist_ok=True)
 
     # Convert input to MMseqs2 DB if it's a fasta file
     input_db = config.input
     if config.input.suffix.endswith((".faa", ".fasta", ".fas", ".fna")):
-        input_db = config.tmp_dir / "contig_db" / "cmmdb"
+        input_db = config.temp_dir / "contig_db" / "cmmdb"
         input_db.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(
             [
@@ -265,11 +265,11 @@ def filter_contigs_nuc(config: FilterContigsConfig):
     # Process host file
     host_db = config.host
     if config.host.suffix.endswith((".faa", ".fasta", ".fas", ".fna", ".fa")):
-        host_db = config.tmp_dir / "host_db" / "dnammdb"
+        host_db = config.temp_dir / "host_db" / "dnammdb"
         host_db.parent.mkdir(parents=True, exist_ok=True)
 
         if not config.dont_mask:
-            host_fasta = config.tmp_dir / "masked_host.fasta"
+            host_fasta = config.temp_dir / "masked_host.fasta"
             mask_args = {
                 "threads": config.threads,
                 "memory": ensure_memory(config.memory)["giga"],
@@ -304,7 +304,7 @@ def filter_contigs_nuc(config: FilterContigsConfig):
         str(input_db),
         str(host_db),
         f"{resdb}/res",
-        str(config.tmp_dir),
+        str(config.temp_dir),
         "--threads",
         str(config.threads),
         "-a",
@@ -320,7 +320,7 @@ def filter_contigs_nuc(config: FilterContigsConfig):
     subprocess.run(mmseqs_search_cmd, check=True)
 
     # Convert results to desired format
-    result_file = config.tmp_dir / f"{config.input.stem}_vs_host.tab"
+    result_file = config.temp_dir / f"{config.input.stem}_vs_host.tab"
     config.logger.info(f"Converting results to desired format: {result_file}")
     subprocess.run(
         [
@@ -402,9 +402,9 @@ def filter_contigs_aa(config: FilterContigsConfig):
     ensure_faidx(str(config.input))
 
     # Create folders for Diamond to use
-    tmpdir = config.tmp_dir / "tmp_aa"
+    tmpdir = config.temp_dir / "tmp_aa"
     tmpdir.mkdir(parents=True, exist_ok=True)
-    res_tab = config.tmp_dir / "filter_assembly_aa_diamondout.tsv"
+    res_tab = config.temp_dir / "filter_assembly_aa_diamondout.tsv"
 
     # Process host file
     host_fasta = config.host
@@ -431,7 +431,7 @@ def filter_contigs_aa(config: FilterContigsConfig):
             return
 
         if not config.dont_mask:
-            masked_fasta = config.tmp_dir / "masked_host.fasta"
+            masked_fasta = config.temp_dir / "masked_host.fasta"
             rna_virus_prots = (
                 Path(os.environ.get("ROLYPOLY_DATA")) / "prots_for_masking.faa"
             )
@@ -443,7 +443,7 @@ def filter_contigs_aa(config: FilterContigsConfig):
                 "--db",
                 str(rna_virus_prots),
                 "--tmpdir",
-                str(config.tmp_dir),
+                str(config.temp_dir),
                 "--threads",
                 str(config.threads),
                 "--un",
@@ -455,7 +455,7 @@ def filter_contigs_aa(config: FilterContigsConfig):
                     "--header",
                     "simple",
                     "--out",
-                    f"{config.tmp_dir}/diamond_out_for_masking.tab",
+                    f"{config.temp_dir}/diamond_out_for_masking.tab",
                     "--outfmt",
                     "6",
                     "qseqid sseqid pident length mismatch gapopen qlen qstart qend sstart send slen evalue bitscore qcovhsp",
@@ -483,7 +483,7 @@ def filter_contigs_aa(config: FilterContigsConfig):
         "--out",
         str(res_tab),
         "--tmpdir",
-        str(config.tmp_dir),
+        str(config.temp_dir),
         "--threads",
         str(config.threads),
     ]
@@ -542,5 +542,5 @@ def filter_contigs_aa(config: FilterContigsConfig):
 
     # Clean up
     if not config.keep_tmp:
-        shutil.rmtree(config.tmp_dir, ignore_errors=True)
+        shutil.rmtree(config.temp_dir, ignore_errors=True)
         res_tab.unlink(missing_ok=True)
