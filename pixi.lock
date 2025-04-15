@@ -2301,8 +2301,8 @@ packages:
   requires_python: '>=3.7'
 - pypi: .
   name: rolypoly-bio
-  version: 0.0.1
-  sha256: 9981bd93f8f336e9bf7c7050ddacb42423706077cbe1318a78c20e76f6364a2a
+  version: 0.0.2
+  sha256: a79c66d677ada70a41a6b61129642e322d246259e52e3a09f333e1f39d8b6b6e
   requires_dist:
   - bbmapy>=0.0.46,<0.0.48
   - dna-features-viewer>=3.1.4,<4

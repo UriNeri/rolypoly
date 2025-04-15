@@ -100,7 +100,7 @@ test-import = "python -c 'import rolypoly; print(rolypoly.__version__)'"
 format = "ruff check --select I --fix src && ruff format src"
 
 [tool.pixi.feature.build.tasks]
-build-pypi = "hatch build"
+build-pypi = "hatch version minor && hatch build"
 
 [tool.pixi.feature.publish.tasks]
 publish-pypi = "twine upload dist/*"
