@@ -490,7 +490,6 @@ def mask_sequence_mp(seq: str, start: int, end: int, is_reverse: bool) -> str:
     """
     import mappy as mp
 
-    mp.revcomp(seq)
     is_reverse = is_reverse == -1
     if is_reverse:
         seq = str(mp.revcomp(seq))
