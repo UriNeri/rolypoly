@@ -1,4 +1,5 @@
 import os
+
 from rich.console import Console
 from rich_click import command, option
 
@@ -67,6 +68,7 @@ def refinement(input, reads, output, threads, memory, variant_caller, log_file):
 
 def align_reads(assembly, reads, output_dir, threads, logger):
     import subprocess
+
     logger.info("Aligning reads to assembly")
     index_cmd = f"bwa index {assembly}"
     subprocess.run(index_cmd, shell=True, check=True)
@@ -85,6 +87,7 @@ def call_variants(
     assembly, bam_file, output_dir, threads, memory, variant_caller, logger
 ):
     import subprocess
+
     logger.info(f"Calling variants using {variant_caller}")
     vcf_file = os.path.join(output_dir, "variants.vcf")
 
@@ -101,6 +104,7 @@ def call_variants(
 
 def apply_variants(assembly, vcf_file, output_dir, logger):
     import subprocess
+
     logger.info("Applying variants to improve assembly")
     improved_assembly = os.path.join(output_dir, "improved_assembly.fasta")
     cmd = f"bcftools consensus -f {assembly} {vcf_file} > {improved_assembly}"

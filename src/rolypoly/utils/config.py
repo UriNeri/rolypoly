@@ -2,6 +2,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional
+
 from rolypoly.utils.loggit import setup_logging
 
 
@@ -25,6 +26,7 @@ class BaseConfig:
         log_level (str, optional): Logging level ("debug", "info", "warning", "error", "critical").
         keep_tmp (bool, optional): Whether to keep temporary files.
     """
+
     def __init__(
         self,
         output: Optional[str] = "rp_out",
@@ -39,8 +41,8 @@ class BaseConfig:
         log_level: str = "info",
         keep_tmp: bool = False,
     ):
-        from datetime import datetime
         import shutil
+        from datetime import datetime
 
         # Basic parameter initialization
         self.input = input
@@ -74,18 +76,28 @@ class BaseConfig:
             )
 
         # define temporary directory
-        self.temp_dir = (Path(temp_dir).absolute() if temp_dir else 
-                        (self.output_dir / f"rolypoly_tmp_{datetime.now().strftime('%Y%m%d_%H%M%S')}").absolute())
+        self.temp_dir = (
+            Path(temp_dir).absolute()
+            if temp_dir
+            else (
+                self.output_dir
+                / f"rolypoly_tmp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            ).absolute()
+        )
 
         # clean existing temporary directory if overwrite is set to True
         if self.temp_dir.exists():
             if overwrite:
-                self.logger.debug(f"Cleaning existing temporary directory {self.temp_dir}")
+                self.logger.debug(
+                    f"Cleaning existing temporary directory {self.temp_dir}"
+                )
                 shutil.rmtree(self.temp_dir)
             else:
-                self.logger.warning(f"Temporary directory {self.temp_dir} already exists. Set overwrite to True to clean it.")
+                self.logger.warning(
+                    f"Temporary directory {self.temp_dir} already exists. Set overwrite to True to clean it."
+                )
 
-        # create temporary directory 
+        # create temporary directory
         self.logger.debug(f"Creating temporary directory: {self.temp_dir}")
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -107,6 +119,7 @@ class BaseConfig:
     def read(cls, config_file: Path):
         """Read configuration from JSON file"""
         import json
+
         with open(config_file, "r") as f:
             config_dict = json.load(f)
         return cls(**config_dict)
@@ -114,6 +127,7 @@ class BaseConfig:
     def save(self, output_path: Path):
         """Save configuration to JSON file"""
         import json
+
         with open(output_path, "w") as f:
             tmp_dict = self.to_dict()
             for key, value in tmp_dict.items():

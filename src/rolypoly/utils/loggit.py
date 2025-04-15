@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
-from typing import Union, Dict
+from typing import Dict, Union
+
 from rich.console import Console
 from rich.logging import RichHandler
 
@@ -34,6 +35,7 @@ def setup_logging(
 ) -> logging.Logger:
     """Setup logging configuration for RolyPoly with both file and console logging using rich formatting."""
     import subprocess
+
     # If log_file is already a logger, return it
     if isinstance(log_file, logging.Logger):
         return log_file
@@ -91,6 +93,7 @@ def log_start_info(logger: logging.Logger, config_dict: Dict):
     """Log initial information about the RolyPoly run including version, command line args, and config parameters."""
     import subprocess
     from sys import argv as sys_argv
+
     # Log command and launch location
     launch_command = " ".join(sys_argv)
     logger.debug(f"Original command called: {launch_command}")

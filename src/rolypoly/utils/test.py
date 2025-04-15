@@ -1,6 +1,7 @@
 import glob
 import os
 from pathlib import Path
+
 import rich_click as click
 
 # Set up the environment
@@ -104,6 +105,7 @@ def eval_range(range_str, suffix=None):
 
 def run_command(command):
     import subprocess
+
     print(f"Running command: {command}")
     result = subprocess.run(command, shell=True, capture_output=False, text=True)
     print(f"Command output: {result.stdout}")
@@ -290,6 +292,7 @@ def get_input_files(mode, command=None, small=False):
 def test_rolypoly(command, mode, small, output_dir, threads, memory, other_args):
     import datetime
     import json
+
     input_files, host_files = get_input_files(mode, command, small)
     print(
         f"Testing rolypoly with command: {command}, mode: {mode}, small: {small}, output_dir: {output_dir}, threads: {threads}, memory: {memory}, other_args: {other_args}"

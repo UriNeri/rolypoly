@@ -1,8 +1,10 @@
 import os
+
 import rich_click as click
 from rich.console import Console
 
 console = Console()
+
 
 @click.command()
 @click.option(

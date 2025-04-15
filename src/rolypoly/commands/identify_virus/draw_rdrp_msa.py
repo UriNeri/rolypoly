@@ -1,5 +1,6 @@
 def parse_args():
     import argparse
+
     parser = argparse.ArgumentParser(
         description="MSA Visualization CLI",
         usage="%(prog)s [-h] [-i INPUT] [-s START] [-e END] [-w WRAP_LENGTH] [-c] [-m MARKERS] [-x MARKER_X] [-t TEXT_ANNOTATIONS] [-o OUTPUT] [-d DPI]",
@@ -52,6 +53,7 @@ def draw_msa(
     dpi=360,
 ):
     from pymsaviz import MsaViz
+
     mv = MsaViz(
         input_file,
         start=start,

@@ -1,5 +1,7 @@
 from pathlib import Path
+
 import rich_click as click
+
 from rolypoly.utils.citation_reminder import remind_citations
 
 
@@ -232,9 +234,10 @@ def visualize(
     """
     Generate visualization of viral genome features including ORFs, domains, and other annotations
     """
-    from rolypoly.utils.loggit import log_start_info, setup_logging
     import matplotlib.pyplot as plt
     from needletail import parse_fastx_file
+
+    from rolypoly.utils.loggit import log_start_info, setup_logging
 
     logger = setup_logging(log_file, log_level)
     log_start_info(logger, locals())

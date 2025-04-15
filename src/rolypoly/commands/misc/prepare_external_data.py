@@ -1,7 +1,9 @@
 import os
 from pathlib import Path as pt
+
 from rich.console import Console
 from rich_click import command, option
+
 from rolypoly.utils.various import (
     extract,
     fetch_and_extract,
@@ -63,7 +65,9 @@ def prepare_external_data(try_hard, ROLYPOLY_DATA, threads, log_file):
     import json
     import subprocess
     from importlib import resources
+
     import requests
+
     from rolypoly.utils.loggit import setup_logging
 
     if ROLYPOLY_DATA == None:
@@ -379,6 +383,7 @@ def download_and_extract_rfam(ROLYPOLY_DATA, logger):
         and processes them for use with Infernal.
     """
     import subprocess
+
     import requests
 
     rfam_url = "https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/Rfam.cm.gz"
@@ -414,10 +419,12 @@ def tar_everything_and_upload_to_NERSC(ROLYPOLY_DATA, version=""):
     """
     import datetime
     import subprocess
+
     from rolypoly.utils.citation_reminder import remind_citations
 
     if version == "":
         from rolypoly.utils.loggit import get_version_info
+
         version = get_version_info()
     with open(ROLYPOLY_DATA / "README.md", "w") as f_out:
         f_out.write(f"RolyPoly version: {version}")
@@ -470,7 +477,9 @@ def prepare_genomad_rna_viral_hmms(ROLYPOLY_DATA, threads, logger=None):
     import shutil
     import subprocess
     import tarfile
+
     import polars as pl
+
     from rolypoly.utils.fax import hmmdb_from_directory
 
     logger.info("Starting geNomad RNA viral HMM preparation")

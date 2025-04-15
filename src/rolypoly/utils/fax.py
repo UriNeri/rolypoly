@@ -2,11 +2,11 @@ import os
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple, Union
+
 import polars as pl
 import rich_click as click
-from rich.console import Console
 from needletail import parse_fastx_file
-
+from rich.console import Console
 
 # import polars_hash as plh #TODO: Use this instead of hashlib (specifiically for non-cryptographic hash)
 # import polars_pairing as plp
@@ -21,7 +21,6 @@ from needletail import parse_fastx_file
 
 global datadir
 datadir = Path(os.environ["ROLYPOLY_DATA"])
-
 
 
 # Register custom expressions for sequence analysis
@@ -46,6 +45,7 @@ class SequenceExpr:
 
     def codon_usage(self) -> pl.Expr:
         """Calculate codon usage frequencies"""
+
         def _calc_codons(seq: str) -> dict:
             codons = defaultdict(int)
             for i in range(0, len(seq) - 2, 3):
@@ -68,6 +68,7 @@ class SequenceExpr:
 
     def calculate_kmer_frequencies(self, k: int = 3) -> pl.Expr:
         """Calculate k-mer frequencies in the sequence"""
+
         def _calc_kmers(seq: str, k: int) -> dict:
             if not seq or len(seq) < k:
                 return {}
@@ -82,6 +83,7 @@ class SequenceExpr:
         return self._expr.map_elements(
             lambda x: _calc_kmers(x, k), return_dtype=pl.Struct
         )
+
 
 @pl.api.register_lazyframe_namespace("from_fastx")
 def init(input_file: Union[str, Path], batch_size: int = 512) -> pl.LazyFrame:
@@ -100,13 +102,16 @@ def init(input_file: Union[str, Path], batch_size: int = 512) -> pl.LazyFrame:
             - sequence: Sequences (str) # TODO: maybe somehow move to largeutf8?
             - quality: Quality scores (only for FASTQ)
     """
+
     def file_has_quality(file: Union[str, Path]) -> bool:
         first_record = next(parse_fastx_file(file))
         return first_record.qual is not None
 
     has_quality = file_has_quality(input_file)
     if has_quality:
-        schema = pl.Schema({"header": pl.String, "sequence": pl.String, "quality": pl.String})
+        schema = pl.Schema(
+            {"header": pl.String, "sequence": pl.String, "quality": pl.String}
+        )
     else:
         schema = pl.Schema({"header": pl.String, "sequence": pl.String})
 
@@ -130,10 +135,10 @@ def init(input_file: Union[str, Path], batch_size: int = 512) -> pl.LazyFrame:
     return pl.concat(read_chunks(), how="vertical")
 
 
-
 @pl.api.register_dataframe_namespace("from_fastx")
 def init(file: Union[str, Path], batch_size: int = 512) -> pl.DataFrame:
     return pl.LazyFrame.from_fastx(file, batch_size).collect()
+
 
 @pl.api.register_expr_namespace("rna")
 class RNAStructureExpr:
@@ -143,6 +148,7 @@ class RNAStructureExpr:
     def predict_structure(self) -> pl.Expr:
         """Predict RNA structure and minimum free energy"""
         import RNA
+
         def _predict(seq: str) -> dict:
             if len(seq) > 10000:
                 return {"structure": None, "mfe": None}
@@ -160,11 +166,13 @@ class RNAStructureExpr:
 
     def predict_structure_with_tool(self, tool: str = "ViennaRNA") -> pl.Expr:
         """Predict RNA structure using specified tool"""
+
         def _predict_vienna(seq: str) -> dict:
             if len(seq) > 10000:
                 return {"structure": None, "mfe": None}
             try:
                 import RNA
+
                 ss_string, mfe = RNA.fold_compound(seq).mfe()
                 return {"structure": ss_string, "mfe": mfe}
             except Exception:
@@ -173,6 +181,7 @@ class RNAStructureExpr:
         def _predict_linearfold(seq: str) -> dict:
             import subprocess
             import tempfile
+
             if len(seq) > 10000:
                 return {"structure": None, "mfe": None}
             try:
@@ -230,13 +239,12 @@ class RNAStructureExpr:
             )
 
 
-
-
 def write_fasta_file(
     records=None, seqs=None, headers=None, output_file=None, format: str = "fasta"
 ) -> None:
     """Write sequences to a FASTA file or stdout if no output file is provided"""
     import sys
+
     if format == "fasta":
         seq_delim = "\n"
         header_delim = "\n>"
@@ -263,7 +271,6 @@ def write_fasta_file(
 
 def read_fasta_needletail(fasta_file: str) -> tuple[list[str], list[str]]:
     """Read sequences from a FASTA/FASTQ file using needletail"""
-    
 
     seqs = []
     seq_ids = []
@@ -275,7 +282,7 @@ def read_fasta_needletail(fasta_file: str) -> tuple[list[str], list[str]]:
 
 def add_fasta_to_gff(config, gff_file):
     """Add FASTA section to GFF file"""
-    
+
     with open(gff_file, "a") as f:
         f.write("##FASTA\n")
         write_fasta_file(
@@ -303,7 +310,6 @@ def filter_fasta_by_headers(
         output_file (str): Path to write filtered sequences
         invert (bool, optional): If True, keep sequences that don't match.
     """
-    
 
     headers_list = []
     if not isinstance(headers, list):
@@ -333,7 +339,7 @@ def read_fasta_polars(fasta_file: str, idcol: str = "seq_id", seqcol: str = "seq
     Returns:
         polars.DataFrame: DataFrame with two columns for IDs and sequences
     """
-    
+
     seq_ids, seqs = read_fasta_needletail(fasta_file)
     return pl.DataFrame({idcol: seq_ids, seqcol: seqs})
 
@@ -383,8 +389,8 @@ def pyro_predict_orfs(
     output_file: str,
     threads: int,
     gv_or_else: str = "gv",
-    genetic_code: int = 11, # NOT USED YET # TODO: add SUPPORT for this.
-    model: str = "1" # NOT USED YET/at all.
+    genetic_code: int = 11,  # NOT USED YET # TODO: add SUPPORT for this.
+    model: str = "1",  # NOT USED YET/at all.
 ) -> None:
     """Predict and translate Open Reading Frames using Pyrodigal.
 
@@ -404,8 +410,8 @@ def pyro_predict_orfs(
 
     """
     import multiprocessing.pool
+
     import pyrodigal_gv as pyro_gv
-    
     from pyrodigal_gv import pyrodigal as pyro
 
     sequences = []
@@ -513,6 +519,7 @@ def guess_fastq_properties(file_path: str, mb_to_read: int = 20) -> dict:
             - average_read_length (float): Average length of reads
     """
     import gzip
+
     bytes_to_read = mb_to_read * 1024 * 1024
     is_gz = is_gzipped(file_path)
     file_size = os.path.getsize(file_path)
@@ -654,6 +661,7 @@ def download_genome(taxid: str) -> None:
         Downloads RNA and genome data, excluding atypical sequences.
     """
     import subprocess as sp
+
     # import shutil
     # print(shutil.which("datasets"))
     sp.run(
@@ -736,6 +744,7 @@ def fetch_genomes(
     import shutil
     import subprocess as sp
     from concurrent.futures import ProcessPoolExecutor
+
     from rolypoly.utils.various import extract_zip
 
     with open(input_file, "r") as f:
@@ -793,7 +802,9 @@ def fetch_genomes(
 
     with ProcessPoolExecutor(max_workers=threads) as executor:
         futures = [
-            executor.submit(process_with_timeout, download_genome, taxid, timeout) # TODO: replace with something else.
+            executor.submit(
+                process_with_timeout, download_genome, taxid, timeout
+            )  # TODO: replace with something else.
             for taxid in taxids
         ]
         for future in concurrent.futures.as_completed(futures):
@@ -837,13 +848,16 @@ def fetch_genomes(
         ref_seqs.add(str(chosen_file))
 
     if not ref_seqs:
-        print("No FNA files found in the downloaded genomes. Skipping sequence processing.")
+        print(
+            "No FNA files found in the downloaded genomes. Skipping sequence processing."
+        )
         return
 
     with open("tmp.lst", "w") as outf:
         for f in ref_seqs:
             outf.write(f + "\n")
     from shutil import which
+
     print(which("seqkit"))
     sp.call(
         ["seqkit", "rmdup", "-s", "--infile-list", "tmp.lst"],
@@ -936,8 +950,6 @@ def mask_nuc_range(input_fasta: str, input_table: str, output_fasta: str) -> Non
 
 
 def read_fasta_needletail(fasta_file):
-    
-
     seqs = []
     seq_ids = []
     for record in parse_fastx_file(fasta_file):
@@ -1010,7 +1022,7 @@ def read_fasta_df(file_path: str) -> pl.DataFrame:
             - group: Internal grouping number (used for sequence concatenation)
 
     """
-    
+
     # First read the raw sequences using scan_fastx
     raw_df = pl.LazyFrame.fastx.scan(file_path).collect()
 
@@ -1059,7 +1071,7 @@ def rename_sequences(
             - DataFrame with renamed sequences
             - Dictionary mapping old IDs to new IDs
     """
-    
+
     id_map = {}
     new_headers = []
 
@@ -1087,7 +1099,7 @@ def process_sequences(df: pl.DataFrame, structure: bool = False) -> pl.DataFrame
     Returns:
         pl.DataFrame: DataFrame with added statistics columns
     """
-    
+
     # Calculate basic stats
     df = df.with_columns(
         [
@@ -1126,6 +1138,8 @@ def process_sequences(df: pl.DataFrame, structure: bool = False) -> pl.DataFrame
 
 
 console = Console(width=150)
+
+
 @click.command()
 @click.option("-t", "--threads", default=1, help="Number of threads to use")
 @click.option("-M", "--memory", default="6gb", help="Memory in GB")
@@ -1165,8 +1179,10 @@ def mask_dna(
     """
     import shutil
     import subprocess as sp
+
     import mappy as mp
     from bbmapy import bbmap, bbmask, kcompress
+
     from rolypoly.utils.various import ensure_memory
 
     input_file = Path(input).resolve()
@@ -1221,8 +1237,8 @@ def mask_dna(
             "--threads",
             str(threads),
             reference,
-            f"{tmpdir}/contigs_index"
-            ]
+            f"{tmpdir}/contigs_index",
+        ]
         sp.run(index_command, check=True)
         align_command = [
             "bowtie",
@@ -1311,7 +1327,9 @@ def mask_dna(
 
 def revcomp(seq: str) -> str:
     import mappy as mp
+
     return mp.revcomp(seq)
+
 
 def get_hmmali_length(domain) -> int:
     return domain.alignment.hmm_to - domain.alignment.hmm_from + 1
@@ -1590,9 +1608,9 @@ def hmmdb_from_directory(
 
     """
     import tempfile
-    import pyhmmer
     from subprocess import run as runc
-    
+
+    import pyhmmer
     from rich.progress import track
 
     msa_dir = Path(msa_dir)
@@ -1676,7 +1694,6 @@ def populate_pldf_withseqs_needletail(
     strand_col="strand",
 ):
     import subprocess
-    
 
     merge_cols = [idcol]
     if reverse_by_strand_col:
@@ -1807,6 +1824,7 @@ def identify_fastq_files(
     def is_paired_filename(filename: str) -> tuple[bool, str]:
         """Check if filename indicates paired-end data and extract pair info."""
         import re
+
         patterns = [
             (r".*_R?1[._].*", r".*_R?2[._].*"),  # Matches _R1/_R2, _1/_2
             (r".*_1\.f.*q.*", r".*_2\.f.*q.*"),  # Matches _1.fastq/_2.fastq

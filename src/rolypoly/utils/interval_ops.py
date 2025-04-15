@@ -1,7 +1,8 @@
 import os
 import warnings
-import rich_click as click
+
 import polars as pl
+import rich_click as click
 
 warnings.filterwarnings(
     "ignore",
@@ -9,8 +10,8 @@ warnings.filterwarnings(
     module="numpy",
 )  # see https://moyix.blogspot.com/2022/09/someones-been-messing-with-my-subnormals.html
 from typing import List, Optional, Tuple, Union
-import intervaltree as itree
 
+import intervaltree as itree
 
 # Currently relies on pyranges, genomicranges, iranges, polars, intervaltree. and maybe more.
 # TODO: make this more robust and less dependent on external libraries.
@@ -155,11 +156,11 @@ def consolidate_hits(
 ):
     """Resolves overlaps in a tabular hit table file or polars dataframe.
     Notes: some flags are mutually exclusive, e.g. you cannot set both split and merge, or rather - if you do that, you'll get unexpected results."""
-    from iranges import IRanges
     import pyranges as pr
     from genomicranges import (
         GenomicRanges,  # broken until iranges pulls https://github.com/BiocPy/IRanges/pull/44 and the stack is updated.
     )
+    from iranges import IRanges
 
     # Read the input hit table
     hit_table = pl.read_csv(input, separator="\t") if isinstance(input, str) else input
@@ -410,7 +411,7 @@ def clip_overlapping_ranges_pl(
     :param min_overlap: Minimum overlap to consider for clipping
     :return: A DataFrame with clipped ranges. The start and end of the ranges are updated to remove the overlap, so that the first range (i.e. index of it is lower) is the one that is the one not getting clipped, and other are trimmed to not overlap with it.
     """
-        df = get_all_overlaps_pl(input_df, min_overlap=min_overlap, id_col=id_col)  # type: ignore
+    df = get_all_overlaps_pl(input_df, min_overlap=min_overlap, id_col=id_col)  # type: ignore
     df = df.with_columns(
         pl.col("overlapping_intervals").list.len().alias("n_overlapping")
     )
@@ -446,7 +447,7 @@ def clip_overlapping_ranges_pl(
 
 def set_column_order(df: pl.DataFrame, ref_df: pl.DataFrame) -> pl.DataFrame:
     """Set the column order of df to match ref_df."""
-    return df.select([col for col in ref_df.columns if col in df.columns])
+    df.select([col for col in ref_df.columns if col in df.columns])
 
 
 def get_all_envelopes_pl(

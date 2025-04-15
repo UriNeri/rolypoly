@@ -27,6 +27,7 @@ def main(input: str, output: str, mapping: str, prefix: str, hash: bool, stats: 
     Optionally includes sequence statistics (length, GC content).
     """
     import polars as pl
+
     from rolypoly.utils.fax import process_sequences, read_fasta_df, rename_sequences
 
     # Read input FASTA
@@ -71,8 +72,6 @@ def main(input: str, output: str, mapping: str, prefix: str, hash: bool, stats: 
 
 if __name__ == "__main__":
     main()
-
-
 
 
 # """Rename sequences in a FASTA file with consistent IDs.

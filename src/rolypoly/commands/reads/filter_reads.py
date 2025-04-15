@@ -3,12 +3,13 @@ import os
 import shutil
 from pathlib import Path
 from typing import Dict, Tuple, Union
+
 import rich_click as click
 from rich.console import Console
+
 from rolypoly.utils.config import BaseConfig
 from rolypoly.utils.output_tracker import OutputTracker
 from rolypoly.utils.various import ensure_memory, run_command_comp
-
 
 global tools
 tools = ["bbmap", "seqkit", "datasets"]
@@ -36,7 +37,7 @@ class ReadFilterConfig(BaseConfig):
             memory=kwargs.get("memory"),
             config_file=kwargs.get("config_file"),
             overwrite=kwargs.get("overwrite"),
-            log_level=kwargs.get("log_level")
+            log_level=kwargs.get("log_level"),
         )  # initialize the BaseConfig class
         # initialize the rest of the parameters (i.e. the ones that are not in the BaseConfig class)
         self.skip_existing = kwargs.get("skip_existing") or False
@@ -68,7 +69,7 @@ class ReadFilterConfig(BaseConfig):
         self.file_name = (
             kwargs.get("file_name") or "rp_filtered_reads"
         )  # this is the base name of the output files, if not provided, it will be "rp_filtered_reads"
-        
+
         self.step_params = {  # these are the default parameters for each step, if not overridden by the user
             # "filter_by_tile": {"nullifybrokenquality": "t"},
             "filter_known_dna": {"k": 31, "mincovfraction": 0.7, "hdist": 0},
@@ -96,7 +97,9 @@ class ReadFilterConfig(BaseConfig):
             "merge_reads": {"k": 93, "extend2": 80, "rem": True, "mix": "f"},
             "quality_trim_unmerged": {"qtrim": "rl", "trimq": 5, "minlen": 45},
         }
-        self.max_genomes = kwargs.get("max_)") or 25 # maximum number of potential host genomes to fetch
+        self.max_genomes = (
+            kwargs.get("max_)") or 25
+        )  # maximum number of potential host genomes to fetch
         if kwargs.get("override_parameters") is not None:
             self.logger.info(
                 f"override_parameters: {kwargs.get('override_parameters')}"
@@ -113,6 +116,7 @@ class ReadFilterConfig(BaseConfig):
 def timeout_handler(signum, frame):
     raise TimeoutError("Function call timed out")
 
+
 def check_existing_file(output_file: Path, min_size: int = 20) -> bool:
     """Check if a file exists and is larger than min_size bytes"""
     return output_file.exists() and output_file.stat().st_size > min_size
@@ -123,7 +127,9 @@ def process_reads(
 ) -> OutputTracker:
     """Main function to orchestrate the preprocessing steps."""
     import signal
+
     from rich.spinner import SPINNERS, Spinner
+
     config.logger.info(f"Checking dependencies    ")
     base_dir = Path(config.temp_dir)
     config.save(output_path=base_dir / "rp_filter_reads_config.json")  # type: ignore
@@ -159,9 +165,7 @@ def process_reads(
 
     SPINNERS["myspinner"] = {"interval": 2500, "frames": ["🦠 ", "🧬 ", "🔬 "]}
 
-    with console.status(
-        f"[bold green] Working on     ", spinner="myspinner"
-    ) as status:
+    with console.status(f"[bold green] Working on     ", spinner="myspinner") as status:
         for step in steps:
             step_name = (
                 step.__name__
@@ -214,9 +218,7 @@ def process_reads(
         config.skip_existing
         and check_existing_file(Path(f"dedup_merged_{config.file_name}.fq.gz"))
     ):
-        dedup_merged = dedupe(
-            Path(merged_file), config, output_tracker, "final_merged"
-        )
+        dedup_merged = dedupe(Path(merged_file), config, output_tracker, "final_merged")
 
     unmerged_file = output_tracker.get_latest_non_merged_file()
     if not (
@@ -236,9 +238,7 @@ def process_reads(
         try:
             os.unlink(fastq_file)
         except Exception as e:
-            config.logger.error(
-                f"Error deleting input file {config.input}: {str(e)}"
-            )
+            config.logger.error(f"Error deleting input file {config.input}: {str(e)}")
     config.logger.info("Read processing completed successfully.")
 
 
@@ -389,8 +389,8 @@ def filter_reads(
     Process RNA-seq (transcriptome, RNA virome, metatranscriptomes) Illumina raw reads.
     Removes host reads, synthetic artifacts, and unknown DNA, corrects sequencing errors, trims adapters and low quality reads.
     """
-    from rolypoly.utils.loggit import log_start_info
     from rolypoly.utils.citation_reminder import remind_citations
+    from rolypoly.utils.loggit import log_start_info
 
     if (input is None) and (config_file is None):
         click.echo("Either input or config-file must be provided.")
@@ -449,7 +449,9 @@ def generate_reports(file_name: str, threads: int, skip_existing: bool, logger):
     # Generate falco report
     falco_output = config.temp_dir / "falco_post_trim_reads"
     falco_output.mkdir(exist_ok=True)
-    all_remaining_fastqs = glob.glob(str(config.temp_dir / f"*final*.fq.gz"), recursive=True)
+    all_remaining_fastqs = glob.glob(
+        str(config.temp_dir / f"*final*.fq.gz"), recursive=True
+    )
 
     if (
         not skip_existing
@@ -458,23 +460,19 @@ def generate_reports(file_name: str, threads: int, skip_existing: bool, logger):
         run_command_comp(
             base_cmd="falco",
             positional_args=[*all_remaining_fastqs],
-            params={
-                "t": str(threads),
-                "outdir": str(falco_output)
-                    },
+            params={"t": str(threads), "outdir": str(falco_output)},
             assign_operator=" ",
             positional_args_location="end",
             logger=logger,
             # output_file=str(falco_output / f"{file_name}_falco.html"),
             skip_existing=skip_existing,
             check_status=True,
-            check_output=False
+            check_output=False,
         )
         logger.info("falco report generated")
         tools.append("falco")
     else:
         logger.info("falco report already exists, skipping")
-
 
 
 def identify_read_pair_files_in_folder(
@@ -643,6 +641,7 @@ def filter_known_dna(
 ) -> Path:
     """Filter known DNA sequences."""
     from bbmapy import bbduk
+
     from rolypoly.utils.fax import mask_dna
 
     ref_file = str(config.known_dna)
@@ -670,7 +669,7 @@ def filter_known_dna(
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
-            stats= config.temp_dir / f"stats_filter_known_dna_{config.file_name}.txt",
+            stats=config.temp_dir / f"stats_filter_known_dna_{config.file_name}.txt",
         )
         output_tracker.add_file(
             str(output_file), "filter_known_dna", "bbduk.sh", is_merged=False
@@ -701,7 +700,7 @@ def decontaminate_rrna(
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
-            stats= config.temp_dir / f"stats_decontaminate_rrna_{config.file_name}.txt",
+            stats=config.temp_dir / f"stats_decontaminate_rrna_{config.file_name}.txt",
         )
         output_tracker.add_file(
             str(output_file), "decontaminate_rrna", "bbduk.sh", is_merged=False
@@ -712,9 +711,7 @@ def decontaminate_rrna(
         return input_file
 
 
-def fetch_and_mask_genomes(
-    config: ReadFilterConfig
-) -> Union[str, Path]:
+def fetch_and_mask_genomes(config: ReadFilterConfig) -> Union[str, Path]:
     """Fetch and mask genomes."""
     from rolypoly.utils.fax import fetch_genomes, mask_dna
 
@@ -739,7 +736,12 @@ def fetch_and_mask_genomes(
         shutil.copy2(str(stats_file), str(abs_tmp_stats))
 
         # Run fetch_genomes directly in the genomes directory with absolute paths
-        fetch_genomes(str(abs_tmp_stats), str(abs_gbs_file), threads=config.threads, max2take=config.max_genomes)
+        fetch_genomes(
+            str(abs_tmp_stats),
+            str(abs_gbs_file),
+            threads=config.threads,
+            max2take=config.max_genomes,
+        )
         if not abs_gbs_file.exists() or abs_gbs_file.stat().st_size < 20:
             config.logger.warning(
                 "The file with the fetched genomes of identified potential hosts appears empty. Step will be skipped."
@@ -787,7 +789,8 @@ def filter_identified_dna(
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
-            stats= config.temp_dir / f"stats_filter_identified_dna_{config.file_name}.txt",
+            stats=config.temp_dir
+            / f"stats_filter_identified_dna_{config.file_name}.txt",
         )
         output_tracker.add_file(
             str(output_file), "filter_identified_dna", "bbduk.sh", is_merged=False
@@ -814,7 +817,9 @@ def dedupe(
         output_file = config.temp_dir / f"dedupe_final_merged_{config.file_name}.fq.gz"
         is_merged = True
     elif phase == "final_interleaved":
-        output_file = config.temp_dir / f"dedupe_final_interleaved_{config.file_name}.fq.gz"
+        output_file = (
+            config.temp_dir / f"dedupe_final_interleaved_{config.file_name}.fq.gz"
+        )
         is_merged = False
     try:
         params = config.step_params["dedupe"]
@@ -857,7 +862,7 @@ def trim_adapters(
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
-            stats= config.temp_dir / f"stats_trim_adapters_{config.file_name}.txt",
+            stats=config.temp_dir / f"stats_trim_adapters_{config.file_name}.txt",
         )
         output_tracker.add_file(
             str(output_file), "trim_adapters", "bbduk.sh", is_merged=False
@@ -875,7 +880,9 @@ def remove_synthetic_artifacts(
     """Remove synthetic artifacts (phix etc) from reads."""
     from bbmapy import bbduk
 
-    output_file = config.temp_dir / f"remove_synthetic_artifacts_{config.file_name}.fq.gz"
+    output_file = (
+        config.temp_dir / f"remove_synthetic_artifacts_{config.file_name}.fq.gz"
+    )
     try:
         params = config.step_params["remove_synthetic_artifacts"]
         bbduk(
@@ -886,7 +893,8 @@ def remove_synthetic_artifacts(
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
-            stats= config.temp_dir / f"stats_remove_synthetic_artifacts_{config.file_name}.txt",
+            stats=config.temp_dir
+            / f"stats_remove_synthetic_artifacts_{config.file_name}.txt",
         )
         output_tracker.add_file(
             str(output_file), "remove_synthetic_artifacts", "bbduk.sh", is_merged=False
@@ -1057,11 +1065,10 @@ def cleanup_and_move_files(
     # Ensure all paths are absolute
     temp_dir = Path(config.temp_dir).resolve()
     output_dir = Path(config.output_dir).resolve()
-    
+
     # Create run_info directory in the final output location
     run_info_dir = output_dir / "run_info"
     run_info_dir.mkdir(parents=True, exist_ok=True)
-    
 
     # Move config file and output tracker CSV to run_info
     config.save(run_info_dir / "rp_filter_reads_config.json")
@@ -1088,7 +1095,9 @@ def cleanup_and_move_files(
                 try:
                     shutil.move(str(stat_file), str(run_info_dir / stat_file.name))
                 except Exception as e:
-                    config.logger.warning(f"Could not move {stat_file} to run_info: {str(e)}")
+                    config.logger.warning(
+                        f"Could not move {stat_file} to run_info: {str(e)}"
+                    )
 
     # Get final output files
     final_merged = output_tracker.get_latest_merged_file()
@@ -1128,8 +1137,13 @@ def cleanup_and_move_files(
             config.logger.error(f"Error removing temporary directory: {str(e)}")
             # Don't raise the error since the important files *should* have been moved
     if config.zip_reports:
-        shutil.make_archive(base_name=config.output_dir / f"{config.file_name}_run_info", format="gztar", root_dir=str(run_info_dir))
-        config.logger.info(f"Zipped run_info directory to {config.output_dir / f'{config.file_name}_run_info.tar.gz'}")
+        shutil.make_archive(
+            base_name=config.output_dir / f"{config.file_name}_run_info",
+            format="gztar",
+            root_dir=str(run_info_dir),
+        )
+        config.logger.info(
+            f"Zipped run_info directory to {config.output_dir / f'{config.file_name}_run_info.tar.gz'}"
+        )
         shutil.rmtree(run_info_dir)
         # breakpoint()
-

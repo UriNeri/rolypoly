@@ -2,9 +2,11 @@ import os
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, Generator, List, Optional, Union
+
 from rich.console import Console
 
 console = Console()
+
 
 def modify_params(default_params: Dict, override_params: Dict) -> Dict:
     """Modify default parameters with user-specified overrides"""
@@ -24,7 +26,6 @@ def extract(
     import subprocess
     import tarfile
     import zipfile
-
 
     archive_path = Path(archive_path)
     if not archive_path.is_file():
@@ -92,6 +93,7 @@ def fetch_and_extract(
 ) -> None:
     """Fetch a file from a URL and optionally extract it"""
     import shutil
+
     import requests
 
     console.print(f"Fetching {url}")
@@ -202,6 +204,7 @@ def run_bash_script_with_time(script_name: str) -> Dict[str, str]:
 
 def extract_zip(zip_file):
     import zipfile
+
     try:
         with zipfile.ZipFile(zip_file, "r") as zip_ref:
             zip_ref.extractall(os.path.dirname(zip_file))
@@ -316,6 +319,7 @@ def apply_filter(df, filter_str):
 def find_most_recent_folder(path):
     import glob
     import os
+
     # Get a list of all directories in the specified path
     folders = [f for f in glob.glob(os.path.join(path, "*")) if os.path.isdir(f)]
     # Return None if no folders found
@@ -346,6 +350,7 @@ def move_contents_to_parent(folder, overwrite=True):
                 )
     #  remove the now empty folder
     os.rmdir(folder)  # only works on empty dir
+
 
 def check_file_exists(file_path):
     if not Path(file_path).exists():
@@ -494,8 +499,7 @@ def read_fwf(filename, widths, columns, dtypes, comment_prefix=None, **kwargs):
 
 
 def get_file_type(filename: str) -> str:
-    """Determine the type of a file based on its extension.
-    """
+    """Determine the type of a file based on its extension."""
     ext = os.path.splitext(filename)[1].lower()
     if ext == ".gz":
         ext = os.path.splitext(filename[:-3])[1].lower() + ".gz"
@@ -517,8 +521,7 @@ def get_file_type(filename: str) -> str:
 
 
 def update_output_files(df, new_filename, command_name, command):
-    """Update output tracking DataFrame with a new file.
-    """
+    """Update output tracking DataFrame with a new file."""
     file_type = get_file_type(new_filename)
     return add_output_file(df, new_filename, command_name, command, file_type)
 
@@ -550,9 +553,9 @@ def order_columns_to_match(df1_to_order, df2_to_match):
 
 
 def cast_cols_to_match(df1_to_cast, df2_to_match):
-    """Cast columns of one DataFrame to match the data types of another DataFrame.
-    """
+    """Cast columns of one DataFrame to match the data types of another DataFrame."""
     import polars as pl
+
     for col in df2_to_match.columns:
         df1_to_cast = df1_to_cast.with_columns(
             pl.col(col).cast(df2_to_match.schema[col])
@@ -561,8 +564,7 @@ def cast_cols_to_match(df1_to_cast, df2_to_match):
 
 
 def vstack_easy(df1_to_stack, df2_to_stack):
-    """Stack two DataFrames vertically after matching their column types and order.
-    """
+    """Stack two DataFrames vertically after matching their column types and order."""
     df2_to_stack = cast_cols_to_match(df2_to_stack, df1_to_stack)
     df2_to_stack = order_columns_to_match(df2_to_stack, df1_to_stack)
     return df1_to_stack.vstack(df2_to_stack)
@@ -577,7 +579,7 @@ def run_command_comp(
     output_file: str = "",
     skip_existing: bool = False,
     check_status: bool = True,
-    check_output: bool = True, 
+    check_output: bool = True,
     prefix_style: str = "auto",
     param_sep: str = " ",
     assign_operator: str = " ",
@@ -612,8 +614,8 @@ def run_command_comp(
     from logging import INFO, Logger, StreamHandler
     from pathlib import Path
     from time import sleep, time
-    from psutil import NoSuchProcess, Process, cpu_percent
 
+    from psutil import NoSuchProcess, Process, cpu_percent
 
     if logger is None:
         logger = Logger(__name__, level=INFO)
@@ -698,4 +700,3 @@ def run_command_comp(
         return check_file_exist_isempty(output_file)
     else:
         return True
-

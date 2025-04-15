@@ -1,12 +1,15 @@
 from pathlib import Path
+
 import rich_click as click
 from rich.console import Console
+
 from rolypoly.utils.config import BaseConfig
 from rolypoly.utils.various import run_command_comp
 
 
 class ProteinAnnotationConfig(BaseConfig):
     """Configuration for protein annotation pipeline"""
+
     def __init__(
         self,
         input: Path,
@@ -91,7 +94,8 @@ console = Console(width=150)
     "--gene-prediction-tool",
     default="ORFfinder",
     type=click.Choice(
-        ["ORFfinder", "pyrodigal", "six-frame", "MetaGeneAnnotator"],case_sensitive=False
+        ["ORFfinder", "pyrodigal", "six-frame", "MetaGeneAnnotator"],
+        case_sensitive=False,
     ),
     help="Tool for gene prediction",
 )
@@ -99,7 +103,7 @@ console = Console(width=150)
     "--search-tool",
     default="hmmsearch",
     type=click.Choice(
-        ["hmmsearch",  "mmseqs2", "DIAMOND", "nail"],case_sensitive=False
+        ["hmmsearch", "mmseqs2", "DIAMOND", "nail"], case_sensitive=False
     ),
     help="Tool/command for protein domain detection. hmmer commands are used via pyhmmer bindings",
 )
@@ -107,7 +111,8 @@ console = Console(width=150)
     "--domain-db",
     default="Pfam",
     type=click.Choice(
-        ["Pfam", "Vfam", "InterPro", "Phrogs", "dbCAN", "all", "none", "custom"],case_sensitive=False
+        ["Pfam", "Vfam", "InterPro", "Phrogs", "dbCAN", "all", "none", "custom"],
+        case_sensitive=False,
     ),
     help="Database for domain detection",
 )
@@ -133,10 +138,11 @@ def annotate_prot(
     domain_db,
     custom_domain_db,
     min_orf_length,
-    genetic_code, # TODO: ADD SUPPORT FOR THIS
+    genetic_code,  # TODO: ADD SUPPORT FOR THIS
 ):
     """Identify coding sequences (ORFs) in a genome, and attempt to predict their translated seq (protein) function via (py)hmmsearches against a collection of DBs (or user supplied one)"""
     import json
+
     from rolypoly.utils.various import ensure_memory
 
     config = ProteinAnnotationConfig(
@@ -185,6 +191,7 @@ def process_protein_annotations(config):
     combine_results(config)
     config.logger.info("Protein annotation process completed successfully")
 
+
 def predict_orfs(config):
     """Predict open reading frames using selected tool"""
     if config.gene_prediction_tool == "ORFfinder":
@@ -205,6 +212,7 @@ def predict_orfs(config):
 def predict_orfs_with_pyrodigal(config):
     """Predict ORFs using pyrodigal"""
     from rolypoly.utils.fax import pyro_predict_orfs
+
     pyro_predict_orfs(
         input_file=config.input,
         output_file=config.output_dir / "predicted_orfs.faa",
@@ -212,6 +220,7 @@ def predict_orfs_with_pyrodigal(config):
         gv_or_else="gv",
         genetic_code=config.genetic_code,
     )
+
 
 def predict_orfs_with_six_frame(config):
     """Translate 6-frame reading frames of a DNA sequence using seqkit."""
@@ -254,8 +263,9 @@ def search_protein_domains_hmmscan(config):
 
 def predict_orfs_with_orffinder(config):
     """Predict ORFs using ORFfinder."""
-    from shutil import which
     import os
+    from shutil import which
+
     from rolypoly.utils.various import run_command_comp
 
     if not which("ORFfinder"):
@@ -357,11 +367,12 @@ def search_protein_domains_diamond(config, input_fasta, output_file):
 
 def predict_protein_function(config):
     config.logger.info("Predicting protein function")
-    # TODO: decide how this should be done 
+    # TODO: decide how this should be done
 
 
 def combine_results(config):
     import polars as pl
+
     config.logger.info("Combining annotation results")
 
     orf_file = config.output_dir / "predicted_orfs.faa"
@@ -380,6 +391,7 @@ def combine_results(config):
 
 def process_orf_data(orf_file):
     import polars as pl
+
     # Process the ORF file and return a DataFrame
     orf_data = pl.read_csv(
         orf_file,
@@ -401,6 +413,7 @@ def process_orf_data(orf_file):
 
 def process_domain_data(domain_file, search_tool):
     import polars as pl
+
     if search_tool == "hmmsearch":
         return process_hmmsearch_data(domain_file)
     elif search_tool == "mmseqs2":
@@ -413,6 +426,7 @@ def process_domain_data(domain_file, search_tool):
 
 def process_hmmsearch_data(domain_file):
     import polars as pl
+
     df = pl.read_csv(
         domain_file,
         separator="\t",
@@ -433,6 +447,7 @@ def process_hmmsearch_data(domain_file):
 
 def process_mmseqs2_data(domain_file):
     import polars as pl
+
     df = pl.read_csv(
         domain_file,
         separator="\t",
@@ -453,6 +468,7 @@ def process_mmseqs2_data(domain_file):
 
 def process_diamond_data(domain_file):
     import polars as pl
+
     df = pl.read_csv(
         domain_file,
         separator="\t",

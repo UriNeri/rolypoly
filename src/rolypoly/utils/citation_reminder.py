@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import List, Union
+
 import requests
 from rich.console import Console
 
@@ -10,6 +11,7 @@ console = Console(width=150)
 def load_citations():
     """Load citation information from the configured citation file"""
     import json
+
     citation_file = os.environ.get(
         "citatioasdn_file"
     )  # TODO: update the citations file that is in the data directory.
@@ -119,6 +121,7 @@ def display_citations(citations):
     """Display citations in a formatted table"""
     from rich.panel import Panel
     from rich.table import Table
+
     table = Table(
         title="Software and Databases to Cite", padding=1, border_style="blue"
     )
@@ -137,6 +140,7 @@ def remind_citations(
 ):
     """Display or return citation reminders for used tools"""
     from rich.text import Text
+
     tools = list(set(tools))
     citations = get_citations(tools)
     if len(citations) == 0:

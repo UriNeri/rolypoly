@@ -1,13 +1,15 @@
 import os
 from pathlib import Path
 from typing import Dict, Tuple, Union
+
 import rich_click as click
+
 from rolypoly.utils.config import BaseConfig
 from rolypoly.utils.loggit import log_start_info
 
-
 global tools
 tools = []
+
 
 class AssemblyConfig(BaseConfig):
     def __init__(self, **kwargs):
@@ -201,8 +203,7 @@ def handle_input_files(
 
 def run_spades(config, libraries):
     import subprocess
-    from rolypoly.utils.various import ensure_memory
-    import subprocess
+
     from rolypoly.utils.various import ensure_memory
 
     spades_output = config.output_dir / f"spades_meta_output"
@@ -241,6 +242,7 @@ def run_megahit(config, libraries):
     """Run MEGAHIT assembly."""
     import glob
     import subprocess
+
     from rolypoly.utils.various import ensure_memory
 
     config.logger.info(f"Started Megahit assembly")
@@ -408,14 +410,14 @@ def assembly(
     • MEGAHIT
     • Penguin
     """
-    from bbmapy import bbmap
     import shutil
-    from rolypoly.utils.citation_reminder import remind_citations
-    from rolypoly.utils.various import run_command_comp
-    from rolypoly.utils.fax import process_sequences, read_fasta_df, rename_sequences
+
     import polars as pl
+    from bbmapy import bbmap
 
-
+    from rolypoly.utils.citation_reminder import remind_citations
+    from rolypoly.utils.fax import process_sequences, read_fasta_df, rename_sequences
+    from rolypoly.utils.various import run_command_comp
 
     if not kwargs.get("overwrite"):
         if Path(kwargs.get("output")).exists():

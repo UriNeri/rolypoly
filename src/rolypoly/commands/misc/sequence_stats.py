@@ -1,11 +1,13 @@
 from pathlib import Path
+
 import polars as pl
 import rich_click as click
 from rich.console import Console
+
 from rolypoly.utils.citation_reminder import remind_citations
 from rolypoly.utils.fax import (
-#     RNAStructureExpr,
-#     SequenceExpr,
+    #     RNAStructureExpr,
+    #     SequenceExpr,
     is_nucl_string,
     read_fasta_df,
 )
@@ -93,8 +95,11 @@ def sequence_stats(
 ):
     """Calculate sequence statistics using Polars expressions"""
     import json
+
     import polars as pl
+
     from rolypoly.utils.loggit import log_start_info, setup_logging
+
     logger = setup_logging(log_file, log_level)
     log_start_info(logger, locals())
 

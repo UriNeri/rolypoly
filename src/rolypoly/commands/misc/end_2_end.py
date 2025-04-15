@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+
 import rich_click as click
 
 
@@ -97,7 +98,7 @@ def run_pipeline(
     keep_tmp=False,
     log_file=None,
     assembler="spades,megahit,penguin",
-    post_cluster=False, # TODO: add or remove this, decide.
+    post_cluster=False,  # TODO: add or remove this, decide.
     filter1_nuc="alnlen >= 120 & pident>=75",
     filter2_nuc="qcov >= 0.95 & pident>=95",
     filter1_aa="length >= 80 & pident>=75",

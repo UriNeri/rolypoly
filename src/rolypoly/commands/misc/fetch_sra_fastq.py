@@ -1,7 +1,9 @@
 import shutil
 from pathlib import Path
+
 import requests
 import rich_click as click
+
 from rolypoly.utils.various import console, run_command_comp
 
 
@@ -33,6 +35,7 @@ def download_fastq(run_id, output_path):
         - Prefers aria2c for downloads, falls back to wget
     """
     import hashlib
+
     url = f"https://www.ebi.ac.uk/ena/portal/api/filereport?accession={run_id}&result=read_run&fields=fastq_ftp,fastq_aspera,fastq_md5,fastq_bytes"
     try:
         response = requests.get(url)

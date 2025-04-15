@@ -6,7 +6,7 @@ console = Console()
 
 class LazyGroup(click.RichGroup):
     """Click Group subclass that lazily loads commands to improve startup time for large CLI applications.
-    
+
     Args:
         lazy_subcommands: Mapping of command names to either:
             - A string import path: "module.command-object-name"
@@ -69,7 +69,8 @@ class LazyGroup(click.RichGroup):
 
     def _lazy_load(self, cmd_name):
         """Load a command lazily from its module."""
-        from importlib import util, import_module
+        from importlib import import_module, util
+
         import_path = self.lazy_subcommands[cmd_name]
         # Remove the "hidden:" prefix if present
         if import_path.startswith("hidden:"):
@@ -112,6 +113,7 @@ class LazyGroup(click.RichGroup):
         """Custom command formatter to show grouped commands."""
         from rich.panel import Panel
         from rich.table import Table
+
         # First get all commands that aren't in groups
         ungrouped = []
         for cmd_name in self.list_commands(ctx):

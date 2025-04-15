@@ -1,6 +1,8 @@
 from pathlib import Path
+
 import rich_click as click
 from rich.console import Console
+
 from rolypoly.utils.citation_reminder import remind_citations
 
 # console = Console()
@@ -16,8 +18,8 @@ def parse_marker_results(marker_file):
         pl.DataFrame: DataFrame with marker results
     """
     import json
-    import polars as pl
 
+    import polars as pl
 
     if marker_file.endswith(".tsv"):
         return pl.read_csv(marker_file, separator="\t")
@@ -42,7 +44,9 @@ def run_genomad_hmm_search(input_fasta, output_dir, threads, logger):
         pl.DataFrame: DataFrame with HMM search results
     """
     import os
+
     import polars as pl
+
     from rolypoly.utils.fax import search_hmmdb
 
     hmm_db = (
@@ -203,9 +207,11 @@ def quick_taxonomy(
     Rapid taxonomy assignment for viral sequences using marker search results and genomad RNA viral HMMs
     """
     import json
+
     import polars as pl
-    from rich.table import Table
     from needletail import parse_fastx_file
+    from rich.table import Table
+
     from rolypoly.utils.loggit import log_start_info, setup_logging
 
     logger = setup_logging(log_file, log_level)

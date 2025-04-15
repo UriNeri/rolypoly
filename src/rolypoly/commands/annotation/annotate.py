@@ -1,7 +1,9 @@
 import os
 from pathlib import Path
+
 import rich_click as click
 from rich.console import Console
+
 from rolypoly.commands.annotation.annotate_prot import (
     ProteinAnnotationConfig,
     process_protein_annotations,
@@ -12,6 +14,7 @@ from rolypoly.commands.annotation.annotate_RNA import (
 )
 from rolypoly.utils.citation_reminder import remind_citations
 from rolypoly.utils.config import BaseConfig
+
 # from rolypoly.utils.loggit import log_start_info
 
 console = Console(width=150)
@@ -118,7 +121,7 @@ class AnnotationConfig(BaseConfig):
     "--search-tool",
     default="hmmsearch",
     type=click.Choice(
-        ["hmmsearch", "hmmscan", "mmseqs2", "DIAMOND", "nail"],case_sensitive=False
+        ["hmmsearch", "hmmscan", "mmseqs2", "DIAMOND", "nail"], case_sensitive=False
     ),
     help="Tool/command for protein domain detection. hmmer commands are used via pyhmmer bindings",
 )
@@ -134,7 +137,7 @@ def annotate(
     ires_tool,
     trna_tool,
     rnamotif_tool,
-    gene_prediction_tool, # TODO: ADD SUPPORT FOR THIS
+    gene_prediction_tool,  # TODO: ADD SUPPORT FOR THIS
     domain_db,
     custom_domain_db,
     min_orf_length,
@@ -142,7 +145,9 @@ def annotate(
 ):
     """Functionally and structurally annotate RNA viral sequence(s) (Wrapper for annotate_prot, annotate_RNA)"""
     import json
+
     from rolypoly.utils.loggit import log_start_info
+
     override_params = json.loads(override_parameters) if override_parameters else {}
     skip_steps_list = skip_steps.split(",") if skip_steps else []
     output_path = Path(output).resolve()
