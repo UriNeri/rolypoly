@@ -52,8 +52,9 @@ Under development:
 For more details about the implementation status, roadmap, additional commands, and more, see the [workflow documentation](https://pages.jgi.doe.gov/uneri/rolypoly/workflow).
 
 ## Dependencies
-<details><summary>Click to show dependencies</summary>
-Non-Python 
+<details><summary>Click to show dependencies</summary>  
+
+Non-Python  
 - [SPAdes](https://github.com/ablab/spades).
 - [seqkit](https://github.com/shenwei356/seqkit)
 - [datasets](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/download-and-install/)
