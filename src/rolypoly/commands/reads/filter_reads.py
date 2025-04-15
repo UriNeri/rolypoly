@@ -419,6 +419,7 @@ def filter_reads(
             log_level=log_level,
             max_genomes=max_genomes,
             temp_dir=temp_dir,
+            zip_reports=zip_reports,
         )
 
     if config.known_dna is None:
