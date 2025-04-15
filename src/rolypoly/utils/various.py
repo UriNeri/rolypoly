@@ -6,19 +6,6 @@ from rich.console import Console
 
 console = Console()
 
-
-@contextmanager
-def change_directory(path: Union[str, Path]) -> Generator[None, None, None]:
-    """Temporarily change the current working directory"""
-    origin = os.getcwd()
-    try:
-        os.makedirs(path, exist_ok=True)
-        os.chdir(path)
-        yield
-    finally:
-        os.chdir(origin)
-
-
 def modify_params(default_params: Dict, override_params: Dict) -> Dict:
     """Modify default parameters with user-specified overrides"""
     params = default_params.copy()
