@@ -1,46 +1,23 @@
-
 channels:
+  - defaults
   - conda-forge
   - bioconda
-  - defaults
   
 dependencies:
   - python>=3.9  
   - pip
-  - diamond
-  - spades
-  - seqkit
-  - falco
-  - mmseqs2
-  - plass
-  - megahit=1.2.9
-  - pigz
-  - ncbi-datasets-cli
-  - bzip2
-  - bowtie=1.3.1
-  - aragorn
-  - trnascan-se
-  - linearfold
-  - needletail
-  - aria2
-  #  Python libraries (pip)
+  - aragorn >=1.2.41,<2
+  - bowtie >=1.3.0,<2
+  - diamond >=2.1.10,<3
+  - linearfold >=1.0.1.dev20220829,<2
+  - megahit >=1.2.9,<2
+  - mmseqs2 >=16.747c6,<18
+  - ncbi-datasets-cli >=17.3.0,<18
+  - pigz >=2.8,<3
+  - plass >=5.cf8933,<6
+  - seqkit >=2.10.0,<3
+  - spades >=4.0.1,<5
+  - trnascan-se >=2.0.12,<3
+  - falco >=1.2.5,<2
   - pip:
-    - polars
-    - scipy
-    - numpy
-    - rich-click
-    - rich
-    - pyhmmer
-    - pyrodigal-gv
-    - multiprocess
-    - pyfastx
-    - mappy
-    - bbmapy
-    - pymsaviz
-    - viennarna
-    - pyranges
-    - intervaltree
-    - genomicranges
-    - psutil
-    - lightmotif
-    - dna-features-viewer
+    - rolypoly-bio

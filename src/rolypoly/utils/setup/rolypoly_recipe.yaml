@@ -9,17 +9,17 @@ source:
   url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/rolypoly_bio-{{ version }}.tar.gz
   sha256: 5c205b0ce972960a92b785f7fd79393ee114eacf763b5e47db38b75ff04623c3
 
-channels:
-  - conda-forge
-  - bioconda
-  - defaults
-
 build:
   entry_points:
     - rolypoly = rolypoly.rolypoly:rolypoly
   noarch: python
-  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+  script: {{ PYTHON }} -m pip install . -vvv
   number: 0
+
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
 
 requirements:
   host:
@@ -28,26 +28,19 @@ requirements:
     - pip
   run:
     - python >=3.9
-    - bbmapy >=0.0.46,<0.0.48
-    - dna-features-viewer >=3.1.4,<4
-    - genomicranges >=0.6.3,<0.7
-    - iranges >=0.4.2,<0.5
-    - lightmotif >=0.9.1,<0.10
-    - mappy >=2.28,<3
-    - matplotlib-base >=3.10.1,<4
-    - needletail >=0.6.3,<0.7
-    - polars >=1.26.0,<2
-    - psutil >=6.1.1,<7
-    - pyfastx >=2.2.0,<3
-    - pyhmmer >=0.11.0,<0.12
-    - pymsaviz >=0.5.0,<0.6
-    - pyranges >=0.1.4,<0.2
-    - pyrodigal-gv >=0.3.2,<0.4
-    - requests >=2.32.3,<3
-    - rich-click >=1.8.8,<2
-    - rich >=14.0.0,<15
-    - viennarna >=2.7.0,<3
-    - intervaltree >=3.1.0,<4
+    - aragorn >=1.2.41,<2
+    - bowtie >=1.3.0,<2
+    - diamond >=2.1.10,<3
+    - linearfold >=1.0.1.dev20220829,<2
+    - megahit >=1.2.9,<2
+    - mmseqs2 >=16.747c6,<18
+    - ncbi-datasets-cli >=17.3.0,<18
+    - pigz >=2.8,<3
+    - plass >=5.cf8933,<6
+    - seqkit >=2.10.0,<3
+    - spades >=4.0.1,<5
+    - trnascan-se >=2.0.12,<3
+    - falco >=1.2.5,<2
 
 test:
   imports:
@@ -67,3 +60,4 @@ about:
 extra:
   recipe-maintainers:
     - UriNeri
+    - Antonio
