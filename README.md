@@ -64,7 +64,7 @@ Non-Python
 - [plass and penguin](https://github.com/soedinglab/plass)
 - [diamond](https://github.com/bbuchfink/diamond)
 - [pigz](https://github.com/madler/pigz)
-- [prodigal/gv](https://github.com/hyattpd/Prodigal) - via pyrodigal-gv
+- [prodigal](https://github.com/hyattpd/Prodigal) - via pyrodigal-gv (add link)
 - [linearfold](https://github.com/LinearFold/LinearFold)
 - [HMMER](https://github.com/EddyRivasLab/hmmer) - via pyhmmer
 - [needletail](https://github.com/onecodex/needletail)
@@ -122,7 +122,7 @@ Several similar software exist, but have different uses, for example:
 - AliMarko ([biorxiv.org/content/10.1101/2024.07.19.603887](https://biorxiv.org/content/10.1101/2024.07.19.603887)): Utilizes a single-sample assembly only approach, not supporting co/cross assembly of multiple samples. Additionally, AliMarko uses a small, partially outdated (IMO) HMM profile set.
 
 ### Reporting Issues
-For issues or suggestions, please open an issue on the [Issues](https://code.jgi.doe.gov/rolypoly/docs/-/issues) page.  
+For issues or suggestions, please open an issue on the [Issues](https://code.jgi.doe.gov/rolypoly/rolypoly/-/issues) page.  
 If possible, please provide the exact way you called rolypoly (command and location), as well as a log file (if generated) and other potential details (e.g. for the read-filtering step, the config file  `run_info/config.json` generated).
 
 ## Authors
