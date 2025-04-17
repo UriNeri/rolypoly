@@ -1,16 +1,16 @@
-![RolyPoly Logo](https://code.jgi.doe.gov/UNeri/rolypoly/-/raw/main/docs/rolypoly_logo.png?ref_type=heads)
+![RolyPoly Logo](https://code.jgi.doe.gov/rolypoly/docs/-/raw/main/docs/rolypoly_logo.png?ref_type=heads)
 
 # RolyPoly
 
 RolyPoly is an RNA virus analysis toolkit, including a variety of commands and wrappers for external tools (from raw read processing to genome annotation). It also includes an "end-2-end" command that employs an entire pipeline.   
-For more detailed information, please refer to the [docs](https://pages.jgi.doe.gov/uneri/rolypoly/).
+For more detailed information, please refer to the [docs](https://pages.jgi.doe.gov/rolypoly/docs/).
 
 ## Installation
 We hope to have rolypoly available from bioconda in the near future.  
-In the meantime, it can be installed with the [`quick_setup.sh`](https://code.jgi.doe.gov/UNeri/rolypoly/-/raw/main/src/rolypoly/utils/setup/quick_setup.sh) script which which will also fetch the pre-generated data rolypoly will require.
+In the meantime, it can be installed with the [`quick_setup.sh`](https://code.jgi.doe.gov/rolypoly/docs/-/raw/main/src/rolypoly/utils/setup/quick_setup.sh) script which which will also fetch the pre-generated data rolypoly will require.
 
 ```bash
-curl -O https://code.jgi.doe.gov/UNeri/rolypoly/-/raw/main/src/rolypoly/utils/setup/quick_setup.sh && \
+curl -O https://code.jgi.doe.gov/rolypoly/docs/-/raw/main/src/rolypoly/utils/setup/quick_setup.sh && \
 bash quick_setup.sh 
 ```
 
@@ -25,7 +25,7 @@ By default if no positional arguments are supplied, rolypoly is installed into t
 - log file in `~/RolyPoly_quick_setup.log` 
 
 ## Usage
-RolyPoly is a command-line tool with subcommands for different stages of the RNA virus identification pipeline. For a detailed help (in terminal), use `rolypoly help`. For more specific help, see the [docs](./https://pages.jgi.doe.gov/uneri/rolypoly/commands/index.md).
+RolyPoly is a command-line tool with subcommands for different stages of the RNA virus identification pipeline. For a detailed help (in terminal), use `rolypoly help`. For more specific help, see the [docs](./https://pages.jgi.doe.gov/rolypoly/docs/commands/index.md).
 
 ```bash
 rolypoly [OPTIONS] COMMAND [ARGS]...
@@ -33,13 +33,13 @@ rolypoly [OPTIONS] COMMAND [ARGS]...
 
 ## Project Status
 Active development. Currently implemented features:
-- ✅ NGS raw read filtering (Host, rRNA, adapters, artefacts) and quality control report[(`filter-reads`)](https://pages.jgi.doe.gov/uneri/rolypoly/commands/read_processing)
-- ✅ Assembly (SPAdes, MEGAHIT and penguin) [(`assembly`)](https://pages.jgi.doe.gov/uneri/rolypoly/commands/assembly)
-- ✅ Contig filtering and clustering [(`filter-contigs`)](https://pages.jgi.doe.gov/uneri/rolypoly/commands/filter_assembly)
-- ✅ Marker gene search with pyhmmer (mainly RdRps, genomad VV's or user-provided) [(`marker-search`)](https://pages.jgi.doe.gov/uneri/rolypoly/commands/marker_search)
-- ✅ RNA secondary structure prediction, annotation and ribozyme identification [(`annotate-rna`)](https://pages.jgi.doe.gov/uneri/rolypoly/commands/annotate_rna)
-- ✅ Nucleotide search vs known viruses [(`search-viruses`)](https://pages.jgi.doe.gov/uneri/rolypoly/commands/search_viruses)
-- ✅ Prepare external data [(`prepare-external-data`)](https://pages.jgi.doe.gov/uneri/rolypoly/commands/prepare_external_data)  
+- ✅ NGS raw read filtering (Host, rRNA, adapters, artefacts) and quality control report[(`filter-reads`)](https://pages.jgi.doe.gov/rolypoly/docs/commands/read_processing)
+- ✅ Assembly (SPAdes, MEGAHIT and penguin) [(`assembly`)](https://pages.jgi.doe.gov/rolypoly/docs/commands/assembly)
+- ✅ Contig filtering and clustering [(`filter-contigs`)](https://pages.jgi.doe.gov/rolypoly/docs/commands/filter_assembly)
+- ✅ Marker gene search with pyhmmer (mainly RdRps, genomad VV's or user-provided) [(`marker-search`)](https://pages.jgi.doe.gov/rolypoly/docs/commands/marker_search)
+- ✅ RNA secondary structure prediction, annotation and ribozyme identification [(`annotate-rna`)](https://pages.jgi.doe.gov/rolypoly/docs/commands/annotate_rna)
+- ✅ Nucleotide search vs known viruses [(`search-viruses`)](https://pages.jgi.doe.gov/rolypoly/docs/commands/search_viruses)
+- ✅ Prepare external data [(`prepare-external-data`)](https://pages.jgi.doe.gov/rolypoly/docs/commands/prepare_external_data)  
 
 Under development:
 - 🚧 Protein annotation (`annotate-protein`)
@@ -49,7 +49,7 @@ Under development:
 - 🚧 Virus feature prediction (+/-ssRNA/dsRNA, circular/linear, mono/poly-segmented, capsid type, etc.) (`TBD`)
 - 🚧 Cross-sample analysis (`TBD`)
 
-For more details about the implementation status, roadmap, additional commands, and more, see the [workflow documentation](https://pages.jgi.doe.gov/uneri/rolypoly/workflow).
+For more details about the implementation status, roadmap, additional commands, and more, see the [workflow documentation](https://pages.jgi.doe.gov/rolypoly/docs/workflow).
 
 ## Dependencies
 <details><summary>Click to show dependencies</summary>  
@@ -122,7 +122,7 @@ Several similar software exist, but have different uses, for example:
 - AliMarko ([biorxiv.org/content/10.1101/2024.07.19.603887](https://biorxiv.org/content/10.1101/2024.07.19.603887)): Utilizes a single-sample assembly only approach, not supporting co/cross assembly of multiple samples. Additionally, AliMarko uses a small, partially outdated (IMO) HMM profile set.
 
 ### Reporting Issues
-For issues or suggestions, please open an issue on the [Issues](https://code.jgi.doe.gov/UNeri/rolypoly/-/issues) page.  
+For issues or suggestions, please open an issue on the [Issues](https://code.jgi.doe.gov/rolypoly/docs/-/issues) page.  
 If possible, please provide the exact way you called rolypoly (command and location), as well as a log file (if generated) and other potential details (e.g. for the read-filtering step, the config file  `run_info/config.json` generated).
 
 ## Authors
