@@ -74,22 +74,22 @@ eval "$(micromamba shell hook --shell bash)"
 # Get RolyPoly code
 if ! command -v git &> /dev/null
 then
-    logit "$LOGFILE" "git could not be found. Fetching the repo from https://code.jgi.doe.gov/UNeri/rolypoly.git"
+    logit "$LOGFILE" "git could not be found. Fetching the repo from https://code.jgi.doe.gov/rolypoly/rolypoly.git"
     mkdir -p "$INSTALL_PATH"
     cd "$INSTALL_PATH" || exit
-    curl -LJO https://code.jgi.doe.gov/UNeri/rolypoly/-/archive/main/rolypoly-main.tar
+    curl -LJO https://code.jgi.doe.gov/rolypoly/rolypoly/-/archive/main/rolypoly-main.tar
     tar -xvf rolypoly-main.tar
     mv rolypoly-main/* .
     rm -rf rolypoly-main rolypoly-main.tar
 else
     logit "$LOGFILE" "git is installed"
-    git clone https://code.jgi.doe.gov/UNeri/rolypoly.git "$INSTALL_PATH"
+    git clone https://code.jgi.doe.gov/rolypoly/rolypoly.git "$INSTALL_PATH"
     cd "$INSTALL_PATH" || exit
 fi
 
 # Create and activate conda environment
 logit "$LOGFILE" "Creating conda environment    "
-micromamba create -y -p "$CONDA_ENV_PATH" -f ./src/rolypoly/utils/setup/env_big.yaml   #rolypoly_recipe.yaml
+micromamba create -y -p "$CONDA_ENV_PATH" -f ./src/setup/env_big.yaml   #rolypoly_recipe.yaml
 source "$(dirname "$(dirname "$CONDA_ENV_PATH")")/etc/profile.d/conda.sh"
 micromamba activate "$CONDA_ENV_PATH"
 

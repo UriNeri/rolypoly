@@ -124,7 +124,6 @@ console = Console(width=150)
 @option(
     "-m", "--memory", hidden=True, default="6g", help="Memory limit for the job in GB"
 )
-@option("--help-proper", is_flag=True, default=False, help="pretty print the help")
 @option(
     "-cf",
     "--config-file",
@@ -179,7 +178,6 @@ def marker_search(
     database,
     threads,
     log_file,
-    help_proper,
     memory,
     config_file,
     name,
@@ -227,9 +225,6 @@ def marker_search(
     from rolypoly.utils.interval_ops import consolidate_hits
     from rolypoly.utils.loggit import log_start_info
 
-    if help_proper:
-        custom_help()
-        return
 
     # Determine if output should be treated as directory based on resolve_mode and path
     output = str(Path(output).absolute())
@@ -452,36 +447,15 @@ def marker_search(
         shutil.rmtree(config.temp_dir)
         config.logger.info(f"Removed temporary directory: {config.temp_dir}")
 
-    config.logger.info(f"""Finished RNA virus marker protein search using : {input} \n
-                 Outputs saved to {str(Path(output))}""")
+    config.logger.info(f"""Finished RNA virus marker protein search using : {input}""")
+    output_files = [ix.absolute() for ix in Path(output).glob("*.tsv")]
+    config.logger.info(f"""Outputs saved to {output_files}""")
 
     tools.append("pyhmmer")
     tools.append("hmmer")
 
     with open(f"{config.log_file}", "w") as f_out:
         f_out.write(remind_citations(tools, return_bibtex=True))
-
-
-def custom_help():
-    console.print(r"""RNA virus search - translates input contigs into either ORFs or to six end to end frames (with stops replaced by `X`),  
-    then searches for viral hallmark genes using the selected HMMer DBs (or all of them, or user-supplied one). 
-    DB options are:
-        • NeoRdRp_v2.1 
-            [blue][link=https://github.com/shoichisakaguchi/NeoRdRp]GitHub[/link][/blue]  |  [blue][link=https://doi.org/10.1264/jsme2.ME22001]Paper[/link][/blue] 
-        • RVMT
-            [blue][link=https://github.com/UriNeri/RVMT]GitHub[/link][/blue]  |  [blue][link=https://zenodo.org/record/7368133]Zenodo[/link][/blue]  |  [blue][link=https://doi.org/10.1016/j.cell.2022.08.023]Paper[/link][/blue] 
-        • RdRp-Scan
-            [blue][link=https://github.com/JustineCharon/RdRp-scan]GitHub[/link][/blue]  |  [blue][link=https://doi.org/10.1093/ve/veac082]Paper[/link][/blue] 
-                ⤷ which IIRC incorporated PALMdb: [blue][link=https://github.com/rcedgar/palmdb]GitHub[/link][/blue]  |  [blue][link=https://doi.org/10.7717/peerj.14055]Paper[/link][/blue] 
-        • TSA_Olendraite 
-            [blue][link=https://drive.google.com/drive/folders/1liPyP9Qt_qh0Y2MBvBPZQS6Jrh9X0gyZ?usp=drive_link]Data[/link][/blue]  |  [blue][link=https://doi.org/10.1093/molbev/msad060]Paper[/link][/blue]  |  [blue][link=https://www.repository.cam.ac.uk/items/1fabebd2-429b-45c9-b6eb-41d27d0a90c2]Thesis[/link][/blue] 
-        • Pfam_A_37 RdRps & RTs \n  
-        RdRps and RT profiles from PFAM_A v.37 --- PF04197.17,PF04196.17,PF22212.1,PF22152.1,PF22260.1,PF05183.17,PF00680.25,PF00978.26,PF00998.28,PF02123.21,PF07925.16,PF00078.32,PF07727.19,PF13456.11
-        Data: https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam37.0/Pfam-A.hmm.gz | Paper https://doi.org/10.1093/nar/gkaa913
-        • geNomad RNA virus markers \n
-        RNA virus marker genes extracted from geNomad v1.9 --- https://zenodo.org/records/14886553
-    """)
-
 
 if __name__ == "__main__":
     marker_search

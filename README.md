@@ -7,10 +7,10 @@ For more detailed information, please refer to the [docs](https://pages.jgi.doe.
 
 ## Installation
 We hope to have rolypoly available from bioconda in the near future.  
-In the meantime, it can be installed with the [`quick_setup.sh`](https://code.jgi.doe.gov/rolypoly/docs/-/raw/main/src/rolypoly/utils/setup/quick_setup.sh) script which which will also fetch the pre-generated data rolypoly will require.
+In the meantime, it can be installed with the [`quick_setup.sh`](https://code.jgi.doe.gov/rolypoly/rolypoly/-/raw/main/src/setup/quick_setup.sh) script which which will also fetch the pre-generated data rolypoly will require.
 
 ```bash
-curl -O https://code.jgi.doe.gov/rolypoly/docs/-/raw/main/src/rolypoly/utils/setup/quick_setup.sh && \
+curl -O https://code.jgi.doe.gov/rolypoly/rolypoly/-/raw/main/src/setup/quick_setup.sh && \
 bash quick_setup.sh 
 ```
 
