@@ -24,6 +24,12 @@ By default if no positional arguments are supplied, rolypoly is installed into t
 - conda enviroment in `~/micromamba/envs/rolypoly`
 - log file in `~/RolyPoly_quick_setup.log` 
 
+To install rolypoly in development mode, use:
+```bash
+bash quick_setup.sh /path/to/conda/env /path/to/install/rolypoly_code /path/to/store/databases /path/to/logfile true
+```
+
+
 ## Usage
 RolyPoly is a command-line tool with subcommands for different stages of the RNA virus identification pipeline. For a detailed help (in terminal), use `rolypoly help`. For more specific help, see the [docs](./https://pages.jgi.doe.gov/rolypoly/docs/commands/index.md).
 

@@ -1,6 +1,5 @@
 #! /bin/bash
 
-
 # Prints (echo) something (first arg) and also saves it to a log file (second arg) 
 logit () {
    echo "$(date +"%Y-%m-%d %T") $2" | tee -a $1
@@ -11,6 +10,7 @@ CONDA_ENV_PATH="${1:-$HOME/micromamba/envs/rolypoly}"
 INSTALL_PATH="${2:-$HOME/rolypoly}"
 DATA_PATH="${3:-$HOME/rolypoly_data}"
 LOGFILE="${4:-$HOME/RolyPoly_quick_setup.log}"
+DEV_INSTALL="${5:-FALSE}"
 
 # if the paths parent directories don't exist, create them
 if [ ! -d "$(dirname "$CONDA_ENV_PATH")" ]; then
@@ -95,7 +95,13 @@ micromamba activate "$CONDA_ENV_PATH"
 
 # Install RolyPoly
 logit "$LOGFILE" "Installing RolyPoly    "
-pip install -e .  # Use pip install -e .[dev] for development installation
+if [ "$DEV_INSTALL" != "TRUE" ]; then
+    logit "$LOGFILE" "Installing rolypoly-bio"
+    pip install rolypoly-bio
+else
+    logit "$LOGFILE" "Installing RolyPoly in development mode"
+    pip install -e .
+fi
 
 # Prepare external data
 logit "$LOGFILE" "Preparing external data    "
