@@ -1,9 +1,9 @@
 [build-system]
-requires = ["maturin>=1.8.3,<2.0"]
-build-backend = "maturin"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
-name = "rolypoly_bio"
+name = "rolypoly"
 dynamic = ["version"]
 authors = [
     { name = "Uri Neri", email = "uneri@lbl.gov" },
@@ -34,26 +34,33 @@ dependencies = [
     "rich-click>=1.8.8,<2",
     "rich>=14.0.0,<15",
     "viennarna>=2.7.0,<3",
-    "intervaltree>=3.1.0,<4"
+    "intervaltree>=3.1.0,<4",
 ]
 
 [project.urls]
-Source = "https://code.jgi.doe.gov/UNeri/rolypoly"
+Source = "https://code.jgi.doe.gov/rolypoly/rolypoly"
 
 [project.scripts]
 rolypoly = "rolypoly.rolypoly:rolypoly"
 
-[tool.maturin]
-python-source = "python"
-module-name = "rolypoly"
-manifest-path = "Cargo.toml"
-bindings = "pyo3"
-features = ["pyo3/extension-module"]
-develop = true
+[dependency-groups]
+build = ["hatch >=1.14.0,<2", "pip >=25.0.1,<26"]
+format = ["ruff >=0.11.3,<0.12"]
+publish = ["twine >=6.1.0,<7"]
+
+[tool.hatch.version]
+path = "src/rolypoly/__init__.py"
+
+[tool.hatch.build]
+packages = ["src/rolypoly"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rolypoly"]
+package-dir = {"rolypoly_bio" = "src/rolypoly"}
 
 [tool.pixi.workspace]
 channels = ["conda-forge", "bioconda"]
-platforms = ["linux-64"]
+platforms = ["linux-64"] 
 
 [tool.pixi.dependencies]
 aragorn = ">=1.2.41,<2"
@@ -70,30 +77,30 @@ seqkit = ">=2.10.0,<3"
 spades = ">=4.0.1,<5"
 trnascan-se = ">=2.0.12,<3"
 falco = ">=1.2.5,<2"
-maturin = ">=1.8.3,<2"
-rust = ">=1.75.0"
 pip = ">=24.0"
 
-[tool.pixi.feature.py310.dependencies]
-python = "~=3.10.0"
+[tool.pixi.feature.py39.dependencies]
+python = "~=3.9.0"
 
 [tool.pixi.pypi-dependencies]
-rolypoly_bio = { path = ".", editable = true }
+rolypoly = { path = ".", editable = true }
 
 [tool.pixi.environments]
-default = { features = ["py310"] }
-dev = { features = ["format", "publish"] }
-
-[tool.pixi.tasks]
-test-import = "python -c 'import rolypoly; print(rolypoly.__version__)'"
-build = "maturin develop --release"
-build-all = "build"
+default = { features = ["py39"] }
+dev = { features = ["build", "format", "publish","test"] }
 
 [tool.pixi.feature.format.tasks]
 format = "ruff check --select I --fix src && ruff format src"
 
 [tool.pixi.feature.publish.tasks]
 publish-pypi = "twine upload dist/*"
+
+[tool.pixi.feature.build.tasks]
+build-pypi = "hatch version minor && hatch build"
+
+[tool.pixi.feature.test.tasks]
+test-import = "python -c 'import rolypoly; print(rolypoly.__version__)'"
+
 
 [tool.ruff]
 exclude = [

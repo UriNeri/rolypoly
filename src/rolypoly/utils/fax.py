@@ -344,18 +344,37 @@ def read_fasta_polars(fasta_file: str, idcol: str = "seq_id", seqcol: str = "seq
     return pl.DataFrame({idcol: seq_ids, seqcol: seqs})
 
 
+# def translate_6frx_seqkit(input_file: str, output_file: str, threads: int) -> None:
+#     """Translate nucleotide sequences in all 6 reading frames using Rust implementation.
+
+#     Args:
+#         input_file (str): Path to input nucleotide FASTA file
+#         output_file (str): Path to output amino acid FASTA file
+#         threads (int): Number of CPU threads to use
+#     """
+#     # from rolypoly import translate_six_frame_file
+    
+#     # Use our Rust implementation
+#     # translate_six_frame_file(input_file, output_file, None, 11, threads)
+
 def translate_6frx_seqkit(input_file: str, output_file: str, threads: int) -> None:
-    """Translate nucleotide sequences in all 6 reading frames using Rust implementation.
+    """Translate nucleotide sequences in all 6 reading frames using seqkit.
 
     Args:
         input_file (str): Path to input nucleotide FASTA file
         output_file (str): Path to output amino acid FASTA file
         threads (int): Number of CPU threads to use
+
+    Note:
+        Requires seqkit to be installed and available in PATH.
+        The output sequences are formatted with 20000bp line width.
     """
-    from rolypoly import translate_six_frame_file
-    
-    # Use our Rust implementation
-    translate_six_frame_file(input_file, output_file, None, 11, threads)
+    import subprocess as sp
+
+    command = f"seqkit translate -x -F --clean -w 20000 -f 6 {input_file} --id-regexp '(\\*)' --clean  --threads {threads} > {output_file}"
+    sp.run(command, shell=True, check=True)
+
+
 
 
 def translate_with_bbmap(input_file: str, output_file: str, threads: int) -> None:

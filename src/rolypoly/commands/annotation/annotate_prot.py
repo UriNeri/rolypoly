@@ -223,7 +223,7 @@ def predict_orfs_with_pyrodigal(config):
 
 
 def predict_orfs_with_six_frame(config):
-    """Translate 6-frame reading frames of a DNA sequence using Rust implementation."""
+    """Translate 6-frame reading frames of a DNA sequence using seqkit."""
     from rolypoly.utils.fax import translate_6frx_seqkit
 
     output_file = str(config.output_dir / "predicted_orfs.faa")

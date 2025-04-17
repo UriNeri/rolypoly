@@ -103,7 +103,7 @@ console = Console(width=150)
     "--aa-method",
     default="six_frame",
     type=Choice(["six_frame", "pyrodigal", "bbmap"]),
-    help="Method to translate nucleotide sequences into amino acids. Options: six frame translation using Rust implementation, pyrodigal-gv uses pyrodigal-meta with additional genetic codes, bbmap callgenes.sh (quick but less accurate for metagenomic data)",
+    help="Method to translate nucleotide sequences into amino acids. Options: six frame translation using seqkit, pyrodigal-gv uses pyrodigal-meta with additional genetic codes, bbmap callgenes.sh (quick but less accurate for metagenomic data)",
 )
 @option(
     "-db",
@@ -351,10 +351,10 @@ def marker_search(
             translate_with_bbmap(input, amino_file, threads)
             tools.append("bbmap")
         else:
-            config.logger.info("Using Rust implementation for 6 frames translation")
+            config.logger.info("Using seqkit for 6 frames translation")
             amino_file = amino_file + "_6frx.faa"
             translate_6frx_seqkit(input, amino_file, threads)
-            tools.append("rust_translate")
+            tools.append("seqkit")
     elif input_alpha == "aa":
         config.logger.info("Using supplied amino acid fasta file, skipping translation")
         amino_file = input
