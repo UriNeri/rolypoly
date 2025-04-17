@@ -1,5 +1,4 @@
 use bio::alphabets::dna;
-use bio::alphabets::protein;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
@@ -68,7 +67,7 @@ impl GeneticCode {
             },
             GeneticCode::Bacterial => {
                 // Bacterial, archaeal and plant plastid (NCBI transl_table=11)
-                let mut table = Self::Standard.get_translation_table();
+                let table = Self::Standard.get_translation_table();
                 // No differences from standard code
                 table
             },
