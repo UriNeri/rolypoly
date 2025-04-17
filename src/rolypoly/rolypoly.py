@@ -77,7 +77,7 @@ os.environ["citation_file"] = (
                 "sequence-stats": "rolypoly.commands.misc.sequence_stats.sequence_stats",
                 # "visualize": "rolypoly.commands.virotype.visualize.visualize",
                 "quick-taxonomy": "rolypoly.commands.misc.quick_taxonomy.quick_taxonomy",
-                "test": "rolypoly.utils.test.test",
+                "test": "tests.test_cli_commands.test",
             },
         },
         # "characterise": {
