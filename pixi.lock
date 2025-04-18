@@ -1785,9 +1785,9 @@ packages:
   - rich-codex ; extra == 'docs'
   requires_python: '>=3.7'
 - pypi: .
-  name: rolypoly
-  version: 0.1.0
-  sha256: ce7b52f5f98c29db652fa21c64d758db8307ac512175642de882eb48b3b63627
+  name: rolypoly-bio
+  version: 0.6.9
+  sha256: 94220d857f3b6f3a952021bdaf618fb68b62b8655ed0b7294178d8f24a2cc94b
   requires_dist:
   - bbmapy>=0.0.46,<0.0.48
   - genomicranges>=0.6.3,<0.7

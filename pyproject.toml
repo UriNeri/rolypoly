@@ -1,9 +1,5 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [project]
-name = "rolypoly"
+name = "rolypoly_bio"
 dynamic = ["version"]
 authors = [
     { name = "Uri Neri", email = "uneri@lbl.gov" },
@@ -39,6 +35,8 @@ dependencies = [
 
 [project.urls]
 Source = "https://code.jgi.doe.gov/rolypoly/rolypoly"
+Documentation = "https://pages.jgi.doe.gov/rolypoly/docs/"
+pypi = "https://pypi.org/project/rolypoly-bio/"
 
 [project.scripts]
 rolypoly = "rolypoly.rolypoly:rolypoly"
@@ -47,6 +45,11 @@ rolypoly = "rolypoly.rolypoly:rolypoly"
 build = ["hatch >=1.14.0,<2", "pip >=25.0.1,<26"]
 format = ["ruff >=0.11.3,<0.12"]
 publish = ["twine >=6.1.0,<7"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 
 [tool.hatch.version]
 path = "src/rolypoly/__init__.py"
@@ -61,6 +64,9 @@ package-dir = {"rolypoly_bio" = "src/rolypoly"}
 [tool.pixi.workspace]
 channels = ["conda-forge", "bioconda"]
 platforms = ["linux-64"] 
+
+[tool.pixi.pypi-dependencies]
+rolypoly_bio = { path = ".", editable = true }
 
 [tool.pixi.dependencies]
 aragorn = ">=1.2.41,<2"
@@ -82,9 +88,6 @@ pip = ">=24.0"
 [tool.pixi.feature.py39.dependencies]
 python = "~=3.9.0"
 
-[tool.pixi.pypi-dependencies]
-rolypoly = { path = ".", editable = true }
-
 [tool.pixi.environments]
 default = { features = ["py39"] }
 dev = { features = ["build", "format", "publish","test"] }
@@ -93,10 +96,10 @@ dev = { features = ["build", "format", "publish","test"] }
 format = "ruff check --select I --fix src && ruff format src"
 
 [tool.pixi.feature.publish.tasks]
-publish-pypi = "twine upload dist/*"
+publish-pypi = "twine upload dist/* --verbose" 
 
 [tool.pixi.feature.build.tasks]
-build-pypi = "hatch version minor && hatch build"
+build-pypi = "hatch version micro && hatch build --clean"
 
 [tool.pixi.feature.test.tasks]
 test-import = "python -c 'import rolypoly; print(rolypoly.__version__)'"
