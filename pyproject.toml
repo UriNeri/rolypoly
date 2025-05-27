@@ -85,6 +85,10 @@ trnascan-se = ">=2.0.12,<3"
 falco = ">=1.2.5,<2"
 pip = ">=24.0"
 
+[tool.pixi.tasks]
+gh-push = "src/setup/on_gh.sh push"
+gh-pull = "src/setup/on_gh.sh pull"
+
 [tool.pixi.feature.py39.dependencies]
 python = "~=3.9.0"
 

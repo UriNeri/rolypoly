@@ -1786,8 +1786,8 @@ packages:
   requires_python: '>=3.7'
 - pypi: .
   name: rolypoly-bio
-  version: 0.6.9
-  sha256: 94220d857f3b6f3a952021bdaf618fb68b62b8655ed0b7294178d8f24a2cc94b
+  version: 0.6.11
+  sha256: 545e7f38f86308bd06ca0d5b4d6af7f17630e088d64405cea3b0fd37d884ae87
   requires_dist:
   - bbmapy>=0.0.46,<0.0.48
   - genomicranges>=0.6.3,<0.7
@@ -1795,7 +1795,7 @@ packages:
   - iranges>=0.4.2,<0.5
   - lightmotif>=0.9.1,<0.10
   - mappy>=2.28,<3
-  - needletail>=0.6.3,<0.7
+  - needletail>=0.6.3,<0.8
   - polars>=1.26.0,<2
   - psutil>=6.1.1,<7
   - pyfastx>=2.2.0,<3
