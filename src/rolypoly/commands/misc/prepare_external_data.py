@@ -192,7 +192,7 @@ def prepare_external_data(try_hard, ROLYPOLY_DATA, threads, log_file):
         extract_to="Pfam-A.hmm",
     )
     subprocess.run(
-        "echo PF04197.17,PF04196.17,PF22212.1,PF22152.1,PF22260.1,PF05183.17,PF00680.25,PF00978.26,PF00998.28,PF02123.21,PF07925.16,PF00078.32,PF07727.19,PF13456.11 >tmp.lst",
+        "echo PF04197.17,PF04196.17,PF22212.1,PF22152.1,PF22260.1,PF00680.25,PF00978.26,PF00998.28,PF02123.21,PF07925.16,PF00078.32,PF07727.19,PF13456.11 >tmp.lst",
         shell=True,
     )
     subprocess.run("sed 's|,|\n|g' tmp.lst -i", shell=True)
