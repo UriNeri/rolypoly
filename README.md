@@ -127,9 +127,10 @@ Several similar software exist, but have different uses, for example:
 - hecatomb ([github.com/shandley/hecatomb](https://github.com/shandley/hecatomb)): uses mmseqs for homology detection and thus is less sensitive than the additional HMMer based identification herein.
 - AliMarko ([biorxiv.org/content/10.1101/2024.07.19.603887](https://biorxiv.org/content/10.1101/2024.07.19.603887)): Utilizes a single-sample assembly only approach, not supporting co/cross assembly of multiple samples. Additionally, AliMarko uses a small, partially outdated (IMO) HMM profile set.
 
-### Reporting Issues
-For issues or suggestions, please open an issue on the [Issues](https://code.jgi.doe.gov/rolypoly/rolypoly/-/issues) page.  
-If possible, please provide the exact way you called rolypoly (command and location), as well as a log file (if generated) and other potential details (e.g. for the read-filtering step, the config file  `run_info/config.json` generated).
+### Reporting Issues and Contribution
+RolyPoly is hosted on GitHub (issue tracking and development) and JGI's gitlab (Documentation, releases and archiving).  
+Please report bugs you find in the [Issues](https://github.com/UriNeri/rolypoly/issues) page.  
+Suggestions and Contributions are welcome - either fork the repo and open a pull request or contact us directly.
 
 ## Authors
 <details><summary>Click to show authors</summary>
@@ -141,6 +142,7 @@ If possible, please provide the exact way you called rolypoly (command and locat
 - Andrei Stecca Steindorff
 - Clement Coclet
 - David Parker
+- Dimitris Karapliafis
 </details>
 
 ## Acknowledgments

@@ -1787,7 +1787,7 @@ packages:
 - pypi: .
   name: rolypoly-bio
   version: 0.6.11
-  sha256: 545e7f38f86308bd06ca0d5b4d6af7f17630e088d64405cea3b0fd37d884ae87
+  sha256: 0efab411b16af938f44d9d3b07276af3ae7ec2370c6822cd99e0c1e3c32d041b
   requires_dist:
   - bbmapy>=0.0.46,<0.0.48
   - genomicranges>=0.6.3,<0.7
