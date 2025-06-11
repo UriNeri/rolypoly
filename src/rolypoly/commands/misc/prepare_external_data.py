@@ -419,21 +419,23 @@ def tar_everything_and_upload_to_NERSC(ROLYPOLY_DATA, version=""):
     """
     import datetime
     import subprocess
-
+    from pathlib import Path
     from rolypoly.utils.citation_reminder import remind_citations
 
     if version == "":
         from rolypoly.utils.loggit import get_version_info
 
         version = get_version_info()
-    with open(ROLYPOLY_DATA / "README.md", "w") as f_out:
-        f_out.write(f"RolyPoly version: {version}")
-        f_out.write(f"Date: {datetime.datetime.now()}")
-        f_out.write(f"Data dir: {ROLYPOLY_DATA}")
+    with open(Path(ROLYPOLY_DATA) / "README.md", "w") as f_out:
+        f_out.write(f"RolyPoly version: {version}\n")
+        f_out.write(f"Date: {datetime.datetime.now()}\n")
+        f_out.write(f"Data dir: {ROLYPOLY_DATA}\n")
         f_out.write(
-            "for more details see: http://https://code.jgi.doe.gov/UNeri/rolypoly"
+            "for more details see: https://pages.jgi.doe.gov/rolypoly/docs/\n"
         )
-        f_out.write("Software / DBs used in the creation of this data: ")
+        f_out.write("Changes in this version: \n")
+        f_out.write(" - Removed eukaryotic RdRp Pfam (see d1a0f1b3e2452253a4d47e20b81ac71652ccb944) \n")
+        f_out.write("Software / DBs used in the creation of this data: \n")
         tools.append("RolyPoly")
         tools.append("seqkit")
         tools.append("bbmap")
@@ -451,15 +453,18 @@ def tar_everything_and_upload_to_NERSC(ROLYPOLY_DATA, version=""):
         tools.append("tsa_2018")
         tools.append("pfam_a_37")
         tools.append("refseq")
-
         f_out.write(remind_citations(tools, return_as_text=True))
 
     tar_command = f"tar --use-compress-program='pigz -p 8 --best' -cf rpdb.tar.gz {ROLYPOLY_DATA}"  # threads
 
     subprocess.run(tar_command, shell=True)
 
-    upload_command = f"gsutil cp {ROLYPOLY_DATA}.tar.gz gs://rolypoly-data/"
-    subprocess.run(upload_command, shell=True)
+    # # On NERSC
+    # scp uneri@xfer.jgi.lbl.gov:/clusterfs/jgi/scratch/science/metagen/neri/projects/data2/data.tar.gz /global/dna/projectdirs/microbial/prokpubs/www/rolypoly/data/
+    # chmod +777 -R /global/dna/projectdirs/microbial/prokpubs/www/rolypoly/data/
+
+    # upload_command = f"gsutil cp {ROLYPOLY_DATA}.tar.gz gs://rolypoly-data/"
+    # subprocess.run(upload_command, shell=True)
 
 
 def prepare_genomad_rna_viral_hmms(ROLYPOLY_DATA, threads, logger=None):
