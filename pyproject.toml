@@ -9,6 +9,7 @@ authors = [
     { name = "Andrei Stecca Steindorff", email = "andreiss@jgi.doe.gov" },
     { name = "Clement Coclet", email = "cclement@jgi.doe.gov" },
     { name = "David Parker", email = "dparker@carnegiescience.edu" },
+    { name = "Dimitris Karapliafis", email = "dimitris.karapliafis at wur.nl" },
 ]
 description = "RNA virus analysis toolkit"
 readme = "README.md"
