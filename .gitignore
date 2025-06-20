@@ -219,3 +219,6 @@ public/
 .cursorignore
 .cursorrules
 .cursor
+
+#silly
+*_logfile.txt
