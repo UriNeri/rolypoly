@@ -29,7 +29,6 @@ rolypoly/build/*
 
 dist
 *.egg-info
-tests
 .pytest_cache
 *logfile.log
 
@@ -94,7 +93,6 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 # Unit test / coverage reports
-tests/
 htmlcov/
 .tox/
 .nox/

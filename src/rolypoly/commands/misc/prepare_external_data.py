@@ -34,7 +34,7 @@ tools = []
     default=f"./prepare_external_data_logfile.txt",
     help="Path to the log file",
 )
-def prepare_external_data(try_hard, ROLYPOLY_DATA, threads, log_file):
+def prepare_external_data(try_hard, rolypoly_data, threads, log_file):
     """Download or build external data required for RolyPoly.
 
     This command either downloads pre-built databases and reference data from
@@ -43,7 +43,7 @@ def prepare_external_data(try_hard, ROLYPOLY_DATA, threads, log_file):
     Args:
         try_hard (bool): If True, build databases from scratch instead of downloading
             pre-built versions. May result in more up-to-date references.
-        ROLYPOLY_DATA (str, optional): Alternative directory to store data. If None,
+        rolypoly_data (str, optional): Alternative directory to store data. If None,
             uses the default RolyPoly data directory.
         threads (int, optional): Number of CPU threads to use.
         log_file (str, optional): Path to write log messages. Defaults to
@@ -56,11 +56,6 @@ def prepare_external_data(try_hard, ROLYPOLY_DATA, threads, log_file):
         3. Download and prepare rRNA databases
         4. Download and process Rfam data
 
-    Example:
-             # Download pre-built data
-             prepare_external_data(ROLYPOLY_DATA="/path/to/data")
-             # Build from scratch
-             prepare_external_data(try_hard=True, threads=8)
     """
     import json
     import subprocess
@@ -70,10 +65,10 @@ def prepare_external_data(try_hard, ROLYPOLY_DATA, threads, log_file):
 
     from rolypoly.utils.loggit import setup_logging
 
-    if ROLYPOLY_DATA == None:
+    if rolypoly_data == None:
         ROLYPOLY_DATA = pt(resources.files("rolypoly")) / "data"
     else:
-        ROLYPOLY_DATA = pt(os.path.abspath(ROLYPOLY_DATA))
+        ROLYPOLY_DATA = pt(os.path.abspath(rolypoly_data))
 
     config_path = pt(resources.files("rolypoly")) / "rpconfig.json"
 

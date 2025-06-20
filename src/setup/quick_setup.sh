@@ -113,7 +113,7 @@ fi
 # Prepare external data
 logit "$LOGFILE" "Preparing external data    "
 export ROLYPOLY_DATA="$DATA_PATH"
-rolypoly prepare-external-data --data_dir "$DATA_PATH" --log-file "$LOGFILE"
+rolypoly prepare-data --ROLYPOLY_DATA "$DATA_PATH" --log-file "$LOGFILE"
 conda env config vars set ROLYPOLY_DATA="$DATA_PATH"
 # setup taxonkit datadir
 conda env config vars set TAXONKIT_DB="$DATA_PATH/taxdump"
