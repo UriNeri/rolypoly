@@ -23,6 +23,7 @@ class RNAAnnotationConfig(BaseConfig):
         output_dir: Path,
         threads: int,
         log_file: Path,
+        log_level: str,
         memory: str,
         override_params: dict[str, any] = None,
         skip_steps: list[str] = None,
@@ -42,6 +43,7 @@ class RNAAnnotationConfig(BaseConfig):
             "output": output_dir,
             "threads": threads,
             "log_file": log_file,
+            "log_level": log_level,
             "memory": memory,
         }
         super().__init__(**base_config_params)
@@ -67,7 +69,7 @@ class RNAAnnotationConfig(BaseConfig):
             },  # Removed E-value as it's incompatible with cut_ga. User can still set it manually..
             "IRESfinder": {"min_score": 0.5},
             "IRESpy": {"min_score": 0.6},
-            "tRNAscan-SE": {"forceow": True, "G": True},
+            "tRNAscan-SE": {"forceow": True, "G": True},  #
             "lightmotif": {},
             "aragorn": {"l": True},
         }
@@ -92,9 +94,8 @@ class RNAAnnotationConfig(BaseConfig):
     "-o", "--output-dir", default="./annotate_RNA_output", help="Output directory path"
 )
 @click.option("-t", "--threads", default=1, help="Number of threads")
-@click.option(
-    "-g", "--log-file", default="./annotate_RNA_logfile.txt", help="Path to log file"
-)
+@click.option("-g", "--log-file", default="./annotate_RNA_logfile.txt", help="Path to log file")
+@click.option("-l", "--log-level", default="INFO", help="Log level", type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]))
 @click.option("-M", "--memory", default="4gb", help="Memory in GB. Example: -M 8gb")
 @click.option(
     "-op",
@@ -159,6 +160,7 @@ def annotate_RNA(
     output_dir,
     threads,
     log_file,
+    log_level,
     memory,
     override_params,
     skip_steps,
@@ -181,6 +183,7 @@ def annotate_RNA(
         output_dir=output_dir,
         threads=threads,
         log_file=log_file,
+        log_level=log_level,
         memory=ensure_memory(memory)["giga"],
         override_params=json.loads(override_params) if override_params else {},
         skip_steps=skip_steps.split(",") if skip_steps else [],
@@ -240,7 +243,7 @@ def predict_secondary_structure(config):
 
     input_path = Path(config.input)
     if input_path.is_file():
-        if input_path.suffix in [".fasta", ".fa"]:
+        if input_path.suffix in [".fasta", ".fa", ".fna", ".faa"]:
             input_fasta = input_path
         else:
             raise ValueError(f"Input file {input_path} is not a FASTA file")
@@ -361,45 +364,65 @@ def predict_secondary_structure_rnastructure(config, input_fasta, output_file):
 
 def predict_secondary_structure_linearfold(config, input_fasta, output_file):
     """Predict RNA secondary structure using LinearFold."""
+    import subprocess
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     from needletail import parse_fastx_file
 
-    from rolypoly.utils.various import run_command_comp
-
     def process_sequence(record):
-        import tempfile
-
+        """Process a single sequence with LinearFold."""
         sequence = str(record.seq).replace("T", "U")
+        
         try:
-            with tempfile.NamedTemporaryFile(mode="w+", delete=True) as temp_in:
-                temp_in.write(sequence)
-                temp_in.flush()
-
-                with tempfile.NamedTemporaryFile(mode="r+", delete=True) as temp_out:
-                    params = config.step_params["LinearFold"]
-                    success = run_command_comp(
-                        "linearfold",
-                        params={"beamsize": params.get("beamsize", 100)},
-                        positional_args=[temp_in.name],
-                        output_file=temp_out.name,
-                        check_output=True,
-                        logger=config.logger,
-                    )
-
-                    if success:
-                        temp_out.seek(0)
-                        result = temp_out.read().strip().split("\n")
-                        structure, mfe = result[1].split(" ")
-                        mfe = float(mfe.replace("(", "").replace(")", ""))
-                        return (record.id, sequence, structure, mfe)
-
+            # Prepare LinearFold command
+            params = config.step_params["LinearFold"]
+            beamsize = params.get("beamsize", 100)
+            
+            # LinearFold expects input via stdin
+            cmd = ["linearfold", "--beamsize", str(beamsize)]
+            
+            # Run LinearFold with sequence input via stdin
+            process = subprocess.run(
+                cmd,
+                input=sequence,
+                text=True,
+                capture_output=True,
+                timeout=300  # 5 minute timeout per sequence
+            )
+            
+            if process.returncode == 0:
+                # Parse LinearFold output
+                output_lines = process.stdout.strip().split('\n')
+                if len(output_lines) >= 2:
+                    # LinearFold outputs: sequence, then structure with energy
+                    structure_line = output_lines[1]
+                    # Extract structure and MFE from output like: "(((...))) (-2.34)"
+                    if '(' in structure_line and ')' in structure_line:
+                        parts = structure_line.split()
+                        if len(parts) >= 2:
+                            structure = parts[0]
+                            # Extract MFE from parentheses
+                            mfe_str = parts[1].strip('()')
+                            try:
+                                mfe = float(mfe_str)
+                            except ValueError:
+                                mfe = 0.0
+                            return (record.id, sequence, structure, mfe)
+                
+                config.logger.warning(f"Unexpected LinearFold output format for {record.id}: {process.stdout}")
+                return (record.id, sequence, "Error", 0.0)
+            else:
+                config.logger.error(f"LinearFold failed for sequence {record.id}: {process.stderr}")
+                return (record.id, sequence, "Error", 0.0)
+                
+        except subprocess.TimeoutExpired:
+            config.logger.error(f"LinearFold timed out for sequence {record.id}")
             return (record.id, sequence, "Error", 0.0)
-
         except Exception as e:
             config.logger.error(f"Error processing sequence {record.id}: {str(e)}")
             return (record.id, sequence, "Error", 0.0)
 
+    # Process sequences in parallel
     with (
         open(output_file, "w") as out_f,
         ThreadPoolExecutor(max_workers=config.threads) as executor,
@@ -415,9 +438,11 @@ def predict_secondary_structure_linearfold(config, input_fasta, output_file):
             if structure != "Error":
                 out_f.write(f"{structure}\n")
                 out_f.write(f"({mfe:.2f})\n")
+            else:
+                out_f.write("Error in structure prediction\n")
 
     config.logger.info(
-        f"LinearFold prediction completed. DBN file with mfe predictions written to {output_file}"
+        f"LinearFold prediction completed. DBN file with MFE predictions written to {output_file}"
     )
     tools.append("LinearFold")
 
@@ -445,22 +470,26 @@ def search_ribozymes(config):
 
     # Prepare parameters
     params = config.step_params["cmsearch"].copy()
-    # Convert some parameters to flags if they're True
-    flag_params = ["noali", "cut_ga"]
-    for param in flag_params:
-        if param in params and params[param]:
-            params[param] = True
+    
+    # Filter out False boolean values and only keep True boolean flags
+    filtered_params = {}
+    for param, value in params.items():
+        if isinstance(value, bool):
+            if value:  # Only add True boolean values as flags
+                filtered_params[param] = True
+        else:
+            filtered_params[param] = value
 
     # Set up positional arguments in correct order
     positional_args = [str(cm_db_path), str(input_fasta)]
 
     # Add required parameters
-    params.update({"cpu": config.threads, "tblout": str(output_file), "o": "/dev/null"})
+    filtered_params.update({"cpu": config.threads, "tblout": str(output_file), "o": "/dev/null"})
 
     success = run_command_comp(
         base_cmd="cmscan",
         positional_args=positional_args,
-        params=params,
+        params=filtered_params,
         logger=config.logger,
         output_file=output_file,
         skip_existing=True,
@@ -579,14 +608,18 @@ def predict_trnas_with_aragorn(config):
 
     # Prepare parameters
     params = config.step_params["aragorn"].copy()
-    # Convert some parameters to flags if they're True
-    flag_params = ["l"]
-    for param in flag_params:
-        if param in params and params[param]:
-            params[param] = True
+    
+    # Filter out False boolean values and only keep True boolean flags
+    filtered_params = {}
+    for param, value in params.items():
+        if isinstance(value, bool):
+            if value:  # Only add True boolean values as flags
+                filtered_params[param] = True
+        else:
+            filtered_params[param] = value
 
     # Add required parameters
-    params.update({"o": str(output_file)})
+    filtered_params.update({"o": str(output_file)})
 
     # Set up positional arguments
     positional_args = [str(input_fasta)]
@@ -594,7 +627,7 @@ def predict_trnas_with_aragorn(config):
     success = run_command_comp(
         base_cmd="aragorn",
         positional_args=positional_args,
-        params=params,
+        params=filtered_params,
         logger=config.logger,
         output_file=output_file,
         skip_existing=True,
@@ -620,9 +653,18 @@ def predict_trnas_with_tRNAscan(config):
 
     # Prepare parameters
     params = config.step_params["tRNAscan-SE"].copy()
+    
+    # Filter out False boolean values and only keep True boolean flags
+    filtered_params = {}
+    for param, value in params.items():
+        if isinstance(value, bool):
+            if value:  # Only add True boolean values as flags
+                filtered_params[param] = True
+        else:
+            filtered_params[param] = value
 
     # Add required parameters
-    params.update(
+    filtered_params.update(
         {
             "thread": config.threads,  # Use --thread instead of -threads
             "o": str(output_file),
@@ -635,7 +677,7 @@ def predict_trnas_with_tRNAscan(config):
     success = run_command_comp(
         base_cmd="tRNAscan-SE",
         positional_args=positional_args,
-        params=params,
+        params=filtered_params,
         logger=config.logger,
         output_file=output_file,
         skip_existing=True,
@@ -655,11 +697,27 @@ def search_rna_elements(config):
     config.logger.info(
         f"Searching for RNA structural elements using {config.motif_db} database"
     )
+    
+    # Check ROLYPOLY_DATA environment variable
+    if "ROLYPOLY_DATA" not in os.environ:
+        config.logger.error("ROLYPOLY_DATA environment variable is not set")
+        return False
+        
     datadir = Path(os.environ["ROLYPOLY_DATA"])
+    if not datadir.exists():
+        config.logger.error(f"ROLYPOLY_DATA directory {datadir} does not exist")
+        return False
+    
     if config.motif_db == "RolyPoly":
-        motifs_dir = Path(datadir) / "RNA_motifs" / "rolypoly"
+        motifs_dir = datadir / "RNA_motifs" / "rolypoly"
+        if not motifs_dir.exists():
+            config.logger.warning(f"RolyPoly RNA motifs directory {motifs_dir} does not exist. Skipping RNA motif search.")
+            return False
     elif config.motif_db == "jaspar_core":
-        motifs_dir = Path(datadir) / "RNA_motifs" / "jaspar_core"
+        motifs_dir = datadir / "RNA_motifs" / "jaspar_core"
+        if not motifs_dir.exists():
+            config.logger.warning(f"JASPAR core RNA motifs directory {motifs_dir} does not exist. Skipping RNA motif search.")
+            return False
     else:
         motifs_dir = Path(config.motif_db)
         # check if motifs_dir exists
@@ -667,6 +725,7 @@ def search_rna_elements(config):
             config.logger.error(f"Motifs directory {motifs_dir} does not exist")
             return False
         config.logger.info(f"Loading motifs from {motifs_dir}")
+    
     config.logger.info(f"Loading motifs from {config.motif_db} database")
 
     input_fasta = config.input
@@ -675,9 +734,21 @@ def search_rna_elements(config):
     # Load motifs from the database
     motifs = []
     try:
-        # Load motifs from specified database
-        loader = lightmotif.Loader(config.motif_db)
-        motifs.extend(list(loader))
+        # For built-in databases, try to load from lightmotif
+        if config.motif_db in ["RolyPoly", "jaspar_core"]:
+            # Try loading the database name directly first
+            try:
+                loader = lightmotif.Loader(config.motif_db)
+                motifs.extend(list(loader))
+            except Exception:
+                # If that fails, skip motif search
+                config.logger.warning(f"Could not load {config.motif_db} database. This may not be available in your lightmotif installation. Skipping RNA motif search.")
+                return False
+        else:
+            # For custom paths, load from directory
+            loader = lightmotif.Loader(str(motifs_dir))
+            motifs.extend(list(loader))
+            
         if motifs:
             config.logger.info(
                 f"Successfully loaded {len(motifs)} motifs from {config.motif_db}"
@@ -687,10 +758,10 @@ def search_rna_elements(config):
             config.logger.warning(f"No motifs found in {config.motif_db} database")
             return False
     except ValueError as e:
-        config.logger.error(f"Invalid motif database '{config.motif_db}': {e}")
+        config.logger.warning(f"Invalid motif database '{config.motif_db}': {e}. Skipping RNA motif search.")
         return False
     except Exception as e:
-        config.logger.error(f"Error loading motifs from {config.motif_db}: {e}")
+        config.logger.warning(f"Error loading motifs from {config.motif_db}: {e}. Skipping RNA motif search.")
         return False
 
     with open(output_file, "w") as out:
