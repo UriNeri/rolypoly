@@ -15,23 +15,7 @@ description = "RNA virus analysis toolkit"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
-dependencies = [
-"bbmapy>=0.0.46,<0.0.47",
-"genomicranges>=0.6.3,<0.7",
-"iranges>=0.4.2,<0.5",
-"lightmotif>=0.10.0,<0.11",
-"mappy>=2.30,<3",
-"needletail>=0.7.0,<0.8",
-"polars>=1.30.0,<2",
-"psutil>=7.0.0,<8",
-"pyfastx>=2.2.0,<3", 
-"pyhmmer>=0.11.1,<0.12", 
-"pyrodigal-gv>=0.3.2,<0.4", 
-"requests>=2.32.4,<3", 
-"rich-click>=1.8.9,<2", 
-"rich>=14.0.0,<15", 
-"viennarna>=2.7.0,<3", 
-"intervaltree>=3.1.0,<4",
+dependencies = [ "bbmapy>=0.0.46,<0.0.47", "genomicranges>=0.6.3,<0.7", "iranges>=0.5.1,<0.6", "lightmotif>=0.10.0,<0.11", "mappy>=2.30,<3", "needletail>=0.7.0,<0.8", "polars>=1.31.0,<2", "psutil>=7.0.0,<8", "pyfastx>=2.2.0,<3", "pyhmmer>=0.11.1,<0.12", "pyrodigal-gv>=0.3.2,<0.4", "requests>=2.32.4,<3", "rich-click>=1.8.9,<2", "rich>=14.0.0,<15", "viennarna>=2.7.0,<3", "intervaltree>=3.1.0,<4",
 ]
 
 [project.urls]
@@ -85,6 +69,7 @@ spades = ">=4.2.0,<5"
 trnascan-se = ">=2.0.12,<3"
 falco = ">=1.2.5,<2"
 pip = ">=25.1.1,<26"
+uv = ">=0.7.13,<0.8"
 
 [tool.pixi.tasks]
 gh-push = "src/setup/on_gh.sh push"

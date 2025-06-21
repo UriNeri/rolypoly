@@ -911,19 +911,14 @@ def process_ribozymes_data(config, ribozymes_file):
 
         config.logger.debug(f"Raw ribozymes data from {ribozymes_file}: {raw_data}")
 
-        # renaming so GFF3 conversion is easier
-        data = raw_data.with_columns(
-            [
-                pl.col("sequence_ID").alias("sequence_id"),
-                pl.lit("ribozyme").alias("type"),
-                pl.col("seq_from").cast(pl.Int64).alias("start"),
-                pl.col("seq_to").cast(pl.Int64).alias("end"),
-                pl.lit(".").alias("phase"),
-                pl.lit(config.cm_db).alias("source"),
-                pl.col("strand").alias("strand"),
-                pl.lit(".").alias("phase"),
-                pl.col("profile_name").alias("Name"),  # ribozyme name as attribute
-            ]
+        # Normalize to minimal schema, keeping important ribozyme-specific columns
+        from rolypoly.utils.fax import create_minimal_annotation_schema
+        
+        data = create_minimal_annotation_schema(
+            raw_data, 
+            annotation_type="ribozyme",
+            source=config.cm_db,
+            tool_specific_cols=['profile_name', 'evalue', 'ribozyme_description']
         )
         return data
     except Exception as e:
@@ -935,17 +930,23 @@ def process_ires_iresfinder(ires_file):
     import polars as pl
 
     if ires_file.is_file():
-        return pl.read_csv(ires_file, separator="\t").select(
-            [
-                pl.col("Sequence Name").alias("sequence_id"),
-                pl.lit("IRES").alias("type"),
-                pl.col("Start").cast(pl.Int64).alias("start"),
-                pl.col("End").cast(pl.Int64).alias("end"),
-                pl.col("IRES Score").alias("score"),
-                pl.lit("IRESfinder").alias("source"),
-                pl.lit("+").alias("strand"),
-                pl.lit(".").alias("phase"),
-            ]
+        raw_data = pl.read_csv(ires_file, separator="\t")
+        from rolypoly.utils.fax import create_minimal_annotation_schema
+        
+        # Rename columns for normalization
+        if "Sequence Name" in raw_data.columns:
+            raw_data = raw_data.rename({"Sequence Name": "sequence_id"})
+        if "Start" in raw_data.columns:
+            raw_data = raw_data.rename({"Start": "start"})
+        if "End" in raw_data.columns:
+            raw_data = raw_data.rename({"End": "end"})
+        if "IRES Score" in raw_data.columns:
+            raw_data = raw_data.rename({"IRES Score": "score"})
+            
+        return create_minimal_annotation_schema(
+            raw_data,
+            annotation_type="IRES", 
+            source="IRESfinder"
         )
     return pl.DataFrame()
 
@@ -954,17 +955,23 @@ def process_ires_irespy(ires_file):
     import polars as pl
 
     if ires_file.is_file():
-        return pl.read_csv(ires_file, separator="\t").select(
-            [
-                pl.col("Sequence Name").alias("sequence_id"),
-                pl.lit("IRES").alias("type"),
-                pl.col("Start").cast(pl.Int64).alias("start"),
-                pl.col("End").cast(pl.Int64).alias("end"),
-                pl.col("IRES Score").alias("score"),
-                pl.lit("IRESpy").alias("source"),
-                pl.lit("+").alias("strand"),
-                pl.lit(".").alias("phase"),
-            ]
+        raw_data = pl.read_csv(ires_file, separator="\t")
+        from rolypoly.utils.fax import create_minimal_annotation_schema
+        
+        # Rename columns for normalization
+        if "Sequence Name" in raw_data.columns:
+            raw_data = raw_data.rename({"Sequence Name": "sequence_id"})
+        if "Start" in raw_data.columns:
+            raw_data = raw_data.rename({"Start": "start"})
+        if "End" in raw_data.columns:
+            raw_data = raw_data.rename({"End": "end"})
+        if "IRES Score" in raw_data.columns:
+            raw_data = raw_data.rename({"IRES Score": "score"})
+            
+        return create_minimal_annotation_schema(
+            raw_data,
+            annotation_type="IRES", 
+            source="IRESpy"
         )
     return pl.DataFrame()
 
@@ -1007,14 +1014,29 @@ def process_trnas_data_tRNAscan_SE(trnas_file):
             for line in data_lines:
                 parts = line.split()
                 if len(parts) >= 9:  # Ensure we have enough columns
+                    begin_pos = int(parts[2])  # Begin position
+                    end_pos = int(parts[3])    # End position
+                    
+                    # Determine strand from Begin/End positions
+                    # If Begin > End, it's on minus strand
+                    # If Begin < End, it's on plus strand
+                    if begin_pos > end_pos:
+                        strand = "-"
+                        start = end_pos    # Start is the smaller coordinate
+                        end = begin_pos    # End is the larger coordinate
+                    else:
+                        strand = "+"
+                        start = begin_pos  # Start is the smaller coordinate
+                        end = end_pos      # End is the larger coordinate
+                    
                     record = {
                         "sequence_id": parts[0],  # Sequence name
                         "type": "tRNA",
-                        "start": int(parts[2]),   # Begin position
-                        "end": int(parts[3]),     # End position  
+                        "start": start,           # Corrected start position
+                        "end": end,               # Corrected end position  
                         "score": float(parts[8]), # Infernal score
                         "source": "tRNAscan-SE",
-                        "strand": "+",
+                        "strand": strand,         # Correctly determined strand
                         "phase": ".",
                         "tRNA_type": parts[4],    # tRNA type (Gln, Leu, etc.)
                         "anticodon": parts[5],    # Anticodon
@@ -1022,7 +1044,15 @@ def process_trnas_data_tRNAscan_SE(trnas_file):
                     records.append(record)
             
             if records:
-                return pl.DataFrame(records)
+                raw_data = pl.DataFrame(records)
+                from rolypoly.utils.fax import create_minimal_annotation_schema
+                
+                return create_minimal_annotation_schema(
+                    raw_data,
+                    annotation_type="tRNA",
+                    source="tRNAscan-SE", 
+                    tool_specific_cols=['tRNA_type', 'anticodon']
+                )
                 
         except Exception as e:
             # If parsing fails, return empty DataFrame
@@ -1186,28 +1216,34 @@ def combine_results(config):
                         f"Added secondary structure data:\n{structure_data.head()}"
                     )
 
-        # Combine all results using vstack_easy
+        # Combine all results using unified schema
         if all_results:
-            combined_data = pl.DataFrame()
-            for result in all_results:
-                config.logger.debug(f"Processing {result[0]} data:\n{result[1].head()}")
-                combined_data = vstack_easy(combined_data, result[1])
-            config.logger.debug(f"Combined data:\n{combined_data.head()}")
-            if config.output_format == "gff3":
-                combined_data = add_missing_gff_columns(combined_data)
-                write_combined_results_to_gff(config, combined_data)
-            elif config.output_format == "csv":
-                output_file = config.output_dir / "combined_annotations.csv"
-                combined_data.write_csv(output_file)
-                config.logger.info(
-                    f"Combined annotation results written to {output_file}"
-                )
-            elif config.output_format == "tsv":
-                output_file = config.output_dir / "combined_annotations.tsv"
-                combined_data.write_csv(output_file, separator="\t")
-                config.logger.info(
-                    f"Combined annotation results written to {output_file}"
-                )
+            from rolypoly.utils.fax import ensure_unified_schema
+            
+            # Ensure all dataframes have the same schema
+            unified_dataframes = ensure_unified_schema(all_results)
+            
+            if unified_dataframes:
+                # Stack all dataframes directly since they now have the same schema
+                combined_data = pl.concat(unified_dataframes, how='vertical')
+                config.logger.debug(f"Combined data:\n{combined_data.head()}")
+                if config.output_format == "gff3":
+                    combined_data = add_missing_gff_columns(combined_data)
+                    write_combined_results_to_gff(config, combined_data)
+                elif config.output_format == "csv":
+                    output_file = config.output_dir / "combined_annotations.csv"
+                    combined_data.write_csv(output_file)
+                    config.logger.info(
+                        f"Combined annotation results written to {output_file}"
+                    )
+                elif config.output_format == "tsv":
+                    output_file = config.output_dir / "combined_annotations.tsv"
+                    combined_data.write_csv(output_file, separator="\t")
+                    config.logger.info(
+                        f"Combined annotation results written to {output_file}"
+                    )
+            else:
+                config.logger.warning("Failed to create unified schema for results")
         else:
             config.logger.warning(
                 "No results to combine - no valid data found in any output files"
@@ -1226,11 +1262,12 @@ def write_combined_results_to_gff(config, combined_data):
         f.write("##gff-version 3\n")
         for row in combined_data.iter_rows(named=True):
             record = convert_record_to_gff3_record(row)
-            config.logger.info(f"Writing record:\n{row}")
+            config.logger.debug(f"Writing record:\n{row}")
             f.write(f"{record}\n")
 
     # Optionally add FASTA section
     add_fasta_to_gff(config, output_file)
+    config.logger.info(f"Combined annotation results written to {output_file}")
 
 
 def convert_record_to_gff3_record(
@@ -1276,16 +1313,17 @@ def convert_record_to_gff3_record(
 
     # Build GFF3 attributes string
     attrs = []
+    # Define columns that should not be included in attributes
+    excluded_cols = [
+        sequence_id_col, source_col, score_col, type_col, strand_col, phase_col,
+        "start", "end"  # Also exclude start/end since they're separate GFF3 fields
+    ]
+    
     for key, value in row.items():
-        if key not in [
-            sequence_id_col,
-            source_col,
-            score_col,
-            type_col,
-            strand_col,
-            phase_col,
-        ]:
-            attrs.append(f"{key}={value}")
+        if key not in excluded_cols:
+            # Skip empty values (empty strings, None, ".", etc.)
+            if value and str(value).strip() and str(value) != "." and str(value) != "":
+                attrs.append(f"{key}={value}")
 
     # Get values, using defaults for missing columns
     sequence_id = row[sequence_id_col]

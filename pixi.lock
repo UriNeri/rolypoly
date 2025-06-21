@@ -78,6 +78,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tk-8.6.13-noxft_hd72426e_102.conda
       - conda: https://conda.anaconda.org/bioconda/linux-64/trnascan-se-2.0.12-pl5321h7b50bb2_2.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/tzdata-2025b-h78e105d_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/uv-0.7.13-h2f11bb8_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/wheel-0.45.1-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zlib-1.3.1-hb9d3cd8_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.7-hb8e6e7a_2.conda
@@ -92,15 +93,14 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/76/c6/c88e154df9c4e1a2a66ccf0005a88dfb2650c1dffb6f5ce603dfbd452ce3/idna-3.10-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/7e/5e/af84054b0ff9f9fbe49a7079d46ba8b4ee7ab6192a0310d4bd2c91254626/install_jdk-1.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/50/fb/396d568039d21344639db96d940d40eb62befe704ef849b27949ded5c3bb/intervaltree-3.1.0.tar.gz
-      - pypi: https://files.pythonhosted.org/packages/eb/1d/0cda9eb4036f3bc08e315c0f7af3c514a890fa2e89958575555b2de9530d/IRanges-0.4.2-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/91/43/d676cfac0da681758a8b51b3a9ff1d3be46ee41fa53fe698e4f96f544b96/iranges-0.5.1-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/2a/80/f33dac3512d3fd98b0099b08f22647bc1ecc97aa77b3492f8ff02e01af78/lightmotif-0.10.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/78/25/21f1816701c7366cc2d1318c37fe374edd242e966ec3ad152f1742cef7a2/mappy-2.30.tar.gz
       - pypi: https://files.pythonhosted.org/packages/42/d7/1ec15b46af6af88f19b8e5ffea08fa375d433c998b8a7639e76935c14f1f/markdown_it_py-3.0.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/85/86/10fbefe30a47c36d041966d9ddbb208fcfd15cf02bc2e57abac9fab186cd/ncls-0.0.68-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/85/57/c390fc7e7d695548ade114ffd8d4874b729f9f5b16713a2ed24a3e4af466/needletail-0.7.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/b9/14/78635daab4b07c0930c919d451b8bf8c164774e6a3413aed04a6d95758ce/numpy-2.0.2-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/76/20/e018cd87d7cb6f8684355f31f4e193222455a6e8f7b942f4a2934f5969c7/polars-1.30.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/b8/d9/5e2753784ea30d84b3e769a56f5e50ac5a89c129e87baa16ac0773eb4ef7/polars-1.31.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/bf/b9/b0eb3f3cbcb734d930fdf839431606844a825b23eaf9a6ab371edac8162c/psutil-7.0.0-cp36-abi3-manylinux_2_12_x86_64.manylinux2010_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/58/61/56b32f2825759f3f0c796567fbe89c3f8462a6db7105ec30b30f2a96b88e/pyfastx-2.2.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/8a/0b/9fcc47d19c48b59121088dd6da2488a49d5f72dacf8262e2790a1d2c7d15/pygments-2.19.1-py3-none-any.whl
@@ -193,6 +193,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tk-8.6.13-noxft_hd72426e_102.conda
       - conda: https://conda.anaconda.org/bioconda/linux-64/trnascan-se-2.0.12-pl5321h7b50bb2_2.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/tzdata-2025b-h78e105d_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/uv-0.7.13-h2f11bb8_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/wheel-0.45.1-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zlib-1.3.1-hb9d3cd8_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.7-hb8e6e7a_2.conda
@@ -220,7 +221,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/76/c6/c88e154df9c4e1a2a66ccf0005a88dfb2650c1dffb6f5ce603dfbd452ce3/idna-3.10-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/7e/5e/af84054b0ff9f9fbe49a7079d46ba8b4ee7ab6192a0310d4bd2c91254626/install_jdk-1.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/50/fb/396d568039d21344639db96d940d40eb62befe704ef849b27949ded5c3bb/intervaltree-3.1.0.tar.gz
-      - pypi: https://files.pythonhosted.org/packages/1b/13/c6e618598d3b8f195fc16cd529bba7184758c050d1d379ba4eafe890c7b6/IRanges-0.4.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/a8/5d/7d9d920c4f6063ea3fdd7452331bc37a7d3c997bc3e9e84b93fba0b4c94e/iranges-0.5.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/7f/66/b15ce62552d84bbfcec9a4873ab79d993a1dd4edb922cbfccae192bd5b5f/jaraco.classes-3.4.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/ff/db/0c52c4cf5e4bd9f5d7135ec7669a3a767af21b3a308e1ed3674881e52b62/jaraco.context-6.0.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/9f/4f/24b319316142c44283d7540e76c7b5a6dbd5db623abd86bb7b3491c21018/jaraco.functools-4.1.0-py3-none-any.whl
@@ -231,7 +232,6 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/42/d7/1ec15b46af6af88f19b8e5ffea08fa375d433c998b8a7639e76935c14f1f/markdown_it_py-3.0.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/2b/9f/7ba6f94fc1e9ac3d2b853fdff3035fb2fa5afbed898c4a72b8a020610594/more_itertools-10.7.0-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/88/b8/210d5cb1fa85c7675323aacbd52af11553dc190aad1c15584699f40797f1/ncls-0.0.68.tar.gz
       - pypi: https://files.pythonhosted.org/packages/4b/04/e3a3fcf6971ef272366dbcac3db46da6f33b1c9fb4ef4d8f7ef30ddf68c3/needletail-0.7.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/11/a9/1cd3c6964ec51daed7b01ca4686a5c793581bf4492cbd7274b3f544c9abe/nh3-0.2.21-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/b7/f6/bc47f5fa666d5ff4145254f9e618d56e6a4ef9b874654ca74c19113bb538/numpy-2.3.0-cp312-cp312-manylinux_2_28_x86_64.whl
@@ -240,7 +240,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/9e/c3/059298687310d527a58bb01f3b1965787ee3b40dce76752eda8b44e9a2c5/pexpect-4.9.0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/fe/39/979e8e21520d4e47a0bbe349e2713c0aac6f3d853d0e5b34d76206c439aa/platformdirs-4.3.8-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/76/20/e018cd87d7cb6f8684355f31f4e193222455a6e8f7b942f4a2934f5969c7/polars-1.30.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/b8/d9/5e2753784ea30d84b3e769a56f5e50ac5a89c129e87baa16ac0773eb4ef7/polars-1.31.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/bf/b9/b0eb3f3cbcb734d930fdf839431606844a825b23eaf9a6ab371edac8162c/psutil-7.0.0-cp36-abi3-manylinux_2_12_x86_64.manylinux2010_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/22/a6/858897256d0deac81a172289110f31629fc4cee19b6f01283303e18c8db3/ptyprocess-0.7.0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/13/a3/a812df4e2dd5696d1f351d58b8fe16a405b234ad2886a0dab9183fb78109/pycparser-2.22-py3-none-any.whl
@@ -779,15 +779,14 @@ packages:
   sha256: 902b1b88936918f9b2a19e0e5eb7ccb430ae45cde4f39ea4b36932920d33952d
   requires_dist:
   - sortedcontainers>=2.0,<3.0
-- pypi: https://files.pythonhosted.org/packages/1b/13/c6e618598d3b8f195fc16cd529bba7184758c050d1d379ba4eafe890c7b6/IRanges-0.4.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+- pypi: https://files.pythonhosted.org/packages/91/43/d676cfac0da681758a8b51b3a9ff1d3be46ee41fa53fe698e4f96f544b96/iranges-0.5.1-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
   name: iranges
-  version: 0.4.2
-  sha256: ed8d79bbdbedfa68ab8b2e63ea345ec459a00a5b0d2e04fb7e4311976663554c
+  version: 0.5.1
+  sha256: ff9b6a9c01d56249a28d0d46e5f09c9596a8d4927f19d26e34ad3567ff1a948c
   requires_dist:
   - importlib-metadata ; python_full_version < '3.8'
   - biocutils>=0.2.1
   - biocframe>=0.6.2
-  - ncls
   - numpy
   - polars ; extra == 'optional'
   - pandas ; extra == 'optional'
@@ -797,15 +796,14 @@ packages:
   - pandas ; extra == 'testing'
   - polars ; extra == 'testing'
   requires_python: '>=3.9'
-- pypi: https://files.pythonhosted.org/packages/eb/1d/0cda9eb4036f3bc08e315c0f7af3c514a890fa2e89958575555b2de9530d/IRanges-0.4.2-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+- pypi: https://files.pythonhosted.org/packages/a8/5d/7d9d920c4f6063ea3fdd7452331bc37a7d3c997bc3e9e84b93fba0b4c94e/iranges-0.5.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
   name: iranges
-  version: 0.4.2
-  sha256: 34d297582da61ebdec53d353fbf234a0668e3ec9c5a7d9da342d60695115078b
+  version: 0.5.1
+  sha256: 4126c9727522f7c78cd2d7657fbd3f07121ff8a8cbd87ab272496a2d19d0542e
   requires_dist:
   - importlib-metadata ; python_full_version < '3.8'
   - biocutils>=0.2.1
   - biocframe>=0.6.2
-  - ncls
   - numpy
   - polars ; extra == 'optional'
   - pandas ; extra == 'optional'
@@ -1398,28 +1396,6 @@ packages:
   purls: []
   size: 16791054
   timestamp: 1749145678894
-- pypi: https://files.pythonhosted.org/packages/85/86/10fbefe30a47c36d041966d9ddbb208fcfd15cf02bc2e57abac9fab186cd/ncls-0.0.68-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
-  name: ncls
-  version: 0.0.68
-  sha256: 906af9e789412ef6d0a8b08d6870b40d39304865973f550b0eb6994d3d3217e8
-  requires_dist:
-  - numpy
-  - black ; extra == 'dev'
-  - bumpver ; extra == 'dev'
-  - isort ; extra == 'dev'
-  - pip-tools ; extra == 'dev'
-  - pytest ; extra == 'dev'
-- pypi: https://files.pythonhosted.org/packages/88/b8/210d5cb1fa85c7675323aacbd52af11553dc190aad1c15584699f40797f1/ncls-0.0.68.tar.gz
-  name: ncls
-  version: 0.0.68
-  sha256: 81aaa5abb123bb21797ed2f8ef921e20222db14a3ecbc61ccf447532f2b7ba93
-  requires_dist:
-  - numpy
-  - black ; extra == 'dev'
-  - bumpver ; extra == 'dev'
-  - isort ; extra == 'dev'
-  - pip-tools ; extra == 'dev'
-  - pytest ; extra == 'dev'
 - conda: https://conda.anaconda.org/conda-forge/linux-64/ncurses-6.5-h2d0b736_3.conda
   sha256: 3fde293232fa3fca98635e1167de6b7c7fda83caf24b9d6c91ec9eefb4f4d586
   md5: 47e340acb35de30501a76c7c799c41d7
@@ -1582,10 +1558,10 @@ packages:
   - pytest-benchmark ; extra == 'testing'
   - coverage ; extra == 'testing'
   requires_python: '>=3.9'
-- pypi: https://files.pythonhosted.org/packages/76/20/e018cd87d7cb6f8684355f31f4e193222455a6e8f7b942f4a2934f5969c7/polars-1.30.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+- pypi: https://files.pythonhosted.org/packages/b8/d9/5e2753784ea30d84b3e769a56f5e50ac5a89c129e87baa16ac0773eb4ef7/polars-1.31.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
   name: polars
-  version: 1.30.0
-  sha256: 1a52af3862082b868c1febeae650af8ae8a2105d2cb28f0449179a7b44f54ccf
+  version: 1.31.0
+  sha256: ada7940ed92bea65d5500ae7ac1f599798149df8faa5a6db150327c9ddbee4f1
   requires_dist:
   - polars-cloud>=0.0.1a1 ; extra == 'polars-cloud'
   - numpy>=1.16.0 ; extra == 'numpy'
@@ -1605,7 +1581,7 @@ packages:
   - polars[pandas] ; extra == 'sqlalchemy'
   - polars[adbc,connectorx,sqlalchemy] ; extra == 'database'
   - fsspec ; extra == 'fsspec'
-  - deltalake>=0.19.0 ; extra == 'deltalake'
+  - deltalake>=1.0.0 ; extra == 'deltalake'
   - pyiceberg>=0.7.1 ; extra == 'iceberg'
   - gevent ; extra == 'async'
   - cloudpickle ; extra == 'cloudpickle'
@@ -1889,25 +1865,25 @@ packages:
   requires_python: '>=3.7'
 - pypi: .
   name: rolypoly-bio
-  version: 0.6.11
-  sha256: 2f6419cbd17ede1871787ae9d7d01e6f3fedda5e0c984bd4b6aae53619846bce
+  version: 0.6.15
+  sha256: c6ec79ede9b356d88b088e19d2e89c00b32eb53549f8c35f57c893b9bbef22a2
   requires_dist:
-  - bbmapy>=0.0.46,<0.0.47
-  - genomicranges>=0.6.3,<0.7
-  - intervaltree>=3.1.0,<4
-  - iranges>=0.4.2,<0.5
-  - lightmotif>=0.10.0,<0.11
-  - mappy>=2.30,<3
-  - needletail>=0.7.0,<0.8
-  - polars>=1.30.0,<2
-  - psutil>=7.0.0,<8
-  - pyfastx>=2.2.0,<3
-  - pyhmmer>=0.11.1,<0.12
-  - pyrodigal-gv>=0.3.2,<0.4
-  - requests>=2.32.4,<3
-  - rich-click>=1.8.9,<2
-  - rich>=14.0.0,<15
-  - viennarna>=2.7.0,<3
+  - bbmapy
+  - genomicranges
+  - intervaltree
+  - iranges
+  - lightmotif
+  - mappy
+  - needletail
+  - polars
+  - psutil
+  - pyfastx
+  - pyhmmer
+  - pyrodigal-gv
+  - requests
+  - rich
+  - rich-click
+  - viennarna
   requires_python: '>=3.9'
   editable: true
 - pypi: https://files.pythonhosted.org/packages/75/f0/782e7d681d660eda8c536962920c41309e6dd4ebcea9a2714ed5127d44bd/ruff-0.11.13-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
@@ -2086,6 +2062,20 @@ packages:
   version: 0.7.13
   sha256: 5786a29e286f2cc3cbda13a357fd9a4dd5bf1d7448a9d3d842b26b4f784a3a86
   requires_python: '>=3.8'
+- conda: https://conda.anaconda.org/conda-forge/linux-64/uv-0.7.13-h2f11bb8_0.conda
+  sha256: ce81b2c1e415f0e55053c99157ce04479aebef4d342d2dd0aee459c41e54677a
+  md5: 3bdce657acc1183a0e84688e490330ff
+  depends:
+  - libgcc >=13
+  - libstdcxx >=13
+  - libgcc >=13
+  - __glibc >=2.17,<3.0.a0
+  constrains:
+  - __glibc >=2.17
+  license: Apache-2.0 OR MIT
+  purls: []
+  size: 14425311
+  timestamp: 1749777590439
 - pypi: https://files.pythonhosted.org/packages/03/2f/73ea7b15dc226f120dbc89f3f4bb40b6a5a26ac969898255f22123a94d1a/ViennaRNA-2.7.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
   name: viennarna
   version: 2.7.0
