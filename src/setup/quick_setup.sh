@@ -48,9 +48,7 @@ mkdir -p "$(dirname "$INSTALL_PATH")"
 mkdir -p "$DATA_PATH"
 
 # Install mamba if needed
-mamba_installed=$(command -v micromamba &> /dev/null)
-conda_installed=$(command -v conda &> /dev/null)
-if [ "$mamba_installed" = false ] && [ "$conda_installed" = false ]; then
+if ! command -v micromamba &> /dev/null; then
     logit "$LOGFILE" "Neither mamba nor conda could be found. Attempting to install mamba    "
     if command -v wget &> /dev/null
     then
@@ -78,7 +76,7 @@ fi
 # initialize micromamba
 eval "$(micromamba shell hook --shell bash)"
 
-# Get RolyPoly code
+# Get RolyPoly code 
 if ! command -v git &> /dev/null
 then
     logit "$LOGFILE" "git could not be found. Fetching the repo from https://code.jgi.doe.gov/rolypoly/rolypoly.git"
@@ -131,8 +129,8 @@ micromamba activate "$CONDA_ENV_PATH"
 
 if [ "$DEV_INSTALL" != "TRUE" ]; then
     # check version via pip/conda
-    pip show rolypoly-bio >> "$LOGFILE"
-    pip show rolypoly-bio
+    uv pip show rolypoly-bio | grep Version -m1 -B1 >> "$LOGFILE"
+    uv pip show rolypoly-bio | grep Version -m1 -B1 
 
 else
     rolypoly --version >> "$LOGFILE"

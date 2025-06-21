@@ -560,14 +560,47 @@ def cast_cols_to_match(df1_to_cast, df2_to_match):
     import polars as pl
 
     for col in df2_to_match.columns:
-        df1_to_cast = df1_to_cast.with_columns(
-            pl.col(col).cast(df2_to_match.schema[col])
-        )
+        if col in df1_to_cast.columns:
+            target_type = df2_to_match.schema[col]
+            source_type = df1_to_cast.schema[col]
+            
+            # Skip casting if target type is null or if types are already compatible
+            if target_type == pl.Null or source_type == target_type:
+                continue
+                
+            # Skip casting if source has null and target is string
+            if source_type == pl.Null and target_type in [pl.Utf8, pl.String]:
+                continue
+                
+            try:
+                df1_to_cast = df1_to_cast.with_columns(
+                    pl.col(col).cast(target_type)
+                )
+            except pl.exceptions.InvalidOperationError:
+                # If casting fails, keep the original column
+                continue
     return df1_to_cast
 
 
 def vstack_easy(df1_to_stack, df2_to_stack):
     """Stack two DataFrames vertically after matching their column types and order."""
+    import polars as pl
+    
+    # # Get common columns between both DataFrames
+    # common_columns = [col for col in df1_to_stack.columns if col in df2_to_stack.columns]
+    
+    # if not common_columns:
+    #     # If no common columns, return the first DataFrame as is
+    #     return df1_to_stack
+    
+    # # Filter both DataFrames to only common columns
+    # df1_filtered = df1_to_stack.select(common_columns)
+    # df2_filtered = df2_to_stack.select(common_columns)
+    
+    # # Cast columns to match types
+    # df2_filtered = cast_cols_to_match(df2_filtered, df1_filtered)
+    
+    # return df1_filtered.vstack(df2_filtered)
     df2_to_stack = cast_cols_to_match(df2_to_stack, df1_to_stack)
     df2_to_stack = order_columns_to_match(df2_to_stack, df1_to_stack)
     return df1_to_stack.vstack(df2_to_stack)
