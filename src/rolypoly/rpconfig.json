@@ -1,4 +1,4 @@
 {
-    "ROLYPOLY_DATA": "/clusterfs/jgi/scratch/science/metagen/neri/projects/rolypoly/data/",
+    "ROLYPOLY_DATA": "/clusterfs/jgi/scratch/science/metagen/neri/projects/rolypoly/data",
     "ROLYPOLY_TEST_DIR": "/clusterfs/jgi/scratch/science/metagen/neri/tests/rp_tests/"
 }

@@ -798,7 +798,7 @@ def fetch_genomes(
 
     # Use taxonkit to get taxids
     with open("tmp_gbs_50m_taxids.lst", "w") as f:
-        sp.run(["taxonkit", "name2taxid"], input="\n".join(taxons).encode(), stdout=f)
+        sp.run(["taxonkit", "name2taxid", f"--data-dir {datadir}/taxdump"], input="\n".join(taxons).encode(), stdout=f)
 
     # Use datasets to download genomes
     with open("tmp_gbs_50m_taxids.lst", "r") as f:

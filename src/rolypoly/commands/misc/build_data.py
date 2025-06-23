@@ -18,15 +18,9 @@ tools = []
 
 @command()
 @option(
-    "--try-hard",
-    default=False,
-    help="""Instead of downloading the data from a public FTP (TBD also zenodo), try to recreate all the databases and files from scratch (this will include some downloading though    ) \n
-        In theory, this might get your more updated reference sequences than those I fetched on 07/08/2024. """,
-)
-@option(
-    "--ROLYPOLY_DATA",
-    required=False,
-    help="If you do not want to download the the data to same location as the rolypoly code, specify an alternative path. TODO: remind user to provide such alt path in other scripts? envirometnal variable maybe",
+    "--data-dir",
+    required=True,
+    help="Path to the data directory",
 )
 @option("--threads", default=4, help="Number of threads to use")
 @option(
@@ -34,85 +28,32 @@ tools = []
     default=f"./prepare_external_data_logfile.txt",
     help="Path to the log file",
 )
-def prepare_external_data(try_hard, rolypoly_data, threads, log_file):
-    """Download or build external data required for RolyPoly.
-
-    This command either downloads pre-built databases and reference data from
-    a public repository, or builds them from scratch using the latest source data.
-
-    Args:
-        try_hard (bool): If True, build databases from scratch instead of downloading
-            pre-built versions. May result in more up-to-date references.
-        rolypoly_data (str, optional): Alternative directory to store data. If None,
-            uses the default RolyPoly data directory.
-        threads (int, optional): Number of CPU threads to use.
-        log_file (str, optional): Path to write log messages. Defaults to
-            "./prepare_external_data_logfile.txt".
-
-    Note:
-        When try_hard=True, this will:
-        1. Build RdRp-scan HMM profiles from MSAs
-        2. Process RVMT alignments and create HMMs
-        3. Download and prepare rRNA databases
-        4. Download and process Rfam data
+def build_data(data_dir, threads, log_file):
+    """Build external data required for RolyPoly.
+        1. Build geNomad RNA viral HMMs
+        2. Build protein HMMs RdRp-scan, RVMT, Neordrp_v2.1, tsa_2018 and PFAM_A_37 
+        3. Download and prepare rRNA databases SILVA_138.1_SSURef_NR99_tax_silva.fasta and SILVA_138.1_LSURef_NR99_tax_silva.fasta
+        4. Download Rfam data.
 
     """
     import json
     import subprocess
     from importlib import resources
-
     import requests
 
     from rolypoly.utils.loggit import setup_logging
 
-    if rolypoly_data == None:
-        ROLYPOLY_DATA = pt(resources.files("rolypoly")) / "data"
-    else:
-        ROLYPOLY_DATA = pt(os.path.abspath(rolypoly_data))
-
-    config_path = pt(resources.files("rolypoly")) / "rpconfig.json"
-
-    if config_path.exists():
-        with config_path.open("r") as f:
-            config = json.load(f)
-    else:
-        config = {"ROLYPOLY_DATA": ""}
-
-    config["ROLYPOLY_DATA"] = str(ROLYPOLY_DATA)
-    os.environ["ROLYPOLY_DATA"] = str(ROLYPOLY_DATA)
-    print(os.environ["ROLYPOLY_DATA"])
-    with open(config_path, "w") as f:
-        json.dump(config, f, indent=4)
-
     logger = setup_logging(log_file)
-    logger.info(f"Starting data preparation to : {ROLYPOLY_DATA}")
+    logger.info(f"Starting data preparation to : {data_dir}")
 
-    ROLYPOLY_DATA.mkdir(exist_ok=True)
+    data_dir = pt(os.path.abspath(data_dir))
+    data_dir.mkdir(exist_ok=True)
 
-    if try_hard == False:
-        response = requests.get(
-            "https://portal.nersc.gov/dna/microbial/prokpubs/rolypoly/data/data.tar.gz",
-            stream=True,
-        )
-        with open(f"{ROLYPOLY_DATA}/data.tar.gz", "wb") as f:
-            for chunk in response.iter_content(chunk_size=1024):
-                if chunk:
-                    f.write(chunk)
-        extract(
-            archive_path=f"{ROLYPOLY_DATA}/data.tar.gz", extract_to=f"{ROLYPOLY_DATA}"
-        )
-        most_recent_folder = find_most_recent_folder(f"{ROLYPOLY_DATA}")
-        move_contents_to_parent(most_recent_folder)
-        os.remove(f"{ROLYPOLY_DATA}/data.tar.gz")
-        logger.info(f"Finished fetching and extracting data to : {ROLYPOLY_DATA}")
-        return 0
-
-    # If try_hard is True, prepare databases from scratch
-    hmmdb_dir = os.path.join(ROLYPOLY_DATA, "hmmdbs")
+    hmmdb_dir = os.path.join(data_dir, "hmmdbs")
     os.makedirs(hmmdb_dir, exist_ok=True)
 
     # Add geNomad RNA viral HMMs preparation
-    prepare_genomad_rna_viral_hmms(ROLYPOLY_DATA, threads, logger)
+    prepare_genomad_rna_viral_hmms(data_dir, threads, logger)
 
     # RdRp-scan
     fetch_and_extract(
@@ -200,26 +141,26 @@ def prepare_external_data(try_hard, rolypoly_data, threads, log_file):
     logger.info("Finished data preparation")
 
 
-def prepare_rvmt_mmseqs(ROLYPOLY_DATA, threads, log_file):
+def prepare_rvmt_mmseqs(data_dir, threads, log_file):
     """Prepare RVMT database for MMseqs2 searches.
 
     Processes the RVMT (RNA Virus MetaTranscriptomes) database alignments
     and creates formatted databases for MMseqs2 searches.
 
     Args:
-        ROLYPOLY_DATA (str): Base directory for data storage
+        data_dir (str): Base directory for data storage
         threads (int): Number of CPU threads to use
         log_file (str): Path to write log messages
 
     Note:
         This function assumes RVMT alignments have been downloaded and
-        extracted to the appropriate location in ROLYPOLY_DATA.
+        extracted to the appropriate location in data_dir.
     """
     import subprocess
 
     console.print("Preparing RVMT mmseqs database")
-    rvmt_dir = os.path.join(ROLYPOLY_DATA, "RVMT")
-    mmdb_dir = os.path.join(ROLYPOLY_DATA, "mmdb")
+    rvmt_dir = os.path.join(data_dir, "RVMT")
+    mmdb_dir = os.path.join(data_dir, "mmdb")
     os.makedirs(rvmt_dir, exist_ok=True)
     os.makedirs(mmdb_dir, exist_ok=True)
 
@@ -242,17 +183,17 @@ def prepare_rvmt_mmseqs(ROLYPOLY_DATA, threads, log_file):
     kcompress_command = f"kcompress.sh in=tmp_nochimeras.fasta out=RiboV1.6_Contigs_flat.fasta fuse=2000 k=31 prealloc=true threads={threads}"
     subprocess.run(kcompress_command, shell=True)
 
-    os.chdir(ROLYPOLY_DATA)
+    os.chdir(data_dir)
 
 
-def prepare_rrna_db(ROLYPOLY_DATA, log_file):
+def prepare_rrna_db(data_dir, log_file):
     """Download and prepare ribosomal RNA databases.
 
     Downloads and processes reference databases for identifying ribosomal RNA
     sequences, including bacterial, archaeal, and eukaryotic rRNAs.
 
     Args:
-        ROLYPOLY_DATA (str): Base directory for data storage
+        data_dir (str): Base directory for data storage
         log_file (str): Path to write log messages
 
     Note:
@@ -262,7 +203,7 @@ def prepare_rrna_db(ROLYPOLY_DATA, log_file):
     import subprocess
 
     console.print("Preparing rRNA database")
-    rrna_dir = os.path.join(ROLYPOLY_DATA, "rRNA")
+    rrna_dir = os.path.join(data_dir, "rRNA")
     os.makedirs(rrna_dir, exist_ok=True)
     os.chdir(rrna_dir)
 
@@ -363,14 +304,14 @@ def write_hmms(hmms, output_hmm, write_ascii):
             hmm.write(fo, binary=binary)
 
 
-def download_and_extract_rfam(ROLYPOLY_DATA, logger):
+def download_and_extract_rfam(data_dir, logger):
     """Download and process Rfam database files.
 
     Retrieves Rfam database files and processes them for use in RNA
     family identification and annotation.
 
     Args:
-        ROLYPOLY_DATA (str): Base directory for data storage
+        data_dir (str): Base directory for data storage
         logger: Logger object for recording progress and errors
 
     Note:
@@ -382,8 +323,8 @@ def download_and_extract_rfam(ROLYPOLY_DATA, logger):
     import requests
 
     rfam_url = "https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/Rfam.cm.gz"
-    rfam_cm_path = ROLYPOLY_DATA / "Rfam.cm.gz"
-    rfam_extract_path = ROLYPOLY_DATA / "Rfam.cm"
+    rfam_cm_path = data_dir / "Rfam.cm.gz"
+    rfam_extract_path = data_dir / "Rfam.cm"
     subprocess.run("cmpress Rfam.cm", shell=True)
 
     logger.info("Downloading Rfam database    ")
@@ -399,14 +340,14 @@ def download_and_extract_rfam(ROLYPOLY_DATA, logger):
         logger.error(f"Error processing Rfam database: {e}")
 
 
-def tar_everything_and_upload_to_NERSC(ROLYPOLY_DATA, version=""):
+def tar_everything_and_upload_to_NERSC(data_dir, version=""):
     """Package and upload prepared data to NERSC.
 
     Creates a tarball of all prepared databases and reference data,
     then uploads it to NERSC for distribution.
 
     Args:
-        ROLYPOLY_DATA (str): Directory containing data to package
+        data_dir (str): Directory containing data to package
         version (str, optional): Version string to append to archive name.
 
     Note:
@@ -421,10 +362,10 @@ def tar_everything_and_upload_to_NERSC(ROLYPOLY_DATA, version=""):
         from rolypoly.utils.loggit import get_version_info
 
         version = get_version_info()
-    with open(Path(ROLYPOLY_DATA) / "README.md", "w") as f_out:
+    with open(Path(data_dir) / "README.md", "w") as f_out:
         f_out.write(f"RolyPoly version: {version}\n")
         f_out.write(f"Date: {datetime.datetime.now()}\n")
-        f_out.write(f"Data dir: {ROLYPOLY_DATA}\n")
+        f_out.write(f"Data dir: {data_dir}\n")
         f_out.write(
             "for more details see: https://pages.jgi.doe.gov/rolypoly/docs/\n"
         )
@@ -450,7 +391,7 @@ def tar_everything_and_upload_to_NERSC(ROLYPOLY_DATA, version=""):
         tools.append("refseq")
         f_out.write(remind_citations(tools, return_as_text=True))
 
-    tar_command = f"tar --use-compress-program='pigz -p 8 --best' -cf rpdb.tar.gz {ROLYPOLY_DATA}"  # threads
+    tar_command = f"tar --use-compress-program='pigz -p 8 --best' -cf rpdb.tar.gz {data_dir}"  # threads
 
     subprocess.run(tar_command, shell=True)
 
@@ -458,18 +399,18 @@ def tar_everything_and_upload_to_NERSC(ROLYPOLY_DATA, version=""):
     # scp uneri@xfer.jgi.lbl.gov:/clusterfs/jgi/scratch/science/metagen/neri/projects/data2/data.tar.gz /global/dna/projectdirs/microbial/prokpubs/www/rolypoly/data/
     # chmod +777 -R /global/dna/projectdirs/microbial/prokpubs/www/rolypoly/data/
 
-    # upload_command = f"gsutil cp {ROLYPOLY_DATA}.tar.gz gs://rolypoly-data/"
+    # upload_command = f"gsutil cp {data_dir}.tar.gz gs://rolypoly-data/"
     # subprocess.run(upload_command, shell=True)
 
 
-def prepare_genomad_rna_viral_hmms(ROLYPOLY_DATA, threads, logger=None):
+def prepare_genomad_rna_viral_hmms(data_dir, threads, logger=None):
     """Download and prepare RNA viral HMMs from geNomad markers.
 
     Downloads the geNomad database, analyzes the marker metadata to identify
     RNA viral specific markers, and creates an HMM database from their alignments.
 
     Args:
-        ROLYPOLY_DATA (str): Base directory for data storage
+        data_dir (str): Base directory for data storage
         threads (int): Number of CPU threads to use
         logger: Logger object for recording progress and errors
     """
@@ -485,7 +426,7 @@ def prepare_genomad_rna_viral_hmms(ROLYPOLY_DATA, threads, logger=None):
     logger.info("Starting geNomad RNA viral HMM preparation")
 
     # Create directories
-    genomad_dir = os.path.join(ROLYPOLY_DATA, "genomad")
+    genomad_dir = os.path.join(data_dir, "genomad")
     genomad_db_dir = os.path.join(genomad_dir, "genomad_db")
     genomad_markers_dir = os.path.join(genomad_db_dir, "markers")
     genomad_alignments_dir = os.path.join(genomad_markers_dir, "alignments")
@@ -568,7 +509,7 @@ def prepare_genomad_rna_viral_hmms(ROLYPOLY_DATA, threads, logger=None):
         shutil.rmtree(genomad_alignments_dir + "/genomad_msa_v1.9")
 
         output_hmm = os.path.join(
-            os.path.join(ROLYPOLY_DATA, "hmmdbs"), "genomad_rna_viral_markers.hmm"
+            os.path.join(data_dir, "hmmdbs"), "genomad_rna_viral_markers.hmm"
         )
         hmmdb_from_directory(
             genomad_alignments_dir,
@@ -597,7 +538,7 @@ def prepare_genomad_rna_viral_hmms(ROLYPOLY_DATA, threads, logger=None):
 
 
 if __name__ == "__main__":
-    prepare_external_data()
+    build_data()
 
 
 # source ~/.bashrc

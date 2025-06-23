@@ -8,12 +8,12 @@ RolyPoly Quick Setup Script
 This script automatically installs RolyPoly with all dependencies in an organized directory structure.
 
 USAGE:
-    bash quick_setup.sh [MAMBA_ENV_PATH] [INSTALL_PATH] [DATA_PATH] [LOGFILE] [DEV_INSTALL]
+    bash quick_setup.sh [MAMBA_ENV_PATH] [CODE_PATH] [DATA_PATH] [LOGFILE] [DEV_INSTALL]
     bash quick_setup.sh -h|--help|help
 
 ARGUMENTS:
     MAMBA_ENV_PATH    Path for conda/mamba environment (default: ./rolypoly/env)
-    INSTALL_PATH      Path for RolyPoly source code (default: ./rolypoly/code)
+    CODE_PATH      Path for RolyPoly source code (default: ./rolypoly/code)
     DATA_PATH         Path for external data files (default: ./rolypoly/data)
     LOGFILE          Path for installation log file (default: ./rolypoly/RolyPoly_quick_setup.log)
     DEV_INSTALL      Set to "TRUE" for development installation (default: FALSE)
@@ -79,7 +79,7 @@ ensure_directory() {
 
 ## Default paths and convert to absolute paths
 MAMBA_ENV_PATH=$(get_absolute_path "${1:-./rolypoly/env}")
-INSTALL_PATH=$(get_absolute_path "${2:-./rolypoly/code}")
+CODE_PATH=$(get_absolute_path "${2:-./rolypoly/code}")
 DATA_PATH=$(get_absolute_path "${3:-./rolypoly/data}")
 LOGFILE=$(get_absolute_path "${4:-./rolypoly/RolyPoly_quick_setup.log}")
 DEV_INSTALL="${5:-FALSE}"
@@ -87,13 +87,14 @@ DEV_INSTALL="${5:-FALSE}"
 # Print paths being used    
 logit "$LOGFILE" "Installing RolyPoly with the following paths:"
 logit "$LOGFILE" "  MAMBA environment: $MAMBA_ENV_PATH"
-logit "$LOGFILE" "  Installation directory: $INSTALL_PATH"
+logit "$LOGFILE" "  Code directory: $CODE_PATH"
 logit "$LOGFILE" "  Data directory: $DATA_PATH"
 logit "$LOGFILE" "  Logfile: $LOGFILE"
+logit "$LOGFILE" "  Development installation type: $DEV_INSTALL"
 
 # Create all required directories
 ensure_directory "$(dirname "$MAMBA_ENV_PATH")"
-ensure_directory "$(dirname "$INSTALL_PATH")"
+ensure_directory "$(dirname "$CODE_PATH")"
 ensure_directory "$DATA_PATH"
 
 # Detect and set up mamba/micromamba
@@ -125,7 +126,7 @@ else
             exit 1 ;;
     esac
 
-    wget "$url" -O micromamba.tar.bz2
+    wget "$url" -O micromamba.tar.bz2 --no-verbose
     tar -xvjf micromamba.tar.bz2
     chmod +x bin/micromamba
     export PATH="$PWD/bin:$PATH"
@@ -147,22 +148,22 @@ fi
 # Get RolyPoly code 
 if command -v git &> /dev/null; then
     logit "$LOGFILE" "git is installed - cloning repository"
-    git clone https://code.jgi.doe.gov/rolypoly/rolypoly.git "$INSTALL_PATH"
+    git clone https://code.jgi.doe.gov/rolypoly/rolypoly.git "$CODE_PATH"
 else
     logit "$LOGFILE" "git not found - downloading archive"
-    mkdir -p "$INSTALL_PATH"
-    cd "$INSTALL_PATH" || exit
-    curl -LJO https://code.jgi.doe.gov/rolypoly/rolypoly/-/archive/main/rolypoly-main.tar
+    mkdir -p "$CODE_PATH"
+    cd "$CODE_PATH" || exit
+    curl -LJO https://code.jgi.doe.gov/rolypoly/rolypoly/-/archive/main/rolypoly-main.tar --silent
     tar -xvf rolypoly-main.tar
     mv rolypoly-main/* .
     rm -rf rolypoly-main rolypoly-main.tar
 fi
 
-cd "$INSTALL_PATH" || exit
+cd "$CODE_PATH" || exit
 
 # Create and activate conda environment
 logit "$LOGFILE" "Creating conda environment using $mamba_command"
-"$mamba_command" env create -y -p "$MAMBA_ENV_PATH" -f ./src/setup/env_big.yaml
+"$mamba_command" env create -y -p "$MAMBA_ENV_PATH" -f ./src/setup/env_big.yaml --quiet --yes
 
 # Activate environment
 source "$(dirname "$(dirname "$MAMBA_ENV_PATH")")/etc/profile.d/conda.sh"
@@ -171,20 +172,16 @@ source "$(dirname "$(dirname "$MAMBA_ENV_PATH")")/etc/profile.d/conda.sh"
 # Install RolyPoly
 if [ "$DEV_INSTALL" != "TRUE" ]; then
     logit "$LOGFILE" "Installing rolypoly-bio from PyPI"
-    pip install rolypoly-bio
+    pip install rolypoly-bio --quiet
 else
     logit "$LOGFILE" "Installing RolyPoly in development mode"
-    pip install -e .
+    pip install -e . --quiet
 fi
 
 # Prepare external data
 logit "$LOGFILE" "Preparing external data"
 export ROLYPOLY_DATA="$DATA_PATH"
 rolypoly prepare-data --ROLYPOLY_DATA "$DATA_PATH" --log-file "$LOGFILE"
-
-# Set environment variables
-"$mamba_command" env config vars set -p "$MAMBA_ENV_PATH" ROLYPOLY_DATA="$DATA_PATH"
-"$mamba_command" env config vars set -p "$MAMBA_ENV_PATH" TAXONKIT_DB="$DATA_PATH/taxdump"
 
 # Final setup and version check
 "$mamba_command" activate "$MAMBA_ENV_PATH"

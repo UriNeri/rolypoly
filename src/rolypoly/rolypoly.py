@@ -39,8 +39,8 @@ os.environ["citation_file"] = (
         "data": {
             "name": "Setup and Data",
             "commands": {
-                "update": "rolypoly.commands.misc.update.update",
-                "prepare-data": "rolypoly.commands.misc.prepare_external_data.prepare_external_data",
+                "get-data": "rolypoly.commands.misc.get_external_data.get_data",
+                # "build-data": "rolypoly.commands.misc.build_data.build_data",
             },
         },
         "reads": {
@@ -77,7 +77,7 @@ os.environ["citation_file"] = (
                 "sequence-stats": "rolypoly.commands.misc.sequence_stats.sequence_stats",
                 # "visualize": "rolypoly.commands.virotype.visualize.visualize",
                 "quick-taxonomy": "rolypoly.commands.misc.quick_taxonomy.quick_taxonomy",
-                "test": "tests.test_cli_commands.test",
+                # "test": "tests.test_cli_commands.test",
             },
         },
         # "characterise": {
@@ -99,7 +99,7 @@ os.environ["citation_file"] = (
         },
     },
 )
-@click.version_option(version=get_version_info(), prog_name="rolypoly")
+@click.version_option(version=get_version_info()["code"], prog_name="rolypoly")
 def rolypoly():
     """RolyPoly: RNA Virus analysis tookit.\n
     Use rolypoly `command` --help for more details \n"""

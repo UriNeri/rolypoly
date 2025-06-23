@@ -152,7 +152,6 @@ def run_pipeline(
     from rolypoly.commands.virotype.predict_characteristics import (
         predict_characteristics,
     )
-    from rolypoly.rolypoly import get_version_info
     from rolypoly.utils.loggit import (  # , check_file_exists, check_file_size
         log_start_info,
         setup_logging,
@@ -163,8 +162,7 @@ def run_pipeline(
     output_dir.mkdir(parents=True, exist_ok=True)
     log_file = output_dir / "rolypoly_pipeline.log"
     logger = setup_logging(log_file, log_level.upper())
-
-    logger.info("Starting RolyPoly pipeline version: %s", get_version_info())
+    log_start_info(logger, dict(zip(sys.argv[1::2], sys.argv[2::2])))
     if log_level == "debug":
         logger.debug("Debug mode enabled")
         import sys
