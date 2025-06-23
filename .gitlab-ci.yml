@@ -7,15 +7,15 @@ stages:
 variables:
   DEBIAN_FRONTEND: noninteractive
 
-# Test installation from PyPI (recommended method)
-test-pypi-installation:
+# Test installation using quick_setup.sh (recommended method)
+test-mamba-installation:
   stage: test-installation
   image: python:3.9-slim
   rules:
     # Run on main branch with release tags (for production)
     - if: $CI_COMMIT_REF_NAME == "main" && $CI_COMMIT_TAG =~ /^release/
     # Also run on any push to main branch (for testing)
-    - if: $CI_COMMIT_REF_NAME == "main"
+    # - if: $CI_COMMIT_REF_NAME == "main"
   before_script:
     # Update package lists and install basic dependencies
     - apt-get update -q

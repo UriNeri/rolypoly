@@ -18,11 +18,11 @@ You can specify custom paths for the code, databases, and conda enviroment locat
 ```bash
 bash quick_setup.sh /path/to/conda/env /path/to/install/rolypoly_code /path/to/store/databases /path/to/logfile
 ```
-By default if no positional arguments are supplied, rolypoly is installed into the user's home folder: 
-- database in `~/rolypoly_data/`
-- code in `~/rolypoly/ `
-- conda enviroment in `~/micromamba/envs/rolypoly`
-- log file in `~/RolyPoly_quick_setup.log` 
+By default if no positional arguments are supplied, rolypoly is installed into the session current folder (path the quick_setup.sh is called from): 
+- database in `./rolypoly/data/`
+- code in `./rolypoly/code/ `
+- conda enviroment in `./rolypoly/env/`
+- log file in `./RolyPoly_quick_setup.log` 
 
 To install rolypoly in development mode, use:
 ```bash
