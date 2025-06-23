@@ -12,10 +12,8 @@ test-mamba-installation:
   stage: test-installation
   image: python:3.9-slim
   rules:
-    # Run on main branch with release tags (for production)
-    - if: $CI_COMMIT_REF_NAME == "" && $CI_COMMIT_TAG =~ /^release/
-    # Also run on any push to main branch (for testing)
-    # - if: $CI_COMMIT_REF_NAME == "main"
+    # Run on main branch with a release tags
+    - if: $CI_COMMIT_REF_NAME == "main" && $CI_COMMIT_TAG ="*release*"
   before_script:
     # Update package lists and install basic dependencies
     - apt-get update -q
