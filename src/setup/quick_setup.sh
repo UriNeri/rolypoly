@@ -1,107 +1,176 @@
 #! /bin/bash
 
+# Show help message
+show_help() {
+    cat << EOF
+RolyPoly Quick Setup Script
+
+This script automatically installs RolyPoly with all dependencies in an organized directory structure.
+
+USAGE:
+    bash quick_setup.sh [MAMBA_ENV_PATH] [INSTALL_PATH] [DATA_PATH] [LOGFILE] [DEV_INSTALL]
+    bash quick_setup.sh -h|--help|help
+
+ARGUMENTS:
+    MAMBA_ENV_PATH    Path for conda/mamba environment (default: ./rolypoly/env)
+    INSTALL_PATH      Path for RolyPoly source code (default: ./rolypoly/code)
+    DATA_PATH         Path for external data files (default: ./rolypoly/data)
+    LOGFILE          Path for installation log file (default: ./rolypoly/RolyPoly_quick_setup.log)
+    DEV_INSTALL      Set to "TRUE" for development installation (default: FALSE)
+
+DEFAULT DIRECTORY STRUCTURE:
+    ./rolypoly/
+    ├── code/                        # RolyPoly source code
+    ├── data/                        # External databases and reference files
+    ├── env/                         # Conda/mamba environment
+    └── RolyPoly_quick_setup.log     # Installation log
+
+EXAMPLES:
+    # Install with default paths
+    bash quick_setup.sh
+
+    # Install in custom locations
+    bash quick_setup.sh /opt/envs/rp /opt/rolypoly /data/rp_data /tmp/setup.log
+
+    # Development installation
+    bash quick_setup.sh "" "" "" "" TRUE
+
+REQUIREMENTS:
+    - wget or curl
+    - Internet connection
+    - ~10GB free disk space
+
+For more information, visit: https://code.jgi.doe.gov/rolypoly/rolypoly
+EOF
+}
+
+# Check for help flags
+if [[ "$1" == "-h" || "$1" == "--help" || "$1" == "help" ]]; then
+    show_help
+    exit 0
+fi
+
+## Functions
 # Prints (echo) something (first arg) and also saves it to a log file (second arg) 
 logit () {
    echo "$(date +"%Y-%m-%d %T") $2" | tee -a $1
 }
 
-# Default paths
-CONDA_ENV_PATH="${1:-$HOME/micromamba/envs/rolypoly}"
-INSTALL_PATH="${2:-$HOME/rolypoly}"
-DATA_PATH="${3:-$HOME/rolypoly_data}"
-LOGFILE="${4:-$HOME/RolyPoly_quick_setup.log}"
+# return absolute path even if it doesn't exist
+get_absolute_path() {
+    local path="$1"
+    # If path is already absolute, return it
+    if [[ "$path" = /* ]]; then
+        echo "$path"
+    else
+        # Convert relative path to absolute
+        echo "$(pwd)/$path"
+    fi
+}
+
+# Create directory and its parents if they don't exist
+ensure_directory() {
+    local dir="$1"
+    if [ ! -d "$dir" ]; then
+        logit "$LOGFILE" "Creating directory: $dir"
+        mkdir -p "$dir"
+    fi
+}
+
+## Default paths and convert to absolute paths
+MAMBA_ENV_PATH=$(get_absolute_path "${1:-./rolypoly/env}")
+INSTALL_PATH=$(get_absolute_path "${2:-./rolypoly/code}")
+DATA_PATH=$(get_absolute_path "${3:-./rolypoly/data}")
+LOGFILE=$(get_absolute_path "${4:-./rolypoly/RolyPoly_quick_setup.log}")
 DEV_INSTALL="${5:-FALSE}"
 
-# convert to absolute paths
-CONDA_ENV_PATH=$(realpath "$CONDA_ENV_PATH")
-INSTALL_PATH=$(realpath "$INSTALL_PATH")
-DATA_PATH=$(realpath "$DATA_PATH")
-LOGFILE=$(realpath "$LOGFILE")
-
-
-# if the paths parent directories don't exist, create them
-if [ ! -d "$(dirname "$CONDA_ENV_PATH")" ]; then
-    logit "$LOGFILE" "Conda environment path parent directory does not exist. Creating it now    " 
-    mkdir -p "$(dirname "$CONDA_ENV_PATH")"
-fi
-
-if [ ! -d "$(dirname "$INSTALL_PATH")" ]; then
-    logit "$LOGFILE" "Installation path parent directory does not exist. Creating it now    "
-    mkdir -p "$(dirname "$INSTALL_PATH")"
-fi
-
-if [ ! -d "$DATA_PATH" ]; then
-    logit "$LOGFILE" "Data path does not exist. Creating it now    "
-    mkdir -p "$DATA_PATH"
-fi
-
-# Print paths being used
+# Print paths being used    
 logit "$LOGFILE" "Installing RolyPoly with the following paths:"
-logit "$LOGFILE" "  Conda environment: $CONDA_ENV_PATH"
+logit "$LOGFILE" "  MAMBA environment: $MAMBA_ENV_PATH"
 logit "$LOGFILE" "  Installation directory: $INSTALL_PATH"
 logit "$LOGFILE" "  Data directory: $DATA_PATH"
 logit "$LOGFILE" "  Logfile: $LOGFILE"
 
-# Create directories if they don't exist
-mkdir -p "$(dirname "$CONDA_ENV_PATH")"
-mkdir -p "$(dirname "$INSTALL_PATH")"
-mkdir -p "$DATA_PATH"
+# Create all required directories
+ensure_directory "$(dirname "$MAMBA_ENV_PATH")"
+ensure_directory "$(dirname "$INSTALL_PATH")"
+ensure_directory "$DATA_PATH"
 
-# Install mamba if needed
-if ! command -v micromamba &> /dev/null; then
-    logit "$LOGFILE" "Neither mamba nor conda could be found. Attempting to install mamba    "
-    if command -v wget &> /dev/null
-    then
-        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-            wget https://micromamba.snakepit.net/api/micromamba/linux-64/latest -O micromamba.tar.bz2
-        elif [[ "$OSTYPE" == "darwin"* ]]; then
-            wget https://micromamba.snakepit.net/api/micromamba/osx-64/latest -O micromamba.tar.bz2
-        elif [[ "$OSTYPE" == "msys" ]]; then
-            wget https://micromamba.snakepit.net/api/micromamba/win-64/latest -O micromamba.tar.bz2
-        else
-            logit "$LOGFILE" "Unsupported OS: $OSTYPE"
-            exit 1
-        fi
-        tar -xvjf micromamba.tar.bz2
-        ./bin/micromamba shell init # -s bash -p ~/micromamba
-        source ~/.bashrc
-    else
+# Detect and set up mamba/micromamba
+mamba_command=""
+if command -v mamba &> /dev/null; then
+    logit "$LOGFILE" "mamba is already installed."
+    mamba_command="mamba"
+elif command -v micromamba &> /dev/null; then
+    logit "$LOGFILE" "micromamba is already installed."
+    mamba_command="micromamba"
+else
+    # Install micromamba
+    logit "$LOGFILE" "Neither mamba nor micromamba found. Installing micromamba..."
+    if ! command -v wget &> /dev/null; then
         logit "$LOGFILE" "wget is not installed. Please install wget and try again."
         exit 1
     fi
-    logit "$LOGFILE" "Mamba installed successfully."
-else
-    logit "$LOGFILE" "Mamba is already installed."
+
+    # Determine download URL based on OS
+    case "$OSTYPE" in
+        linux-gnu*) 
+            url="https://micromamba.snakepit.net/api/micromamba/linux-64/latest" ;;
+        darwin*) 
+            url="https://micromamba.snakepit.net/api/micromamba/osx-64/latest" ;;
+        msys) 
+            url="https://micromamba.snakepit.net/api/micromamba/win-64/latest" ;;
+        *) 
+            logit "$LOGFILE" "Unsupported OS: $OSTYPE"
+            exit 1 ;;
+    esac
+
+    wget "$url" -O micromamba.tar.bz2
+    tar -xvjf micromamba.tar.bz2
+    chmod +x bin/micromamba
+    export PATH="$PWD/bin:$PATH"
+    ./bin/micromamba shell init -s bash -p ~/micromamba
+    source ~/.bashrc
+    logit "$LOGFILE" "micromamba installed successfully."
+    mamba_command="micromamba"
 fi
-# initialize micromamba
-eval "$(./bin/micromamba shell hook --shell bash)"
+
+# Initialize micromamba if needed
+if [ "$mamba_command" = "micromamba" ]; then
+    if [ -f "./bin/micromamba" ]; then
+        eval "$(./bin/micromamba shell hook --shell bash)"
+    else
+        eval "$(micromamba shell hook --shell bash)"
+    fi
+fi
 
 # Get RolyPoly code 
-if ! command -v git &> /dev/null
-then
-    logit "$LOGFILE" "git could not be found. Fetching the repo from https://code.jgi.doe.gov/rolypoly/rolypoly.git"
+if command -v git &> /dev/null; then
+    logit "$LOGFILE" "git is installed - cloning repository"
+    git clone https://code.jgi.doe.gov/rolypoly/rolypoly.git "$INSTALL_PATH"
+else
+    logit "$LOGFILE" "git not found - downloading archive"
     mkdir -p "$INSTALL_PATH"
     cd "$INSTALL_PATH" || exit
     curl -LJO https://code.jgi.doe.gov/rolypoly/rolypoly/-/archive/main/rolypoly-main.tar
     tar -xvf rolypoly-main.tar
     mv rolypoly-main/* .
     rm -rf rolypoly-main rolypoly-main.tar
-else
-    logit "$LOGFILE" "git is installed"
-    git clone https://code.jgi.doe.gov/rolypoly/rolypoly.git "$INSTALL_PATH"
-    cd "$INSTALL_PATH" || exit
 fi
 
+cd "$INSTALL_PATH" || exit
+
 # Create and activate conda environment
-logit "$LOGFILE" "Creating conda environment    "
-micromamba create -y -p "$CONDA_ENV_PATH" -f ./src/setup/env_big.yaml   #rolypoly_recipe.yaml
-source "$(dirname "$(dirname "$CONDA_ENV_PATH")")/etc/profile.d/conda.sh"
-micromamba activate "$CONDA_ENV_PATH"
+logit "$LOGFILE" "Creating conda environment using $mamba_command"
+"$mamba_command" env create -y -p "$MAMBA_ENV_PATH" -f ./src/setup/env_big.yaml
+
+# Activate environment
+source "$(dirname "$(dirname "$MAMBA_ENV_PATH")")/etc/profile.d/conda.sh"
+"$mamba_command" activate "$MAMBA_ENV_PATH"
 
 # Install RolyPoly
-logit "$LOGFILE" "Installing RolyPoly    "
 if [ "$DEV_INSTALL" != "TRUE" ]; then
-    logit "$LOGFILE" "Installing rolypoly-bio"
+    logit "$LOGFILE" "Installing rolypoly-bio from PyPI"
     pip install rolypoly-bio
 else
     logit "$LOGFILE" "Installing RolyPoly in development mode"
@@ -109,29 +178,24 @@ else
 fi
 
 # Prepare external data
-logit "$LOGFILE" "Preparing external data    "
+logit "$LOGFILE" "Preparing external data"
 export ROLYPOLY_DATA="$DATA_PATH"
 rolypoly prepare-data --ROLYPOLY_DATA "$DATA_PATH" --log-file "$LOGFILE"
-conda env config vars set ROLYPOLY_DATA="$DATA_PATH"
-# setup taxonkit datadir
-conda env config vars set TAXONKIT_DB="$DATA_PATH/taxdump"
 
-# logit "$LOGFILE" "\n"
-logit "$LOGFILE" "RolyPoly installation complete!"
-logit "$LOGFILE" "To start using RolyPoly:"
-logit "$LOGFILE" "1. Activate the environment:"
-logit "$LOGFILE" "  mamba activate $CONDA_ENV_PATH"
-logit "$LOGFILE" "2. Run RolyPoly:"
-logit "$LOGFILE" "  rolypoly --help"
+# Set environment variables
+"$mamba_command" env config vars set ROLYPOLY_DATA="$DATA_PATH" -p "$MAMBA_ENV_PATH"
+"$mamba_command" env config vars set TAXONKIT_DB="$DATA_PATH/taxdump" -p "$MAMBA_ENV_PATH"
 
-micromamba activate "$CONDA_ENV_PATH"
+# Final setup and version check
+"$mamba_command" activate "$MAMBA_ENV_PATH"
 
 if [ "$DEV_INSTALL" != "TRUE" ]; then
-    # check version via pip/conda
-    uv pip show rolypoly-bio | grep Version -m1 -B1 >> "$LOGFILE"
-    uv pip show rolypoly-bio | grep Version -m1 -B1 
-
+    uv pip show rolypoly-bio | grep Version -m1 -B1 | tee -a "$LOGFILE"
 else
-    rolypoly --version >> "$LOGFILE"
-    rolypoly --version
+    rolypoly --version | tee -a "$LOGFILE"
 fi
+
+logit "$LOGFILE" "RolyPoly installation complete!"
+logit "$LOGFILE" "To start using RolyPoly:"
+logit "$LOGFILE" "1. Activate the environment: $mamba_command activate $MAMBA_ENV_PATH"
+logit "$LOGFILE" "2. Run RolyPoly: rolypoly --help"
