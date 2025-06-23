@@ -74,7 +74,7 @@ else
     logit "$LOGFILE" "Mamba is already installed."
 fi
 # initialize micromamba
-eval "$(micromamba shell hook --shell bash)"
+eval "$(./bin/micromamba shell hook --shell bash)"
 
 # Get RolyPoly code 
 if ! command -v git &> /dev/null
@@ -123,7 +123,6 @@ logit "$LOGFILE" "1. Activate the environment:"
 logit "$LOGFILE" "  mamba activate $CONDA_ENV_PATH"
 logit "$LOGFILE" "2. Run RolyPoly:"
 logit "$LOGFILE" "  rolypoly --help"
-logit "$LOGFILE" "  rolypoly --version"
 
 micromamba activate "$CONDA_ENV_PATH"
 

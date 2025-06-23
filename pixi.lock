@@ -1866,24 +1866,24 @@ packages:
 - pypi: .
   name: rolypoly-bio
   version: 0.6.15
-  sha256: c6ec79ede9b356d88b088e19d2e89c00b32eb53549f8c35f57c893b9bbef22a2
+  sha256: a93320550ac3cdb83d2202f42aca800ae31259b91aef45d909f245e972a9ca01
   requires_dist:
-  - bbmapy
-  - genomicranges
-  - intervaltree
-  - iranges
-  - lightmotif
-  - mappy
-  - needletail
-  - polars
-  - psutil
-  - pyfastx
-  - pyhmmer
-  - pyrodigal-gv
-  - requests
-  - rich
-  - rich-click
-  - viennarna
+  - bbmapy>=0.0.46,<0.0.47
+  - genomicranges>=0.6.3,<0.7
+  - intervaltree>=3.1.0,<4
+  - iranges>=0.5.1,<0.6
+  - lightmotif>=0.10.0,<0.11
+  - mappy>=2.30,<3
+  - needletail>=0.7.0,<0.8
+  - polars>=1.31.0,<2
+  - psutil>=7.0.0,<8
+  - pyfastx>=2.2.0,<3
+  - pyhmmer>=0.11.1,<0.12
+  - pyrodigal-gv>=0.3.2,<0.4
+  - requests>=2.32.4,<3
+  - rich-click>=1.8.9,<2
+  - rich>=14.0.0,<15
+  - viennarna>=2.7.0,<3
   requires_python: '>=3.9'
   editable: true
 - pypi: https://files.pythonhosted.org/packages/75/f0/782e7d681d660eda8c536962920c41309e6dd4ebcea9a2714ed5127d44bd/ruff-0.11.13-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
