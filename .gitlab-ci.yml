@@ -17,8 +17,8 @@ test-mamba-installation:
   before_script:
     # Update package lists and install basic dependencies
     - echo $CI_COMMIT_TAG
-    - apt-get update -q
-    - apt-get install -y -q wget curl git build-essential
+    - apt-get update -qq
+    - apt-get install -y -qq wget curl git build-essential
     
   script:
     # Test PyPI installation (recommended method)
