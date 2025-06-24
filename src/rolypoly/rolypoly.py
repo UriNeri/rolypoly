@@ -99,7 +99,7 @@ os.environ["citation_file"] = (
         },
     },
 )
-@click.version_option(version=get_version_info()["code"], prog_name="rolypoly")
+@click.version_option(version=get_version_info(), prog_name="rolypoly")
 def rolypoly():
     """RolyPoly: RNA Virus analysis tookit.\n
     Use rolypoly `command` --help for more details \n"""
