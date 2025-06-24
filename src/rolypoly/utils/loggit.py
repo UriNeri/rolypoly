@@ -47,7 +47,7 @@ def get_version_info() -> dict:
             with open(data_dir_path / "README.md", "r") as f:
                 for line in f:
                     if "Date:" in line:
-                        version_info["data"] = line.split(":")[1].strip()
+                        version_info["data"] = line.split("Date:")[1].strip()
                         break
                     
     return version_info

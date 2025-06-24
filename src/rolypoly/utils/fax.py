@@ -22,7 +22,6 @@ from rich.console import Console
 global datadir
 datadir = Path(os.environ["ROLYPOLY_DATA"])
 
-
 # Register custom expressions for sequence analysis
 @pl.api.register_expr_namespace("seq")
 class SequenceExpr:
@@ -239,35 +238,6 @@ class RNAStructureExpr:
             )
 
 
-def write_fasta_file(
-    records=None, seqs=None, headers=None, output_file=None, format: str = "fasta"
-) -> None:
-    """Write sequences to a FASTA file or stdout if no output file is provided"""
-    import sys
-
-    if format == "fasta":
-        seq_delim = "\n"
-        header_delim = "\n>"
-    elif format == "tab":
-        seq_delim = "\t"
-        header_delim = "\n>"
-    else:
-        raise ValueError(f"Invalid format: {format}")
-
-    if output_file is None:
-        output_file = sys.stdout
-    else:
-        output_file = open(output_file, "w")
-
-    if records:
-        for record in records:
-            output_file.write(f"{header_delim}{record.id}{seq_delim}{str(record.seq)}")
-    elif seqs is not None and headers is not None:
-        for i, seq in enumerate(seqs):
-            output_file.write(f"{header_delim}{headers[i]}{seq_delim}{seq}")
-    else:
-        raise ValueError("No records, seqs, or headers provided")
-
 
 def read_fasta_needletail(fasta_file: str) -> tuple[list[str], list[str]]:
     """Read sequences from a FASTA/FASTQ file using needletail"""
@@ -371,10 +341,8 @@ def translate_6frx_seqkit(input_file: str, output_file: str, threads: int) -> No
     """
     import subprocess as sp
 
-    command = f"seqkit translate -x -F --clean -w 20000 -f 6 {input_file} --id-regexp '(\\*)' --clean  --threads {threads} > {output_file}"
+    command = f"seqkit translate -x -F --clean -w 0 -f 6 {input_file} --id-regexp '(\\*)' --clean  --threads {threads} > {output_file}"
     sp.run(command, shell=True, check=True)
-
-
 
 
 def translate_with_bbmap(input_file: str, output_file: str, threads: int) -> None:
@@ -386,7 +354,7 @@ def translate_with_bbmap(input_file: str, output_file: str, threads: int) -> Non
         threads (int): Number of CPU threads to use
 
     Note:
-        - Requires BBMap to be installed and available in PATH
+        - Requires BBMap to be installed and available in PATH (should be done via bbmapy)
         - Generates both protein sequences (.faa) and gene annotations (.gff)
         - The GFF output file is named by replacing .faa with .gff
     """
@@ -983,14 +951,50 @@ def read_fasta_polars(
     return df
 
 
+# def write_fasta_file(
+#     records=None, seqs=None, headers=None, output_file=None, format: str = "fasta"
+# ) -> None:
+#     """
+#     Note:
+#         Either records or both seqs and headers must be provided.
+#     """
+#     import sys
+#     if format == "fasta":
+#         seq_delim = "\n"
+#         header_delim = "\n>"
+#     elif format == "tab":
+#         seq_delim = "\t"
+#         header_delim = "\n>"
+#     else:
+#         raise ValueError(f"Invalid format: {format}")
+
+#     if output_file is None:
+#         output_file = sys.stdout
+#     elif isinstance(output_file, (str, Path)):
+#         output_file = open(output_file, "w")
+
+#     try:
+#         if records:
+#             for record in records:
+#                 output_file.write(
+#                     f"{header_delim}{record.id}{seq_delim}{str(record.seq)}"
+#                 )
+#         elif seqs is not None and headers is not None:
+#             for header, seq in zip(headers, seqs):
+#                 output_file.write(f"{header_delim}{header}{seq_delim}{seq}")
+#         else:
+#             raise ValueError("No records, seqs, or headers provided")
+#     finally:
+#         if output_file is not sys.stdout:
+#             output_file.close()
+
+
 def write_fasta_file(
     records=None, seqs=None, headers=None, output_file=None, format: str = "fasta"
 ) -> None:
-    """
-    Note:
-        Either records or both seqs and headers must be provided.
-    """
+    """Write sequences to a FASTA file or stdout if no output file is provided"""
     import sys
+
     if format == "fasta":
         seq_delim = "\n"
         header_delim = "\n>"
@@ -1002,23 +1006,17 @@ def write_fasta_file(
 
     if output_file is None:
         output_file = sys.stdout
-    elif isinstance(output_file, (str, Path)):
+    else:
         output_file = open(output_file, "w")
 
-    try:
-        if records:
-            for record in records:
-                output_file.write(
-                    f"{header_delim}{record.id}{seq_delim}{str(record.seq)}"
-                )
-        elif seqs is not None and headers is not None:
-            for header, seq in zip(headers, seqs):
-                output_file.write(f"{header_delim}{header}{seq_delim}{seq}")
-        else:
-            raise ValueError("No records, seqs, or headers provided")
-    finally:
-        if output_file is not sys.stdout:
-            output_file.close()
+    if records:
+        for record in records:
+            output_file.write(f"{header_delim}{record.id}{seq_delim}{str(record.seq)}")
+    elif seqs is not None and headers is not None:
+        for i, seq in enumerate(seqs):
+            output_file.write(f"{header_delim}{headers[i]}{seq_delim}{seq}")
+    else:
+        raise ValueError("No records, seqs, or headers provided")
 
 
 def read_fasta_df(file_path: str) -> pl.DataFrame:
