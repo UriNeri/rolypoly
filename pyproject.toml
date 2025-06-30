@@ -1,5 +1,5 @@
 [project]
-name = "rolypoly_bio"
+name = "rolypoly_tk"
 dynamic = ["version"]
 authors = [
     { name = "Uri Neri", email = "uneri@lbl.gov" },
@@ -47,14 +47,14 @@ packages = ["src/rolypoly"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/rolypoly"]
-package-dir = { rolypoly_bio = "src/rolypoly"}
+package-dir = {rolypoly_tk = "src/rolypoly"}
 
 [tool.pixi.workspace]
 channels = ["conda-forge", "bioconda"]
 platforms = ["linux-64"] 
 
 [tool.pixi.pypi-dependencies]
-rolypoly_bio = { path = ".", editable = true }
+rolypoly_tk = { path = ".", editable = true }
 
 [tool.pixi.dependencies]
 aragorn = ">=1.2.41,<2"

@@ -669,7 +669,7 @@ def download_genome(taxid: str) -> None:
     )
 
 
-def process_with_timeout(func: callable, arg: any, timeout: int) -> any:
+def process_with_timeout(func: callable, arg: any, timeout: int) -> any: #type: ignore
     """Execute a function with a timeout.
 
     Args:
@@ -1076,7 +1076,7 @@ def rename_sequences(
     if use_hash:
         # Use polars expressions for hash generation
         df_with_hashes = df.with_columns(
-            pl.col("sequence").seq.generate_hash().alias("seq_hash")
+            pl.col("sequence").str.__hash__.alias("seq_hash")
         )
         new_headers = [f"{prefix}_{h}" for h in df_with_hashes["seq_hash"]]
     else:
@@ -1437,9 +1437,9 @@ def search_hmmdb(
                 "\n".join(
                     (
                         og_tblout if output_format == "tblout" else og_domtblout_title
-                    ).encode("utf-8")
-                    + b"\n"
+                    )
                 )
+                + "\n"
             )
         with pyhmmer.plan7.HMMFile(db_path) as hmms:
             # print(hmms.read().name)
@@ -1539,7 +1539,7 @@ def hmm_from_msa(
     if name:
         msa.name = name.encode("utf-8")
     else:
-        msa.name = msa.names[0].encode("utf-8")
+        msa.name = msa.names[0] #.decode("utf-8")
     if accession:
         msa.accession = accession.encode("utf-8")
 
@@ -2032,7 +2032,7 @@ def identify_fastq_files(
         ]
 
         for pat in patterns:
-            if re.match(pat, filename):
+            if re.match(pat, filename): # type: ignore
                 pair_file = (
                     filename.replace("_R1", "_R2")
                     .replace("_1.", "_2.")

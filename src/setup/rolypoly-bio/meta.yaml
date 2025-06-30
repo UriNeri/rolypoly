@@ -6,7 +6,7 @@ package:
   version: {{ version }}
 
 source:
-  url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/rolypoly_bio-{{ version }}.tar.gz
+  url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/rolypoly_tk-{{ version }}.tar.gz
   sha256: 5c205b0ce972960a92b785f7fd79393ee114eacf763b5e47db38b75ff04623c3
 
 build:
@@ -46,7 +46,7 @@ requirements:
 
 test:
   imports:
-    - rolypoly_bio
+    - rolypoly_tk
   commands:
     - pip check
     - rolypoly --help

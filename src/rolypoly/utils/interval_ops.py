@@ -309,7 +309,7 @@ def consolidate_hits(
         )
 
         # Merge overlapping intervals
-        merged_ranges = gr_hits.find_overlaps(min_overlap=min_overlap_positions)
+        merged_ranges = gr_hits.find_overlaps(query=gr_hits, min_overlap=min_overlap_positions).to_polars()
 
         # Process merged intervals
         results = []
@@ -632,38 +632,41 @@ def get_column_names(df: pl.DataFrame) -> Tuple[str, str]:
 
     return tuple(result.values())
 
+def main(**kwargs):
+    pass
+    consolidate_hits(**kwargs)
 
 if __name__ == "__main__":
-    consolidate_hits()
+    main()
     # Debug arguments
-    debug = False
-    if debug:
-        input = pl.read_csv(
-            "/REDACTED_HPC_PATH/tests/rp_tests/inputs/tables/hit_table.tsv",
-            separator="\t",
-        )
-        output = "/REDACTED_HPC_PATH/tests/rp_tests/inputs/tables/consolidated_output.tsv"
-        best = False
-        rank_columns = "-score,+evalue"
-        column_specs = "qseqid,sseqid"
-        culling_mode = "one_per_range"
-        env_mode = "envelope"
-        # max_overlap_fraction=0.1
-        min_overlap_positions = 10
-        clip = True
-        drop_contained = True
-        one_per_query = False
-        one_per_range = False
-        merge = False
-        consolidate_hits(
-            input,
-            None,
-            best,
-            rank_columns,
-            culling_mode,
-            min_overlap_positions,
-            clip,
-            drop_contained,
-            merge,
-            column_specs,
-        )
+    # debug = False
+    # if debug:
+    #     input = pl.read_csv(
+    #         "/REDACTED_HPC_PATH/tests/rp_tests/inputs/tables/hit_table.tsv",
+    #         separator="\t",
+    #     )
+    #     output = "/REDACTED_HPC_PATH/tests/rp_tests/inputs/tables/consolidated_output.tsv"
+    #     best = False
+    #     rank_columns = "-score,+evalue"
+    #     column_specs = "qseqid,sseqid"
+    #     culling_mode = "one_per_range"
+    #     env_mode = "envelope"
+    #     # max_overlap_fraction=0.1
+    #     min_overlap_positions = 10
+    #     clip = True
+    #     drop_contained = True
+    #     one_per_query = False
+    #     one_per_range = False
+    #     merge = False
+    #     consolidate_hits(
+    #         input,
+    #         None,
+    #         best,
+    #         rank_columns,
+    #         culling_mode,
+    #         min_overlap_positions,
+    #         clip,
+    #         drop_contained,
+    #         merge,
+    #         column_specs,
+    #     )
