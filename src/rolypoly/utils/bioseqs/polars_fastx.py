@@ -4,20 +4,8 @@ from typing import  Optional, Union, TYPE_CHECKING, Callable
 from collections import defaultdict
 
 import polars as pl
-from needletail import parse_fastx_file
+from needletail import parse_fastx_file, reverse_complement
 
-# Make type checker understand the custom namespace
-if TYPE_CHECKING:
-    # Declare that Expr has a 'seq' attribute that returns SequenceExpr
-    @pl.api.register_expr_namespace("seq")
-    class _SequenceExprStub:
-        def __init__(self, expr: pl.Expr): ...
-        def gc_content(self) -> pl.Expr: ...
-        def n_count(self) -> pl.Expr: ...
-        def length(self) -> pl.Expr: ...
-        def codon_usage(self) -> pl.Expr: ...
-        def generate_hash(self, length: int = 32) -> pl.Expr: ...
-        def calculate_kmer_frequencies(self, k: int = 3) -> pl.Expr: ...
 
 # Custom polars expression namespace that provides sequence analysis methods
 # Register custom expressions for sequence analysis
@@ -82,6 +70,18 @@ class SequenceExpr:
         return self._expr.map_elements(
             lambda x: _calc_kmers(x, k), return_dtype=pl.Struct
         )
+    
+    def translate(self, genetic_code: int = 11) -> pl.Expr:
+        """Translate the sequence to amino acids"""
+        from rolypoly.utils.bioseqs.translation import translate
+        return self._expr.map_elements(
+            lambda x: translate(x, genetic_code), return_dtype=pl.String
+        )
+    
+    def reverse_complement(self) -> pl.Expr:
+        """Reverse complement the sequence"""
+        return self._expr.map_elements(reverse_complement, return_dtype=pl.String)
+    
 
 # LazyFrame namespace extension to enable lazy reading of FASTA/FASTQ files
 @pl.api.register_lazyframe_namespace("from_fastx")
@@ -131,144 +131,22 @@ def from_fastx_lazy(input_file: Union[str, Path], batch_size: int = 512) -> pl.L
     return pl.concat(read_chunks(), how="vertical")
 
 
-
 # DataFrame namespace extension to enable eager reading of FASTA/FASTQ files 
 @pl.api.register_dataframe_namespace("from_fastx")
 def from_fastx_eager(file: Union[str, Path], batch_size: int = 512) -> pl.DataFrame:
     return pl.LazyFrame.from_fastx(file, batch_size).collect() # type: ignore
 
-
-# Type extension for global use - this makes the linter understand the namespaces everywhere
-if TYPE_CHECKING:
-    # Extend polars types globally so other files can use the custom namespaces
-    import polars as _pl
+# # Initialization function for users to call in other modules
+# def init_polars_extensions() -> None:
+#     """Initialize custom Polars extensions for global use.
     
-    class _ExtendedExpr(_pl.Expr):
-        @property 
-        def seq(self) -> SequenceExpr: ...
+#     Call this function in modules where you want to use the custom
+#     namespaces (seq, from_fastx) to ensure they are registered.
     
-    class _FromFastxLazyNamespace:
-        def __call__(self, input_file: Union[str, Path], batch_size: int = 512) -> _pl.LazyFrame: ...
-    
-    class _FromFastxEagerNamespace:
-        def __call__(self, file: Union[str, Path], batch_size: int = 512) -> _pl.DataFrame: ...
-    
-    class _ExtendedLazyFrame(_pl.LazyFrame):
-        @property
-        def from_fastx(self) -> _FromFastxLazyNamespace: ...
-    
-    class _ExtendedDataFrame(_pl.DataFrame):
-        @property  
-        def from_fastx(self) -> _FromFastxEagerNamespace: ...
-    
-    # Monkey patch the types for global use
-    _pl.Expr = _ExtendedExpr  # type: ignore
-    _pl.LazyFrame = _ExtendedLazyFrame  # type: ignore
-    _pl.DataFrame = _ExtendedDataFrame  # type: ignore
-
-
-# Comprehensive sequence statistics calculator with filtering and customizable output
-### example usage
-def fasta_stats(
-    input_file: str,
-    output_file: Optional[str] = None, # if not provided, will print to stdout
-    min_length: Optional[int] = None,
-    max_length: Optional[int] = None,
-    fields: str = "header,length,gc_content,n_count,hash,codon_usage,kmer_freq",
-    kmer_length: int = 3,
-) -> None:
-    """Calculate sequence statistics using Polars expressions
-    
-    Args:
-        input: Input file or directory
-        output: Output path
-        min_length: Minimum sequence length to consider
-        max_length: Maximum sequence length to consider
-        fields: Comma-separated list of fields to include (available: header,sequence,length,gc_content,n_count,hash,codon_usage,kmer_freq)
-    """
-    output_path = Path(output_file) if output_file else sys.stdout
-
-    # Read sequences into DataFrame
-    df = pl.DataFrame.from_fastx(input_file) # type: ignore
-    
-    # init_height = df.height
-    # Apply length filters
-    if min_length:
-        df = df.filter(pl.col("sequence").seq.length() >= min_length)
-    if max_length:
-        df = df.filter(pl.col("sequence").seq.length() <= max_length)
-    # print(f"Filtered {init_height - df.height} sequences out of {init_height}")
-
-    # Define available fields and their dependencies
-    field_options = {
-        "length": {"desc": "Sequence length"},
-        "gc_content": {"desc": "GC content percentage"},
-        "n_count": {"desc": "Count of Ns in sequence"},
-        "hash": {"desc": "Sequence hash (MD5)"},
-        "codon_usage": {"desc": "Codon usage frequencies"},
-        "kmer_freq": {"desc": "K-mer frequencies"},
-        "header": {"desc": "Sequence header"},
-        "sequence": {"desc": "DNA/RNA sequence"}
-    }
-
-    # Parse fields
-    selected_fields = ["header"]
-    if fields:
-        selected_fields = [f.strip().lower() for f in fields.split(",")]
-        # Validate fields
-        valid_fields = list(field_options.keys())
-        invalid_fields = [f for f in selected_fields if f not in valid_fields]
-        if invalid_fields:
-            print(f"Unknown field(s): {', '.join(invalid_fields)}")
-            print(f"Available fields are: {', '.join(valid_fields)}")
-        selected_fields = [f for f in selected_fields if f in valid_fields]
-
-    # Build the stats expressions
-    stats_expr = []
-    # for field in selected_fields: # this doesn't work  :(
-    #     stats_expr.append(pl.col("sequence").seq.field(field).alias(field))
-    
-    if "length" in selected_fields:
-        stats_expr.append(pl.col("sequence").seq.length().alias("length"))
-    if "gc_content" in selected_fields:
-        stats_expr.append(pl.col("sequence").seq.gc_content().alias("gc_content"))
-    if "n_count" in selected_fields:
-        stats_expr.append(pl.col("sequence").seq.n_count().alias("n_count"))
-    if "hash" in selected_fields:
-        stats_expr.append(pl.col("sequence").seq.generate_hash().alias("hash")) 
-    if "codon_usage" in selected_fields:
-        stats_expr.append(pl.col("sequence").seq.codon_usage().alias("codon_usage"))
-    if "kmer_freq" in selected_fields:
-        stats_expr.append(pl.col("sequence").seq.calculate_kmer_frequencies(kmer_length).alias("kmer_freq"))
-
-    # Apply all the stats expressions
-    df = df.with_columns(stats_expr)
-    df = df.select(selected_fields)
-
-
-    # Convert all nested columns to strings
-    for col in df.columns:
-        if col != "header":  # Keep header as is
-            if isinstance(df[col].dtype, pl.Struct) or isinstance(df[col].dtype, pl.List):
-                df = df.with_columns(
-                    [pl.col(col).cast(pl.Utf8).alias(f"{col}")]
-                )
-
-    df.write_csv(output_path, separator="\t")
-    print("Successfully wrote file after converting data types")
-
-
-# Initialization function for users to call in other modules
-def init_polars_extensions() -> None:
-    """Initialize custom Polars extensions for global use.
-    
-    Call this function in modules where you want to use the custom
-    namespaces (seq, from_fastx) to ensure they are registered.
-    
-    Example:
-        from rolypoly.utils.bioseqs.polars_fastx import init_polars_extensions
-        init_polars_extensions()  # Now you can use pl.col('seq').seq.length() etc.
-    """
-    # The decorators already register the namespaces when this module is imported
-    pass
+#     Example:
+#         from rolypoly.utils.bioseqs.polars_fastx import init_polars_extensions
+#         init_polars_extensions()  # Now you can use pl.col('seq').seq.length() etc.
+#     """
+#     # The decorators already register the namespaces when this module is imported
+#     pass
 
