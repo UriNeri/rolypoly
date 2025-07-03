@@ -377,6 +377,26 @@ def is_file_empty(file_path, size_threshold=28):
     return file_size < size_threshold  # 28b is around the size of an empty <long-name>fastq.gz file
 
 
+def flat_dict(d: dict[str, str], sep: str = ",", prefix: str = "", suffix: str = "", join_with: str = ": ") -> str:
+    return f"{prefix}{join_with}{sep}".join([f"{k}{join_with}{v}" for k, v in d.items()]) + f"{suffix}"
+
+def flat_list(l: list[str], sep: str = ",", prefix: str = "", suffix: str = "", join_with: str = ": ") -> str:
+    return f"{prefix}{join_with}{sep}".join(l) + f"{suffix}"
+
+def flat_nested(ld: Union[dict, list], sep: str = ",", prefix: str = "", suffix: str = "", join_with: str = ": ") -> str:
+    if isinstance(ld, dict):
+        return flat_nested_dict(ld, sep, prefix, suffix, join_with)
+    elif isinstance(ld, list):
+        return flat_list(ld, sep, prefix, suffix, join_with)
+    else:
+        raise Warning(f"Input must be a dictionary or list, got {type(ld)}")
+
+# def flat_df_cols(df: pl.DataFrame, sep: str = ",", prefix: str = "", suffix: str = "", join_with: str = ": ") -> pl.DataFrame:
+def flat_df_cols(df, sep: str = ",", prefix: str = "", suffix: str = "", join_with: str = ": "):
+    import polars as pl
+    return df.with_columns(pl.all().map_elements(lambda x: flat_nested(x), return_dtype=pl.Utf8))
+
+
 def run_command(
     cmd, logger, to_check, skip_existing=False, check=True
 ):  # TODO: add an option "try-hard" that save hash of the input /+ code.
@@ -416,7 +436,7 @@ def check_file_exist_isempty(file_path):
 
 
 def read_fwf(filename, widths, columns, dtypes, comment_prefix=None, **kwargs):
-    """Read a fixed-width formatted text file into a Polars DataFrame.
+    """Read a fixed-width formatted text file into a Polars DataFrame. wrapper around polars.read_csv
 
     Args:
         filename (str): Path to the fixed-width file

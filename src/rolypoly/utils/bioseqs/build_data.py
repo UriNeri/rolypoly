@@ -1,9 +1,20 @@
 import os
-from pathlib import Path as pt
-
-from rich.console import Console
+import shutil
+import tarfile
+import datetime
+import requests
+import subprocess
+import json
 import logging
+from pathlib import Path as pt
+from importlib import resources
+import polars as pl
+
 from rich_click import command, option
+from rolypoly.utils.logging.citation_reminder import remind_citations
+
+from rolypoly.utils.logging.loggit import setup_logging, get_version_info
+from rolypoly.utils.bioseqs.pyhmm_utils import hmmdb_from_directory, hmm_from_msa
 
 from rolypoly.utils.various import (
     extract,
@@ -12,6 +23,7 @@ from rolypoly.utils.various import (
     move_contents_to_parent,
 )
 
+from rich.console import Console
 console = Console()
 global tools
 tools = []
@@ -37,12 +49,8 @@ def build_data(data_dir, threads, log_file):
         4. Download Rfam data.
 
     """
-    import json
-    import subprocess
-    from importlib import resources
-    import requests
 
-    from rolypoly.utils.logging.loggit import setup_logging
+
 
     logger = setup_logging(log_file)
     logger.info(f"Starting data preparation to : {data_dir}")
@@ -62,35 +70,14 @@ def build_data(data_dir, threads, log_file):
         fetched_to=hmmdb_dir + "/RdRp-scan.zip",
         extract_to=hmmdb_dir + "/RdRp-scan",
     )
-    subprocess.run("mkdir " + hmmdb_dir + "/RdRp-scan_HMMs", shell=True)
-    import pyhmmer
-
-    alphabet = pyhmmer.easel.Alphabet.amino()
-    for alignm_file in os.listdir(
-        hmmdb_dir + "/RdRp-scan/RdRp-scan-main/Profile_db_and_alignments"
-    ):
-        if alignm_file.endswith(".fasta.CLUSTALO"):
-            with pyhmmer.easel.MSAFile(
-                hmmdb_dir
-                + "/RdRp-scan/RdRp-scan-main/Profile_db_and_alignments/"
-                + alignm_file,
-                digital=True,
-                alphabet=alphabet,
-            ) as msa_file:
-                msa = msa_file.read()
-                ali_name = "RdRp-scan_" + alignm_file.replace(".fasta.CLUSTALO", "")
-                msa.name = bytes(ali_name.encode()) # type: ignore
-                builder = pyhmmer.plan7.Builder(alphabet)
-                background = pyhmmer.plan7.Background(alphabet)
-                hmm, _, _ = builder.build_msa(msa, background) # type: ignore
-                with open(
-                    hmmdb_dir + f"/RdRp-scan_HMMs/{ali_name}.hmm", "wb"
-                ) as output_file:
-                    hmm.write(output_file)
-
-    subprocess.run(
-        f"cat  {hmmdb_dir}/RdRp-scan_HMMs/*.hmm > {hmmdb_dir}/RdRp-scan.hmm ",
-        shell=True,
+    
+    # Use utility function to build HMM database from MSAs
+    rdrp_scan_msa_dir = os.path.join(hmmdb_dir, "RdRp-scan/RdRp-scan-main/Profile_db_and_alignments")
+    rdrp_scan_output = os.path.join(hmmdb_dir, "RdRp-scan.hmm")
+    hmmdb_from_directory(
+        msa_dir=rdrp_scan_msa_dir,
+        output=rdrp_scan_output,
+        msa_pattern="*.fasta.CLUSTALO"
     )
 
     # RVMT
@@ -99,28 +86,29 @@ def build_data(data_dir, threads, log_file):
     fetch_and_extract(
         url=rvmt_url, fetched_to=rvmt_path, extract_to=os.path.join(hmmdb_dir, "RVMT/")
     )
+    
+    # Use utility function to build HMMs from each subdirectory
     os.makedirs(os.path.join(hmmdb_dir, "RVMT_HMMs"), exist_ok=True)
+    current_dir = os.getcwd()  # Save current directory
+    
     for ali_folder in os.listdir(os.path.join(hmmdb_dir, "RVMT")):
         ali_folder_path = os.path.join(hmmdb_dir, "RVMT", ali_folder)
         if os.path.isdir(ali_folder_path):
-            os.chdir(ali_folder_path)
-            for alignm_file in os.listdir("."):
+            for alignm_file in os.listdir(ali_folder_path):
                 if alignm_file.endswith(".FASTA"):
-                    ali_name = os.path.splitext(alignm_file)[0]
-                    with pyhmmer.easel.MSAFile(
-                        alignm_file, digital=True, alphabet=alphabet
-                    ) as msa_file:
-                        msa = msa_file.read()
-                        ali_name = "RVMT_" + ali_name.replace("FASTA", "")
-                        msa.name = bytes(ali_name.encode()) # type: ignore
-                        builder = pyhmmer.plan7.Builder(alphabet)
-                        background = pyhmmer.plan7.Background(alphabet)
-                        hmm, _, _ = builder.build_msa(msa, background) # type: ignore
-                        with open(f"../RVMT_HMMs/{ali_name}.hmm", "wb") as output_file:
-                            hmm.write(output_file)
-    os.chdir(os.path.join(hmmdb_dir, "RVMT_HMMs"))
-    subprocess.run(f"cat ./*hmm > ../RVMT.hmm", shell=True)
-    os.chdir("../../")
+                    ali_name = "RVMT_" + os.path.splitext(alignm_file)[0].replace("FASTA", "")
+                    msa_file_path = os.path.join(ali_folder_path, alignm_file)
+                    output_hmm_path = os.path.join(hmmdb_dir, "RVMT_HMMs", f"{ali_name}.hmm")
+                    hmm_from_msa(
+                        msa_file=msa_file_path,
+                        output=output_hmm_path,
+                        alphabet="amino",
+                        name=ali_name
+                    )
+    
+    # Concatenate all HMMs into a single file
+    subprocess.run(f"cat {hmmdb_dir}/RVMT_HMMs/*.hmm > {hmmdb_dir}/RVMT.hmm", shell=True)
+    os.chdir(current_dir)  # Restore original directory
 
     # PFAM_A_37 RdRps and RTs
     fetch_and_extract(
@@ -157,7 +145,6 @@ def prepare_rvmt_mmseqs(data_dir, threads, log_file):
         This function assumes RVMT alignments have been downloaded and
         extracted to the appropriate location in data_dir.
     """
-    import subprocess
 
     console.print("Preparing RVMT mmseqs database")
     rvmt_dir = os.path.join(data_dir, "RVMT")
@@ -201,7 +188,6 @@ def prepare_rrna_db(data_dir, log_file):
         Creates formatted databases suitable for sequence similarity searches
         and taxonomic classification.
     """
-    import subprocess
 
     console.print("Preparing rRNA database")
     rrna_dir = os.path.join(data_dir, "rRNA")
@@ -225,85 +211,6 @@ def prepare_rrna_db(data_dir, log_file):
     subprocess.run(bbduk_command, shell=True)
 
 
-# From Antonio https://github.com/apcamargo/diversify_pfam/blob/main/scripts/generate_hmms.py
-def create_hmm_from_msa(msa, alphabet, set_ga):
-    """Create a Hidden Markov Model from a multiple sequence alignment.
-
-    Uses pyhmmer to build an HMM profile from an input MSA, with options
-    for setting gathering thresholds.
-
-    Args:
-        msa (pyhmmer.easel.MSA): Input multiple sequence alignment
-        alphabet (pyhmmer.easel.Alphabet): Sequence alphabet (amino/nucleic)
-        set_ga (bool): Whether to set gathering thresholds
-
-    Returns:
-        pyhmmer.plan7.HMM: Built HMM profile
-
-    Note:
-        The function handles both protein and nucleotide alignments based
-        on the provided alphabet.
-    """
-    import pyhmmer
-
-    builder = pyhmmer.plan7.Builder(alphabet)
-    background = pyhmmer.plan7.Background(alphabet)
-    hmm, _, _ = builder.build_msa(msa, background)
-    hmm.command_line = None
-    if set_ga:
-        hmm.cutoffs.gathering = set_ga, set_ga
-    return hmm
-
-
-def generate_hmms(input_msas, input_format, set_ga):
-    """Generate multiple HMM profiles from a collection of MSAs.
-
-    Batch processes multiple sequence alignments to create corresponding
-    HMM profiles using pyhmmer.
-
-    Args:
-        input_msas (list): List of MSA file paths
-        input_format (str): Format of input MSAs (e.g., "stockholm", "fasta")
-        set_ga (bool): Whether to set gathering thresholds
-
-    Returns:
-        list: List of generated HMM profiles
-
-    Example:
-             hmms = generate_hmms(["msa1.sto", "msa2.sto"], "stockholm", True)
-    """
-    import pyhmmer
-
-    alphabet = pyhmmer.easel.Alphabet.amino()
-    hmm_list = []
-    for p in input_msas:
-        with pyhmmer.easel.MSAFile(
-            p, digital=True, alphabet=alphabet, format=input_format
-        ) as fi:
-            msa = fi.read()
-            msa.name = p.stem.encode("utf-8")  # type: ignore
-            msa.accession = p.stem.encode("utf-8")  # type: ignore
-            hmm = create_hmm_from_msa(msa, alphabet, set_ga)
-            hmm_list.append(hmm)
-    return hmm_list
-
-
-def write_hmms(hmms, output_hmm, write_ascii):
-    """Write HMM profiles to a file.
-
-    Saves one or more HMM profiles to a single output file in either
-    binary or ASCII format.
-
-    Args:
-        hmms (list): List of HMM profiles to write
-        output_hmm (str): Path to output HMM file
-        write_ascii (bool): If True, write in ASCII format; otherwise binary
-    """
-    binary = not write_ascii
-    with open(output_hmm, "wb") as fo:
-        for hmm in hmms:
-            hmm.write(fo, binary=binary)
-
 
 def download_and_extract_rfam(data_dir, logger):
     """Download and process Rfam database files.
@@ -319,9 +226,8 @@ def download_and_extract_rfam(data_dir, logger):
         Downloads both the sequence database and covariance models,
         and processes them for use with Infernal.
     """
-    import subprocess
 
-    import requests
+    
 
     rfam_url = "https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/Rfam.cm.gz"
     rfam_cm_path = data_dir / "Rfam.cm.gz"
@@ -354,16 +260,11 @@ def tar_everything_and_upload_to_NERSC(data_dir, version=""):
     Note:
         Requires appropriate NERSC credentials and permissions to upload.
     """
-    import datetime
-    import subprocess
-    from pathlib import Path
-    from rolypoly.utils.logging.citation_reminder import remind_citations
 
     if version == "":
-        from rolypoly.utils.logging.loggit import get_version_info
 
         version = get_version_info()
-    with open(Path(data_dir) / "README.md", "w") as f_out:
+    with open(pt(data_dir) / "README.md", "w") as f_out:
         f_out.write(f"RolyPoly version: {version}\n")
         f_out.write(f"Date: {datetime.datetime.now()}\n")
         f_out.write(f"Data dir: {data_dir}\n")
@@ -415,14 +316,8 @@ def prepare_genomad_rna_viral_hmms(data_dir, threads, logger: logging.Logger):
         threads (int): Number of CPU threads to use
         logger: Logger object for recording progress and errors
     """
-    import os
-    import shutil
-    import subprocess
-    import tarfile
 
-    import polars as pl
 
-    from rolypoly.utils.bioseqs.pyhmm_utils import hmmdb_from_directory
 
     logger.info("Starting geNomad RNA viral HMM preparation")
 
