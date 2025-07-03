@@ -6,7 +6,6 @@ from typing import Dict, Tuple, Union
 import rich_click as click
 
 from rolypoly.utils.logging.config import BaseConfig
-from rolypoly.utils.logging.loggit import log_start_info
 
 global tools
 tools = []
@@ -30,7 +29,7 @@ class AssemblyConfig(BaseConfig):
             overwrite=kwargs.get("overwrite", False),
             log_level=kwargs.get("log_level", "info"),
         )  
-        # initialize the command specific stuff\ parameters
+        # initialize the command specific stuff parameters
         self.assembler = kwargs.get("assembler", ["spades", "megahit"])
         self.post_processing = kwargs.get("post_processing")
         
@@ -211,7 +210,7 @@ def run_spades(config, libraries):
 
     from rolypoly.utils.various import ensure_memory
 
-    spades_output = config.output_dir / f"spades_meta_output"
+    spades_output = config.output_dir / f"spades_{config.step_params['spades']['mode']}_output"
     spades_cmd = f"spades.py --{config.step_params['spades']['mode']} -o {spades_output} --threads {config.threads} --only-assembler -k {config.step_params['spades']['k']} --phred-offset 33 -m {ensure_memory(config.memory)['bytes'][:-1]}"
 
     if len(libraries) > 9:
@@ -238,6 +237,22 @@ def run_spades(config, libraries):
                     spades_cmd += f" --pe-m {i+1} {lib['merged']}"
                 else:
                     spades_cmd += f" --s {i} {lib['merged']}"
+                    
+    # add raw fasta if provided
+    if config.raw_fasta:
+        # concat if multiple fasta files
+        if len(config.raw_fasta) > 1:
+            with open(config.output_dir / "all_raw_fasta.fa", "wb") as outfile:
+                for fasta in config.raw_fasta:
+                    with open(fasta, "rb") as infile:
+                        outfile.write(infile.read())
+            config.logger.info(f"Concatenated {len(config.raw_fasta)} raw fasta files into {config.output_dir / 'all_raw_fasta.fa'}")
+            config.raw_fasta = str(config.output_dir / "all_raw_fasta.fa")
+        else:
+            config.raw_fasta = str(config.raw_fasta[0])
+        spades_cmd += f" --trusted-contigs {config.raw_fasta}"
+        
+    config.logger.info(f"Running SPAdes with command: {spades_cmd}")
 
     subprocess.run(spades_cmd, shell=True, check=True)
     config.logger.info(f"Finished SPAdes assembly")
@@ -383,16 +398,23 @@ def run_penguin(config, libraries):
 @click.option(
     "--long-read",
     multiple=True,
-    nargs=2,
+    nargs=1,
     default=(),
-    help="Library number and long read FASTQ: <lib_num> <fastq>",
+    help="""path to long read FASTQ: <fastq>\n
+    Note: long read files are not currently supported by all assemblers/configurations:\n
+    SPAdes: supported in hybrid assembly mode (--nanopore or --pacbio). PacBio input needs to be prefiltered (i.e. the circular consensus sequences), see spades manual for more details. \n
+    MEGAHIT: not supported\n
+    Penguin: TODO: check if supported. I think it should be as the inputs can include a long list of fasta""",
 )
 @click.option(
     "--raw-fasta",
     multiple=True,
     default=(),
-    help="Raw FASTA file(s) to include",
     type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    help="""Raw FASTA file(s) to include, note that not all assemblers support this:\n
+    SPAdes: supported via the --trusted-contigs flag (see spades manual for more details) \n
+    MEGAHIT: not supported\n
+    Penguin: TODO: check if supported. I think it should be as the inputs can include a long list of fasta""",
 )
 @click.option(
     "-A",
@@ -400,7 +422,13 @@ def run_penguin(config, libraries):
     default=["spades", "megahit"],
     multiple=True,
     type=click.Choice(["spades", "megahit", "penguin"]),
-    help="Assembler choice (spades,megahit,penguin). For multiple, use multiple -A flags or give a comma-separated list",
+    help="""Assembler choice. For multiple, use multiple -A flags or give a comma-separated list. \n
+    SPAdes: iterative de bruijn graph assembler - relatively slow and memory heavy, but potentially more accurate. \n
+    MEGAHIT: multiple kmer based de bruijn graph assembler - Fast and memory light, but potentially less accurate. \n
+    Penguin: mmseqs2 based, more similar to an overlap-layout-consensus method - while it claims to identify many more sequences, many of them are likely false positives.  \n
+    Note1 : Penguin offers a amino-acid (translation) guided assembly mode, but RolyPoly bypasses it.    \n
+    Note2 : SPAdes is the default assembler for RolyPoly.
+    """,
 )
 @click.option(
     "-op",
@@ -464,7 +492,7 @@ def assembly(
 
     import polars as pl
     from bbmapy import bbmap
-
+    from rolypoly.utils.logging.loggit import log_start_info
     from rolypoly.utils.logging.citation_reminder import remind_citations
     from rolypoly.utils.bioseqs.sequence_io import read_fasta_df
     from rolypoly.utils.bioseqs.sequence_analysis import process_sequences, rename_sequences
