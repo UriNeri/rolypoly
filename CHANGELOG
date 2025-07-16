@@ -1,5 +1,15 @@
 # Changelog
 
+## 16.07.2025 [Unreleased]
+- Renamed pypi package from rolypoly-bio to rolypoly-tk
+- Restructured utils and functions into multiple subject specific scripts and folders (fax.py --> bioseqs/*py)
+- Various bugfixes
+- More consistent tpying in code, but now it adds bugs (or at least error messages :-( )
+- Started adding tests (TBD + WIP)
+- Started adding notebooks folder - placeholder code now, the todo is some sort of google collab applets.
+- Modified assembely workflow: penguin is NOT on by default, and Spades uses less kmers.
+
+
 ## 16.04.2025 [Unreleased]
 
 ### Added
