@@ -1,5 +1,4 @@
 from pathlib import Path
-import os
 
 import rich_click as click
 from rich.console import Console
@@ -126,7 +125,7 @@ console = Console(width=150)
         case_sensitive=False,
     ),
     help="""Tool for gene prediction. \n
-    * pyrodigal-gv: might work better for some viruses, but it's not as well tested for RNA viruses. Includes internal genetic code assignment. \n
+    * pyrodigal-gv: might work well for some viruses, but it's not as well tested for RNA viruses. Includes internal genetic code assignment. \n
     * ORFfinder: The default ORFfinder settings may have some false positives, but it's fast and easy to use. \n
     * six-frame: includes all 6 reading frames, so all possible ORFs are predicted - prediction is quick but will include many false positives, and the input for the domain search will be larger. \n
     """,
@@ -138,7 +137,7 @@ console = Console(width=150)
     type=click.Choice(
         ["hmmsearch", "mmseqs2", "diamond"], case_sensitive=False #, "nail"
     ),
-    help="Tool/command for protein domain detection. hmmer commands are used via pyhmmer bindings",
+    help="Tool/command for protein domain detection. Only one tool can be used at a time.",
 )
 @click.option(
     "-d",
@@ -183,7 +182,7 @@ def annotate_prot(
     gene_prediction_tool,
     search_tool,
     domain_db,
-    min_orf_length,
+    min_orf_length,     
     genetic_code, 
     evalue
 ):
@@ -191,9 +190,9 @@ def annotate_prot(
     Currently supported tools and databases: \n
     * Translations: ORFfinder, pyrodigal, six-frame \n
     * Search engines: \n
-    - (py)hmmsearch: Pfam, RVMT, genomad \n
-    - mmseqs2: Pfam, RVMT, genomad \n
-    - diamond: RVMT, RefSeqvirus \n
+    - (py)hmmsearch: Pfam, RVMT, genomad, vfam \n
+    - mmseqs2: Pfam, RVMT, genomad, vfam \n
+    - diamond: Uniref50, RefSeq (both are subseted to viral sequences) \n
     * custom: user supplied database. Needs to be in tool appropriate format, or a directory of aligned fasta files (for hmmsearch) 
     """
     # - nail: Pfam, RVMT, genomad, custom (via nail) # TODO: add support for nail. https://github.com/TravisWheelerLab/nail
@@ -309,13 +308,13 @@ def get_database_paths(config, tool_name):
             "vfam".lower(): hmmdbdir / "vfam.hmm",
         },
         "mmseqs2": {
-            "RVMT".lower(): mmseqs2_dbdir / "RVMT/NVPC.hmm",  # mmseqs2 can use HMM profiles
-            "Pfam".lower(): mmseqs2_dbdir / "pfamA37.hmm",
-            "genomad".lower(): mmseqs2_dbdir / "genomad.hmm",
+            "RVMT".lower(): mmseqs2_dbdir / "RVMT/nvpc",  
+            "Pfam".lower(): mmseqs2_dbdir / "pfam/pfamA37",
+            "genomad".lower(): mmseqs2_dbdir / "genomad/genomad_vv",
         },
         "diamond": {
-            "RVMT".lower(): diamond_dbdir / "RVMT/RVMT_proteins.dmnd",  # Diamond needs .dmnd format
             "RefSeq_virus".lower(): diamond_dbdir / "RefSeq_virus.dmnd",
+            "Uniref50".lower(): diamond_dbdir / "uniref50_viral.dmnd",  # TODO: create these DBs, add them to data, and push new data version.
         }
     }
     
@@ -398,7 +397,7 @@ def get_database_paths(config, tool_name):
 
 def search_protein_domains_hmmsearch(config):
     """Search protein domains using hmmsearch."""
-    from rolypoly.utils.bioseqs.pyhmm_utils import search_hmmdb , hmmdb_from_directory, hmm_from_msa
+    from rolypoly.utils.bioseqs.pyhmm_utils import search_hmmdb
 
     # Use the standard ORF prediction output location
     translation_output = config.output_dir / "raw_out" / "predicted_orfs.faa"
@@ -437,7 +436,6 @@ def predict_orfs_with_orffinder(config):
     import os
     from shutil import which
 
-    from rolypoly.utils.various import run_command_comp
     from rolypoly.utils.bioseqs.translation import predict_orfs_orffinder
 
     if not which("ORFfinder"):
@@ -459,7 +457,6 @@ def predict_orfs_with_orffinder(config):
             exit(1)
 
     config.logger.info("Predicting ORFs")
-    input_fasta = Path(config.input)
     output_file = config.output_dir / "raw_out" / "predicted_orfs.faa"
     predict_orfs_orffinder(
         input_fasta=config.input,

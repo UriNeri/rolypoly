@@ -10,6 +10,7 @@ authors = [
     { name = "Clement Coclet", email = "cclement@jgi.doe.gov" },
     { name = "David Parker", email = "dparker@carnegiescience.edu" },
     { name = "Dimitris Karapliafis", email = "dimitris.karapliafis@atwur.nl" },
+    {name = "Frederik Schulz", email = "fschulz@lbl.gov"}
 ]
 description = "RNA virus analysis toolkit"
 readme = "README.md"
@@ -17,14 +18,28 @@ requires-python = ">=3.9"
 license = { file = "LICENSE" }
 # License-File = "license"
 dependencies = [
-     "bbmapy>=0.0.46,<0.0.47",
-     "genomicranges>=0.6.3,<0.7", "iranges>=0.5.1,<0.6", "lightmotif>=0.10.0,<0.11", "mappy>=2.30,<3", "needletail>=0.7.0,<0.8", "polars>=1.31.0,<2", "psutil>=7.0.0,<8", "pyfastx>=2.2.0,<3", "pyhmmer>=0.11.1,<0.12", "pyrodigal-gv>=0.3.2,<0.4", "requests>=2.32.4,<3", "rich-click>=1.8.9,<2", "rich>=14.0.0,<15", "viennarna>=2.7.0,<3", "intervaltree>=3.1.0,<4",
+    "bbmapy>=0.0.46,<0.0.47",
+    "genomicranges>=0.6.3,<0.7",
+    "iranges>=0.5.1,<0.6",
+    "lightmotif>=0.10.0,<0.11",
+    "mappy>=2.30,<3",
+    "needletail>=0.7.0,<0.8",
+    "polars>=1.31.0,<2",
+    "psutil>=7.0.0,<8",
+    "pyfastx>=2.2.0,<3",
+    "pyhmmer>=0.11.1,<0.12",
+    "pyrodigal-gv>=0.3.2,<0.4",
+    "requests>=2.32.4,<3",
+    "rich-click>=1.8.9,<2",
+    "rich>=14.0.0,<15",
+    "viennarna>=2.7.0,<3",
+    "intervaltree>=3.1.0,<4",
 ]
 
 [project.urls]
 Source = "https://code.jgi.doe.gov/rolypoly/rolypoly"
 Documentation = "https://pages.jgi.doe.gov/rolypoly/docs/"
-pypi = "https://pypi.org/project/rolypoly-bio/"
+pypi = "https://pypi.org/project/rolypoly-tk/"
 
 [project.scripts]
 rolypoly = "rolypoly.rolypoly:rolypoly"
@@ -47,11 +62,11 @@ packages = ["src/rolypoly"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/rolypoly"]
-package-dir = {rolypoly_tk = "src/rolypoly"}
+package-dir = { rolypoly_tk = "src/rolypoly" }
 
 [tool.pixi.workspace]
 channels = ["conda-forge", "bioconda"]
-platforms = ["linux-64"] 
+platforms = ["linux-64"]
 
 [tool.pixi.pypi-dependencies]
 rolypoly_tk = { path = ".", editable = true }
@@ -84,13 +99,13 @@ python = "~=3.9.0"
 
 [tool.pixi.environments]
 default = { features = ["py39"] }
-dev = { features = ["build", "format", "publish","test"] }
+dev = { features = ["build", "format", "publish", "test"] }
 
 [tool.pixi.feature.format.tasks]
 format = "ruff check --select I --fix src && ruff format src"
 
 [tool.pixi.feature.publish.tasks]
-publish-pypi = "twine upload dist/* --verbose" 
+publish-pypi = "twine upload dist/* --verbose"
 
 [tool.pixi.feature.build.tasks]
 build-pypi = "hatch version micro && hatch build --clean"
@@ -127,7 +142,7 @@ exclude = [
     "site-packages",
     "venv",
     ".pixi/",
-    "tests"    
+    "tests",
 ]
 
 line-length = 120
@@ -135,7 +150,7 @@ indent-width = 4
 target-version = "py39"
 
 [tool.ruff.lint]
-ignore = ["E501", "E402", "E401","PLC0415"]
+ignore = ["E501", "E402", "E401", "PLC0415", "E712", "F403", "E722"]
 fixable = ["ALL"]
 unfixable = []
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"

@@ -29,7 +29,7 @@ tools = []
 )
 @option(
     "--log-file",
-    default=f"./get_external_data_logfile.txt",
+    default="./get_external_data_logfile.txt",
     help="Path to the log file",
 )
 def get_data(info, rolypoly_data, log_file):
@@ -70,7 +70,7 @@ def get_data(info, rolypoly_data, log_file):
             logger.info(f"{key}: {value}")
         return 0
 
-    if rolypoly_data == None:
+    if rolypoly_data is None:
         ROLYPOLY_DATA = pt(str(resources.files("rolypoly"))) / "data"
     else:
         ROLYPOLY_DATA = pt(os.path.abspath(rolypoly_data))

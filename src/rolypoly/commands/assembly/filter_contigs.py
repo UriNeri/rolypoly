@@ -172,7 +172,7 @@ def filter_contigs(
         threads=threads,
         log_file=Path(log_file)
         if log_file
-        else Path(output).parent / f"rolypoly_filter_contigs_log.txt",
+        else Path(output).parent / "rolypoly_filter_contigs_log.txt",
         memory=memory,
         mode=mode,
         keep_tmp=keep_tmp,
@@ -355,7 +355,7 @@ def filter_contigs_nuc(config: FilterContigsConfig):
         shutil.copy(config.input, config.output)
         return
 
-    config.logger.info(f"Applying filters:")
+    config.logger.info("Applying filters:")
     config.logger.info(f"Filter 1: {config.filter1_nuc}")
     filtered1 = apply_filter(y, config.filter1_nuc)
     config.logger.info(f"Filter 2: {config.filter2_nuc}")

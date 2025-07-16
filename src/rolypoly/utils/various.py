@@ -1,9 +1,9 @@
 import os
-from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict, Generator, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from rich.console import Console
+import polars as pl
 
 console = Console()
 
@@ -64,7 +64,7 @@ def extract(
                     shutil.copyfileobj(source, dest)
 
         # Then handle archive format (if any)
-        final_path = decompressed_path
+        # final_path = decompressed_path
         if decompressed_path.suffix == ".tar" or (
             not is_compressed and archive_path.suffix == ".tar"
         ):
@@ -122,9 +122,9 @@ def parse_memory(mem_str) -> int:
         "t": 1024**4,
     }
 
-    if type(mem_str) == dict:
+    if isinstance(mem_str,dict):
         return parse_memory(mem_str.get("bytes"))
-    elif type(mem_str) == int:
+    elif isinstance(mem_str,int):
         return mem_str
 
     mem_str = mem_str.lower().strip()
@@ -378,23 +378,166 @@ def is_file_empty(file_path, size_threshold=28):
 
 
 def flat_dict(d: dict[str, str], sep: str = ",", prefix: str = "", suffix: str = "", join_with: str = ": ") -> str:
+    """ convert a dict to a string """
     return f"{prefix}{join_with}{sep}".join([f"{k}{join_with}{v}" for k, v in d.items()]) + f"{suffix}"
 
-def flat_list(l: list[str], sep: str = ",", prefix: str = "", suffix: str = "", join_with: str = ": ") -> str:
-    return f"{prefix}{join_with}{sep}".join(l) + f"{suffix}"
+def flat_list(somelist: list[str], sep: str = ",", prefix: str = "", suffix: str = "", join_with: str = ": ") -> str:
+    """ convert a list to a string """
+    return f"{prefix}{join_with}{sep}".join(somelist) + f"{suffix}"
 
 def flat_nested(ld: Union[dict, list], sep: str = ",", prefix: str = "", suffix: str = "", join_with: str = ": ") -> str:
+    """ convert a list or dict to string """
     if isinstance(ld, dict):
-        return flat_nested_dict(ld, sep, prefix, suffix, join_with)
+        return flat_dict(ld, sep, prefix, suffix, join_with)
     elif isinstance(ld, list):
         return flat_list(ld, sep, prefix, suffix, join_with)
     else:
         raise Warning(f"Input must be a dictionary or list, got {type(ld)}")
 
-# def flat_df_cols(df: pl.DataFrame, sep: str = ",", prefix: str = "", suffix: str = "", join_with: str = ": ") -> pl.DataFrame:
 def flat_df_cols(df, sep: str = ",", prefix: str = "", suffix: str = "", join_with: str = ": "):
+    """ convert all columns that are pl.List and pl.Struct into string columns"""
     import polars as pl
     return df.with_columns(pl.all().map_elements(lambda x: flat_nested(x), return_dtype=pl.Utf8))
+
+
+def flatten_struct(
+    df: Union[pl.DataFrame, pl.LazyFrame],
+    struct_columns: Union[str, List[str]],
+    separator: str = ":",
+    drop_original_struct: bool = True,
+    recursive: bool = False,
+    limit: Optional[int] = None,
+) -> pl.DataFrame:
+    """
+    Takes a PolarsFrame and flattens specified struct columns into
+    separate columns using a specified separator,
+    with options to control recursion and limit the number
+    of flattening levels.
+
+    :param df: A PolarsFrame, either a LazyFrame or DataFrame.
+    :type df: PolarsFrame
+    :param struct_columns: The column or columns in the PolarsFrame that contain struct data.
+    This function is designed to flatten the struct data into separate columns based on the fields within the struct.
+    :type struct_columns: Union[str, List[str]]
+    :param separator: Specifies the character or string that will be used to separate the original
+    column name from the nested field names when flattening a nested struct column.
+    :type separator: str (optional)
+    :param drop_original_struct: Determines whether the original struct columns should be dropped after flattening or not,
+    defaults to True.
+    :type drop_original_struct: bool (optional)
+    :param recursive: Determines whether the flattening process should be applied recursively to
+    all levels of nested structures within the specified struct columns, defaults to False.
+    :type recursive: bool (optional)
+    :param limit: Determines the maximum number of levels to flatten the struct columns.
+    If `limit` is set to a positive integer, the function will flatten the struct columns up to that specified level.
+    If `limit` is set to `None`, there is no limit.
+    :type limit: int
+    :return: returns a pl.DataFrame.
+    :note: inspired by https://github.com/TomBurdge/harley
+    """
+    if isinstance(df, pl.LazyFrame):
+        df = df.collect()
+    ldf = df.lazy()
+    if isinstance(struct_columns, str):
+        struct_columns = [struct_columns]
+    if not recursive:
+        limit = 1
+    if limit is not None and not isinstance(limit, int):
+        raise ValueError("limit must be a positive integer or None")
+    if limit is not None and limit < 0:
+        raise ValueError("limit must be a positive integer or None")
+    if limit == 0:
+        print("limit of 0 will result in no transformations")
+        return df
+    ldf = df.lazy()  # noop if df is LazyFrame
+    all_column_names = ldf.collect_schema().names()
+    if any(separator in (witness := column) for column in all_column_names):
+        print(
+            f'separator "{separator}" found in column names, e.g. "{witness}". '
+            "If columns would be repeated, this function will error"
+        )
+    non_struct_columns = list(set(ldf.collect_schema().names()) - set(struct_columns))
+    struct_schema = ldf.select(*struct_columns).collect_schema()
+    col_dtype_expr_names = [(struct_schema[c], pl.col(c), c) for c in struct_columns]
+    result_names: Dict[str, pl.Expr] = {}
+    level = 0
+    while (limit is None and col_dtype_expr_names) or (
+        limit is not None and level < limit
+    ):
+        level += 1
+        new_col_dtype_exprs = []
+        for dtype, col_expr, name in col_dtype_expr_names:
+            if not isinstance(dtype, pl.Struct):
+                if name in result_names:
+                    raise ValueError(
+                        f"Column name {name} would be created at least twice after flatten_struct"
+                    )
+                result_names[name] = col_expr
+                continue
+            if any(separator in (witness := field.name) for field in dtype.fields):
+                print(
+                    f'separator "{separator}" found in field names, e.g. "{witness}" in {name}. '
+                    "If columns would be repeated, this function will error"
+                )
+            new_col_dtype_exprs += [
+                (
+                    field.dtype,
+                    col_expr.struct.field(field.name),
+                    name + separator + field.name,
+                )
+                for field in dtype.fields
+            ]
+            if not drop_original_struct:
+                ldf = ldf.with_columns(
+                    col_expr.struct.field(field.name).alias(
+                        name + separator + field.name
+                    )
+                    for field in dtype.fields
+                )
+        col_dtype_expr_names = new_col_dtype_exprs
+    if drop_original_struct and level == limit and col_dtype_expr_names:
+        for _, col_expr, name in col_dtype_expr_names:
+            result_names[name] = col_expr
+    if any((witness := column) in non_struct_columns for column in result_names):
+        raise ValueError(
+            f"Column name {witness} would be created after flatten_struct, but it's already a non-struct column"
+        )
+    if drop_original_struct:
+        ldf = ldf.select(
+            [pl.col(c) for c in non_struct_columns]
+            + [col_expr.alias(name) for name, col_expr in result_names.items()]
+        )
+
+    return ldf.collect()
+
+def flatten_all_structs(df: Union[pl.DataFrame, pl.LazyFrame], separator: str = ",", drop_original_struct: bool = True, recursive: bool = True, limit: Optional[int] = None) -> pl.DataFrame:
+    """Flatten all struct columns in a dataframe"""
+    struct_cols = [col for col, dtype in df.schema.items() if dtype == pl.Struct]
+    return flatten_struct(df, struct_cols, separator=separator, drop_original_struct=drop_original_struct, recursive=recursive, limit=limit)
+
+def convert_nested_cols(df: Union[pl.DataFrame, pl.LazyFrame], separator: str = ",", drop_original_struct: bool = True, recursive: bool = True, limit: Optional[int] = None) -> pl.DataFrame:
+    """Converts nested columns  by the dtype. Structs are flattened, while lists, arrays and objects are converted to strings."""
+    if isinstance(df, pl.LazyFrame):
+        df = df.collect()
+    list_cols = [col for col, dtype in df.schema.items() if dtype == pl.List]
+    # print(f"list_cols: {list_cols}")
+    array_cols = [col for col, dtype in df.schema.items() if dtype == pl.Array]
+    # print(f"array_cols: {array_cols}")
+    object_cols = [col for col, dtype in df.schema.items() if dtype == pl.Object]
+    # print(f"object_cols: {object_cols}")
+    struct_cols = [col for col, dtype in df.schema.items() if dtype == pl.Struct]
+    # print(f"struct_cols: {struct_cols}")
+    for col in struct_cols:
+        df = flatten_struct(df, col, separator=separator, drop_original_struct=drop_original_struct, recursive=recursive, limit=limit)
+    for col in set(list_cols + array_cols + object_cols):
+        # Convert list elements to strings and join them
+        df = df.with_columns(
+            pl.col(col)
+            .list.eval(pl.element().cast(pl.Utf8, strict=False))
+            .list.join(separator)
+            .alias(col)
+        )
+    return df
 
 
 def run_command(
@@ -535,7 +678,7 @@ def cast_cols_to_match(df1_to_cast, df2_to_match):
 
 def vstack_easy(df1_to_stack, df2_to_stack):
     """Stack two DataFrames vertically after matching their column types and order."""
-    import polars as pl
+    # import polars as pl
     
     # # Get common columns between both DataFrames
     # common_columns = [col for col in df1_to_stack.columns if col in df2_to_stack.columns]

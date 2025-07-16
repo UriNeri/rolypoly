@@ -331,7 +331,7 @@ def marker_search(
     input_alpha = guess_fasta_alpha(input)
 
     if input_alpha == "nucl":
-        config.logger.info(f"Input identified as nucl")
+        config.logger.info("Input identified as nucl")
         amino_file = str(config.temp_dir / f"{config.name}")
         if config.aa_method == "pyrodigal":
             config.logger.info("Predicting ORFs using pyrodigal-gv")
@@ -386,8 +386,8 @@ def marker_search(
     ).collect()
     config.logger.debug(stack_df)
     if stack_df.is_empty():
-        config.logger.info(f"No hits found in any DB")
-        config.logger.info(f"skipping resolution of overlaps")
+        config.logger.info("No hits found in any DB")
+        config.logger.info("skipping resolution of overlaps")
         config.resolve_mode = "none"
 
     results_file = Path(output) / "marker_search_results.tsv"

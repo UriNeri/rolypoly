@@ -39,7 +39,6 @@ def translate_6frx_seqkit(
                          "line-width": 0,
                          "frame": 6,
                          "id-regexp": "(\\*)",
-                         "clean": True,
                          "threads": threads},
                      positional_args=[f"{input_file} --out-file {output_file}"],
                      positional_args_location="end")

@@ -1,4 +1,3 @@
-import os
 import warnings
 
 import polars as pl
@@ -14,7 +13,7 @@ from typing import List, Optional, Tuple, Union
 import intervaltree as itree
 from genomicranges import GenomicRanges
 from iranges import IRanges
-from rolypoly.utils.various import order_columns_to_match, vstack_easy, cast_cols_to_match, order_columns_to_match
+from rolypoly.utils.various import vstack_easy
 
 # TODO: make this more robust and less dependent on external libraries. Candidate destination library is polars-bio.
 
@@ -515,7 +514,7 @@ def get_all_overlaps_pl(
         input_df = input_df.with_row_index(name="intops_id")
         id_col = "intops_id"
 
-    typeof_id_col = type(input_df.select(pl.col(id_col)).to_series().to_list()[0])
+    # typeof_id_col = type(input_df.select(pl.col(id_col)).to_series().to_list()[0])
 
     tree = interval_tree_from_df(input_df, data_col=id_col)
     ovl_intervals = [[] for _ in range(len(input_df))]

@@ -1,7 +1,7 @@
 """Basic sequence analysis and validation functions."""
 
 import re
-from typing import Dict, Tuple, Union
+from typing import Dict, Tuple
 
 import polars as pl
 

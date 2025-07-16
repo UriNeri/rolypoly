@@ -1,8 +1,7 @@
-import glob
 import os
 import shutil
 from pathlib import Path
-from typing import Dict, Tuple, Union, TypedDict
+from typing import Tuple, Union, TypedDict
 
 import rich_click as click
 from rich.console import Console
@@ -132,9 +131,8 @@ def process_reads(
 ) -> Union[OutputTracker, None]:
     """Main function to orchestrate the preprocessing steps."""
     import signal
-    from rich.spinner import SPINNERS, Spinner # type: ignore
 
-    config.logger.info(f"Checking dependencies    ")
+    config.logger.info("Checking dependencies    ")
     base_dir = Path(config.temp_dir)
     config.save(output_path=base_dir / "rp_filter_reads_config.json")  # type: ignore
     fastq_file, config.file_name = handle_input_fastq(config)
@@ -165,11 +163,11 @@ def process_reads(
     ]
 
     current_input = fastq_file
-    from rich.spinner import SPINNERS, Spinner # type: ignore
+    from rich.spinner import SPINNERS # type: ignore
 
-    SPINNERS["myspinner"] = {"interval": 2500, "frames": ["🦠 ", "🧬 ", "🔬 "]}
+    SPINNERS["myspinner"] = {"interval": 2500, "frames": ["🦠 ", "🧬 ", "🔬 "]} # type: ignore
 
-    with console.status(f"[bold green] Working on     ", spinner="myspinner") as status:
+    with console.status("[bold green] Working on     ", spinner="myspinner") as status:
         for step in steps:
             step_name = (
                 step.__name__
@@ -434,7 +432,7 @@ def filter_reads(
 
     log_start_info(config.logger, config.__dict__)
     try:
-        config.logger.info(f"Starting read processing    ")
+        config.logger.info("Starting read processing    ")
         # config.logger.info(f"skip steps type is : {type(config.skip_steps)}")
         # config.logger.info(f"override parameters type is : {type(config.override_parameters)} {config.override_parameters} ")
         process_reads(config, output_tracker)
@@ -442,7 +440,7 @@ def filter_reads(
         config.logger.error(f"An error occurred during read processing: {str(e)}")
         raise
 
-    config.logger.info(f"Read processing completed, probably successfully.")
+    config.logger.info("Read processing completed, probably successfully.")
     with open(f"{config.log_file}", "w") as f_out:
         f_out.write(remind_citations(tools, return_bibtex=True) or "")
 
@@ -454,7 +452,7 @@ def generate_reports(file_name: str, threads: int, skip_existing: bool, logger):
     falco_output = config.temp_dir / "falco_post_trim_reads"
     falco_output.mkdir(exist_ok=True)
     all_remaining_fastqs = glob.glob(
-        str(config.temp_dir / f"*final*.fq.gz"), recursive=True
+        str(config.temp_dir / "*final*.fq.gz"), recursive=True
     )
 
     if (
@@ -523,8 +521,8 @@ def handle_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
     from bbmapy import reformat
 
     # Create a temporary file for intermediate concatenation
-    temp_interleaved = config.output_dir / f"temp_concat_interleaved.fq.gz"
-    final_interleaved = config.output_dir / f"concat_interleaved.fq.gz"
+    temp_interleaved = config.output_dir / "temp_concat_interleaved.fq.gz"
+    final_interleaved = config.output_dir / "concat_interleaved.fq.gz"
     file_name = "rolypoly_filtered_reads"
 
     if "," not in str(config.input):
@@ -965,7 +963,7 @@ def error_correct_1(
             interleaved="t",
         )
         output_tracker.add_file(
-            str(output_file), f"error_correct_phase_1", "bbmerge.sh", is_merged=False
+            str(output_file), "error_correct_phase_1", "bbmerge.sh", is_merged=False
         )
         return Path(output_file)
     except RuntimeError as e:
@@ -993,7 +991,7 @@ def error_correct_2(
             interleaved="t",
         )
         output_tracker.add_file(
-            str(output_file), f"error_correct_phase_2", "bbmerge.sh", is_merged=False
+            str(output_file), "error_correct_phase_2", "bbmerge.sh", is_merged=False
         )
         return Path(output_file)
     except RuntimeError as e:

@@ -171,8 +171,8 @@ source "$(dirname "$(dirname "$MAMBA_ENV_PATH")")/etc/profile.d/conda.sh"
 
 # Install RolyPoly
 if [ "$DEV_INSTALL" != "TRUE" ]; then
-    logit "$LOGFILE" "Installing rolypoly-bio from PyPI"
-    pip install rolypoly-bio --quiet
+    logit "$LOGFILE" "Installing rolypoly-tk from PyPI"
+    pip install rolypoly-tk --quiet
 else
     logit "$LOGFILE" "Installing RolyPoly in development mode"
     pip install -e . --quiet
@@ -189,9 +189,9 @@ rolypoly prepare-data --ROLYPOLY_DATA "$DATA_PATH" --log-file "$LOGFILE"
 if [ "$DEV_INSTALL" != "TRUE" ]; then
     # Try uv first, fall back to pip if not available
     if command -v uv &> /dev/null; then
-        uv pip show rolypoly-bio | grep Version -m1 -B1 | tee -a "$LOGFILE"
+        uv pip show rolypoly-tk | grep Version -m1 -B1 | tee -a "$LOGFILE"
     else
-        pip show rolypoly-bio | grep Version -m1 -B1 | tee -a "$LOGFILE"
+        pip show rolypoly-tk | grep Version -m1 -B1 | tee -a "$LOGFILE"
     fi
 else
     rolypoly --version | tee -a "$LOGFILE"

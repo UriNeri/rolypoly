@@ -190,4 +190,4 @@ def ensure_faidx(input_file: str) -> None:
     if not os.path.exists(f"{input_file}.fxi"):
         console.print(f"[yellow]Indexing {input_file} with pyfastx    [/yellow]")
         pyfastx.Fasta(str(input_file))
-        console.print(f"[green]Indexing complete.[/green]") 
+        console.print("[green]Indexing complete.[/green]") 

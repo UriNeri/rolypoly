@@ -4,10 +4,8 @@ import tarfile
 import datetime
 import requests
 import subprocess
-import json
 import logging
 from pathlib import Path as pt
-from importlib import resources
 import polars as pl
 
 from rich_click import command, option
@@ -19,8 +17,6 @@ from rolypoly.utils.bioseqs.pyhmm_utils import hmmdb_from_directory, hmm_from_ms
 from rolypoly.utils.various import (
     extract,
     fetch_and_extract,
-    find_most_recent_folder,
-    move_contents_to_parent,
 )
 
 from rich.console import Console
@@ -38,16 +34,15 @@ tools = []
 @option("--threads", default=4, help="Number of threads to use")
 @option(
     "--log-file",
-    default=f"./prepare_external_data_logfile.txt",
+    default="./prepare_external_data_logfile.txt",
     help="Path to the log file",
 )
 def build_data(data_dir, threads, log_file):
-    """Build external data required for RolyPoly.
+    """Build external data required for RolyPoly. This is an internal scratch script, wrapped in a click command for convenience (and logging), but exposed to users.
         1. Build geNomad RNA viral HMMs
         2. Build protein HMMs RdRp-scan, RVMT, Neordrp_v2.1, tsa_2018 and PFAM_A_37 
         3. Download and prepare rRNA databases SILVA_138.1_SSURef_NR99_tax_silva.fasta and SILVA_138.1_LSURef_NR99_tax_silva.fasta
         4. Download Rfam data.
-
     """
 
 

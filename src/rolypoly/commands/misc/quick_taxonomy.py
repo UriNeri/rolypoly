@@ -5,7 +5,6 @@ from rich.console import Console
 
 from rolypoly.utils.logging.citation_reminder import remind_citations
 
-from rich.console import Console
 console = Console()
 
 

@@ -164,7 +164,7 @@ def handle_input_files(
         # Look for other fastq files (excluding already processed rolypoly files)
         all_fastq = [f for f in input_path.glob("*.f*q*") if f not in processed_rolypoly]
         r1_pattern = re.compile(r".*_R1[._].*")
-        r2_pattern = re.compile(r".*_R2[._].*")
+        # r2_pattern = re.compile(r".*_R2[._].*") # need to think if this should even be here as is not used
 
         # Group paired files
         r1_files = [f for f in all_fastq if r1_pattern.match(f.name)]
@@ -198,7 +198,7 @@ def handle_input_files(
             0
         ]  # Handle rolypoly naming if present
         library_info.add_merged(1, str(input_path))
-        libraries[f"lib_1_merged"] = {"interleaved": None, "merged": str(input_path)}
+        libraries["lib_1_merged"] = {"interleaved": None, "merged": str(input_path)}
 
     # Convert library_info to the expected libraries format
     libraries = library_info.to_assembly_dict()
@@ -214,7 +214,7 @@ def run_spades(config, libraries):
     spades_cmd = f"spades.py --{config.step_params['spades']['mode']} -o {spades_output} --threads {config.threads} --only-assembler -k {config.step_params['spades']['k']} --phred-offset 33 -m {ensure_memory(config.memory)['bytes'][:-1]}"
 
     if len(libraries) > 9:
-        config.logger.info(f"Running SPAdes on concatenated reads")
+        config.logger.info("Running SPAdes on concatenated reads")
         with open(f"{config.output_dir}/all_merged.fq.gz", "wb") as outfile:
             for lib in libraries.values():
                 if lib["merged"]:
@@ -255,7 +255,7 @@ def run_spades(config, libraries):
     config.logger.info(f"Running SPAdes with command: {spades_cmd}")
 
     subprocess.run(spades_cmd, shell=True, check=True)
-    config.logger.info(f"Finished SPAdes assembly")
+    config.logger.info("Finished SPAdes assembly")
 
     return spades_output / "scaffolds.fasta"
 
@@ -266,7 +266,7 @@ def run_megahit(config, libraries):
 
     from rolypoly.utils.various import ensure_memory
 
-    config.logger.info(f"Started Megahit assembly")
+    config.logger.info("Started Megahit assembly")
     megahit_output = config.output_dir / "megahit_custom_out"
 
     interleaved = ",".join(
@@ -275,7 +275,7 @@ def run_megahit(config, libraries):
     merged = ",".join(str(lib["merged"]) for lib in libraries.values() if lib["merged"])
 
     megahit_cmd = [
-        f"megahit",
+        "megahit",
         f"--k-min {config.step_params['megahit']['k-min']}",
         f"--k-max {config.step_params['megahit']['k-max']}",
         f"--k-step {config.step_params['megahit']['k-step']}",
@@ -316,7 +316,7 @@ def run_penguin(config, libraries):
     """Run Penguin assembler."""
     import subprocess
 
-    config.logger.info(f"Started Penguin assembly")
+    config.logger.info("Started Penguin assembly")
     penguin_output = config.output_dir / "penguin_Fguided_1_nuclassemble_c0.fasta"
     interleaved = " ".join(
         str(lib["interleaved"]) for lib in libraries.values() if lib["interleaved"]
@@ -534,7 +534,7 @@ def assembly(
         overwrite=overwrite,
     )
 
-    config.logger.info(f"Starting assembly process")
+    config.logger.info("Starting assembly process")
     log_start_info(config.logger, config_dict=config.__dict__)
     config.logger.info(f"Saving config to {config.output_dir / 'assembly_config.json'}")
     config.save(config.output_dir / "assembly_config.json")

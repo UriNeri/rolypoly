@@ -247,7 +247,7 @@ def sequence_stats(
     
     elif format.lower() == "md":
         # Create markdown summary
-        md_content = f"# Sequence Statistics Report\n\n"
+        md_content = "# Sequence Statistics Report\n\n"
         md_content += f"**Input file:** {input}\n"
         md_content += f"**Total sequences:** {total_seqs}\n"
         md_content += f"**Sequences after filtering:** {filtered_seqs}\n\n"
@@ -275,7 +275,7 @@ def sequence_stats(
                     md_content += f"- **{stat}:** {value:.2f}\n"
                 md_content += "\n"
             
-            md_content += f"\n## First 10 sequences\n\n"
+            md_content += "\n## First 10 sequences\n\n"
             md_content += df_output.head(10).to_pandas().to_markdown(index=False)
         
         with open(output_path, 'w') as f:

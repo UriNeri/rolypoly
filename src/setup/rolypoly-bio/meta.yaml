@@ -1,4 +1,4 @@
-{% set name = "rolypoly-bio" %}
+{% set name = "rolypoly-tk" %}
 {% set version = "0.3.0" %}
 
 package:

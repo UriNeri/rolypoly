@@ -1,6 +1,5 @@
 from pathlib import Path
-import sys
-from typing import  Optional, Union, TYPE_CHECKING, Callable
+from typing import  Union
 from collections import defaultdict
 
 import polars as pl

@@ -110,7 +110,7 @@ def add_command(
     command_file = command_dir / f"{name}.py"
     with open(command_file, "w") as f:
         # Write imports
-        f.write(f"""import rich_click as click
+        f.write("""import rich_click as click
 from rolypoly.utils.logging.loggit import setup_logging
 """)
         if packages == "all":
@@ -217,13 +217,13 @@ if __name__ == "__main__":
                 # Add new category
                 lines.insert(i + 1, f'    "{category}": {{\n')
                 lines.insert(i + 2, f'        "name": "{category.capitalize()}",\n')
-                lines.insert(i + 3, f'        "commands": {{\n')
+                lines.insert(i + 3, '        "commands": {\n')
                 lines.insert(
                     i + 4,
                     f'            "{name}": "rolypoly.commands.{category}.{name}.{name}"\n',
                 )
-                lines.insert(i + 5, f"        }}\n")
-                lines.insert(i + 6, f"    }},\n")
+                lines.insert(i + 5, "        }\n")
+                lines.insert(i + 6, "    },\n")
             break
 
     with open(main_script, "w") as f:

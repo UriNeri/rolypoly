@@ -7,7 +7,6 @@ from pathlib import Path
 import mappy as mp
 import rich_click as click
 from bbmapy import bbmap, bbmask, kcompress
-from needletail import parse_fastx_file
 from rich.console import Console
 
 from rolypoly.utils.various import ensure_memory

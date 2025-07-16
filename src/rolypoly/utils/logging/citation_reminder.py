@@ -113,6 +113,7 @@ def get_citation_from_doi(doi_or_url, return_bibtex=False):
             return f"{doi_or_url}"
     except Exception as e:
         console.print(f"Unable to fetch citation for DOI: {doi_or_url}", style="red")
+        console.print(f"exact error is {e}")
         console.print(f"Suggestion: {doi_or_url}", style="yellow")
         return f"{doi_or_url}"
 

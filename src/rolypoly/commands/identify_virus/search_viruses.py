@@ -117,7 +117,7 @@ def virus_mapping(threads, memory, output, keep_tmp, db, db_path, log_file, inpu
         ".fas.gz",
         ".faa.gz",
     ]:
-        logger.info(f"Converting input to mmseqs DB")
+        logger.info("Converting input to mmseqs DB")
         tmp = pt(tmpdir) / "pl_sv_contig_db"
         os.makedirs(tmp, exist_ok=True)
         mmseqs_createdb_cmd = f"mmseqs createdb {str(input)} {tmp}/mmdb  --dbtype 2"
@@ -139,7 +139,7 @@ def virus_mapping(threads, memory, output, keep_tmp, db, db_path, log_file, inpu
             )
             return
         if pt(db_path).suffix in [".faa", ".fasta", ".fas", ".fa", ".fna"]:
-            logger.info(f"Converting target db to mmseqs DB")
+            logger.info("Converting target db to mmseqs DB")
             tmp = pt(tmpdir) / "rp_sv_custom_db"
             os.makedirs(tmp, exist_ok=True)
             mmseqs_createdb_cmd = f"mmseqs createdb {db_path} {tmp}/cmmdb  --dbtype 2"

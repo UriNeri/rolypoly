@@ -60,7 +60,6 @@ def get_data_info(config_path = None):
     Args:
         config_path (str): Path to the configuration file
     """
-    import importlib.metadata as metadata
     
     
 
@@ -142,6 +141,6 @@ def log_start_info(logger: logging.Logger, config_dict: Dict):
     logger.debug(
         f"HOSTNAME: {subprocess.check_output('hostname', shell=True).decode().strip()}"
     )
-    logger.debug(f"Config parameters:")
+    logger.debug("Config parameters:")
     for key, value in config_dict.items():
         logger.debug(f"{key}: {value}")

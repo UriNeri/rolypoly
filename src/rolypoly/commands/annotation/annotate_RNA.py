@@ -568,41 +568,40 @@ def detect_ires_irespy(config, input_fasta, output_file):
 
     from rolypoly.utils.various import run_command_comp
 
-    with open(input_fasta, "r") as f:
-        sequences = parse_fastx_file(str(input_fasta))
-        with open(output_file, "w") as out:
-            out.write("Sequence Name\tIRES Score\tStart\tEnd\n")
-            for seq in sequences:
-                # Prepare parameters
-                params = config.step_params["IRESpy"].copy()
+    sequences = parse_fastx_file(str(input_fasta))
+    with open(output_file, "w") as out:
+        out.write("Sequence Name\tIRES Score\tStart\tEnd\n")
+        for seq in sequences:
+            # Prepare parameters
+            params = config.step_params["IRESpy"].copy()
 
-                # Add required parameters
-                params.update({"i": str(seq.seq), "o": str(output_file)}) # pyright: ignore 
+            # Add required parameters
+            params.update({"i": str(seq.seq), "o": str(output_file)}) # pyright: ignore 
 
-                success = run_command_comp(
-                    base_cmd="irespy",
-                    positional_args=[],  # IRESpy uses named parameters for everything
-                    params=params,
-                    logger=config.logger,
-                    output_file=output_file,
-                    skip_existing=True,
-                    prefix_style="auto",
+            success = run_command_comp(
+                base_cmd="irespy",
+                positional_args=[],  # IRESpy uses named parameters for everything
+                params=params,
+                logger=config.logger,
+                output_file=output_file,
+                skip_existing=True,
+                prefix_style="auto",
+            )
+            if success:
+                tools.append("IRESpy")
+                ires_data = pl.read_csv(
+                    output_file, separator="\t", has_header=False
+                ).select(
+                    [
+                        pl.col("column_1").alias("sequence_id"),
+                        pl.col("column_2").alias("ires_score"),
+                        pl.col("column_3").alias("ires_start"),
+                        pl.col("column_4").alias("ires_end"),
+                    ]
                 )
-                if success:
-                    tools.append("IRESpy")
-                    ires_data = pl.read_csv(
-                        output_file, separator="\t", has_header=False
-                    ).select(
-                        [
-                            pl.col("column_1").alias("sequence_id"),
-                            pl.col("column_2").alias("ires_score"),
-                            pl.col("column_3").alias("ires_start"),
-                            pl.col("column_4").alias("ires_end"),
-                        ]
-                    )
-                    out.write(
-                        f"{seq.id}\t{ires_data['ires_score']}\t{ires_data['ires_start']}\t{ires_data['ires_end']}\n" # pyright: ignore 
-                    )
+                out.write(
+                    f"{seq.id}\t{ires_data['ires_score']}\t{ires_data['ires_start']}\t{ires_data['ires_end']}\n" # pyright: ignore 
+                )
 
     config.logger.info(f"IRESpy completed. Output written to {output_file}")
 
@@ -711,7 +710,7 @@ def search_rna_motifs(config): # py
     """PSSM search using lightmotif."""
     
     config.logger.warning(
-        f"RNA motif search is still in development."
+        "RNA motif search is still in development."
     )
     # from pathlib import Path
 
@@ -1188,7 +1187,6 @@ def combine_results(config):
     """Combine annotation results from different steps."""
     import polars as pl
 
-    from rolypoly.utils.various import vstack_easy
 
     config.logger.info("Combining annotation results")
 

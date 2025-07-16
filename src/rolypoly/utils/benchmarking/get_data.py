@@ -2,10 +2,8 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from urllib.parse import quote
 
 import requests
-from requests.exceptions import RequestException
 
 from rolypoly.utils.bioseqs.genome_fetch import download_genome
 
@@ -118,7 +116,7 @@ shutil.move("SRR961514_2.fastq.gz", "inputs/reads/hiv_R2.fq.gz")
 # subprocess.run(["rm", "-r", "5-virus-mix/.git"])
 # reformat.sh in1=./SRR961514_1.fastq.gz in2=./SRR961514_2.fastq.gz out=SRR961514_interleaved.fq.gz
 run_command(
-    f"reformat.sh in1=./SRR961514_1.fastq.gz in2=./SRR961514_2.fastq.gz out=SRR961514_interleaved.fq.gz"
+    "reformat.sh in1=./SRR961514_1.fastq.gz in2=./SRR961514_2.fastq.gz out=SRR961514_interleaved.fq.gz"
 )
 
 # cd ../

@@ -1,8 +1,6 @@
 """Sequence file I/O operations for reading and writing FASTA/FASTQ files."""
 
-import os
-from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import List, Union
 
 import polars as pl
 from needletail import parse_fastx_file
