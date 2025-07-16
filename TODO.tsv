@@ -1,0 +1,38 @@
+Scope	Task	Status	Priority	Assigned To	Comment	Script/reference file	Date Modified
+Annotate Protein	Train additional prodigal compatible models	To Do	Medium	Antonio Camargo	For alt codes RNA viruses	misc/exprimental/new_ORF_models/dissect_gbff_by_genetic_code.py	
+Annotate Protein	Add peptidase/proteinase cleavage motif scanning/prediction	To Do	Higest (v1 mvp)			commands/annotate_protein.py	
+Annotate RNA	ORF 5' UTR analysis	To Do	Higest (v1 mvp)		Ribosome binding sequence, Kozak consensus sequence prediction (for host guess)	commands/annotate_rna.py	
+Annotate RNA	Secondary structure prediction	Done	Higest (v1 mvp)		Validated for linearfold (default), need to verify the alternative options		
+Annotate RNA	IRES detection	In Progress	Higest (v1 mvp)		Currently only via the rfam cmsearch - ires specific tools (iresspy, irespred) seem too dependency heavy.		
+Annotate RNA	TR loops detection	In Progress	High		For leviviruses		
+Annotate RNA	rRNA detection	In Progress	Higest (v1 mvp)		For contamination estimation		
+Annotate RNA	Ribosomal slippage detection	To Do	Higest (v1 mvp)				
+Annotate RNA	Add ribosome shunting prediction	To Do	Medium				
+Assembly	Single-sample assembly	In Progress	Higest (v1 mvp)		Need to add an ID normalization step to rename all contigs from the different assemblers consistently (before the final backwards mapping)		
+Assembly	Co-assembly	In Progress	Higest (v1 mvp)		Currently combines reads from all samples, need to consider other options.	commands/assembly/co_assembly.py	2024-09-09 14:05:15
+Assembly	Cross-assembly	To Do	Higest (v1 mvp)		Use contigs from all single-sample assemblies as input		
+Assembly	strain de-entanglement / extension 	To Do	Higest (v1 mvp)		For extension - with user supplemental sequences (e.g. shape/race data)	commands/assembly/co_assembly.py, commands/assembly/refinement.py	
+Benchmarking	Resource usage	To Do	Higest (v1 mvp)		Total run time, minimal memory requirements		
+Benchmarking	Performance metrics	To Do	Higest (v1 mvp)		Sensitivity, specificity, precision, F1 score, ROC curve, PR curve, Confusion matrix		
+Benchmarking	Comparison with other tools	To Do	Higest (v1 mvp)		AliMarko, hecatomb, other?		
+End-2-end	Packing and combining results	To Do	Higest (v1 mvp)		v1 mvp: tar.gz and add the structure to docs		
+Main Commands	Add CLI args / config file testing.	To Do	Higest (v1 mvp)		Made a weak atetmpt - see src/rolypoly/utils/test.py	/clusterfs/jgi/scratch/science/metagen/neri/tests/rp_tests	
+filter-reads	add option to save the host-filtered reads to speicifc files	To Do	Higest (v1 mvp)		i.e. "--host-reads"	/commands/reads/filter_reads.py	
+filter-reads	Add preconfigured memory options 	To Do	Higest (v1 mvp)		i.e. "--low-mem": potentially adding deacon instead of the bbmap workflow, or as a pre-pre-fitere-reads step.	/commands/reads/filter_reads.py	
+Main Commands	Coherce outputs to GFF	In Progress	Higest (v1 mvp)		Add \n//FASTA with sequence at the end of each record	commands/annotation/annotate.py	2024-09-14 16:47:29
+Main Commands	Filter reads - add support for non illumina PE data (single end, pacbio, ONT).	To Do	High			commands/reads/filter_reads.py	
+Main Commands	Modify filter_reads workflow	To Do	Medium		Add option to keep files in memory/RAM disk	commands/assembly/search_viruses.py	
+Marker Search	Validate and implement remaining hit-consoldation and interval ops functionality	To Do	Higest (v1 mvp)		currently it's a combination of several packages annd custom code, because no single one had all the options needed. THis might change as some bug reports in genomicranges and iranges have been addressed	rolypoly/utils/interval_ops.py	
+Packaging	bioconda	To Do	High		on pypi, currently quick_setup.sh installs everything.	misc/quick_setup.sh and misc/envs/env_big.yaml	
+Packaging	Finalizing the database and contents	To Do	Higest (v1 mvp)	Uri Neri	Eventually archive on zenodo.	 is:open 	
+Packaging	Documentation	To Do	Higest (v1 mvp)		Need to clean and add use-cases.		
+Packaging	Update quick_setup.sh	To Do	High		Change to pip install -e .[dev] for development	misc/quick_setup.sh	2024-09-14 17:13:36
+Summary	Circularity prediction	To Do	Higest (v1 mvp)	Antonio Camargo	For ambi and maybe mito/narna	src/rolypoly/commands/virotype/predict_characteristics.py	
+Summary	Taxonomic assignment	To Do	Higest (v1 mvp)	Antonio Camargo	Use mmseqs taxonomy	src/rolypoly/commands/virotype/predict_characteristics.py	
+Summary	Genome completeness estimation	To Do	High			src/rolypoly/commands/virotype/predict_characteristics.py	
+Summary	Visualization	To Do	Higest (v1 mvp)		Use cases / tutorial will exmpalify visualizing rolypoly results. -- >  per input fasta file, a bam (if from reads) and a gff (if annotations). <-- Perferably some ready make solution like an interactive bam viewer or something that can take a gff3 file as input. For RdRps, see misc/obs_commands/draw.py maybe something like https://art-egorov.github.io/lovis4u/Gallery/gallery/	src/rolypoly/commands/virotype/summarize.py	
+Summary	Virion type	To Do	Higest (v1 mvp)		Capsid / capsid-less, lipid enveloped/not, symitery (T# / helical etc)		
+Summary	segmentality prediction	To Do	Higest (v1 mvp)		poly/mono/unclear - for V1 only based on taxonomy, and discalimed as vulnerable to incompletness		
+Summary	strandedness prediction	To Do	Higest (v1 mvp)		ss-/+/dsRNA - for v1 only based on taoxnomy, for strand exclusive clades.		
+Summary	Host prediction	To Do	High		At least domain level (prok / euk / unknown), TBD: addtional sequence features.		
+Summary	Add phenotypic prediction	To Do	Medium		Consider something like Laura's Kallisto model	src/rolypoly/commands/virotype/summarize.py	
