@@ -401,7 +401,7 @@ def marker_search(
             merge=False,
             split=False,
             column_specs="query_full_name,hmm_full_name",
-            rank_columns="-full_hmm_score,+full_hmm_evalue,-pcov",
+            rank_columns="-full_hmm_score,+full_hmm_evalue,-hmm_cov",
             drop_contained=True,
         )
 
