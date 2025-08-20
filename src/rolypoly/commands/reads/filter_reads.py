@@ -519,7 +519,9 @@ def identify_read_pair_files_in_folder(
 
 def handle_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
     from bbmapy import reformat
-
+    from bbmapy.update import ensure_java_availability
+    ensure_java_availability()
+    
     # Create a temporary file for intermediate concatenation
     temp_interleaved = config.output_dir / "temp_concat_interleaved.fq.gz"
     final_interleaved = config.output_dir / "concat_interleaved.fq.gz"

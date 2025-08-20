@@ -15,7 +15,7 @@ global tools
 tools = []
 
 
-@command()
+@command(name="get_data")
 @option(
     "--info",
     is_flag=True,
@@ -53,6 +53,10 @@ def get_data(info, rolypoly_data, log_file):
 
     from rolypoly.utils.logging.loggit import setup_logging, get_version_info
     logger = setup_logging(log_file)
+
+    # probably a good time to verify java is present
+    from bbmapy.update import ensure_java_availability
+    ensure_java_availability()
 
     # Load configuration first
     config_path = str(resources.files("rolypoly") / "rpconfig.json")
