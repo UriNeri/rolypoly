@@ -102,7 +102,7 @@ class ReadFilterConfig(BaseConfig):
             "quality_trim_unmerged": {"qtrim": "rl", "trimq": 5, "minlen": 45},
         }
         self.max_genomes = (
-            kwargs.get("max_genomes") or 25
+            kwargs.get("max_genomes") or 5
         )  # maximum number of potential host genomes to fetch
         if kwargs.get("override_parameters") is not None:
             self.logger.info(

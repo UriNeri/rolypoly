@@ -77,7 +77,7 @@ def fetch_genomes(
     input_file: str,
     output_file: str,
     threads: int = 1,
-    max2take: int = 25,
+    max2take: int = 5,
     timeout: int = 600,
 ) -> None:
     """Fetch genomes from NCBI for masking purposes.
