@@ -18,7 +18,6 @@ requires-python = ">=3.9"
 license = { file = "LICENSE" }
 # License-File = "license"
 dependencies = [
-    "bbmapy>=0.0.46,<0.0.47",
     "genomicranges>=0.6.3,<0.7",
     "iranges>=0.5.1,<0.6",
     "lightmotif>=0.10.0,<0.11",
@@ -34,6 +33,7 @@ dependencies = [
     "rich>=14.0.0,<15",
     "viennarna>=2.7.0,<3",
     "intervaltree>=3.1.0,<4",
+     "bbmapy>=0.0.46,<0.0.47",
 ]
 
 [project.urls]
@@ -100,6 +100,9 @@ python = "~=3.9.0"
 [tool.pixi.environments]
 default = { features = ["py39"] }
 dev = { features = ["build", "format", "publish", "test"] }
+
+# [tool.pixi.project]
+# platforms = []
 
 [tool.pixi.feature.format.tasks]
 format = "ruff check --select I --fix src && ruff format src"

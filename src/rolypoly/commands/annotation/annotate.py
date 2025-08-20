@@ -108,9 +108,9 @@ class AnnotationConfig(BaseConfig):
     "--domain-db",
     default="Pfam",
     type=click.Choice(
-        ["Pfam", "Vfam", "InterPro", "Phrogs", "dbCAN", "all", "none", "custom"]
+        ["Pfam", "Vfam", "InterPro", "Phrogs", "RVMT", "genomad", "all", "custom"]
     ),
-    help="Database for domain detection",
+    help="Database for domain detection (NOTE: currently packaged with rolypoly data: Pfam, genomad, RVMT)",
 )
 @click.option(
     "--custom-domain-db",
@@ -133,7 +133,7 @@ class AnnotationConfig(BaseConfig):
     type=click.Choice(
         ["hmmsearch", "hmmscan", "mmseqs2", "DIAMOND", "nail"], case_sensitive=False
     ),
-    help="Tool/command for protein domain detection. hmmer commands are used via pyhmmer bindings",
+    help="Tool/command for protein domain detection. hmmer commands are via pyhmmer bindings. ",
 )
 def annotate(
     input,
