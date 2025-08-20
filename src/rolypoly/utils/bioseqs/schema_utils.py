@@ -78,7 +78,7 @@ def create_minimal_annotation_schema(df, annotation_type, source, tool_specific_
         tool_specific_cols: List of tool-specific columns to preserve
         
     Returns:
-        DataFrame with standardized minimal schema
+        DataFrame with standardized minimal schema. SHOULD be similar to gff3
     """
     
     # First normalize column names

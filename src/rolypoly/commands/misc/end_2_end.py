@@ -31,7 +31,7 @@ import rich_click as click
     help="Path to log file",
 )
 @click.option(
-    "-ll",
+    "-ll",  
     "--log-level",
     default="INFO",
     help="Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
