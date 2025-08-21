@@ -1,7 +1,8 @@
 import json
+import logging
 import os
 from pathlib import Path
-from typing import Dict, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 import rich_click as click
 
@@ -130,75 +131,72 @@ class LibraryInfo:
 
 
 def handle_input_files(
-    input_path: Union[str, Path], library_info: LibraryInfo = LibraryInfo()
+    input_path: Union[str, Path], 
+    library_info: LibraryInfo = None,
+    logger: Optional[logging.Logger] = None
 ) -> Tuple[Dict, int]:
-    """Process input files and identify libraries.
+    """Process input files and identify libraries using consolidated file detection.
 
     Args:
         input_path: Path to input directory or file
         library_info: Optional pre-populated LibraryInfo object
+        logger: Logger instance
 
     Returns:
         Tuple containing libraries dict and number of libraries
     """
-    import re
-    from pathlib import Path
+    from rolypoly.utils.bioseqs.file_detection import identify_fastq_files
+    
+    if library_info is None:
+        library_info = LibraryInfo()
+    
+    if logger is None:
+        import logging
+        logger = logging.getLogger(__name__)
 
     input_path = Path(input_path)
-    libraries = {}
+    
+    # Use consolidated file detection
+    file_info = identify_fastq_files(input_path, return_rolypoly=True, logger=logger)
+    
+    # Process rolypoly data
+    for lib_name, data in file_info["rolypoly_data"].items():
+        if data["interleaved"]:
+            library_info.add_rolypoly_data(lib_name, interleaved=str(data["interleaved"]))
+        if data["merged"]:
+            library_info.add_rolypoly_data(lib_name, merged=str(data["merged"]))
+    
+    # Process R1/R2 pairs
+    for i, (r1_path, r2_path) in enumerate(file_info["R1_R2_pairs"], 1):
+        lib_num = len(library_info.paired_end) + 1
+        library_info.add_paired(lib_num, str(r1_path), str(r2_path))
+        logger.debug(f"Added paired library {lib_num}: {r1_path.name} <-> {r2_path.name}")
+    
+    # Process interleaved files
+    for file_path in file_info["interleaved_files"]:
+        # Treat interleaved files as merged for assembly purposes
+        lib_num = len(library_info.merged) + 1
+        library_info.add_merged(lib_num, str(file_path))
+        logger.debug(f"Added interleaved library {lib_num}: {file_path.name}")
+    
+    # Process single-end files
+    for file_path in file_info["single_end"]:
+        if any(x in file_path.name.lower() for x in ["merged", "single"]):
+            lib_num = len(library_info.merged) + 1
+            library_info.add_merged(lib_num, str(file_path))
+            logger.debug(f"Added merged library {lib_num}: {file_path.name}")
+        else:
+            lib_num = len(library_info.single_end) + 1
+            library_info.add_single(lib_num, str(file_path))
+            logger.debug(f"Added single-end library {lib_num}: {file_path.name}")
 
+    # Handle raw fasta files (keep existing logic)
     if input_path.is_dir():
-        # Look for rolypoly output first
-        rolypoly_files = list(input_path.glob("*_final_*.fq.gz"))
-        processed_rolypoly = set()
-        if rolypoly_files:
-            for file in rolypoly_files:
-                lib_name = file.stem.split("_final_")[0]
-                if "interleaved" in file.name:
-                    library_info.add_rolypoly_data(lib_name, interleaved=str(file))
-                    processed_rolypoly.add(file)
-                elif "merged" in file.name:
-                    library_info.add_rolypoly_data(lib_name, merged=str(file))
-                    processed_rolypoly.add(file)
-
-        # Look for other fastq files (excluding already processed rolypoly files)
-        all_fastq = [f for f in input_path.glob("*.f*q*") if f not in processed_rolypoly]
-        r1_pattern = re.compile(r".*_R1[._].*")
-        # r2_pattern = re.compile(r".*_R2[._].*") # need to think if this should even be here as is not used
-
-        # Group paired files
-        r1_files = [f for f in all_fastq if r1_pattern.match(f.name)]
-        for r1 in r1_files:
-            r2 = r1.parent / r1.name.replace("_R1", "_R2")
-            if r2.exists():
-                lib_num = len(library_info.paired_end) + 1
-                library_info.add_paired(lib_num, str(r1), str(r2))
-
-        # Handle remaining files
-        processed = set(r1_files)
-        processed.update([f.parent / f.name.replace("_R1", "_R2") for f in r1_files])
-
-        for file in all_fastq:
-            if file not in processed:
-                if any(x in file.name.lower() for x in ["merged", "single"]):
-                    lib_num = len(library_info.merged) + 1
-                    library_info.add_merged(lib_num, str(file))
-                else:
-                    lib_num = len(library_info.single_end) + 1
-                    library_info.add_single(lib_num, str(file))
-
-        # Handle raw fasta files
-        fasta_files = list(input_path.glob("*.fa*"))
+        from rolypoly.utils.bioseqs.file_detection import find_fasta_files
+        fasta_files = find_fasta_files(input_path, logger=logger)
         for fasta in fasta_files:
             library_info.add_raw_fasta(str(fasta))
-
-    else:
-        # Single file input - treat as merged/single-end
-        lib_name = input_path.stem.split("_final_")[
-            0
-        ]  # Handle rolypoly naming if present
-        library_info.add_merged(1, str(input_path))
-        libraries["lib_1_merged"] = {"interleaved": None, "merged": str(input_path)}
+            logger.debug(f"Added raw FASTA: {fasta.name}")
 
     # Convert library_info to the expected libraries format
     libraries = library_info.to_assembly_dict()
@@ -567,7 +565,7 @@ def assembly(
 
     # Process input directory if provided
     if input_dir:
-        libraries, n_libraries = handle_input_files(input_dir, library_info)
+        libraries, n_libraries = handle_input_files(input_dir, library_info, config.logger)
     else:
         libraries = {}
         for lib_name, data in library_info.rolypoly_data.items():

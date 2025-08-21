@@ -1,7 +1,7 @@
 import os
 import shutil
 from pathlib import Path
-from typing import Tuple, Union, TypedDict
+from typing import Tuple, Union, Dict, Any, List
 
 import rich_click as click
 from rich.console import Console
@@ -9,6 +9,7 @@ from rich.console import Console
 from rolypoly.utils.logging.config import BaseConfig
 from rolypoly.utils.logging.output_tracker import OutputTracker
 from rolypoly.utils.various import ensure_memory, run_command_comp
+from rolypoly.utils.bioseqs.file_detection import identify_fastq_files, handle_input_fastq
 
 global tools
 tools = ["bbmap", "seqkit", "datasets"]
@@ -19,9 +20,7 @@ output_tracker = OutputTracker()
 console = Console()
 
 
-class FileInfo(TypedDict):
-    R1_R2_pairs: list[tuple[str, str]]
-    interleaved_files: list[str]
+# Using the file_detection module instead of local FileInfo class
 
 
 class ReadFilterConfig(BaseConfig):
@@ -135,7 +134,7 @@ def process_reads(
     config.logger.info("Checking dependencies    ")
     base_dir = Path(config.temp_dir)
     config.save(output_path=base_dir / "rp_filter_reads_config.json")  # type: ignore
-    fastq_file, config.file_name = handle_input_fastq(config)
+    fastq_file, config.file_name = process_input_fastq(config)
     config.logger.info(f"file_name: {config.file_name}")
     config.logger.info(f"fastq_file: {fastq_file}")
     output_tracker.add_file(
@@ -477,47 +476,11 @@ def generate_reports(file_name: str, threads: int, skip_existing: bool, logger):
         logger.info("falco report already exists, skipping")
 
 
-def identify_read_pair_files_in_folder(
-    input: Union[str, Path],
-) -> Union[FileInfo, None]:
-    """Identify if the input is paired end or single end."""
-    import glob
-
-    if not Path(input).is_dir():
-        print(f"input: {input} is not a directory")
-        return None
-    print(f"scanning: {input} for fastq files")
-    fastq_files = glob.glob(f"{input}/*", recursive=True)
-
-    fastq_files = [
-        f for f in fastq_files if f.endswith((".fq.gz", ".fastq.gz", ".fastq", ".fq"))
-    ]
-    if len(fastq_files) == 0:
-        print(f"No fastq files found in {input}")
-        return None
-    print(f"fastq_files: {fastq_files}")
-
-    # Find all files containing "_R1" and their potential "_R2" pairs
-    R1_files = [f for f in fastq_files if "_R1_" in f]
-    R2_files = [f for f in fastq_files if "_R2_" in f]
-    interleaved_files = list(
-        set(fastq_files).difference(set(R1_files)).difference(set(R2_files))
-    )
-    print(f"interleaved_files: {interleaved_files}")
-    print(f"R1_files: {R1_files}")
-    print(f"R2_files: {R2_files}")
-
-    # Match R1 and R2 files based on name replacement
-    R1_R2_pairs = []
-    for R1_file in R1_files:
-        R2_file = R1_file.replace("_R1_", "_R2_")
-        if R2_file in R2_files:
-            R1_R2_pairs.append((R1_file, R2_file))
-    print(f"R1_R2_pairs: {R1_R2_pairs}")
-    return {"R1_R2_pairs": R1_R2_pairs, "interleaved_files": interleaved_files}
+# Using the file_detection module instead of local implementation
 
 
-def handle_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
+def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
+    """Process input FASTQ files and prepare them for filtering."""
     from bbmapy import reformat
     from bbmapy.update import ensure_java_availability
     ensure_java_availability()
@@ -525,20 +488,11 @@ def handle_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
     # Create a temporary file for intermediate concatenation
     temp_interleaved = config.output_dir / "temp_concat_interleaved.fq.gz"
     final_interleaved = config.output_dir / "concat_interleaved.fq.gz"
-    file_name = "rolypoly_filtered_reads"
-
-    if "," not in str(config.input):
-        if Path(config.input).is_dir():
-            file_info = identify_read_pair_files_in_folder(config.input)
-            if file_info is None:
-                raise ValueError(f"No fastq files found in {config.input}")
-        else:
-            file_info = {"R1_R2_pairs": [], "interleaved_files": [config.input]}
-    else:
-        input_files = str(config.input).split(",")
-        input_files = [f.strip() for f in input_files]  # Keep as strings
-        file_info = {"R1_R2_pairs": [(input_files[0], input_files[1])], "interleaved_files": []}
-
+    
+    # Use the enhanced file detection function
+    file_info = handle_input_fastq(config.input, logger=config.logger)
+    file_name = file_info.get("file_name", "rolypoly_filtered_reads")
+    
     # Process paired-end files
     if len(file_info["R1_R2_pairs"]) != 0:
         for i, pair in enumerate(file_info["R1_R2_pairs"]):
@@ -554,12 +508,10 @@ def handle_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
                 append="f" if i == 0 else "t",
                 Xmx=str(config.memory["giga"]),
             )
-        file_name = Path(pair[0]).stem.split("_R1")[0]
 
     # Process interleaved files
     if len(file_info["interleaved_files"]) != 0:
         config.logger.info(f"Interleaved files: {file_info['interleaved_files']}")
-        # config.logger.info(f"memory: {config.memory['giga']}")
         for i, intfile in enumerate(file_info["interleaved_files"]):
             out_file = temp_interleaved if i == 0 else final_interleaved
             reformat(
@@ -572,7 +524,21 @@ def handle_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
                 Xmx=str(config.memory["giga"]),
                 int=True,
             )
-        file_name = Path(file_info["interleaved_files"][0]).stem.split(".f")[0]
+    
+    # Process single-end files
+    if "single_end_files" in file_info and len(file_info["single_end_files"]) != 0:
+        config.logger.info(f"Single-end files: {file_info['single_end_files']}")
+        for i, sefile in enumerate(file_info["single_end_files"]):
+            out_file = temp_interleaved if i == 0 and not temp_interleaved.exists() else final_interleaved
+            reformat(
+                in_file=str(sefile),
+                out=str(out_file),
+                threads=config.threads,
+                overwrite="t" if i == 0 and not temp_interleaved.exists() else "f",
+                fixheaders="t",
+                append="f" if i == 0 and not temp_interleaved.exists() else "t",
+                Xmx=str(config.memory["giga"]),
+            )
 
     # Clean up temporary file if it exists
     if temp_interleaved.exists():
@@ -581,8 +547,9 @@ def handle_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
         else:
             temp_interleaved.rename(final_interleaved)
 
-    if len(file_info["R1_R2_pairs"]) > 1 or len(file_info["interleaved_files"]) > 1:
-        file_name = "rp_filtered_reads"
+    if (len(file_info["R1_R2_pairs"]) > 1 or 
+        len(file_info["interleaved_files"]) > 1 or
+        ("single_end_files" in file_info and len(file_info["single_end_files"]) > 1)):
         config.skip_steps.append("filter_by_tile")
         config.skip_steps.append("error_correct_1")
         config.skip_steps.append("error_correct_2")

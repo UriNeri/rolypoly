@@ -8,7 +8,7 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 from rolypoly.utils.various import extract_zip
-from .sequence_io import filter_fasta_by_headers
+from rolypoly.utils.bioseqs.sequence_io import filter_fasta_by_headers
 
 
 global datadir

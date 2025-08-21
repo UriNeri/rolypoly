@@ -252,7 +252,8 @@ def predict_secondary_structure(config):
         else:
             raise ValueError(f"Input file {input_path} is not a FASTA file")
     elif input_path.is_dir():
-        fasta_files = list(input_path.glob("*.fasta")) + list(input_path.glob("*.fa"))
+        from rolypoly.utils.bioseqs.file_detection import find_fasta_files
+        fasta_files = find_fasta_files(input_path, logger=config.logger)
         if not fasta_files:
             raise ValueError(f"No FASTA files found in directory {input_path}")
         input_fasta = fasta_files[0]

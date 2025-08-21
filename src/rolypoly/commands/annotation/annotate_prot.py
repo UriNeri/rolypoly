@@ -349,19 +349,19 @@ def get_database_paths(config, tool_name):
                 }
             # if it's a directory:
             elif Path(custom_database).is_dir():
-                # check if all files are hmm
-                if all(f.suffix == ".hmm" for f in Path(custom_database).glob("*")):
+                from rolypoly.utils.bioseqs.file_detection import validate_database_directory
+                
+                db_info = validate_database_directory(custom_database, logger=config.logger)
+                config.logger.info(f"Database directory analysis: {db_info['message']}")
+                
+                if db_info["type"] == "hmm_directory":
                     # concatenate all hmms into one file
-                    hmm_files = Path(custom_database).glob("*.hmm")
                     with open(Path(custom_database) / "concatenated.hmm", "w") as f:
-                        for hmm_file in hmm_files:
+                        for hmm_file in db_info["files"]:
                             with open(hmm_file, "r") as hmm_file_obj:
                                 f.write(hmm_file_obj.read())
                     database_paths = {"Custom": str(Path(custom_database) / "concatenated.hmm")}
-                elif all(
-                    f.suffix in [".faa", ".fasta", ".afa"]
-                    for f in Path(custom_database).glob("*")
-                ):
+                elif db_info["type"] == "msa_directory":
                     from rolypoly.utils.bioseqs.pyhmm_utils import hmmdb_from_directory
 
                     hmmdb_from_directory(
@@ -371,7 +371,7 @@ def get_database_paths(config, tool_name):
                     )
                     database_paths = {"Custom": str(Path(custom_database) / "all_msa_built.hmm")}
                 else:
-                    config.logger.error(f"Invalid custom database path: {custom_database}")
+                    config.logger.error(f"Unsupported database directory type: {db_info['type']}")
                     return {}
             else:
                 config.logger.error(f"Invalid custom database path: {custom_database}")
