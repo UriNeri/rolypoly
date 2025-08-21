@@ -131,10 +131,13 @@ def process_reads(
     """Main function to orchestrate the preprocessing steps."""
     import signal
 
-    config.logger.info("Checking dependencies    ")
+    # config.logger.info("Checking dependencies    ")
     base_dir = Path(config.temp_dir)
     config.save(output_path=base_dir / "rp_filter_reads_config.json")  # type: ignore
+    
+    # actual processing start here
     fastq_file, config.file_name = process_input_fastq(config)
+
     config.logger.info(f"file_name: {config.file_name}")
     config.logger.info(f"fastq_file: {fastq_file}")
     output_tracker.add_file(
@@ -146,7 +149,7 @@ def process_reads(
     config.memory = ensure_memory(config.memory, fastq_file)  # type: ignore ------ this second ensure is because we now have the fastq file to check its size.
     steps = [
         # handle_input_fastq, # moved to outside of the steps to avoid ensures the input is interleaved by moving it through rename or reformat
-        # filter_by_tile, # filters out reads by tile
+        # filter_by_tile, # filters out reads by tile # dropped - breaks when the fastq headers are not pristine, and should not be used if multiple libraries are merged/concated 
         filter_known_dna,  # filters out known DNA sequences
         decontaminate_rrna,  # decontaminates rRNA sequences
         filter_identified_dna,  # filters out reads that are likely host (based on the stats file of the previous step)
@@ -489,7 +492,7 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
     temp_interleaved = config.output_dir / "temp_concat_interleaved.fq.gz"
     final_interleaved = config.output_dir / "concat_interleaved.fq.gz"
     
-    # Use the enhanced file detection function
+    # file detection functions now sourced from seperate script (21.08.2025)
     file_info = handle_input_fastq(config.input, logger=config.logger)
     file_name = file_info.get("file_name", "rolypoly_filtered_reads")
     
@@ -504,7 +507,6 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
                 out=str(out_file),
                 threads=config.threads,
                 overwrite="t" if i == 0 else "f",
-                fixheaders="t",
                 append="f" if i == 0 else "t",
                 Xmx=str(config.memory["giga"]),
             )
@@ -519,7 +521,6 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
                 out=str(out_file),
                 threads=config.threads,
                 overwrite="t" if i == 0 else "f",
-                fixheaders="t",
                 append="f" if i == 0 else "t",
                 Xmx=str(config.memory["giga"]),
                 int=True,
@@ -535,7 +536,6 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
                 out=str(out_file),
                 threads=config.threads,
                 overwrite="t" if i == 0 and not temp_interleaved.exists() else "f",
-                fixheaders="t",
                 append="f" if i == 0 and not temp_interleaved.exists() else "t",
                 Xmx=str(config.memory["giga"]),
             )
