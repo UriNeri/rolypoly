@@ -1,4 +1,3 @@
-# rolypoly.py
 import os as os
 from importlib import resources
 from json import load
@@ -41,6 +40,7 @@ os.environ["citation_file"] = str(
             "name": "Raw Reads Processing",
             "commands": {
                 "filter-reads": "rolypoly.commands.reads.filter_reads.filter_reads",
+                "shrink-reads": "rolypoly.commands.reads.shrink_reads.shrink_reads",
                 "mask-dna": "rolypoly.utils.bioseqs.masking.mask_dna",  # Keeping this as is since it's in utils
             },
         },

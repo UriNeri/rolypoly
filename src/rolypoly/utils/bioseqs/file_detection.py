@@ -13,7 +13,6 @@ import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
-
 def get_logger(logger: Optional[logging.Logger] = None) -> logging.Logger:
     """Get a logger instance, creating a default one if none provided."""
     if logger is None:
@@ -27,7 +26,6 @@ def get_logger(logger: Optional[logging.Logger] = None) -> logging.Logger:
             logger.addHandler(handler)
             logger.setLevel(logging.INFO)
     return logger
-
 
 def is_gzipped(file_path: Union[str, Path]) -> bool:
     """Check if a file is gzip compressed.
@@ -43,7 +41,6 @@ def is_gzipped(file_path: Union[str, Path]) -> bool:
             return test_f.read(2).startswith(b"\x1f\x8b")
     except (OSError, IOError):
         return False
-
 
 def create_sample_file(
     file_path: Union[str, Path],
@@ -749,7 +746,7 @@ def identify_fastq_files(
         else:
             file_info["single_end"].append(input_path)
     
-    # Log summary
+    # Log debug, should usualy be printed in the summary
     logger.info("File identification summary:")
     logger.info(f"  - Rolypoly libraries: {len(file_info['rolypoly_data'])}")
     logger.info(f"  - R1/R2 pairs: {len(file_info['R1_R2_pairs'])}")
