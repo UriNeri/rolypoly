@@ -13,7 +13,7 @@ from rolypoly.utils.various import ensure_memory
 from .alignment_utils import calculate_percent_identity
 
 global datadir
-datadir = Path(os.environ["ROLYPOLY_DATA"])
+datadir = Path(os.environ.get("ROLYPOLY_DATA", "")) # THIS IS A HACK, I need to figure out how to set the datadir if code is accessed from outside the package (currently it's set in the rolypoly.py  and exported into the env).
 
 
 def mask_sequence_mp(seq: str, start: int, end: int, is_reverse: bool) -> str:

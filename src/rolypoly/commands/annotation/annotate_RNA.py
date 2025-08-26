@@ -37,7 +37,7 @@ class RNAAnnotationConfig(BaseConfig):
         custom_cm_db: str = "",
         output_format: str = "tsv",
         motif_db: str = "jaspar_rna",
-        **kwargs,
+        **kwargs, # TODO: decide if this is really needed.
     ):
         # Extract BaseConfig parameters
         base_config_params = {
@@ -727,7 +727,7 @@ def search_rna_motifs(config): # py
     #     config.logger.error("ROLYPOLY_DATA environment variable is not set")
     #     return False
         
-    # datadir = Path(os.environ["ROLYPOLY_DATA"])
+    # datadir = Path(os.environ.get("ROLYPOLY_DATA", ""))
     # if not datadir.exists():
     #     config.logger.error(f"ROLYPOLY_DATA directory {datadir} does not exist")
     #     return False

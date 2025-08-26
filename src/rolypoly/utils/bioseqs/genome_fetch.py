@@ -12,7 +12,7 @@ from rolypoly.utils.bioseqs.sequence_io import filter_fasta_by_headers
 
 
 global datadir
-datadir = Path(os.environ["ROLYPOLY_DATA"])
+datadir = Path(os.environ.get("ROLYPOLY_DATA", ""))
 
 
 def download_genome(taxid: str) -> None:
