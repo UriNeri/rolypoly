@@ -85,14 +85,16 @@ def setup_logging(
 
     # Create logger
     logger = logging.getLogger(logger_name)
-    log_level = {
-                "debug": logging.DEBUG,
-                "info": logging.INFO,
-                "warning": logging.WARNING,
-                "error": logging.ERROR,
-                "critical": logging.CRITICAL,
-            }.get(log_level.lower(), logging.INFO)
-
+    if isinstance(log_level, str):
+        log_level = {
+            "debug": logging.DEBUG,
+            "info": logging.INFO,
+            "warning": logging.WARNING,
+            "error": logging.ERROR,
+            "critical": logging.CRITICAL,
+        }.get(log_level.lower(), logging.INFO)
+    else:
+        log_level = log_level # I think this is fine (i.e. 10/20/30/40/50 mapped automatically into debug/info/warning/error/critical)?
 
     logger.setLevel(log_level)
     logger.propagate = (
