@@ -54,15 +54,6 @@ def get_version_info() -> dict[str, str]:
     return version_info
 
 
-def get_data_info(config_path = None):
-    """Get RolyPoly data information from a config file or data path.
-
-    Args:
-        config_path (str): Path to the configuration file
-    """
-    
-    
-
 def setup_logging(
     log_file: Union[str, Path, logging.Logger, None],
     log_level: Union[int, str] = logging.INFO,
@@ -70,7 +61,7 @@ def setup_logging(
 ) -> logging.Logger:
     """Setup logging configuration for RolyPoly with both file and console logging using rich formatting."""
     import subprocess
-
+    
     # If log_file is already a logger, return it
     if isinstance(log_file, logging.Logger):
         return log_file
@@ -94,6 +85,15 @@ def setup_logging(
 
     # Create logger
     logger = logging.getLogger(logger_name)
+    log_level = {
+                "debug": logging.DEBUG,
+                "info": logging.INFO,
+                "warning": logging.WARNING,
+                "error": logging.ERROR,
+                "critical": logging.CRITICAL,
+            }.get(log_level.lower(), logging.INFO)
+
+
     logger.setLevel(log_level)
     logger.propagate = (
         False  # Prevent log messages from being passed to the root logger
