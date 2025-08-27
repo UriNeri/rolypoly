@@ -7,7 +7,7 @@ from typing import List, Union, Dict, Tuple
 
 import polars as pl
 from needletail import parse_fastx_file
-from .polars_fastx import * # I think this brings in the i/o plugins, TODO: check if can be done so that I don't need to type: ignore all the time
+from rolypoly.utils.bio.polars_fastx import * # I think this brings in the i/o plugins, TODO: check if can be done so that I don't need to type: ignore all the time
 from rolypoly.utils.various import  find_files_by_extension
 from pathlib import Path
 import logging
@@ -49,7 +49,7 @@ def read_fasta_df(file_path: str) -> pl.DataFrame:
             - sequence: Sequence strings
             - group: Internal grouping number (used for sequence concatenation)
     """
-    return pl.DataFrame.from_fastx(file_path) # type: ignore defined in polars_fastx.py
+    return from_fastx_eager(file_path) # type: ignore defined in polars_fastx.py
 
 
 def write_fasta_file(
@@ -403,7 +403,6 @@ def process_sequences(df: pl.DataFrame) -> pl.DataFrame:
 
     return df
 
-
 def rename_sequences(
     df: pl.DataFrame, prefix: str = "CID", use_hash: bool = False
 ) -> Tuple[pl.DataFrame, Dict[str, str]]:
@@ -441,12 +440,10 @@ def rename_sequences(
 
     return df.with_columns(pl.Series("header", new_headers)), id_map 
 
-
-
 from pathlib import Path
 import hashlib
-import json
-from collections import Counter
+# import json
+# from collections import Counter
 from typing import Optional
 
 import polars as pl
@@ -489,12 +486,13 @@ console = Console()
 )
 @click.option(
     "--log-file",
-    default="command.log",
+    # default="command.log",
     type=click.Path(exists=False),
     help="Path to log file",
     hidden=True,
 )
 @click.option(
+    "-ll",
     "--log-level",
     hidden=True,
     default="INFO",
@@ -523,7 +521,7 @@ console = Console()
 @click.option(
     "-f",
     "--fields",
-    type=click.Choice(case_sensitive=False, choices=["length", "gc_content", "n_count", "hash", "kmer_freq"]),
+    type=click.Choice(case_sensitive=False, choices=["length", "gc_content", "n_count", "hash"]),
     multiple=True,
     default=["length", "gc_content", "n_count", "hash"],
     help="""
@@ -533,8 +531,13 @@ console = Console()
               gc_content - percentage of GC nucleotides
               n_count - total number of Ns 
               hash - md5 hash of the sequence
-              kmer_freq - k-mer frequencies (k=3 by default)
               """,
+)
+@click.option(
+    "-c",
+    "--circular",
+    is_flag=True,
+    help="indicate if the sequences are circular (in which case, they will be rotated to their minimal lexicographical option, before the other stuff).",
 )
 def sequence_stats(
     input,
@@ -546,102 +549,27 @@ def sequence_stats(
     max_length,
     format,
     fields,
+    circular,
 ):
     """Calculate sequence statistics using Polars expressions"""
     from rolypoly.utils.logging.loggit import log_start_info, setup_logging
+    from rolypoly.utils.bio.polars_fastx import fasta_stats
 
     logger = setup_logging(log_file, log_level)
     log_start_info(logger, locals())
 
     output_path = Path(output)
 
-    # Read sequences into DataFrame
-    df = read_fasta_df(input)
-    total_seqs = len(df)
-    df = df.with_columns(pl.col("sequence").str.len_chars().alias("length"))
-    
-    logger.info(f"Read {total_seqs} sequences from {input}")
-
-    # Apply length filters
-    if min_length:
-        df = df.filter(pl.col("length") >= min_length)
-        logger.info(f"Applied minimum length filter: {min_length}")
-    if max_length:
-        df = df.filter(pl.col("length") <= max_length)
-        logger.info(f"Applied maximum length filter: {max_length}")
-
-    filtered_seqs = len(df)
-    logger.info(f"After filtering: {filtered_seqs} sequences")
-
-    # Define available fields and their dependencies
-    field_options = {
-        "length": {"desc": "Sequence length"},
-        "gc_content": {"desc": "GC content percentage"},
-        "n_count": {"desc": "Count of Ns in sequence"},
-        "hash": {"desc": "Sequence hash (MD5)"},
-        "kmer_freq": {"desc": "K-mer frequencies", "complex": True},
-    }
-
-    # Parse fields - fields is already a tuple from multiple=True
-    selected_fields = list(fields) if fields else ["length", "gc_content", "n_count", "hash"]
-    
-    # Always include length for summaries
-    if "length" not in selected_fields:
-        selected_fields.append("length")
-
-    logger.info(f"Selected fields: {', '.join(selected_fields)}")
-
-    # Helper function for kmer calculation
-    def calculate_kmers(sequence, k=3):
-        """Calculate k-mer frequencies for a sequence"""
-        if len(sequence) < k:
-            return {}
-        kmers = [sequence[i:i+k] for i in range(len(sequence) - k + 1)]
-        return dict(Counter(kmers))
-
-    # Helper function for MD5 hash
-    def calculate_hash(sequence):
-        """Calculate MD5 hash of sequence"""
-        return hashlib.md5(sequence.encode()).hexdigest()
-
-    # Calculate selected statistics
-    if "gc_content" in selected_fields:
-        df = df.with_columns(
-            (pl.col("sequence").str.count_matches(r"[GCgc]") / pl.col("length") * 100.0)
-            .alias("gc_content")
-        )
-    
-    if "n_count" in selected_fields:
-        df = df.with_columns(
-            pl.col("sequence").str.count_matches(r"[Nn]").alias("n_count")
-        )
-    
-    if "hash" in selected_fields:
-        df = df.with_columns(
-            pl.col("sequence").map_elements(calculate_hash, return_dtype=pl.String).alias("hash")
-        )
-
-    if "kmer_freq" in selected_fields:
-        df = df.with_columns(
-            pl.col("sequence").map_elements(
-                lambda x: json.dumps(calculate_kmers(x, k=3)), 
-                return_dtype=pl.String
-            ).alias("kmer_frequencies")
-        )
-
-    # Select only the fields we want to output
-    output_columns = ["header"] + selected_fields
-    if "kmer_freq" in selected_fields:
-        # Replace kmer_freq with kmer_frequencies in output columns
-        output_columns = [col if col != "kmer_freq" else "kmer_frequencies" for col in output_columns]
-    
-    df_output = df.select([col for col in output_columns if col in df.columns])
+    # just using the fasta_stats function here, with output as none 
+    df = fasta_stats(input, output_file=None, min_length=min_length, max_length=max_length, fields=",".join(fields), circular=circular)
+    total_seqs = df.height
+    logger.info(f"got {total_seqs} sequences from {input}")
 
     if aggregate:
         # Create aggregated statistics
         agg_stats = {}
         
-        if "length" in selected_fields:
+        if "length" in fields:
             length_stats = df.select([
                 pl.col("length").min().alias("min_length"),
                 pl.col("length").max().alias("max_length"),
@@ -652,7 +580,7 @@ def sequence_stats(
             ]).to_dicts()[0]
             agg_stats.update(length_stats)
         
-        if "gc_content" in selected_fields:
+        if "gc_content" in fields:
             gc_stats = df.select([
                 pl.col("gc_content").min().alias("min_gc"),
                 pl.col("gc_content").max().alias("max_gc"),
@@ -662,7 +590,7 @@ def sequence_stats(
             ]).to_dicts()[0]
             agg_stats.update(gc_stats)
         
-        if "n_count" in selected_fields:
+        if "n_count" in fields:
             n_stats = df.select([
                 pl.col("n_count").min().alias("min_n_count"),
                 pl.col("n_count").max().alias("max_n_count"),
@@ -671,7 +599,7 @@ def sequence_stats(
             ]).to_dicts()[0]
             agg_stats.update(n_stats)
         
-        agg_stats["total_sequences"] = filtered_seqs
+        agg_stats["total_sequences"] = total_seqs
         agg_stats["sequences_before_filter"] = total_seqs
         
         # Convert to DataFrame for consistent output
@@ -691,11 +619,10 @@ def sequence_stats(
         logger.info(f"Results written to {output_path} (TSV format)")
     
     elif format.lower() == "md":
-        # Create markdown summary
+        # Create markdown summary - TODO: use rich/logger?
         md_content = "# Sequence Statistics Report\n\n"
         md_content += f"**Input file:** {input}\n"
         md_content += f"**Total sequences:** {total_seqs}\n"
-        md_content += f"**Sequences after filtering:** {filtered_seqs}\n\n"
         
         if aggregate:
             md_content += "## Aggregate Statistics\n\n"
@@ -707,7 +634,7 @@ def sequence_stats(
         else:
             md_content += "## Summary Statistics\n\n"
             # Add basic summary stats even when not aggregating
-            if "length" in selected_fields:
+            if "length" in fields:
                 length_summary = df.select([
                     pl.col("length").min().alias("min"),
                     pl.col("length").max().alias("max"),
@@ -728,109 +655,19 @@ def sequence_stats(
         logger.info(f"Markdown report written to {output_path}")
 
     # Display summary to console
-    console.print(f"\n[bold green]✓[/bold green] Processed {filtered_seqs} sequences")
-    console.print(f"[bold blue]Output:[/bold blue] {output_path}")
+    logger.info(f"✓ Processed {total_seqs} sequences")
+    logger.info(f" Output: {output_path}")
     
     if not aggregate and format.lower() != "md":
-        console.print("\n[bold]First 5 rows:[/bold]")
-        console.print(df_output.head(5))
+        logger.info("First 5 rows:")
+        logger.info(df_output.head(5))
 
-    # Remind about citations
-    tools = ["polars"]  # Tools used in this analysis
-    remind_citations(tools)
+    # # Remind about citations
+    # tools = ["polars"]  # Tools used in this analysis
+    # remind_citations(tools)
     
     logger.info("Sequence statistics calculation completed successfully")
 
-
-#  sequence statistics calculator with filtering 
-def fasta_stats(
-    input_file: str,
-    output_file: Optional[str] = None, # if not provided, will print to stdout
-    min_length: Optional[int] = None,
-    max_length: Optional[int] = None,
-    fields: str = "header,length,gc_content,n_count,hash,codon_usage,kmer_freq",
-    kmer_length: int = 3,
-) -> None:
-    """Calculate sequence statistics using Polars expressions
-    
-    Args:
-        input: Input file or directory
-        output: Output path
-        min_length: Minimum sequence length to consider
-        max_length: Maximum sequence length to consider
-        fields: Comma-separated list of fields to include (available: header,sequence,length,gc_content,n_count,hash,codon_usage,kmer_freq)
-    """
-    import sys
-    output_path = Path(output_file) if output_file else sys.stdout
-
-    # Read sequences into DataFrame
-    df = pl.DataFrame.from_fastx(input_file) # type: ignore
-    
-    # init_height = df.height
-    # Apply length filters
-    if min_length:
-        df = df.filter(pl.  col("sequence").seq.length() >= min_length)
-    if max_length:
-        df = df.filter(pl.col("sequence").seq.length() <= max_length)
-    # print(f"Filtered {init_height - df.height} sequences out of {init_height}")
-
-    # Define available fields and their dependencies
-    field_options = {
-        "length": {"desc": "Sequence length"},
-        "gc_content": {"desc": "GC content percentage"},
-        "n_count": {"desc": "Count of Ns in sequence"},
-        "hash": {"desc": "Sequence hash (MD5)"},
-        "codon_usage": {"desc": "Codon usage frequencies"},
-        "kmer_freq": {"desc": "K-mer frequencies"},
-        "header": {"desc": "Sequence header"},
-        "sequence": {"desc": "DNA/RNA sequence"}
-    }
-
-    # Parse fields
-    selected_fields = ["header"]
-    if fields:
-        selected_fields = [f.strip().lower() for f in fields.split(",")]
-        # Validate fields
-        valid_fields = list(field_options.keys())
-        invalid_fields = [f for f in selected_fields if f not in valid_fields]
-        if invalid_fields:
-            print(f"Unknown field(s): {', '.join(invalid_fields)}")
-            print(f"Available fields are: {', '.join(valid_fields)}")
-        selected_fields = [f for f in selected_fields if f in valid_fields]
-
-    # Build the stats expressions
-    stats_expr = []
-    # for field in selected_fields: # this doesn't work  :(
-    #     stats_expr.append(pl.col("sequence").seq.field(field).alias(field))
-    
-    if "length" in selected_fields:
-        stats_expr.append(pl.col("sequence").seq.length().alias("length"))
-    if "gc_content" in selected_fields:
-        stats_expr.append(pl.col("sequence").seq.gc_content().alias("gc_content"))
-    if "n_count" in selected_fields:
-        stats_expr.append(pl.col("sequence").seq.n_count().alias("n_count"))
-    if "hash" in selected_fields:
-        stats_expr.append(pl.col("sequence").seq.generate_hash().alias("hash")) 
-    if "codon_usage" in selected_fields:
-        stats_expr.append(pl.col("sequence").seq.codon_usage().alias("codon_usage"))
-    if "kmer_freq" in selected_fields:
-        stats_expr.append(pl.col("sequence").seq.calculate_kmer_frequencies(kmer_length).alias("kmer_freq"))
-
-    # Apply all the stats expressions
-    df = df.with_columns(stats_expr)
-    df = df.select(selected_fields)
-
-
-    # Convert all nested columns to strings
-    for col in df.columns:
-        if col != "header":  # Keep header as is
-            if isinstance(df[col].dtype, pl.Struct) or isinstance(df[col].dtype, pl.List):
-                df = df.with_columns(
-                    [pl.col(col).cast(pl.Utf8).alias(f"{col}")]
-                )
-
-    df.write_csv(output_path, separator="\t")
-    print("Successfully wrote file after converting data types")
 
 
 
@@ -890,3 +727,5 @@ def ensure_faidx(input_file: str, logger: Optional[logging.Logger] = None) -> No
     except Exception as e:
         logger.error(f"Error creating FASTA index for {input_file}: {e}")
         raise
+        
+
