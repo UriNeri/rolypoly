@@ -8,20 +8,16 @@ import os
 import re
 import gzip
 import logging
-import random
-import tempfile
 from pathlib import Path
 from typing import Dict, Optional, Tuple, Union
 from rolypoly.utils.logging.loggit import get_logger
 from rolypoly.utils.various import is_gzipped, find_files_by_extension
-from needletail import parse_fastx_file
 
 def create_sample_file(
     file_path: Union[str, Path],
     subset_type: str = "top_reads",
     sample_size: Union[int,float] = 1000,
-    output_file: str = "sample.fastq",
-    # keep_pairs=True,
+    output_file: str = "sample.fastq.gz",
     logger: Optional[logging.Logger] = None
 ) -> str:
     """Create a temporary sample file from a FASTQ file for analysis.
@@ -31,16 +27,21 @@ def create_sample_file(
         subset_type: Type of subsert - "top_reads" or "random".
         sample_size: if top_reads than how many reads (from the top) to sample, if random than fracton of reads to sample randomly (0.0-1.0)
         # keep_pairs: Keep paired-end reads - if true input file is assumed to be paired end AND interleaved. all R1 reads in the output will have matching R2. (EDIT- I'm just going to sneakily take half the sample size, get that many random items, then take 2 consecutive reads at a time lol)
+        output_file: path to output file - if ending in .gz then will be compressed.
         logger: Logger instance
         
     Returns:
-        Path to temporary sample file
+        name of output file
     Note:
-        - If sample type is random, it is possible all the reads would have to be read, so coudl be slow.
+        - If sample type is random, the total number of reads in the file will have to be computed and that coudl be slow.
+        - Generally adivsory to use gzipped output file
+        - ..,, to provice an even number for sample_size, if subset_type is top_reads. Otherwise if your input file is interleaved, the last read will lose its pair.
+        -
     """
     logger = get_logger(logger)
     file_path = Path(file_path)
     is_gz = is_gzipped(file_path)
+    is_gz_output = True if Path(output_file).suffix == ".gz" else False
     
     
     logger.debug(f"Sampling {subset_type} of {sample_size} of {file_path}")
@@ -52,12 +53,17 @@ def create_sample_file(
                 f_in = gzip.open(file_path, 'rt', encoding='utf-8', errors='ignore')
             else:
                 f_in = open(file_path, 'r', encoding='utf-8', errors='ignore')
-            with open(output_file, 'w', encoding='utf-8') as f_out:
-                for i, line in enumerate(f_in):
-                    print ("a")
-                    if i >= sample_size:
-                        break
-                    f_out.write(line)
+            if is_gz_output:
+                f_out = gzip.open(output_file, 'wt', encoding='utf-8')
+            else:
+                f_out = open(output_file, 'w', encoding='utf-8')
+            for i, line in enumerate(f_in):
+                # print ("a")
+                if i >= sample_size:
+                    break
+                f_out.write(line)
+            f_out.close()
+
                         # if total_reads <= sample_size:
             #     sample_size = total_reads
             #     logger.warning(f"Total reads in {file_path} is less than requested sample size, will just copy the input buddy")
@@ -78,6 +84,7 @@ def create_sample_file(
              # for the total number of reads than maybe use:
              #  https://github.com/Yixuan-Wang/blog-contents/issues/29
              # most bioinformatics stuff use defaults so maybe ... using the top n reads can get the avg read # length and then use more approximations to oget a rough estimate of total reads based on (maybe? #original file size (pre compression) to current file size (post compression)
+             # giving up on that ^ idea for now as will first need to make a function that takes a fastq_df and otputs it to fastq (not sure what to do about the "seperator" line).
             import subprocess as sp
             if is_gz:
                 total_reads = int(sp.run("zgrep -c '@' {}".format(file_path), shell=True, capture_output=True, text=True).stdout.strip())
@@ -88,24 +95,39 @@ def create_sample_file(
             sample_size = int(sample_size * total_reads)
             # adjust to an even number of reads
             sample_size = sample_size - (sample_size % 2)
-            # get the random indices of the reads
-            # deciding on which reads 
             from random import sample
-            R1_reads_indx = sample(population=range(total_reads), k=int(sample_size/2))
-            R2_reads_indx = [i+1 for i in  R1_reads_indx]
-            all_reads_indx = (R1_reads_indx + R2_reads_indx)
-            all_reads_indx.sort() # to keep R1 and R2 pairs one after the other.
-            # converting indexes to line numbers (maybe I could have just taken 8 lines for each item from the sample, rather than take twice 4 in case there is R1 R2)
-            # @pentamorfico this is where I am at.
-            R1_reads_indx = [all_reads_indx[i] for i in range(0, len(all_reads_indx), 2)]
-            R2_reads_indx = [all_reads_indx[i] for i in range(1, len(all_reads_indx), 2)]
+            lines_2_get = sample(population=range(0,int(total_reads*8),8), k=int(sample_size))
+            import itertools
+            import numpy as np
+            lines_2_get = np.sort(list(itertools.chain.from_iterable([x for x in [range(i,i+8,1) for i in lines_2_get]])))
+            # lines_2_get.sort() 
+            target_set = set(lines_2_get)
+            target_iter = iter(lines_2_get)
+            try:
+                next_target = next(target_iter)
+            except StopIteration:
+                next_target = None  # nothing to extract
 
-            lf = read_fastx(file_path)
-            lf.filter().collect()
-            # Get number of records
-            records = read_fastx(file_path)
-            records = records.collect()
-            total_records = len(records)
+            f_in = gzip.open(file_path, 'rt', encoding='utf-8', errors='ignore') if is_gz else open(file_path, 'r', encoding='utf-8', errors='ignore')
+            f_out = gzip.open(output_file, 'wt', encoding='utf-8') if is_gz_output else open(output_file, 'w', encoding='utf-8')
+            for i, line in enumerate(f_in):
+                # stop iterating once we passed the last needed line
+                if next_target is not None and i > lines_2_get[-1]:
+                    break
+
+                # fast O(1) membership test
+                if i in target_set:
+                    f_out.write(line)
+                    # advance to the next needed index
+                    try:
+                        next_target = next(target_iter)
+                    except StopIteration:
+                        next_target = None   # no more lines needed
+                # close the input file (handled automatically if using a context manager)
+            f_in.close()
+            f_out.close()
+
+        return output_file
 
     except Exception as e:
         logger.error(f"Error creating sample file from {file_path}: {e}")
