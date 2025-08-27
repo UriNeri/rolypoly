@@ -1,12 +1,10 @@
 import os
 import shutil
 from pathlib import Path
-from typing import Tuple, Union, Dict, Any, List
 import rich_click as click
 from rich.console import Console
 
 from rolypoly.utils.logging.loggit import log_start_info, setup_logging
-from rolypoly.utils.various import run_command_comp
 from rolypoly.utils.bio.library_detection import handle_input_fastq, create_sample_file
 
 console = Console()

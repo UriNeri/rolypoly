@@ -1,5 +1,4 @@
 from pathlib import Path
-import sys
 from typing import  Optional, Union, Iterator
 from collections import defaultdict
 

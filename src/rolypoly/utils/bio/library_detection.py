@@ -4,7 +4,6 @@ This module provides comprehensive FASTQ file detection, analysis, and classific
 functionality with support for paired-end, interleaved, and single-end files.
 """
 
-import os
 import re
 import gzip
 import logging
@@ -77,7 +76,7 @@ def create_sample_file(
 
         elif subset_type == "random":
             logger.debug(f"Sampling {sample_size*100}% of reads randomly from {file_path}")
-            from rolypoly.utils.bio.polars_fastx import from_fastx_lazy as read_fastx
+            # from rolypoly.utils.bio.polars_fastx import from_fastx_lazy as read_fastx
             # from needletail import parse_fastx_file
             # test_for_getting_total_number_of_records = parse_fastx_file(file_path)
              # I am putting way too much time into this but if possible to get an approximate 

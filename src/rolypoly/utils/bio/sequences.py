@@ -3,14 +3,20 @@ Sequence file I/O operations for reading and writing FASTA/FASTQ files.
 Basic sequence analysis and validation functions.
 """
 import re
-from typing import List, Union, Dict, Tuple
+from typing import List, Union, Dict, Tuple, Optional
 
 import polars as pl
 from needletail import parse_fastx_file
-from rolypoly.utils.bio.polars_fastx import * # I think this brings in the i/o plugins, TODO: check if can be done so that I don't need to type: ignore all the time
+# from rolypoly.utils.bio.polars_fastx import * # I think this brings in the i/o plugins, TODO: check if can be done so that I don't need to type: ignore all the time
 from rolypoly.utils.various import  find_files_by_extension
 from pathlib import Path
 import logging
+
+import rich_click as click
+
+# show all columns
+# pl.Config().set_tbl_cols(-1)
+
 
 
 def read_fasta_needletail(fasta_file: str) -> Tuple[list[str], list[str]]:
@@ -49,6 +55,7 @@ def read_fasta_df(file_path: str) -> pl.DataFrame:
             - sequence: Sequence strings
             - group: Internal grouping number (used for sequence concatenation)
     """
+    from rolypoly.utils.bio.polars_fastx import from_fastx_eager
     return from_fastx_eager(file_path) # type: ignore defined in polars_fastx.py
 
 
@@ -237,7 +244,6 @@ def populate_pldf_withseqs_needletail(
     return pldf 
 
 
-import rich_click as click
 @click.command(name="rename_seqs_cli")
 @click.option("-i", "--input", required=True, help="Input FASTA file")
 @click.option("-o", "--output", required=True, help="Output FASTA file")
@@ -439,28 +445,6 @@ def rename_sequences(
     id_map = dict(zip(df["header"], new_headers))
 
     return df.with_columns(pl.Series("header", new_headers)), id_map 
-
-from pathlib import Path
-import hashlib
-# import json
-# from collections import Counter
-from typing import Optional
-
-import polars as pl
-import rich_click as click
-from rich.console import Console
-
-from rolypoly.utils.logging.citation_reminder import remind_citations
-from rolypoly.utils.bio.sequences import (
-    read_fasta_df,
-)
-
-# show all columns
-pl.Config().set_tbl_cols(-1)
-
-# global console
-console = Console()
-
 
 @click.command()
 @click.option(

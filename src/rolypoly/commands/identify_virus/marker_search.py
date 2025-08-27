@@ -6,7 +6,6 @@ from rich_click import Choice, command, option
 
 from rolypoly.utils.logging.config import BaseConfig
 
-
 class RVirusSearchConfig(BaseConfig):
     def __init__(self, **kwargs):
         # Always treat output as a directory
@@ -367,7 +366,7 @@ def marker_search(
         config.logger.info(f"Searching {db_name}")
         tools.append(f"{db_name}")
         tmp_output = config.temp_dir / f"raw_{config.name}_vs_{db_name}.tsv"
-        output_database = search_hmmdb(
+        search_hmmdb(
             amino_file=amino_file,
             db_path=db_path,
             output=tmp_output,
@@ -380,6 +379,7 @@ def marker_search(
             full_qseq=True,
             match_region=True,
         )
+        config.logger.debug(f"temp output: {tmp_output}")
         all_outputs.append(tmp_output)
 
     # read all output files, stack them, and resolve overlaps

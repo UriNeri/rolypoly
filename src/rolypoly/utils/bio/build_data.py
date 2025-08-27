@@ -326,7 +326,7 @@ def prepare_genomad_rna_viral_hmms(data_dir, threads, logger: logging.Logger):
     os.makedirs(genomad_markers_dir, exist_ok=True)
     os.makedirs(genomad_alignments_dir, exist_ok=True)
     # Download metadata and database
-    genomad_data = "https://zenodo.org/api/records/14886553/files-archive"
+    genomad_data = "https://zenodo.org/api/records/14886553/files-archive" # noqa
     db_url = (
         "https://zenodo.org/records/14886553/files/genomad_msa_v1.9.tar.gz?download=1"
     )

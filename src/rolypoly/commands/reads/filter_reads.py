@@ -1,7 +1,7 @@
 import os
 import shutil
 from pathlib import Path
-from typing import Tuple, Union, Dict, Any, List
+from typing import Tuple, Union
 
 import rich_click as click
 from rich.console import Console
@@ -9,7 +9,7 @@ from rich.console import Console
 from rolypoly.utils.logging.config import BaseConfig
 from rolypoly.utils.logging.output_tracker import OutputTracker
 from rolypoly.utils.various import ensure_memory, run_command_comp
-from rolypoly.utils.bio.library_detection import identify_fastq_files, handle_input_fastq
+from rolypoly.utils.bio.library_detection import handle_input_fastq
 
 global tools
 tools = ["bbmap", "seqkit", "datasets"]
