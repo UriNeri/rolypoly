@@ -45,7 +45,6 @@ class SequenceExpr:
     def generate_hash(self, length: int = 32) -> pl.Expr:
         """Generate a hash for a sequence"""
         import hashlib
-
         def _hash(seq: str) -> str:
             return hashlib.md5(seq.encode()).hexdigest()[:length]
 
@@ -113,7 +112,9 @@ def from_fastx_lazy(input_file: Union[str, Path]) -> pl.LazyFrame:
             for _ in range(batch_size):
                 try:
                     record = next(reader)
-                    row = [record.id, record.seq, record.qual]
+                    row = [record.id, record.seq]#, record.qual]
+                    if has_quality:
+                        row.append(record.qual)
                 except StopIteration:
                     n_rows = 0
                     break
@@ -176,15 +177,16 @@ def from_gff_eager(gff_file: Union[str, Path],unnest_attributes: bool = False) -
     return df
 
 
-### example usage
+#  sequence statistics calculator with filtering 
 def fasta_stats(
     input_file: str,
     output_file: Optional[str] = None, # if not provided, will print to stdout
     min_length: Optional[int] = None,
     max_length: Optional[int] = None,
-    fields: str = "header,length,gc_content,n_count,hash,codon_usage,kmer_freq",
-    kmer_length: int = 3,
-) -> None:
+    fields: str = "header,sequence,length,gc_content,n_count,hash",
+    # kmer_length: int = 3,
+    circular: bool = False,
+) -> pl.DataFrame:
     """Calculate sequence statistics using Polars expressions
     
     Args:
@@ -192,29 +194,43 @@ def fasta_stats(
         output: Output path
         min_length: Minimum sequence length to consider
         max_length: Maximum sequence length to consider
-        fields: Comma-separated list of fields to include (available: header,sequence,length,gc_content,n_count,hash,codon_usage,kmer_freq)
+        fields: Comma-separated list of fields to include (available: header,sequence,length,gc_content,n_count,hash,)
+        circular: indicate if the sequences are circular (in which case, they will be rotated to their minimal lexicographical option, before the other stuff).
     """
-    output_path = Path(output_file) if output_file else sys.stdout
+    # import sys
+    # output_path = Path(output_file) if output_file else sys.stdout
 
     # Read sequences into DataFrame
-    df = pl.DataFrame.from_fastx(input_file)
+    df = pl.DataFrame.from_fastx(input_file) # type: ignore
     
     # init_height = df.height
     # Apply length filters
     if min_length:
-        df = df.filter(pl.col("sequence").seq.length() >= min_length)
+        df = df.filter(pl.  col("sequence").seq.length() >= min_length)
     if max_length:
         df = df.filter(pl.col("sequence").seq.length() <= max_length)
     # print(f"Filtered {init_height - df.height} sequences out of {init_height}")
-
+    if circular:
+        # Rotate sequences to minimal lexicographical option
+        # Apply Booth's algorithm using map_batches - # Note: this is using map_batches and a python function, 
+        # so probably not nearly as fast as Antonio's seq-hash
+        # Also this doesn't consider reverse complement.
+        df = df.with_columns(
+            pl.col("sequence")
+            .map_batches(
+                lambda s: pl.Series([least_rotation(val) for val in s]),
+                return_dtype=pl.String
+            )
+            .alias("sequence")
+        )
     # Define available fields and their dependencies
     field_options = {
         "length": {"desc": "Sequence length"},
         "gc_content": {"desc": "GC content percentage"},
         "n_count": {"desc": "Count of Ns in sequence"},
         "hash": {"desc": "Sequence hash (MD5)"},
-        "codon_usage": {"desc": "Codon usage frequencies"},
-        "kmer_freq": {"desc": "K-mer frequencies"},
+        # "codon_usage": {"desc": "Codon usage frequencies"},
+        # "kmer_freq": {"desc": "K-mer frequencies"},
         "header": {"desc": "Sequence header"},
         "sequence": {"desc": "DNA/RNA sequence"}
     }
@@ -244,15 +260,14 @@ def fasta_stats(
         stats_expr.append(pl.col("sequence").seq.n_count().alias("n_count"))
     if "hash" in selected_fields:
         stats_expr.append(pl.col("sequence").seq.generate_hash().alias("hash")) 
-    if "codon_usage" in selected_fields:
-        stats_expr.append(pl.col("sequence").seq.codon_usage().alias("codon_usage"))
-    if "kmer_freq" in selected_fields:
-        stats_expr.append(pl.col("sequence").seq.calculate_kmer_frequencies(kmer_length).alias("kmer_freq"))
+    # if "codon_usage" in selected_fields:
+    #     stats_expr.append(pl.col("sequence").seq.codon_usage().alias("codon_usage"))
+    # if "kmer_freq" in selected_fields:
+        # stats_expr.append(pl.col("sequence").seq.calculate_kmer_frequencies(kmer_length).alias("kmer_freq"))
 
     # Apply all the stats expressions
     df = df.with_columns(stats_expr)
     df = df.select(selected_fields)
-
 
     # Convert all nested columns to strings
     for col in df.columns:
@@ -261,9 +276,39 @@ def fasta_stats(
                 df = df.with_columns(
                     [pl.col(col).cast(pl.Utf8).alias(f"{col}")]
                 )
+    if output_file:
+        df.write_csv(output_file, separator="\t")
+    # print("Successfully wrote file after converting data types")
+    return df
 
-    df.write_csv(output_path, separator="\t")
-    print("Successfully wrote file after converting data types")
+
+def least_rotation(s: str) -> str:
+    """Finds the lexicographically minimal cyclic shift of a string using Booth's algorithm."""
+    n = len(s)
+    if n == 0:
+        return ""
+    
+    s_double = s + s
+    
+    # KMP preprocessing failure function
+    f = [-1] * (2 * n)
+    k = 0 # Least starting index
+    
+    for j in range(1, 2 * n):
+        i = f[j - k - 1]
+        while i != -1 and s_double[j] != s_double[k + i + 1]:
+            if s_double[j] < s_double[k + i + 1]:
+                k = j - i - 1
+            i = f[i]
+        
+        if i == -1 and s_double[j] != s_double[k + i + 1]:
+            if s_double[j] < s_double[k + i + 1]:
+                k = j
+            f[j - k] = -1
+        else:
+            f[j - k] = i + 1
+            
+    return s_double[k:k+n]
 
 
 # this one is complex but works...
@@ -308,3 +353,4 @@ def fasta_stats(
 # lf = parse_fasta_lazy("/home/neri/Documents/projects/YNP/reps_side2_mot1.fas")
 # df = lf.collect()
 # print(df.head())
+

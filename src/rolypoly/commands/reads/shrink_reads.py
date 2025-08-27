@@ -131,8 +131,8 @@ def shrink_reads(
                 )
                 sample_file = create_sample_file(
                     file_path,
-                    sample_type="random_percentage",
-                    percentage=proportion/100,
+                    subset_type="random",
+                    sample_size=proportion,
                     logger=logger,
                 )
             elif n_reads > 0:
@@ -187,14 +187,14 @@ def shrink_reads(
                 )
                 sample_r1 = create_sample_file(
                     r1_path,
-                    sample_type="random_percentage",
-                    percentage=proportion/100,
+                    subset_type="random",
+                    sample_size=proportion,
                     logger=logger,
                 )
                 sample_r2 = create_sample_file(
                     r2_path,
-                    sample_type="random_percentage",
-                    percentage=proportion/100,
+                    subset_type="random",
+                    sample_size=proportion,
                     logger=logger,
                 )
             elif n_reads > 0:
