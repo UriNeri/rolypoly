@@ -58,19 +58,50 @@ def create_sample_file(
                     if i >= sample_size:
                         break
                     f_out.write(line)
+                        # if total_reads <= sample_size:
+            #     sample_size = total_reads
+            #     logger.warning(f"Total reads in {file_path} is less than requested sample size, will just copy the input buddy")
+            #     import shutil
+            #     shutil.copyfile(file_path, output_file)
+            #     return None
+            # elif total_reads == 0:
+            #     logger.warning(f"No obvious reads in fastq (looked for header lines starting with @ and found none)")
+            #     return None # TODO: DECIDE, should this be an error
             
+
         elif subset_type == "random":
             logger.debug(f"Sampling {sample_size*100}% of reads randomly from {file_path}")
             from rolypoly.utils.bio.polars_fastx import from_fastx_lazy as read_fastx
-            from needletail import parse_fastx_file
-            test_for_getting_total_number_of_records = parse_fastx_file(file_path)
+            # from needletail import parse_fastx_file
+            # test_for_getting_total_number_of_records = parse_fastx_file(file_path)
              # I am putting way too much time into this but if possible to get an approximate 
              # for the total number of reads than maybe use:
              #  https://github.com/Yixuan-Wang/blog-contents/issues/29
              # most bioinformatics stuff use defaults so maybe ... using the top n reads can get the avg read # length and then use more approximations to oget a rough estimate of total reads based on (maybe? #original file size (pre compression) to current file size (post compression)
+            import subprocess as sp
+            if is_gz:
+                total_reads = int(sp.run("zgrep -c '@' {}".format(file_path), shell=True, capture_output=True, text=True).stdout.strip())
+            else:
+                total_reads = int(sp.run("grep -c '@' {}".format(file_path), shell=True, capture_output=True, text=True).stdout.strip())
 
-            lf.filter(pl.int_range(pl.len()).shuffle() < pl.len() / 2).collect()
-            
+            # convert proportion to number of reads
+            sample_size = int(sample_size * total_reads)
+            # adjust to an even number of reads
+            sample_size = sample_size - (sample_size % 2)
+            # get the random indices of the reads
+            # deciding on which reads 
+            from random import sample
+            R1_reads_indx = sample(population=range(total_reads), k=int(sample_size/2))
+            R2_reads_indx = [i+1 for i in  R1_reads_indx]
+            all_reads_indx = (R1_reads_indx + R2_reads_indx)
+            all_reads_indx.sort() # to keep R1 and R2 pairs one after the other.
+            # converting indexes to line numbers (maybe I could have just taken 8 lines for each item from the sample, rather than take twice 4 in case there is R1 R2)
+            # @pentamorfico this is where I am at.
+            R1_reads_indx = [all_reads_indx[i] for i in range(0, len(all_reads_indx), 2)]
+            R2_reads_indx = [all_reads_indx[i] for i in range(1, len(all_reads_indx), 2)]
+
+            lf = read_fastx(file_path)
+            lf.filter().collect()
             # Get number of records
             records = read_fastx(file_path)
             records = records.collect()
