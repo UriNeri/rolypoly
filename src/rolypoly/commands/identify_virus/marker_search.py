@@ -213,14 +213,14 @@ def marker_search(
     import polars as pl
 
     from rolypoly.utils.logging.citation_reminder import remind_citations
-    from rolypoly.utils.bioseqs.sequence_analysis import guess_fasta_alpha
-    from rolypoly.utils.bioseqs.pyhmm_utils import (
+    from rolypoly.utils.bio.sequences import guess_fasta_alpha
+    from rolypoly.utils.bio.pyhmm_utils import (
         hmm_from_msa,
         hmmdb_from_directory,
         search_hmmdb,
     )
-    from rolypoly.utils.bioseqs.translation import pyro_predict_orfs, translate_6frx_seqkit, translate_with_bbmap
-    from rolypoly.utils.bioseqs.interval_ops import consolidate_hits
+    from rolypoly.utils.bio.translation import pyro_predict_orfs, translate_6frx_seqkit, translate_with_bbmap
+    from rolypoly.utils.bio.interval_ops import consolidate_hits
     from rolypoly.utils.logging.loggit import log_start_info
 
 
@@ -289,7 +289,7 @@ def marker_search(
             if custom_database.endswith(".hmm"):
                 database_paths = {"Custom": custom_database}
             elif custom_database.endswith((".faa", ".fasta", ".afa")):
-                from rolypoly.utils.bioseqs.pyhmm_utils import hmm_from_msa
+                from rolypoly.utils.bio.pyhmm_utils import hmm_from_msa
 
                 database_paths = {
                     "Custom": hmm_from_msa(
@@ -300,7 +300,7 @@ def marker_search(
                 }
             # if it's a directory:
             elif Path(custom_database).is_dir():
-                from rolypoly.utils.bioseqs.file_detection import validate_database_directory
+                from rolypoly.utils.bio.library_detection import validate_database_directory
                 
                 db_info = validate_database_directory(custom_database, logger=config.logger)
                 config.logger.info(f"Database directory analysis: {db_info['message']}")
@@ -313,7 +313,7 @@ def marker_search(
                                 f.write(hmm_file_obj.read())
                     database_paths = {"Custom": str(Path(custom_database) / "concatenated.hmm")}
                 elif db_info["type"] == "msa_directory":
-                    from rolypoly.utils.bioseqs.pyhmm_utils import hmmdb_from_directory
+                    from rolypoly.utils.bio.pyhmm_utils import hmmdb_from_directory
 
                     hmmdb_from_directory(
                         msa_dir=custom_database,

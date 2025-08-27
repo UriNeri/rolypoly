@@ -3,7 +3,6 @@ from pathlib import Path
 
 import rich_click as click
 
-
 @click.command()
 @click.option(
     "-i",
@@ -104,7 +103,7 @@ def run_pipeline(
     keep_tmp=False,
     log_file=None,
     assembler="spades,megahit,penguin",
-    post_cluster=False,  # TODO: add or remove this, decide.
+    post_processing=False,  # TODO: add or remove this, decide.
     filter1_nuc="alnlen >= 120 & pident>=75",
     filter2_nuc="qcov >= 0.95 & pident>=95",
     filter1_aa="length >= 80 & pident>=75",
@@ -135,7 +134,7 @@ def run_pipeline(
         keep_tmp (bool): Keep temporary files if True (default: False)
         log_file (str): Path to log file (default: rolypoly_pipeline.log)
         assembler (str): Comma-separated list of assemblers (default: "spades,megahit,penguin")
-        post_cluster (bool): Perform post-assembly clustering if True (default: False)
+        post_processing (bool): Perform post-assembly clustering if True (default: False)
         filter1_nuc (str): First nucleotide filtering rules (default: "alnlen >= 120 & pident>=75")
         filter2_nuc (str): Second nucleotide filtering rules (default: "qcov >= 0.95 & pident>=95")
         filter1_aa (str): First amino acid filtering rules (default: "length >= 80 & pident>=75")
@@ -173,7 +172,7 @@ def run_pipeline(
 
     # Step 1: Filter Reads
     logger.info("Step 1: Filtering reads    ")
-    filtered_reads = output_dir / "filtered_rea ds"
+    filtered_reads = output_dir / "filtered_reads"
     if skip_existing:
         if filtered_reads.exists():
             logger.info("Filtered reads already exist, skipping step")
@@ -189,7 +188,7 @@ def run_pipeline(
             memory=memory,
             known_dna=known_dna,
             keep_tmp=keep_tmp,
-            log_file=logger,
+            log_file=str(log_file),
             speed=15,
         )
 

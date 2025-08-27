@@ -1,6 +1,6 @@
 """HMM search and database creation functions."""
 
-from typing import Union
+from typing import Union, List, Optional, Dict
 import tempfile
 from pathlib import Path
 from subprocess import run as runc
@@ -8,6 +8,114 @@ from subprocess import run as runc
 import polars as pl
 import pyhmmer 
 from rich.progress import track
+
+import logging
+from rolypoly.utils.logging.loggit import get_logger
+from rolypoly.utils.bio.alignments import find_msa_files
+from rolypoly.utils.various import find_files_by_extension
+
+
+def find_hmm_files(
+    input_path: Union[str, Path],
+    extensions: List[str] = None,
+    logger: Optional[logging.Logger] = None
+) -> List[Path]:
+    """Find all HMM files in a directory or return single file.
+    
+    Args:
+        input_path: Path to directory or file
+        extensions: List of extensions to look for
+        logger: Logger instance
+        
+    Returns:
+        List of HMM file paths
+    """
+    if extensions is None:
+        extensions = ["*.hmm"]
+    
+    return find_files_by_extension(input_path, extensions, "HMM files", logger)
+
+
+
+def validate_database_directory(
+    database_path: Union[str, Path],
+    expected_types: List[str] = None,
+    logger: Optional[logging.Logger] = None
+) -> Dict[str, Union[str, List[Path]]]:
+    """Validate and categorize database directory contents.
+    
+    This function handles the common pattern of validating custom database directories
+    that can contain either HMM files or MSA files that need to be converted to HMMs.
+    
+    Args:
+        database_path: Path to database file or directory
+        expected_types: List of expected file types ("hmm", "msa", "fasta")
+        logger: Logger instance
+        
+    Returns:
+        Dictionary containing:
+        - type: "hmm_file", "hmm_directory", "msa_file", "msa_directory", "mixed", "invalid"
+        - files: List of relevant files found
+        - message: Human-readable description
+    """
+    logger = get_logger(logger)
+    database_path = Path(database_path)
+    
+    if expected_types is None:
+        expected_types = ["hmm", "msa"]
+    
+    result = {
+        "type": "invalid",
+        "files": [],
+        "message": ""
+    }
+    
+    if not database_path.exists():
+        result["message"] = f"Database path {database_path} does not exist"
+        return result
+    
+    if database_path.is_file():
+        # Single file - determine type
+        if database_path.suffix == ".hmm":
+            result["type"] = "hmm_file"
+            result["files"] = [database_path]
+            result["message"] = f"Single HMM file: {database_path.name}"
+        elif database_path.suffix in [".faa", ".afa", ".aln", ".msa"]:
+            result["type"] = "msa_file"
+            result["files"] = [database_path]
+            result["message"] = f"Single MSA file: {database_path.name}"
+        else:
+            result["message"] = f"Unsupported file type: {database_path.suffix}"
+        
+        return result
+    
+    elif database_path.is_dir():
+        # Directory - analyze contents
+        hmm_files = find_hmm_files(database_path, logger=logger)
+        msa_files = find_msa_files(database_path, logger=logger)
+        
+        if hmm_files and not msa_files:
+            result["type"] = "hmm_directory"
+            result["files"] = hmm_files
+            result["message"] = f"Directory with {len(hmm_files)} HMM files"
+        elif msa_files and not hmm_files:
+            result["type"] = "msa_directory"
+            result["files"] = msa_files
+            result["message"] = f"Directory with {len(msa_files)} MSA files"
+        elif hmm_files and msa_files:
+            result["type"] = "mixed"
+            result["files"] = hmm_files + msa_files
+            result["message"] = f"Mixed directory: {len(hmm_files)} HMM files, {len(msa_files)} MSA files"
+        else:
+            result["message"] = "Directory contains no HMM or MSA files"
+        
+        return result
+    
+    result["message"] = f"Path {database_path} is neither file nor directory"
+    return result
+
+
+
 
 
 def get_hmmali_length(domain) -> int:
@@ -337,3 +445,4 @@ def hmmdb_from_directory(
             hmm.write(fh, binary=False)
             fh.close()
         runc(f"cat {temp_dir}/*.hmm > {output}", shell=True) 
+

@@ -21,6 +21,9 @@ class OutputTracker:
                 "file_size": pl.Int64,
                 "timestamp": pl.Datetime,
                 "is_merged": pl.Boolean,
+                "end_type": pl.Utf8,          # paired / single / null
+                "interleaved": pl.Boolean,    # True / False / null
+                "is_gz": pl.Boolean,          # True / False / null
             }
         )
 
@@ -31,6 +34,9 @@ class OutputTracker:
         command: str,
         is_merged: bool,
         file_type: Optional[str] = None,
+        end_type: Optional[str] = None,
+        interleaved: Optional[bool] = None,
+        is_gz: Optional[bool] = None,
     ) -> None:
         """Add a new file to the tracker. If file_type is None, it will be guessed from extension."""
         from datetime import datetime
@@ -51,6 +57,9 @@ class OutputTracker:
                 "file_size": [file_size],
                 "timestamp": [datetime.now()],
                 "is_merged": [is_merged],
+                "end_type": [end_type],
+                "interleaved": [interleaved],
+                "is_gz": [is_gz],
             }
         )
 

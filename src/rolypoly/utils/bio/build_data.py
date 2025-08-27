@@ -12,7 +12,7 @@ from rich_click import command, option
 from rolypoly.utils.logging.citation_reminder import remind_citations
 
 from rolypoly.utils.logging.loggit import setup_logging, get_version_info
-from rolypoly.utils.bioseqs.pyhmm_utils import hmmdb_from_directory, hmm_from_msa
+from rolypoly.utils.bio.pyhmm_utils import hmmdb_from_directory, hmm_from_msa
 
 from rolypoly.utils.various import (
     extract,

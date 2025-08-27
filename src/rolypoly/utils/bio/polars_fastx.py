@@ -70,7 +70,7 @@ class SequenceExpr:
 
 
 @pl.api.register_lazyframe_namespace("from_fastx")
-def init(input_file: Union[str, Path]) -> pl.LazyFrame:
+def from_fastx_lazy(input_file: Union[str, Path]) -> pl.LazyFrame:
     """Scan a FASTA/FASTQ file into a lazy polars DataFrame.
 
     This function extends polars with the ability to lazily read FASTA/FASTQ files.
@@ -132,13 +132,13 @@ def init(input_file: Union[str, Path]) -> pl.LazyFrame:
 
 
 @pl.api.register_dataframe_namespace("from_fastx")
-def init(file: Union[str, Path], batch_size: int = 512) -> pl.DataFrame:
-    return pl.LazyFrame.from_fastx(file, batch_size).collect()
+def from_fastx_eager(file: Union[str, Path]) -> pl.DataFrame:
+    return pl.LazyFrame.from_fastx(file).collect()
 
 
 
 @pl.api.register_lazyframe_namespace("from_gff")
-def init(input_file: Union[str, Path]) -> pl.LazyFrame:
+def from_gff_lazy(input_file: Union[str, Path]) -> pl.LazyFrame:
     """Scan a gff(3) file into a lazy polars DataFrame.
 
     Args:
@@ -164,7 +164,7 @@ def init(input_file: Union[str, Path]) -> pl.LazyFrame:
     return reader
 
 @pl.api.register_dataframe_namespace("from_gff")
-def init(gff_file: Union[str, Path],unnest_attributes: bool = False) -> pl.DataFrame:
+def from_gff_eager(gff_file: Union[str, Path],unnest_attributes: bool = False) -> pl.DataFrame:
     lf = pl.LazyFrame.from_gff(gff_file)
     df = lf.collect()
     if unnest_attributes:

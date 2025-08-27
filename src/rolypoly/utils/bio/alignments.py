@@ -1,7 +1,30 @@
 """Alignment and mapping utility functions."""
 
 import re
+from pathlib import Path
+from typing import List, Optional, Union
+from rolypoly.utils.various import find_files_by_extension
+import logging
 
+def find_msa_files(
+    input_path: Union[str, Path],
+    extensions: List[str] = None,
+    logger: Optional[logging.Logger] = None
+) -> List[Path]:
+    """Find all Multiple Sequence Alignment files in a directory or return single file.
+    
+    Args:
+        input_path: Path to directory or file
+        extensions: List of extensions to look for
+        logger: Logger instance
+        
+    Returns:
+        List of MSA file paths
+    """
+    if extensions is None:
+        extensions = ["*.faa", "*.afa", "*.aln", "*.msa"]
+    
+    return find_files_by_extension(input_path, extensions, "MSA files", logger)
 
 def calculate_percent_identity(cigar_string: str, num_mismatches: int) -> float:
     """Calculate sequence identity percentage from CIGAR string and edit distance.

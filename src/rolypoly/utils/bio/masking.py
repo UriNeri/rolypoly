@@ -10,7 +10,7 @@ from bbmapy import bbmap, bbmask, kcompress
 from rich.console import Console
 
 from rolypoly.utils.various import ensure_memory
-from .alignment_utils import calculate_percent_identity
+from .alignments import calculate_percent_identity
 
 global datadir
 datadir = Path(os.environ.get("ROLYPOLY_DATA", "")) # THIS IS A HACK, I need to figure out how to set the datadir if code is accessed from outside the package (currently it's set in the rolypoly.py  and exported into the env).
@@ -52,7 +52,7 @@ def mask_nuc_range(input_fasta: str, input_table: str, output_fasta: str) -> Non
         The ranges in the table should be 1-based coordinates.
         Handles both forward and reverse strand masking.
     """
-    from .sequence_analysis import revcomp
+    from .sequences import revcomp
     
     # Read ranges
     ranges = {}

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import requests
 
-from rolypoly.utils.bioseqs.genome_fetch import download_genome
+from rolypoly.utils.bio.genome_fetch import download_genome
 
 
 def download_file(url, filename):

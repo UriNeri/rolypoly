@@ -252,7 +252,7 @@ def predict_secondary_structure(config):
         else:
             raise ValueError(f"Input file {input_path} is not a FASTA file")
     elif input_path.is_dir():
-        from rolypoly.utils.bioseqs.file_detection import find_fasta_files
+        from rolypoly.utils.bio.library_detection import find_fasta_files
         fasta_files = find_fasta_files(input_path, logger=config.logger)
         if not fasta_files:
             raise ValueError(f"No FASTA files found in directory {input_path}")
@@ -936,7 +936,7 @@ def process_ribozymes_data(config, ribozymes_file):
         config.logger.debug(f"Raw ribozymes data from {ribozymes_file}: {raw_data}")
 
         # Normalize to minimal schema, keeping important ribozyme-specific columns
-        from rolypoly.utils.bioseqs.schema_utils import create_minimal_annotation_schema
+        from rolypoly.utils.bio.gffs import create_minimal_annotation_schema
         
         data = create_minimal_annotation_schema(
             raw_data, 
@@ -955,7 +955,7 @@ def process_ires_iresfinder(ires_file):
 
     if ires_file.is_file():
         raw_data = pl.read_csv(ires_file, separator="\t")
-        from rolypoly.utils.bioseqs.schema_utils import create_minimal_annotation_schema
+        from rolypoly.utils.bio.gffs import create_minimal_annotation_schema
         
         # Rename columns for normalization
         if "Sequence Name" in raw_data.columns:
@@ -980,7 +980,7 @@ def process_ires_irespy(ires_file):
 
     if ires_file.is_file():
         raw_data = pl.read_csv(ires_file, separator="\t")
-        from rolypoly.utils.bioseqs.schema_utils import create_minimal_annotation_schema
+        from rolypoly.utils.bio.gffs import create_minimal_annotation_schema
         
         # Rename columns for normalization
         if "Sequence Name" in raw_data.columns:
@@ -1069,7 +1069,7 @@ def process_trnas_data_tRNAscan_SE(trnas_file):
             
             if records:
                 raw_data = pl.DataFrame(records)
-                from rolypoly.utils.bioseqs.schema_utils import create_minimal_annotation_schema
+                from rolypoly.utils.bio.gffs import create_minimal_annotation_schema
                 
                 return create_minimal_annotation_schema(
                     raw_data,
@@ -1267,7 +1267,7 @@ def combine_results(config):
 
         # Combine all results using unified schema
         if all_results:
-            from rolypoly.utils.bioseqs.schema_utils import ensure_unified_schema
+            from rolypoly.utils.bio.gffs import ensure_unified_schema
             
             # Ensure all dataframes have the same schema
             unified_dataframes = ensure_unified_schema(all_results)
@@ -1304,7 +1304,7 @@ def combine_results(config):
 
 
 def write_combined_results_to_gff(config, combined_data):
-    from rolypoly.utils.bioseqs.sequence_io import add_fasta_to_gff
+    from rolypoly.utils.bio.sequences import add_fasta_to_gff
 
     output_file = config.output_dir / "combined_annotations.gff3"
     with open(output_file, "w") as f:

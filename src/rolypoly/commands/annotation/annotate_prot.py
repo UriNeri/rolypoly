@@ -265,7 +265,7 @@ def predict_orfs(config):
 
 def predict_orfs_with_pyrodigal(config):
     """Predict ORFs using pyrodigal"""
-    from rolypoly.utils.bioseqs import pyro_predict_orfs
+    from rolypoly.utils.bio import pyro_predict_orfs
 
     output_file = config.output_dir / "raw_out" / "predicted_orfs.faa"
     pyro_predict_orfs(
@@ -282,7 +282,7 @@ def predict_orfs_with_pyrodigal(config):
 
 def predict_orfs_with_six_frame(config):
     """Translate 6-frame reading frames of a DNA sequence using seqkit."""
-    from rolypoly.utils.bioseqs.translation import translate_6frx_seqkit
+    from rolypoly.utils.bio.translation import translate_6frx_seqkit
 
     output_file = str(config.output_dir / "raw_out" / "predicted_orfs.faa")
     translate_6frx_seqkit(str(config.input), output_file, config.threads)
@@ -338,7 +338,7 @@ def get_database_paths(config, tool_name):
             if custom_database.endswith(".hmm"):
                 database_paths = {"Custom": custom_database}
             elif custom_database.endswith((".faa", ".fasta", ".afa")):
-                from rolypoly.utils.bioseqs.pyhmm_utils import hmm_from_msa
+                from rolypoly.utils.bio.pyhmm_utils import hmm_from_msa
 
                 database_paths = {
                     "Custom": hmm_from_msa(
@@ -349,7 +349,7 @@ def get_database_paths(config, tool_name):
                 }
             # if it's a directory:
             elif Path(custom_database).is_dir():
-                from rolypoly.utils.bioseqs.file_detection import validate_database_directory
+                from rolypoly.utils.bio.library_detection import validate_database_directory
                 
                 db_info = validate_database_directory(custom_database, logger=config.logger)
                 config.logger.info(f"Database directory analysis: {db_info['message']}")
@@ -362,7 +362,7 @@ def get_database_paths(config, tool_name):
                                 f.write(hmm_file_obj.read())
                     database_paths = {"Custom": str(Path(custom_database) / "concatenated.hmm")}
                 elif db_info["type"] == "msa_directory":
-                    from rolypoly.utils.bioseqs.pyhmm_utils import hmmdb_from_directory
+                    from rolypoly.utils.bio.pyhmm_utils import hmmdb_from_directory
 
                     hmmdb_from_directory(
                         msa_dir=custom_database,
@@ -397,7 +397,7 @@ def get_database_paths(config, tool_name):
 
 def search_protein_domains_hmmsearch(config):
     """Search protein domains using hmmsearch."""
-    from rolypoly.utils.bioseqs.pyhmm_utils import search_hmmdb
+    from rolypoly.utils.bio.pyhmm_utils import search_hmmdb
 
     # Use the standard ORF prediction output location
     translation_output = config.output_dir / "raw_out" / "predicted_orfs.faa"
@@ -436,7 +436,7 @@ def predict_orfs_with_orffinder(config):
     import os
     from shutil import which
 
-    from rolypoly.utils.bioseqs.translation import predict_orfs_orffinder
+    from rolypoly.utils.bio.translation import predict_orfs_orffinder
 
     if not which("ORFfinder"):
         config.logger.error(

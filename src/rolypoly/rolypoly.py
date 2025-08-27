@@ -41,7 +41,7 @@ os.environ["citation_file"] = str(
             "commands": {
                 "filter-reads": "rolypoly.commands.reads.filter_reads.filter_reads",
                 "shrink-reads": "rolypoly.commands.reads.shrink_reads.shrink_reads",
-                "mask-dna": "rolypoly.utils.bioseqs.masking.mask_dna",  # Keeping this as is since it's in utils
+                "mask-dna": "rolypoly.utils.bio.masking.mask_dna",  # Keeping this as is since it's in utils
             },
         },
         "annotation": {
@@ -68,7 +68,7 @@ os.environ["citation_file"] = str(
                 "end2end": "rolypoly.commands.misc.end_2_end.run_pipeline",
                 # "add-command": "hidden:rolypoly.commands.misc.add_command.add_command",
                 "fetch-sra": "rolypoly.commands.misc.fetch_sra_fastq.fetch_sra",  # Not  a click command (yet?)
-                "sequence-stats": "rolypoly.utils.bioseqs.sequence_stats.sequence_stats",
+                "sequence-stats": "rolypoly.utils.bio.sequences.sequence_stats",
                 # "visualize": "rolypoly.commands.virotype.visualize.visualize",
                 "quick-taxonomy": "rolypoly.commands.misc.quick_taxonomy.quick_taxonomy",
                 # "test": "tests.test_cli_commands.test",

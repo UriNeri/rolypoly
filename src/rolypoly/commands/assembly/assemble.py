@@ -145,7 +145,7 @@ def handle_input_files(
     Returns:
         Tuple containing libraries dict and number of libraries
     """
-    from rolypoly.utils.bioseqs.file_detection import identify_fastq_files
+    from rolypoly.utils.bio.library_detection import identify_fastq_files
     
     if library_info is None:
         library_info = LibraryInfo()
@@ -192,7 +192,7 @@ def handle_input_files(
 
     # Handle raw fasta files (keep existing logic)
     if input_path.is_dir():
-        from rolypoly.utils.bioseqs.file_detection import find_fasta_files
+        from rolypoly.utils.bio.library_detection import find_fasta_files
         fasta_files = find_fasta_files(input_path, logger=logger)
         for fasta in fasta_files:
             library_info.add_raw_fasta(str(fasta))
@@ -492,8 +492,8 @@ def assembly(
     from bbmapy import bbmap
     from rolypoly.utils.logging.loggit import log_start_info
     from rolypoly.utils.logging.citation_reminder import remind_citations
-    from rolypoly.utils.bioseqs.sequence_io import read_fasta_df
-    from rolypoly.utils.bioseqs.sequence_analysis import process_sequences, rename_sequences
+    from rolypoly.utils.bio.sequences import read_fasta_df
+    from rolypoly.utils.bio.sequences import process_sequences, rename_sequences
     from rolypoly.utils.various import run_command_comp
 
     if not overwrite:

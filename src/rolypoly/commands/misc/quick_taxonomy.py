@@ -50,7 +50,7 @@ def run_genomad_hmm_search(input_fasta, output_dir, threads, logger):
 
     import polars as pl
 
-    from rolypoly.utils.bioseqs.pyhmm_utils import search_hmmdb
+    from rolypoly.utils.bio.pyhmm_utils import search_hmmdb
 
     hmm_db = (
         Path(os.environ["ROLYPOLY_DATA"]) / "hmmdbs" / "genomad_rna_viral_markers.hmm"

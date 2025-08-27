@@ -1,7 +1,9 @@
-"""Schema normalization utilities for annotation data."""
+"""
+Schema utilities for annotation data (mostly gff).
+TODO: check the coordinate system for GFF3 is 1-based (if not then shift all coordinates by 1)
+""" 
 
 import polars as pl
-
 
 def normalize_column_names(df):
     """Normalize common column name variations to standard names.

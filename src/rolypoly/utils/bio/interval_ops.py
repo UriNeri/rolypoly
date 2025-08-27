@@ -17,8 +17,6 @@ from rolypoly.utils.various import vstack_easy
 
 # TODO: make this more robust and less dependent on external libraries. Candidate destination library is polars-bio.
 
-
-
 @click.command(name="resolve_overlaps")
 @click.option(
     "-i", "--input", required=True, help="Input hit table file or polars dataframe"

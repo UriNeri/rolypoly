@@ -5,6 +5,8 @@ from typing import Dict, List, Optional, Union
 from rich.console import Console
 import polars as pl
 
+from .logging.loggit import get_logger
+from logging import Logger
 console = Console()
 
 
@@ -563,6 +565,63 @@ def run_command(
 
     return check_file_exist_isempty(f"{to_check}")
 
+
+def find_files_by_extension(
+    input_path: Union[str, Path],
+    extensions: List[str],
+    file_type: str = "files",
+    logger: Optional[Logger] = None
+) -> List[Path]:
+    """Find all files matching specified extensions in a directory or return single file.
+    
+    This is for convenience, not sure if actually reduces nmber oflines.
+    
+    Args:
+        input_path: Path to directory or file
+        extensions: List of glob patterns to look for (e.g., ["*.fa", "*.fasta"])
+        file_type: Human-readable description of file type for logging
+        logger: Logger instance
+        
+    Returns:
+        List of matching file paths
+    """
+    logger = get_logger(logger)
+    input_path = Path(input_path)
+    
+    found_files = []
+    
+    if input_path.is_file():
+        # Check if single file matches any extension
+        for ext in extensions:
+            if input_path.match(ext):
+                found_files = [input_path]
+                break
+        if not found_files:
+            logger.warning(f"Single file {input_path} doesn't match expected {file_type} extensions: {extensions}")
+    elif input_path.is_dir():
+        for ext in extensions:
+            found_files.extend(input_path.glob(ext))
+        found_files = sorted(set(found_files))  # Remove duplicates and sort
+    else:
+        logger.warning(f"Input path does not exist: {input_path}")
+        
+    logger.debug(f"Found {len(found_files)} {file_type} in {input_path}")
+    return found_files
+
+def is_gzipped(file_path: Union[str, Path]) -> bool:
+    """Check if a file is gzip compressed.
+    
+    Args:
+        file_path: Path to the file to check
+        
+    Returns:
+        True if file is gzip compressed, False otherwise
+    """
+    try:
+        with open(file_path, "rb") as test_f:
+            return test_f.read(2).startswith(b"\x1f\x8b")
+    except (OSError, IOError):
+        return False
 
 def check_file_exist_isempty(file_path):
     check_file_exists(file_path)

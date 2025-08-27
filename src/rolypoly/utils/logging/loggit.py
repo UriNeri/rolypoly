@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Dict, Union
+from typing import Dict, Union, Optional
 
 from rich.console import Console
 from rich.logging import RichHandler
@@ -146,3 +146,17 @@ def log_start_info(logger: logging.Logger, config_dict: Dict):
     logger.debug("Config parameters:")
     for key, value in config_dict.items():
         logger.debug(f"{key}: {value}")
+
+def get_logger(logger: Optional[logging.Logger] = None) -> logging.Logger:
+    """Get a logger instance, creating a default one if none provided."""
+    if logger is None:
+        logger = logging.getLogger(__name__)
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+            logger.setLevel(logging.INFO)
+    return logger

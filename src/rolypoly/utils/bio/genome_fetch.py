@@ -1,4 +1,6 @@
-"""Genome downloading and fetching functionality."""
+"""
+Genome downloading and fetching functionality.
+"""
 
 import concurrent.futures
 import os
@@ -7,13 +9,12 @@ import subprocess as sp
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-from rolypoly.utils.various import extract_zip
-from rolypoly.utils.bioseqs.sequence_io import filter_fasta_by_headers
+from rolypoly.utils.various import extract_zip, run_command_comp
+from rolypoly.utils.bio.sequences import filter_fasta_by_headers
 
 
 global datadir
 datadir = Path(os.environ.get("ROLYPOLY_DATA", ""))
-
 
 def download_genome(taxid: str) -> None:
     """Download genome data from NCBI for a given taxon ID.
@@ -22,29 +23,38 @@ def download_genome(taxid: str) -> None:
         taxid (str): NCBI taxonomy ID for the organism
 
     Note:
-        Uses the NCBI datasets command-line tool to download genome data.
+        Uses the NCBI datasets command‑line tool to download genome data.
         Downloads RNA and genome data, excluding atypical sequences.
     """
-    sp.run(
-        [
-            "datasets",
-            "download",
-            "genome",
-            "taxon",
-            taxid,
-            "--include",
-            "rna,genome",
-            "--filename",
-            f"{taxid}_fetched_genomes.zip",
-            "--assembly-version",
-            "latest",
-            "--exclude-atypical",
-            "--assembly-source",
-            "RefSeq",
-            "--no-progressbar",
-        ],
-        stdout=sp.DEVNULL,
-        stderr=sp.DEVNULL,
+    # Positional arguments required by `datasets` (sub‑commands + taxid)
+    positional_args = ["download", "genome", "taxon", taxid]
+
+    # Non‑positional (flag) parameters
+    params = {
+        "include": "rna,genome",
+        "filename": f"{taxid}_fetched_genomes.zip",
+        "assembly-version": "latest",
+        "exclude-atypical": True,      # flag without a value
+        "assembly-source": "RefSeq",
+        "no-progressbar": True,       # flag without a value
+    }
+
+    # Run the command using the common wrapper from `various.py`
+    run_command_comp(
+        base_cmd="datasets",
+        positional_args=positional_args,
+        positional_args_location="start",
+        params=params,
+        logger=None,            # falls back to an internal logger
+        output_file="",         # no output file to verify here
+        skip_existing=False,
+        check_status=True,      # raise if the command fails
+        check_output=False,
+        prefix_style="double",    # let the helper decide "-" vs "--"
+        param_sep=" ",
+        assign_operator=" ",
+        resource_monitoring=False,
+        return_final_cmd=True,
     )
 
 

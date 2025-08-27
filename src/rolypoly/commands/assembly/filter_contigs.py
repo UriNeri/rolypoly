@@ -232,8 +232,8 @@ def filter_contigs_nuc(config: FilterContigsConfig):
     import pyfastx
     from rich_click import Context
 
-    from rolypoly.utils.bioseqs.masking import mask_dna
-    from rolypoly.utils.bioseqs.file_detection import ensure_faidx
+    from rolypoly.utils.bio.masking import mask_dna
+    from rolypoly.utils.bio.library_detection import ensure_faidx
     from rolypoly.utils.various import apply_filter, ensure_memory
 
     config.logger.info(f"Started nucleotide host filtering for: {config.input}")
@@ -399,8 +399,8 @@ def filter_contigs_aa(config: FilterContigsConfig):
     import pyfastx
     from bbmapy import callgenes
 
-    from rolypoly.utils.bioseqs.file_detection import ensure_faidx
-    from rolypoly.utils.bioseqs.sequence_analysis import guess_fasta_alpha
+    from rolypoly.utils.bio.library_detection import ensure_faidx
+    from rolypoly.utils.bio.sequences import guess_fasta_alpha
     from rolypoly.utils.various import apply_filter, ensure_memory
 
     config.logger.info(f"Started amino acid host filtering for: {config.input}")

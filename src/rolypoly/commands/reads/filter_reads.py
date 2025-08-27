@@ -9,7 +9,7 @@ from rich.console import Console
 from rolypoly.utils.logging.config import BaseConfig
 from rolypoly.utils.logging.output_tracker import OutputTracker
 from rolypoly.utils.various import ensure_memory, run_command_comp
-from rolypoly.utils.bioseqs.file_detection import identify_fastq_files, handle_input_fastq
+from rolypoly.utils.bio.library_detection import identify_fastq_files, handle_input_fastq
 
 global tools
 tools = ["bbmap", "seqkit", "datasets"]
@@ -18,10 +18,6 @@ global output_tracker
 output_tracker = OutputTracker()
 
 console = Console()
-
-
-# Using the file_detection module instead of local FileInfo class
-
 
 class ReadFilterConfig(BaseConfig):
     def __init__(self, **kwargs):
@@ -145,6 +141,9 @@ def process_reads(
         command="handle_input_fastq",
         command_name="reformat",
         is_merged=False,
+        end_type=None,
+        interleaved=None,
+        is_gz=None,
     )  # retroactive addition
     config.memory = ensure_memory(config.memory, fastq_file)  # type: ignore ------ this second ensure is because we now have the fastq file to check its size.
     steps = [
@@ -613,7 +612,7 @@ def filter_known_dna(
     """Filter known DNA sequences."""
     from bbmapy import bbduk
 
-    from rolypoly.utils.bioseqs.masking import mask_dna
+    from rolypoly.utils.bio.masking import mask_dna
 
     ref_file = str(config.known_dna)
     if "mask_known_dna" not in config.skip_steps:
@@ -643,7 +642,10 @@ def filter_known_dna(
             stats=config.temp_dir / f"stats_filter_known_dna_{config.file_name}.txt",
         )
         output_tracker.add_file(
-            str(output_file), "filter_known_dna", "bbduk.sh", is_merged=False
+            str(output_file), "filter_known_dna", "bbduk.sh", is_merged=False,
+            end_type=None,
+            interleaved=True,
+            is_gz=True,
         )
         return Path(output_file)
     except RuntimeError as e:
@@ -674,7 +676,10 @@ def decontaminate_rrna(
             stats=config.temp_dir / f"stats_decontaminate_rrna_{config.file_name}.txt",
         )
         output_tracker.add_file(
-            str(output_file), "decontaminate_rrna", "bbduk.sh", is_merged=False
+            str(output_file), "decontaminate_rrna", "bbduk.sh", is_merged=False,
+            end_type=None,
+            interleaved=True,
+            is_gz=True,
         )
         return Path(output_file)
     except RuntimeError as e:
@@ -684,8 +689,8 @@ def decontaminate_rrna(
 
 def fetch_and_mask_genomes(config: ReadFilterConfig) -> Union[str, Path]:
     """Fetch and mask genomes."""
-    from rolypoly.utils.bioseqs.masking import mask_dna
-    from rolypoly.utils.bioseqs.genome_fetch import fetch_genomes
+    from rolypoly.utils.bio.masking import mask_dna
+    from rolypoly.utils.bio.genome_fetch import fetch_genomes
 
     # Create a dedicated subfolder for fetched genomes using absolute paths
     fetched_dna_dir = config.temp_dir / "fetched_dna" / "genomes"
@@ -695,7 +700,7 @@ def fetch_and_mask_genomes(config: ReadFilterConfig) -> Union[str, Path]:
     abs_gbs_file = (fetched_dna_dir / "gbs_50m.fasta").absolute()
 
     if "filter_rp_identified_DNA_genomes" not in config.skip_steps:
-        stats_file = Path(f"stats_decontaminate_rrna_{config.file_name}.txt").absolute()
+        stats_file = Path(config.temp_dir / f"stats_decontaminate_rrna_{config.file_name}.txt").absolute()
         if not stats_file.exists():
             config.logger.warning(
                 f"Stats file {stats_file} not found. Skipping fetch and mask genomes step."
@@ -772,7 +777,10 @@ def filter_identified_dna(
             / f"stats_filter_identified_dna_{config.file_name}.txt",
         )
         output_tracker.add_file(
-            str(output_file), "filter_identified_dna", "bbduk.sh", is_merged=False
+            str(output_file), "filter_identified_dna", "bbduk.sh", is_merged=False,
+            end_type=None,
+            interleaved=True,
+            is_gz=True,
         )
         return Path(output_file)
     except RuntimeError as e:
@@ -812,7 +820,10 @@ def dedupe(
             interleaved="t",
         )
         output_tracker.add_file(
-            str(output_file), f"dedupe_{phase}", "clumpify.sh", is_merged=is_merged
+            str(output_file), f"dedupe_{phase}", "clumpify.sh", is_merged=is_merged,
+            end_type=None,
+            interleaved=True,
+            is_gz=True,
         )
         return Path(output_file)
     except RuntimeError as e:
@@ -844,7 +855,10 @@ def trim_adapters(
             stats=config.temp_dir / f"stats_trim_adapters_{config.file_name}.txt",
         )
         output_tracker.add_file(
-            str(output_file), "trim_adapters", "bbduk.sh", is_merged=False
+            str(output_file), "trim_adapters", "bbduk.sh", is_merged=False,
+            end_type=None,
+            interleaved=True,
+            is_gz=True,
         )
         return Path(output_file)
     except RuntimeError as e:
@@ -876,7 +890,10 @@ def remove_synthetic_artifacts(
             / f"stats_remove_synthetic_artifacts_{config.file_name}.txt",
         )
         output_tracker.add_file(
-            str(output_file), "remove_synthetic_artifacts", "bbduk.sh", is_merged=False
+            str(output_file), "remove_synthetic_artifacts", "bbduk.sh", is_merged=False,
+            end_type=None,
+            interleaved=True,
+            is_gz=True,
         )
         return Path(output_file)
     except RuntimeError as e:
@@ -904,7 +921,10 @@ def entropy_filter(
             interleaved="t",
         )
         output_tracker.add_file(
-            str(output_file), "entropy_filter", "bbduk.sh", is_merged=False
+            str(output_file), "entropy_filter", "bbduk.sh", is_merged=False,
+            end_type=None,
+            interleaved=True,
+            is_gz=True,
         )
         return Path(output_file)
     except RuntimeError as e:
@@ -932,7 +952,10 @@ def error_correct_1(
             interleaved="t",
         )
         output_tracker.add_file(
-            str(output_file), "error_correct_phase_1", "bbmerge.sh", is_merged=False
+            str(output_file), "error_correct_phase_1", "bbmerge.sh", is_merged=False,
+            end_type=None,
+            interleaved=True,
+            is_gz=True,
         )
         return Path(output_file)
     except RuntimeError as e:
@@ -960,7 +983,10 @@ def error_correct_2(
             interleaved="t",
         )
         output_tracker.add_file(
-            str(output_file), "error_correct_phase_2", "bbmerge.sh", is_merged=False
+            str(output_file), "error_correct_phase_2", "bbmerge.sh", is_merged=False,
+            end_type=None,
+            interleaved=True,
+            is_gz=True,
         )
         return Path(output_file)
     except RuntimeError as e:
@@ -991,10 +1017,16 @@ def merge_reads(
             outadapter=config.temp_dir / f"out_adapter_merged_{config.file_name}.txt",
         )
         output_tracker.add_file(
-            str(output_file), "merge_reads", "bbmerge.sh", is_merged=True
+            str(output_file), "merge_reads", "bbmerge.sh", is_merged=True,
+            end_type="paired",
+            interleaved=True,
+            is_gz=True,
         )
         output_tracker.add_file(
-            str(unmerged_file), "merge_reads_unmerged", "bbmerge.sh", is_merged=False
+            str(unmerged_file), "merge_reads_unmerged", "bbmerge.sh", is_merged=False,
+            end_type="single",
+            interleaved=False,
+            is_gz=True,
         )
         return Path(output_file), Path(unmerged_file)
     except RuntimeError as e:
@@ -1023,7 +1055,10 @@ def quality_trim_unmerged(
             interleaved="t",
         )
         output_tracker.add_file(
-            str(output_file), "quality_trim_unmerged", "bbduk.sh", is_merged=False
+            str(output_file), "quality_trim_unmerged", "bbduk.sh", is_merged=False,
+            end_type="single",
+            interleaved=False,
+            is_gz=True,
         )
         return Path(output_file)
     except RuntimeError as e:
