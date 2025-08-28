@@ -26,14 +26,14 @@ from rolypoly.utils.bio.library_detection import handle_input_fastq, create_samp
 )
 @click.option(
     "-st",
-    "--subset_type",
+    "--subset-type",
     default="top_reads",
     type=click.Choice(["top_reads", "random"]),
     help="how to sample reads from input."
 )
 @click.option(
     "-sz",
-    "--sample_size",
+    "--sample-size",
     default=1000,
     type=click.FLOAT,
     help="Will only return (at most) this much reads (if <1, will be interpreted as a proportion of total reads, else as the exact number of reads to get)")
@@ -47,7 +47,7 @@ from rolypoly.utils.bio.library_detection import handle_input_fastq, create_samp
 @click.option(
     "-ll",
     "--log-level",
-    default="debug",
+    default="info",
     type=click.Choice(["debug", "info", "warning", "error", "critical"]),
     help="Log level. Options: debug, info, warning, error, critical",
 )
@@ -99,14 +99,17 @@ def shrink_reads(
         for r1_path, r2_path in file_info.get("R1_R2_pairs", []):
             # print("a")
             logger.info(f"Processing paired-end files: {r1_path} and {r2_path}")
-            logger.info("Note - to ensure paired reads are sampled, this will be slow (i.e. if reads_x/1 was selected from file R1, and his pair reads_x/2 is at the bottom of the R2 file, I can't think of a method to get it without going over all of R2 (if compressed")
+            logger.debug("""Note - to ensure paired reads are sampled, this will be slow (i.e. if reads_x/1 was selected from file R1, and his pair reads_x/2 is at the bottom of the R2 file, I can't think of a method to get it without going over all of R2 (if compressed). 
+                         However, read order is usually assumed to be the same for R1 and R2...
+                         """)
             
             logger.info(f"Sampling {sample_size} from {r1_path}")
             output_R1_file = output_dir / f"{r1_path.stem}_shrinked_R1.fastq"
             output_R2_file = output_dir / f"{r1_path.stem}_shrinked_R2.fastq"
-            output_file = output_R1_file+","+output_R2_file
+            # breakpoint()
+            output_file = str(output_R1_file)+","+str(output_R2_file)
             create_sample_file(
-                    str(r1_path)+",",str(r2_path) ,
+                    file_path=str(r1_path)+","+str(r2_path),
                     subset_type=subset_type,
                     sample_size=sample_size,
                     logger=logger,
@@ -116,8 +119,7 @@ def shrink_reads(
             logger.info(f"Written shrinked reads to {output_R1_file} and {output_R2_file}")
 
         logger.info("Finished read processing")
-        logger.info("[bold green]✓[/bold green] Processed reads")
-        logger.info(f"[bold blue]Output:[/bold blue] {output_dir}")
+        logger.info(f"Output: {output_dir}")
 
     except Exception as e:
         logger.error(f"An error occurred during read processing: {e}")
