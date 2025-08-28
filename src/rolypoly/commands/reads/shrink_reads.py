@@ -1,13 +1,12 @@
 import os
 import shutil
 from pathlib import Path
+from typing import Union
 import rich_click as click
-from rich.console import Console
 
 from rolypoly.utils.logging.loggit import log_start_info, setup_logging
 from rolypoly.utils.bio.library_detection import handle_input_fastq, create_sample_file
 
-console = Console()
 
 
 @click.command(no_args_is_help=True)
@@ -28,35 +27,20 @@ console = Console()
     help="path to output directory",
 )
 @click.option(
-    "-p",
-    "-prop",
-    "--proportion",
-    default=1,
-    type=float,
-    help="Randomly sample reads from input. This will select <-p> * total reads",
+    "-st",
+    "-sty",
+    "--subset_type",
+    default="top_reads",
+    type=click.Choice(["top_reads", "random"]),
+    help="how to sample reads from input."
 )
 @click.option(
-    "-n",
-    "-nth",
-    "--n_reads",
+    "-s",
+    "-smp",
+    "--sample_size",
     default=1000,
-    type=int,
-    help="Will only return (at most) this much reads",
-)
-@click.option(
-    "-d",
-    "-dir",
-    "--direction",
-    type=click.Choice(["first", "last", "both"]),
-    default="both",
-    help="if --n_reads is used, should the reads be extracted from the top of the file (first nth) or bottom of it (last nth) or both (first nth/2 + last nth/2)",
-)
-@click.option(
-    "-kp",
-    "--keep-matching-pairs",
-    is_flag=True,
-    help="If input is paired-end, output will also be paired-end (i.e., every R1 selected will have a matching R2).",
-)
+    type=Union[int, float],
+    help="Will only return (at most) this much reads (if <1, will be interpreted as a proportion of total reads, else as the exact number of reads to get)")
 @click.option(
     "-t",
     "--threads",
@@ -82,28 +66,22 @@ console = Console()
 def shrink_reads(
     input,
     output,
-    proportion,
-    n_reads, 
-    direction,
-    keep_matching_pairs,
-    threads,
+    subset_type,
+    sample_size, 
+    threads, # TODO: no real threading support yet, maybe will have it if multiple input files are used (one per thread)
     log_file,
     log_level,
 ):
     """
     Subsets data from an input FASTQ file(s) based on the provided options.
-    Supports random sampling (when proportion < 1) and fixed number read sampling
-    (first, last, or both) for single‑end FASTQ files.
+    Supports random sampling (when sample_size < 1) and fixed number read sampling
+    (i.e. first n reads)
     NOTE: UNLESS --keep-matching-pairs is used, the output may not be very useful in practice.
     TODO: no real threading support yet, maybe will have it if multiple input files are used (one per thread)
     """
     # Initialise logger
     logger = setup_logging(log_file=log_file, log_level=log_level)
     log_start_info(logger, locals())
-
-    if keep_matching_pairs and proportion == 1 and n_reads == 0:
-        logger.error("Please specify either --proportion, --nth or use --keep-matching-pairs with one of them.")
-        raise click.ClickException("Invalid argument combination.")
 
     # Ensure output directory exists
     output_dir = Path(output).resolve()
@@ -119,157 +97,39 @@ def shrink_reads(
         for file_path in file_info.get("single_end_files", []):
             file_path = Path(file_path)
             logger.info(f"Processing file: {file_path}")
-
-            # Determine which sampling method to use
-            sample_file = None
-            if proportion < 1:
-                # Random percentage sampling
-                logger.debug(
-                    f"Sampling {proportion*100}% of reads from {file_path}"
-                )
-                sample_file = create_sample_file(
-                    file_path,
-                    subset_type="random",
-                    sample_size=proportion,
-                    logger=logger,
-                )
-            elif n_reads > 0:
-                # Fixed‑read sampling based on direction
-                if direction == "first":
-                    logger.debug(f"Taking first {n_reads} reads from {file_path}")
-                    sample_type = "first_n_lines"
-                elif direction == "last":
-                    logger.debug(f"Taking last {n_reads} reads from {file_path}")
-                    sample_type = "last_n_lines"
-                elif direction == "both":
-                    logger.debug(
-                        f"Taking first and last {n_reads // 2} reads from {file_path}"
-                    )
-                    sample_type = "first_last_n_lines"
-
-                sample_file = create_sample_file(
-                    file_path,
-                    sample_type=sample_type,
-                    n_lines=n_reads,
-                    logger=logger,
-                )
-            else:
-                # No sampling requested – just copy the original file
-                logger.debug("No sampling requested; copying original file")
-                sample_file = file_path
-
-            # Prepare output filename
             output_file = output_dir / f"{file_path.stem}_shrinked.fastq"
-
-            # Move (or copy) the sampled file to the output location
-            if isinstance(sample_file, Path) and sample_file != output_file:
-                shutil.move(str(sample_file), str(output_file))
-            else:
-                shutil.copy2(str(sample_file), str(output_file))
-
+            create_sample_file(
+                    file_path,
+                    subset_type=subset_type,
+                    sample_size=sample_size,
+                    logger=logger,
+                    output_file=output_file,
+                )
             logger.info(f"Written shrinked reads to {output_file}")
 
         # Process paired‑end files
         for r1_path, r2_path in file_info.get("R1_R2_pairs", []):
-            r1_path = Path(r1_path)
-            r2_path = Path(r2_path)
+            # print("a")
             logger.info(f"Processing paired-end files: {r1_path} and {r2_path}")
-
-            # Determine which sampling method to use
-            sample_r1 = None
-            sample_r2 = None
-            if proportion < 1:
-                # Random percentage sampling
-                logger.debug(
-                    f"Sampling {proportion*100}% of reads from {r1_path} and {r2_path}"
-                )
-                sample_r1 = create_sample_file(
-                    r1_path,
-                    subset_type="random",
-                    sample_size=proportion,
+            logger.info(f"Note - to ensure paired reads are sampled, this will be slow (i.e. if reads_x/1 was selected from file R1, and his pair reads_x/2 is at the bottom of the R2 file, I can't think of a method to get it without going over all of R2 (if compressed")
+            
+            logger.info(f"Sampling {sample_size} from {r1_path}")
+            output_R1_file = output_dir / f"{r1_path.stem}_shrinked_R1.fastq"
+            output_R2_file = output_dir / f"{r1_path.stem}_shrinked_R2.fastq"
+            output_file = output_R1_file+","+output_R2_file
+            create_sample_file(
+                    str(r1_path)+",",str(r2_path) ,
+                    subset_type=subset_type,
+                    sample_size=sample_size,
                     logger=logger,
+                    output_file=output_file,
                 )
-                sample_r2 = create_sample_file(
-                    r2_path,
-                    subset_type="random",
-                    sample_size=proportion,
-                    logger=logger,
-                )
-            elif n_reads > 0:
-                if keep_matching_pairs:
-                    # Fixed‑read sampling based on direction, keeping pairs
-                    if direction == "first":
-                        logger.debug(f"Taking first {n_reads} paired reads from {r1_path} and {r2_path}")
-                        sample_type = "first_n_lines"
-                    elif direction == "last":
-                        logger.debug(f"Taking last {n_reads} paired reads from {r1_path} and {r2_path}")
-                        sample_type = "last_n_lines"
-                    else:  # both
-                        logger.debug(
-                            f"Taking first and last {n_reads // 2} paired reads from {r1_path} and {r2_path}"
-                        )
-                        sample_type = "first_last_n_lines"
-
-                    sample_r1 = create_sample_file(
-                        r1_path,
-                        sample_type=sample_type,
-                        n_lines=n_reads,
-                        logger=logger,
-                        keep_pairs=True,
-                    )
-                    sample_r2 = sample_r1  # sample_r2 will be derived from sample_r1
-                else:
-                    # Fixed‑read sampling based on direction, without keeping pairs
-                    if direction == "first":
-                        logger.debug(f"Taking first {n_reads} reads from {r1_path} and {r2_path}")
-                        sample_type = "first_n_lines"
-                    elif direction == "last":
-                        logger.debug(f"Taking last {n_reads} reads from {r1_path} and {r2_path}")
-                        sample_type = "last_n_lines"
-                    else:  # both
-                        logger.debug(
-                            f"Taking first and last {n_reads // 2} reads from {r1_path} and {r2_path}"
-                        )
-                        sample_type = "first_last_n_lines"
-
-                    sample_r1 = create_sample_file(
-                        r1_path,
-                        sample_type=sample_type,
-                        n_lines=n_reads,
-                        logger=logger,
-                    )
-                    sample_r2 = create_sample_file(
-                        r2_path,
-                        sample_type=sample_type,
-                        n_lines=n_reads,
-                        logger=logger,
-                    )
-            else:
-                # No sampling requested – just copy the original files
-                logger.debug("No sampling requested; copying original files")
-                sample_r1 = r1_path
-                sample_r2 = r2_path
-
-            # Prepare output filenames
-            output_r1 = output_dir / f"{r1_path.stem}_shrinked_R1.fastq"
-            output_r2 = output_dir / f"{r1_path.stem}_shrinked_R2.fastq"
-
-            # Move (or copy) the sampled files to the output location
-            if isinstance(sample_r1, Path) and sample_r1 != output_r1:
-                shutil.move(str(sample_r1), str(output_r1))
-            else:
-                shutil.copy2(str(sample_r1), str(output_r1))
-
-            if isinstance(sample_r2, Path) and sample_r2 != output_r2:
-                shutil.move(str(sample_r2), str(output_r2))
-            else:
-                shutil.copy2(str(sample_r2), str(output_r2))
-
-            logger.info(f"Written shrinked reads to {output_r1} and {output_r2}")
+                                         
+            logger.info(f"Written shrinked reads to {output_R1_file} and {output_R2_file}")
 
         logger.info("Finished read processing")
-        console.print("[bold green]✓[/bold green] Processed reads")
-        console.print(f"[bold blue]Output:[/bold blue] {output_dir}")
+        logger.info("[bold green]✓[/bold green] Processed reads")
+        logger.info(f"[bold blue]Output:[/bold blue] {output_dir}")
 
     except Exception as e:
         logger.error(f"An error occurred during read processing: {e}")
