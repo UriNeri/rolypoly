@@ -15,8 +15,6 @@ import logging
 # show all columns
 # pl.Config().set_tbl_cols(-1)
 
-
-
 def read_fasta_needletail(fasta_file: str) -> Tuple[list[str], list[str]]:
     """Read sequences from a FASTA/FASTQ file using needletail"""
 
@@ -28,31 +26,8 @@ def read_fasta_needletail(fasta_file: str) -> Tuple[list[str], list[str]]:
     return seq_ids, seqs
 
 
-def read_fasta_polars(
-    fasta_file, idcol="seq_id", seqcol="seq", add_length=False, add_gc_content=False
-):
-    """Read FASTA file into polars DataFrame with optional statistics."""
-    seq_ids, seqs = read_fasta_needletail(fasta_file)
-    df = pl.DataFrame({idcol: seq_ids, seqcol: seqs})
-    if add_length:
-        df = df.with_columns(pl.col(seqcol).str.len_chars().alias("length")) # type: ignore
-    if add_gc_content:
-        df = df.with_columns(pl.col(seqcol).str.count_matches("G|C").alias("gc_content") / pl.col(seqcol).str.len_chars().alias("length")) 
-    return df
-
-
 def read_fasta_df(file_path: str) -> pl.DataFrame:
-    """Reads a FASTA file into a Polars DataFrame.
-
-    Args:
-        file_path (str): Path to the input FASTA file
-
-    Returns:
-        polars.DataFrame: DataFrame with columns:
-            - header: Sequence headers
-            - sequence: Sequence strings
-            - group: Internal grouping number (used for sequence concatenation)
-    """
+    """wrapper for legacy code"""
     from rolypoly.utils.bio.polars_fastx import from_fastx_eager
     return from_fastx_eager(file_path) # type: ignore defined in polars_fastx.py
 

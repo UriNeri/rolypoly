@@ -9,14 +9,6 @@ from .logging.loggit import get_logger
 from logging import Logger
 console = Console()
 
-
-def modify_params(default_params: Dict, override_parameters: Dict) -> Dict:
-    """Modify default parameters with user-specified overrides"""
-    params = default_params.copy()
-    params.update(override_parameters)
-    return params
-
-
 def extract(
     archive_path: Union[str, Path], extract_to: Optional[Union[str, Path]] = None
 ) -> None:
