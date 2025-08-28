@@ -33,6 +33,7 @@ os.environ["citation_file"] = str(
             "name": "Setup and Data",
             "commands": {
                 "get-data": "rolypoly.commands.misc.get_external_data.get_data",
+                "version": "rolypoly.rolypoly.version",
                 # "build-data": "rolypoly.commands.misc.build_data.build_data",
             },
         },
@@ -98,6 +99,11 @@ def rolypoly():
     """RolyPoly: RNA Virus analysis tookit.\n
     Use rolypoly `command` --help for more details \n"""
     pass
+
+@rolypoly.command()
+def version():
+    """click wrapper for version/data information, so it could be called vai rolypoly version (on top of rolypoly --version)"""
+    print(flat_dict(get_version_info(),sep="\n"))
 
 if __name__ == "__main__":
     rolypoly()
