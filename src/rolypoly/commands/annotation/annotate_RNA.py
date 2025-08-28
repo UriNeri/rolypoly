@@ -936,7 +936,7 @@ def process_ribozymes_data(config, ribozymes_file):
         config.logger.debug(f"Raw ribozymes data from {ribozymes_file}: {raw_data}")
 
         # Normalize to minimal schema, keeping important ribozyme-specific columns
-        from rolypoly.utils.bio.gffs import create_minimal_annotation_schema
+        from rolypoly.utils.bio.polars_fastx import create_minimal_annotation_schema
         
         data = create_minimal_annotation_schema(
             raw_data, 
@@ -955,7 +955,7 @@ def process_ires_iresfinder(ires_file):
 
     if ires_file.is_file():
         raw_data = pl.read_csv(ires_file, separator="\t")
-        from rolypoly.utils.bio.gffs import create_minimal_annotation_schema
+        from rolypoly.utils.bio.polars_fastx import create_minimal_annotation_schema
         
         # Rename columns for normalization
         if "Sequence Name" in raw_data.columns:
@@ -980,7 +980,7 @@ def process_ires_irespy(ires_file):
 
     if ires_file.is_file():
         raw_data = pl.read_csv(ires_file, separator="\t")
-        from rolypoly.utils.bio.gffs import create_minimal_annotation_schema
+        from rolypoly.utils.bio.polars_fastx import create_minimal_annotation_schema
         
         # Rename columns for normalization
         if "Sequence Name" in raw_data.columns:
@@ -1069,7 +1069,7 @@ def process_trnas_data_tRNAscan_SE(trnas_file):
             
             if records:
                 raw_data = pl.DataFrame(records)
-                from rolypoly.utils.bio.gffs import create_minimal_annotation_schema
+                from rolypoly.utils.bio.polars_fastx import create_minimal_annotation_schema
                 
                 return create_minimal_annotation_schema(
                     raw_data,
@@ -1267,7 +1267,7 @@ def combine_results(config):
 
         # Combine all results using unified schema
         if all_results:
-            from rolypoly.utils.bio.gffs import ensure_unified_schema
+            from rolypoly.utils.bio.polars_fastx import ensure_unified_schema
             
             # Ensure all dataframes have the same schema
             unified_dataframes = ensure_unified_schema(all_results)

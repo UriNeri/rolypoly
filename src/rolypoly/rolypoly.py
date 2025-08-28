@@ -34,7 +34,7 @@ os.environ["citation_file"] = str(
             "commands": {
                 "get-data": "rolypoly.commands.misc.get_external_data.get_data",
                 "version": "rolypoly.rolypoly.version",
-                # "build-data": "rolypoly.commands.misc.build_data.build_data",
+                # "build-data": "rolypoly.commands.misc.build_data.build_data", # this is for me.
             },
         },
         "reads": {
@@ -42,7 +42,7 @@ os.environ["citation_file"] = str(
             "commands": {
                 "filter-reads": "rolypoly.commands.reads.filter_reads.filter_reads",
                 "shrink-reads": "rolypoly.commands.reads.shrink_reads.shrink_reads",
-                "mask-dna": "rolypoly.utils.bio.masking.mask_dna",  # Keeping this as is since it's in utils
+                "mask-dna": "rolypoly.commands.reads.mask_dna.mask_dna", 
             },
         },
         "annotation": {
@@ -69,7 +69,8 @@ os.environ["citation_file"] = str(
                 "end2end": "rolypoly.commands.misc.end_2_end.run_pipeline",
                 # "add-command": "hidden:rolypoly.commands.misc.add_command.add_command",
                 "fetch-sra": "rolypoly.commands.misc.fetch_sra_fastq.fetch_sra",  # Not  a click command (yet?)
-                "sequence-stats": "rolypoly.utils.bio.sequences.sequence_stats",
+                "fastx-stats": "rolypoly.commands.misc.fastx_stats.fastx_stats",
+                "rename-seqs": "rolypoly.commands.misc.rename_seqs.rename_seqs",
                 # "visualize": "rolypoly.commands.virotype.visualize.visualize",
                 "quick-taxonomy": "rolypoly.commands.misc.quick_taxonomy.quick_taxonomy",
                 # "test": "tests.test_cli_commands.test",
@@ -102,7 +103,10 @@ def rolypoly():
 
 @rolypoly.command()
 def version():
-    """click wrapper for version/data information, so it could be called vai rolypoly version (on top of rolypoly --version)"""
+    """
+    Print code version (commit or semvar) and data (date) information.
+    """
+    #click wrapper for version/data information, so it could be called vai rolypoly version (on top of rolypoly --version)
     print(flat_dict(get_version_info(),sep="\n"))
 
 if __name__ == "__main__":

@@ -213,7 +213,7 @@ def marker_search(
 
     from rolypoly.utils.logging.citation_reminder import remind_citations
     from rolypoly.utils.bio.sequences import guess_fasta_alpha
-    from rolypoly.utils.bio.pyhmm_utils import (
+    from rolypoly.utils.bio.alignments import (
         hmm_from_msa,
         hmmdb_from_directory,
         search_hmmdb,
@@ -288,7 +288,7 @@ def marker_search(
             if custom_database.endswith(".hmm"):
                 database_paths = {"Custom": custom_database}
             elif custom_database.endswith((".faa", ".fasta", ".afa")):
-                from rolypoly.utils.bio.pyhmm_utils import hmm_from_msa
+                from rolypoly.utils.bio.alignments import hmm_from_msa
 
                 database_paths = {
                     "Custom": hmm_from_msa(
@@ -312,7 +312,7 @@ def marker_search(
                                 f.write(hmm_file_obj.read())
                     database_paths = {"Custom": str(Path(custom_database) / "concatenated.hmm")}
                 elif db_info["type"] == "msa_directory":
-                    from rolypoly.utils.bio.pyhmm_utils import hmmdb_from_directory
+                    from rolypoly.utils.bio.alignments import hmmdb_from_directory
 
                     hmmdb_from_directory(
                         msa_dir=custom_database,

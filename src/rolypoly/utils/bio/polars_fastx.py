@@ -2,7 +2,7 @@
 polars plugins and functions for GFF3 and FASTA/FASTQ files.
 The schema utilities are msotly for annotation data.
 TODO: check the coordinate system for GFF3 is 1-based (if not then shift all coordinates by 1)
-TODO: add write functions for GFF3 and FASTA/FASTQ files.
+TODO: Add write functions for GFF3 and FASTA/FASTQ files (partially done see frame_to_fastx).
 
 """ 
 
@@ -203,6 +203,10 @@ def fasta_stats(
         max_length: Maximum sequence length to consider
         fields: Comma-separated list of fields to include (available: header,sequence,length,gc_content,n_count,hash,)
         circular: indicate if the sequences are circular (in which case, they will be rotated to their minimal lexicographical option, before the other stuff).
+    Returns:
+        pl.DataFrame: DataFrame with sequence statistics
+    Note:
+        - No support yet for reverse complement (not in circular or hash). TODO: <--
     """
     # import sys
     # output_path = Path(output_file) if output_file else sys.stdout

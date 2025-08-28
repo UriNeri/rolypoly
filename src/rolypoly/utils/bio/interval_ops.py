@@ -1,7 +1,6 @@
 import warnings
 
 import polars as pl
-import rich_click as click
 
 warnings.filterwarnings(
     "ignore",
@@ -16,134 +15,6 @@ from iranges import IRanges
 from rolypoly.utils.various import vstack_easy
 
 # TODO: make this more robust and less dependent on external libraries. Candidate destination library is polars-bio.
-
-@click.command(name="resolve_overlaps")
-@click.option(
-    "-i", "--input", required=True, help="Input hit table file or polars dataframe"
-)
-@click.option(
-    "-o",
-    "--output",
-    default=None,
-    help="Output consolidated hit table file (if no output file is specified, the hits will be returned as a polars dataframe)",
-)
-@click.option(
-    "-rc",
-    "--rank-columns",
-    type=str,
-    default="-score",
-    help="Column to use for ranking hits. Can be multiple columns separated by commas, each prefixed with - or + to sort in descending or ascending order, respectively. e.g. '-score,+pident'",
-)
-@click.option(
-    "-cs",
-    "--column-specs",
-    type=str,
-    default="qseqid,sseqid",
-    help="Comma separated list of the field names from the input to use for the 'query_id,target_id'",
-)
-@click.option(
-    "-n",
-    "--min-overlap-positions",
-    default=3,
-    type=int,
-    help="Minimum number of positions two hits must share to be considered overlapping.",
-)
-@click.option(
-    "-opq",
-    "--one-per-query",
-    default=False,
-    is_flag=True,
-    help="Keep one hit per query",
-)
-@click.option(
-    "-opr",
-    "--one-per-range",
-    default=False,
-    is_flag=True,
-    help="Keep one hit per range (start-end)",
-)
-@click.option(
-    "-d",
-    "-drop",
-    "--drop-contained",
-    default=False,
-    is_flag=True,
-    help="Drop hits that are contained within other hits",
-)
-@click.option(
-    "-s",
-    "--split",
-    default=False,
-    is_flag=True,
-    help="Split every pair of overlapping hit",
-)
-@click.option(
-    "-m",
-    "--merge",
-    default=False,
-    is_flag=True,
-    help="Merge overlapping domains/profiles hits into one - not recommended unless the profiles are from the same functional family",
-)
-def consolidate_hits_rich(
-    input: Union[str, pl.DataFrame],
-    output: Optional[str],
-    rank_columns: str,
-    one_per_query: bool,
-    one_per_range: bool,
-    min_overlap_positions: int,
-    merge: bool,
-    column_specs: str,
-    drop_contained: bool,
-    split: bool,
-):
-    """Resolve overlaps in a hit table using various strategies.
-
-    This command provides multiple strategies for resolving overlapping hits in
-    a tabular hit file, such as keeping one hit per query, merging overlaps,
-    or splitting overlapping regions.
-
-    Args:
-        input (Union[str, pl.DataFrame]): Input hit table file or Polars DataFrame
-        output (str, optional): Output file path. If None, returns DataFrame.
-        rank_columns (str): Columns for ranking hits with sort direction prefix
-        one_per_query (bool): Keep only the best hit per query
-        one_per_range (bool): Keep only the best hit per range
-        min_overlap_positions (int): Minimum overlap to consider
-        merge (bool): Merge overlapping hits
-        column_specs (str): Column names for query and target IDs
-        drop_contained (bool): Remove hits contained within others
-        split (bool): Split overlapping hits
-
-    Returns:
-        Optional[pl.DataFrame]: Processed DataFrame if no output file specified
-
-    Example:
-             consolidate_hits_rich(
-                 "hits.tsv",
-                 "resolved.tsv",
-                 rank_columns="-score,+evalue",
-                 one_per_query=True
-             )
-    """
-    tmpdf = consolidate_hits(
-        input=input,
-        # output=output,
-        rank_columns=rank_columns,
-        one_per_query=one_per_query,
-        one_per_range=one_per_range,
-        min_overlap_positions=min_overlap_positions,
-        merge=merge,
-        column_specs=column_specs,
-        drop_contained=drop_contained,
-        split=split,
-    )
-    if output is not None:
-        tmpdf.write_csv(output, separator="\t")
-    else:
-        return tmpdf
-
-# TODO: add tests to src/../tests/
-
 
 def consolidate_hits(
     input: Union[str, pl.DataFrame],
@@ -628,6 +499,100 @@ def get_column_names(df: pl.DataFrame) -> Tuple[str, str]:
             raise ValueError(f"Could not find a column for {col_type}")
 
     return tuple(result.values())
+
+
+
+def mask_sequence_mp(seq: str, start: int, end: int, is_reverse: bool) -> str:
+    """Mask a portion of a mappy (minimap2) aligned sequence with N's.
+
+    Args:
+        seq (str): Input sequence to mask
+        start (int): Start position of the region to mask (0-based)
+        end (int): End position of the region to mask (exclusive)
+        is_reverse (bool): Whether the sequence is reverse complemented
+
+    Returns:
+        str: Sequence with the specified region masked with N's
+
+    Note:
+        Handles reverse complement if needed by using mappy's revcomp function.
+    """
+    import mappy as mp
+    is_reverse = is_reverse == -1
+    if is_reverse:
+        seq = str(mp.revcomp(seq))
+    masked_seq = seq[:start] + "N" * (end - start) + seq[end:]
+    return str(mp.revcomp(masked_seq)) if is_reverse else masked_seq
+
+
+def mask_nuc_range(input_fasta: str, input_table: str, output_fasta: str) -> None:
+    """Mask nucleotide sequences in a FASTA file based on provided range table.
+
+    Args:
+        input_fasta (str): Path to the input FASTA file
+        input_table (str): Path to the table file with the ranges to mask
+            (tab-delimited with columns: seq_id, start, stop, strand)
+        output_fasta (str): Path to the output FASTA file
+
+    Note:
+        The ranges in the table should be 1-based coordinates.
+        Handles both forward and reverse strand masking.
+    """
+    from .sequences import revcomp
+    
+    # Read ranges
+    ranges = {}
+    with open(input_table, "r") as f:
+        for line in f:
+            seq_id, start, stop, strand = line.strip().split("\t")
+            if seq_id not in ranges:
+                ranges[seq_id] = []
+            ranges[seq_id].append((int(start), int(stop), strand))
+
+    # Process FASTA file
+    with open(input_fasta, "r") as in_f, open(output_fasta, "w") as out_f:
+        current_id = ""
+        current_seq = ""
+        for line in in_f:
+            if line.startswith(">"):
+                if current_id:
+                    if current_id in ranges:
+                        for start, stop, strand in ranges[current_id]:
+                            if start > stop:
+                                start, stop = stop, start
+                            if strand == "-":
+                                current_seq = revcomp(current_seq)
+                            current_seq = (
+                                current_seq[: start - 1]
+                                + "N" * (stop - start + 1)
+                                + current_seq[stop:]
+                            )
+                            if strand == "-":
+                                current_seq = revcomp(current_seq)
+                    out_f.write(f">{current_id}\n{current_seq}\n")
+                current_id = line[1:].strip()
+                current_seq = ""
+            else:
+                current_seq += line.strip()
+
+        if current_id:
+            if current_id in ranges:
+                for start, stop, strand in ranges[current_id]:
+                    if start > stop:
+                        start, stop = stop, start
+                    if strand == "-":
+                        current_seq = revcomp(current_seq)
+                    current_seq = (
+                        current_seq[: start - 1]
+                        + "N" * (stop - start + 1)
+                        + current_seq[stop:]
+                    )
+                    if strand == "-":
+                        current_seq = revcomp(current_seq)
+            out_f.write(f">{current_id}\n{current_seq}\n")
+
+
+
 
 def main(**kwargs):
     pass
