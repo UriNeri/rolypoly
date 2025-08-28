@@ -12,7 +12,7 @@ from rich_click import command, option
 from rolypoly.utils.logging.citation_reminder import remind_citations
 
 from rolypoly.utils.logging.loggit import setup_logging, get_version_info
-from rolypoly.utils.bio.pyhmm_utils import hmmdb_from_directory, hmm_from_msa
+from rolypoly.utils.bio.alignments import hmmdb_from_directory, hmm_from_msa
 
 from rolypoly.utils.various import (
     extract,
@@ -44,8 +44,6 @@ def build_data(data_dir, threads, log_file):
         3. Download and prepare rRNA databases SILVA_138.1_SSURef_NR99_tax_silva.fasta and SILVA_138.1_LSURef_NR99_tax_silva.fasta
         4. Download Rfam data.
     """
-
-
 
     logger = setup_logging(log_file)
     logger.info(f"Starting data preparation to : {data_dir}")

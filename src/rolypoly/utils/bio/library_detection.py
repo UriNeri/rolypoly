@@ -196,6 +196,7 @@ def create_sample_file(
             # second pass - R2
             # headers_2 = [str(head).removesuffix("1") + "2" for head in headers]
             headers_2 = {str(h).removesuffix("1") + "2" for h in headers}
+            # ^ tbh I think just using the same lines as R1 would have been enough, as the expection is that the order of reads in R1 and R2 is the same..
 
             f_in = gzip.open(r2_path, 'rt', encoding='utf-8', errors='ignore') if is_gz else open(r2_path, 'r', encoding='utf-8', errors='ignore')
             f_out = gzip.open(r2_output_file, 'wt', encoding='utf-8') if is_gz_output else open(r2_output_file, 'w', encoding='utf-8')
@@ -229,7 +230,7 @@ def create_sample_file(
 
             
             if(headers_2.__len__()>0):
-                logger.error(f"Error creating sample file from {file_path}: {e}, not all headers were found in R2")
+                logger.warning("WHOW! not all headers were found in R2 - THIS IS NOT A GOOD SIGN")
                 # close the input file (handled automatically if using a context manager)
         except Exception as e:
             logger.error(f"Error creating sample file from {file_path}: {e}")
