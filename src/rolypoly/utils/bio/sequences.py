@@ -7,13 +7,10 @@ from typing import List, Union, Dict, Tuple, Optional
 
 import polars as pl
 from needletail import parse_fastx_file
-# from rolypoly.utils.bio.polars_fastx import * # I think this brings in the i/o plugins, TODO: check if can be done so that I don't need to type: ignore all the time
 from rolypoly.utils.various import  find_files_by_extension
 from pathlib import Path
 import logging
 
-# show all columns
-# pl.Config().set_tbl_cols(-1)
 
 def read_fasta_needletail(fasta_file: str) -> Tuple[list[str], list[str]]:
     """Read sequences from a FASTA/FASTQ file using needletail"""
@@ -310,10 +307,9 @@ def process_sequences(df: pl.DataFrame) -> pl.DataFrame:
         [
             pl.col("sequence").str.len_chars().alias("length"),
             pl.col("sequence").str.count_matches("G|C").alias("gc_content") / pl.col("sequence").str.len_chars().alias("length"),
-            pl.col("sequence").str.count_matches("N").alias("n_count"),
+            pl.col("sequence").str.count_matches("N|n").alias("n_count"),
         ]
     )
-
     return df
 
 def rename_sequences(

@@ -612,7 +612,7 @@ def filter_known_dna(
     """Filter known DNA sequences."""
     from bbmapy import bbduk
 
-    from rolypoly.utils.bio.masking import mask_dna
+    from rolypoly.commands.reads.mask_dna import mask_dna   
 
     ref_file = str(config.known_dna)
     if "mask_known_dna" not in config.skip_steps:
@@ -689,7 +689,7 @@ def decontaminate_rrna(
 
 def fetch_and_mask_genomes(config: ReadFilterConfig) -> Union[str, Path]:
     """Fetch and mask genomes."""
-    from rolypoly.utils.bio.masking import mask_dna
+    from rolypoly.commands.reads.mask_dna import mask_dna
     from rolypoly.utils.bio.genome_fetch import fetch_genomes
 
     # Create a dedicated subfolder for fetched genomes using absolute paths

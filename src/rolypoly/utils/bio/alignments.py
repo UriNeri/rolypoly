@@ -470,6 +470,7 @@ def hmmdb_from_directory(
                 if info.height == 1:
                     for col_key, col_val in cols_map.items():
                         if col_val is not None:
+                            # print(col_val)
                             msa.__setattr__(
                                 col_val,
                                 info[col_key].item().encode("utf-8")

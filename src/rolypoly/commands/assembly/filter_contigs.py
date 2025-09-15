@@ -232,7 +232,7 @@ def filter_contigs_nuc(config: FilterContigsConfig):
     import pyfastx
     from rich_click import Context
 
-    from rolypoly.utils.bio.masking import mask_dna
+    from rolypoly.utils.bio.interval_ops import mask_dna
     from rolypoly.utils.bio.library_detection import ensure_faidx
     from rolypoly.utils.various import apply_filter, ensure_memory
 
