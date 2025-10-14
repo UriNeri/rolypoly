@@ -1014,6 +1014,7 @@ def merge_reads(
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
+            simd=True, # assumes simd support, avx256 and java >=17 are required.
             outadapter=config.temp_dir / f"out_adapter_merged_{config.file_name}.txt",
         )
         output_tracker.add_file(
