@@ -57,22 +57,6 @@ class SequenceExpr:
 
         return self._expr.map_elements(_hash, return_dtype=pl.String)
 
-    def calculate_kmer_frequencies(self, k: int = 3) -> pl.Expr:
-        """Calculate k-mer frequencies in the sequence"""
-        def _calc_kmers(seq: str, k: int) -> dict:
-            if not seq or len(seq) < k:
-                return {}
-            kmers = defaultdict(int)
-            for i in range(len(seq) - k + 1):
-                kmer = seq[i : i + k].upper()
-                if "N" not in kmer:
-                    kmers[kmer] += 1
-            total = sum(kmers.values())
-            return {k: v / total for k, v in kmers.items()} if total > 0 else {}
-
-        return self._expr.map_elements(
-            lambda x: _calc_kmers(x, k), return_dtype=pl.Struct
-        )
 
 
 @pl.api.register_lazyframe_namespace("from_fastx")
@@ -183,6 +167,48 @@ def from_gff_eager(gff_file: Union[str, Path],unnest_attributes: bool = False) -
         )
     return df
 
+
+def count_kmers_df(df: pl.DataFrame, seq_col: str = "seq", id_col: str = "seqid", k: int = 3, relative: bool = False) -> pl.DataFrame:
+    """Calculate k-mer counts for all sequences in a DataFrame"""
+    # Split sequences into characters
+    split_chars_expr = pl.col(seq_col).str.split('').alias('chars')
+    
+    # Create k-mers by shifting and concatenating
+    create_kmers_expr = pl.concat_str(
+        [pl.col('chars').shift(-i).over(id_col) for i in range(k)]
+    ).alias('substrings')
+    
+    # Filter for complete k-mers only
+    filter_complete_kmers_expr = pl.col('substrings').str.len_chars() == k
+    
+    # Aggregate expressions
+    agg_exprs = [
+        pl.first(seq_col),  # Keep the original sequence
+        pl.col('substrings').value_counts(normalize=relative).alias('kmer_counts'),
+        pl.exclude(seq_col, 'chars', 'substrings').first()  # Keep all other original columns
+    ]
+    
+    return (
+        df
+        .with_columns(split_chars_expr)
+        .explode('chars')
+        .with_columns(create_kmers_expr)
+        .filter(filter_complete_kmers_expr)
+        .group_by(id_col, maintain_order=True)
+        .agg(*agg_exprs)
+    )
+
+def filter_repetitive_kmers(df: pl.DataFrame, seq_col: str = "seq", id_col: str = "header", k: int = 3, max_count: int = 10, relative: bool = False) -> pl.DataFrame:
+    """Filter sequences that have any k-mer appearing more than max_count times"""
+    # First get k-mer counts
+    df_with_kmers = count_kmers_df(df, seq_col, k, relative=False)
+    
+    # Filter for sequences without highly repetitive k-mers
+    filter_repetitive_expr = ~pl.col('kmer_counts').list.eval(
+        pl.element().struct.field('count') > max_count
+    ).list.any()
+    
+    return df_with_kmers.filter(filter_repetitive_expr)
 
 #  sequence statistics calculator with filtering 
 def fasta_stats(
