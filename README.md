@@ -2,8 +2,15 @@
 
 # RolyPoly
 
-RolyPoly is an RNA virus analysis toolkit, including a variety of commands and wrappers for external tools (from raw read processing to genome annotation). It also includes an "end-2-end" command that employs an entire pipeline.   
-For more detailed information, please refer to the [docs](https://pages.jgi.doe.gov/rolypoly/docs/).
+RolyPoly is an RNA virus analysis toolkit, meant to be a "swiss-army knife" for RNA virus discovery and characterization by including a variety of commands, wrappers, parsers, automations, and some "quality of life" features for any many of a virus investigation process (from raw read processing to genome annotation). While it includes an "end-2-end" command that employs an entire pipeline, the main goals of rolypoly are:
+- Help non-computational researchers take a deep dive into their data without compromising on using tools that are non-techie friendly.  
+- Help (software) developers of virus analysis pipeline "plug" holes missing from their framework, by using specific RolyPoly commands to add features to their existing code base.
+
+## WIP - NOTE
+RolyPoly is an open, still in progress project - I aim to summrise the main functionality into a manuscript by the end of 2025, or early 2026. Pull requests and contributions are welcome and will be considered (see)
+
+## Docs
+For more detailed information, please refer to the [docs](https://pages.jgi.doe.gov/rolypoly/docs/). While it isn't updated often, it should still be helpful. Most commands support a `--help` flag and that tends to be the most up date.
 
 ## Installation
 We hope to have rolypoly available from bioconda in the near future.  
@@ -28,7 +35,7 @@ To install rolypoly in development mode, use:
 ```bash
 bash quick_setup.sh /path/to/conda/env /path/to/install/rolypoly_code /path/to/store/databases /path/to/logfile TRUE
 ```
-
+Or use [pixi](https://pixi.sh) for environment mangement (*recomended for rolling development*)
 
 ## Usage
 RolyPoly is a command-line tool with subcommands for different stages of the RNA virus identification pipeline. For a detailed help (in terminal), use `rolypoly help`. For more specific help, see the [docs](./https://pages.jgi.doe.gov/rolypoly/docs/commands/index.md).
@@ -48,16 +55,18 @@ Active development. Currently implemented features:
 - ✅ Prepare external data [(`prepare-external-data`)](https://pages.jgi.doe.gov/rolypoly/docs/commands/prepare_external_data)  
 
 Under development:
-- 🚧 Protein annotation (`annotate-protein`)
-- 🚧 Host prediction (`host-predict`)
+- 🚧 Protein annotation (`annotate-protein`) (mostly done, but need to check other DBs or tools - Currently no structual prediction support)
+- 🚧 Host prediction (`host-predict`) (current plan: point to other tools)
 - 🚧 Genome binning and refinement (`TBD`)
 - 🚧 Virus taxonomic classification (`TBD`)
 - 🚧 Virus feature prediction (+/-ssRNA/dsRNA, circular/linear, mono/poly-segmented, capsid type, etc.) (`TBD`)
 - 🚧 Cross-sample analysis (`TBD`)
 
-For more details about the implementation status, roadmap, additional commands, and more, see the [workflow documentation](https://pages.jgi.doe.gov/rolypoly/docs/workflow).
+For more details about the implementation status and roadmap please contact us directly or open an issue.
 
 ## Dependencies
+Not all 3rd party software is used by all the different commands. RolyPoly includes a "citation reminder" that will try to list all the external software used by a command. The "reminded citations" are pretty printed to console (stdout) but are also written to a logfile. The bibtex file rolypoly uses for this is included in the codebase.
+
 <details><summary>Click to show dependencies</summary>  
 
 Non-Python  
@@ -104,7 +113,7 @@ Non-Python
 </details>
 
 ### Databases used by rolypoly  
-RolyPoly will try to remind you to cite these (along with tools) based on the commands you run. For more details, see the [citation_reminder.py](./src/rolypoly/utils/citation_reminder.py) script.
+RolyPoly will try to remind you to cite these too based on the commands you run. For more details, see the [citation_reminder.py](./src/rolypoly/utils/logging/citation_reminder.py) script and [all_used_tools_dbs_citations](./src/rolypoly/utils/logging/all_used_tools_dbs_citations.json)
 
 <details><summary>Click to show databases</summary>
 
@@ -121,29 +130,30 @@ RolyPoly will try to remind you to cite these (along with tools) based on the co
 </details>
 
 ## Motivation
-Current workflows for RNA virus detection are functional but could be improved, especially by utilizing raw reads instead of pre-existing, general-purpose made, assemblies. Here we proceed with more specific processes tailored for RNA viruses.
-
-Several similar software exist, but have different uses, for example:  
-- hecatomb ([github.com/shandley/hecatomb](https://github.com/shandley/hecatomb)): uses mmseqs for homology detection and thus is less sensitive than the additional HMMer based identification herein.
-- AliMarko ([biorxiv.org/content/10.1101/2024.07.19.603887](https://biorxiv.org/content/10.1101/2024.07.19.603887)): Utilizes a single-sample assembly only approach, not supporting co/cross assembly of multiple samples. Additionally, AliMarko uses a small, partially outdated (IMO) HMM profile set.
+There are many good virus analysis software out there*. Many of them are custom made for specific virus groups, some are generalists, but most of them require complete control over the analysis process (so one or two point of entry for data). Apart from the input, these pipelines vary in their implementation (laguange, workflow magnement system (snakemake, nextflow...), dependecies), methodologies (tool choice for similar step like assembler), goals (e.g. specific pathogen analysis vs whole  virome analysis). These are other differences effect the design process and the tooling choices (such as selecting a fast nucleic based sequence search method limited to high identity, over a slow but more senstive profile or structure (amino) based search method). This has created some "lock in" (IMO), and I have found myself asked by people "what do you recomend for xyz" or "which pipeline should I use". Most people have limited time to invest in custom analysis pipeline design and so end up opting for an existing, off-the-shelve option, potentially compromising or having to align their goals with what the given software offers (if they they are already aligned - great!). 
+* Checkout [awesome-rna-virus-tools](https://github.com/rdrp-summit/awesome-rna-virus-tools) for an awesome list of RNA virus (and related) software.
 
 ### Reporting Issues and Contribution
 RolyPoly is hosted on GitHub (issue tracking and development) and JGI's gitlab (Documentation, releases and archiving).  
 Please report bugs you find in the [Issues](https://github.com/UriNeri/rolypoly/issues) page.  
 Suggestions and Contributions are welcome - either fork the repo and open a pull request or contact us directly.
 
-## Authors
+## Authors (partial list, TBD update)
 <details><summary>Click to show authors</summary>
 
 - Uri Neri
 - Brian Bushnell
 - Simon Roux
-- Antônio Pedro Camargo
+- Antônio Pedro Castello Branco Rocha Camargo
 - Andrei Stecca Steindorff
 - Clement Coclet
 - David Parker
 - Dimitris Karapliafis
 </details>
+
+## Related projects
+If you are interested in profile based marker searches, I recomend checking out [RdRp-CATCH](link), and if you are looking to expediate NCBI submission (among other tasks), check outr [suv-tk](link).
+
 
 ## Acknowledgments
 Thanks to the DOE Joint Genome Institute for infrastructure support. Special thanks to all contributors who have offered insights and improvements.

@@ -168,8 +168,8 @@ def fetch_genomes(
         sp.run(["taxonkit", "name2taxid", f"--data-dir {datadir}/taxdump"], input="\n".join(taxons).encode(), stdout=stdout)
         sp.run(["taxonkit", "name2taxid", f"--data-dir {datadir}/taxdump"], input="\n".join(taxons).encode(), stdout=stdout,shell=True)
 
-from sys import stdout
-    # Use datasets to download genomes
+    from sys import stdout
+    # Use datasets to download genomes``
     with open("tmp_gbs_50m_taxids.lst", "r") as f:
         taxids = [
             line.split(sep="\t")[1].replace(" ", "_").strip()

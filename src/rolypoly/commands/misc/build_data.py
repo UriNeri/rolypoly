@@ -57,7 +57,7 @@ def build_data(data_dir, threads, log_file):
     adapter_dir = os.path.join(contam_dir, "adapters")
     os.makedirs(adapter_dir, exist_ok=True)
 
-    masking_dir = os.path.join(contam_dir, "masking")﻿
+    masking_dir = os.path.join(contam_dir, "masking")
     os.makedirs(masking_dir, exist_ok=True)
 
     taxonomy_dir = os.path.join(data_dir, "taxdump")
@@ -600,10 +600,10 @@ def prepare_vfam(data_dir, logger: logging.Logger):
         )
     
     # Build the mmseqs database
-    mmseqs_command = f"mmseqs createdb tmp_nochimeras.fasta mmdb/RVMT_mmseqs_db2 --dbtype 2"
-        "mmseqs createdb tmp_nochimeras.fasta mmdb/RVMT_mmseqs_db2 --dbtype 2"
-    )
-    subprocess.run(mmseqs_command, shell=True)
+    mmseqs_commands = [f"mmseqs createdb tmp_nochimeras.fasta mmdb/RVMT_mmseqs_db2 --dbtype 2",
+        f"mmseqs createdb tmp_nochimeras.fasta mmdb/RVMT_mmseqs_db2 --dbtype 2"    ]
+    subprocess.run(mmseqs_commands, shell=True)
+
 
 
     # remove the vfam msa directory
