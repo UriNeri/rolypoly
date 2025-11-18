@@ -29,7 +29,7 @@ datadir = Path(os.environ.get("ROLYPOLY_DATA", "")) # THIS IS A HACK, I need to 
 @click.option(
     "-r",
     "--reference",
-    default=datadir / "masking/RVMT_NCBI_Ribo_Japan_for_masking.fasta",
+    default=datadir / "masking/masking/RVMT_NCBI_Ribo_Japan_for_masking.fasta",
     help="Provide an input fasta file to be used for masking, instead of the pre-generated collection of RNA viral sequences",
 )
 def mask_dna(

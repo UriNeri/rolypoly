@@ -31,6 +31,7 @@ class ProteinAnnotationConfig(BaseConfig):
         genetic_code: int = 11,
         gene_prediction_tool: str = "ORFfinder",
         evalue: float = 1e-2,
+        db_create_mode: str = "auto",
         **kwargs,
     ):
         # Extract BaseConfig parameters
@@ -50,6 +51,7 @@ class ProteinAnnotationConfig(BaseConfig):
         self.genetic_code = genetic_code
         self.gene_prediction_tool = gene_prediction_tool
         self.evalue = evalue
+        self.db_create_mode = db_create_mode
         self.step_params = {
             "ORFfinder": {"minimum_length": min_orf_length, "start_codon": 1, "strand": "both", "outfmt": 0, "ignore_nested": False},
             "pyrodigal": {"minimum_length": min_orf_length},
@@ -171,6 +173,12 @@ console = Console(width=150)
     default=1e-1,
     help="E-value for search result filtering. Note, this is for inital filteringg only, you are encouraged to filter the results further using e.g. profile coverage and scores.",
 )
+@click.option(
+    "--db-create-mode",
+    default="auto",
+    type=click.Choice(["auto", "mmseqs", "hmm"], case_sensitive=False),
+    help="How to handle custom database directories: auto=guess, mmseqs=build mmseqs profile DB, hmm=build concatenated HMM",
+)
 def annotate_prot(
     input,
     output_dir,
@@ -185,6 +193,8 @@ def annotate_prot(
     min_orf_length,     
     genetic_code, 
     evalue
+    ,
+    db_create_mode
 ):
     """Identify coding sequences (ORFs) from fasta, and predicts their translated seqs putative function via homology search. \n
     Currently supported tools and databases: \n
@@ -214,6 +224,7 @@ def annotate_prot(
         gene_prediction_tool=gene_prediction_tool,
         genetic_code=genetic_code,
         evalue=evalue,
+        db_create_mode=db_create_mode,
     )
 
     # config.logger.info(f"Using {config.search_tool} for domain search")
@@ -379,6 +390,48 @@ def get_database_paths(config, tool_name):
         else:
             # For other tools, just use the path as is
             database_paths = {"Custom": custom_database}
+    
+    # Additional handling: if the user requested mmseqs2 and provided a directory
+    # with MSAs, optionally build an mmseqs profile DB from that directory.
+    if tool_name == "mmseqs2":
+        # If the config indicates a directory, and db_create_mode requests mmseqs
+        try:
+            db_create_mode = config.db_create_mode
+        except Exception:
+            db_create_mode = "auto"
+        for key, path in list(database_paths.items()):
+            p = Path(str(path))
+            if p.is_dir():
+                # Decide whether to build mmseqs profile DB
+                build_mmseqs = False
+                if db_create_mode == "mmseqs":
+                    build_mmseqs = True
+                elif db_create_mode == "hmm":
+                    build_mmseqs = False
+                else:  # auto: if dir contains MSAs (.faa/.msa), build mmseqs profiles
+                    msa_files = list(p.glob("*.faa")) + list(p.glob("*.msa")) + list(p.glob("*.afa"))
+                    if len(msa_files) > 0:
+                        build_mmseqs = True
+
+                if build_mmseqs:
+                    from rolypoly.utils.bio.alignments import mmseqs_profile_db_from_directory
+                    mm_out = Path(os.environ.get("ROLYPOLY_DATA", ".")) / "mmseqs2" / p.name
+                    mm_out_parent = mm_out.parent
+                    mm_out_parent.mkdir(parents=True, exist_ok=True)
+                    # default info table column names used by geNomad outputs
+                    name_col = "MARKER"
+                    accs_col = "ANNOTATION_ACCESSIONS"
+                    desc_col = "ANNOTATION_DESCRIPTION"
+                    mmseqs_profile_db_from_directory(
+                        msa_dir=str(p),
+                        output=str(mm_out),
+                        msa_pattern="*.faa",
+                        info_table=None,
+                        name_col=name_col,
+                        accs_col=accs_col,
+                        desc_col=desc_col,
+                    )
+                    database_paths[key] = str(mm_out)
     else:
         requested_dbs = config.domain_db.split(",")
         database_paths = {}
