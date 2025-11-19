@@ -1,11 +1,12 @@
 import os
+import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 from rich.console import Console
 import polars as pl
 
-from .logging.loggit import get_logger
+from rolypoly.utils.logging.loggit import get_logger
 from logging import Logger
 console = Console()
 
@@ -33,9 +34,12 @@ def extract(
         # First handle compression (if any)
         decompressed_path = archive_path
         is_compressed = False
+        # Check for .tar.gz, .tar.bz2, .tar.xz files specifically
+        is_tarred = (archive_path.suffix in [".tar", ".tgz"] or 
+                    archive_path.name.endswith(('.tar.gz', '.tar.bz2', '.tar.xz')))
 
         # Check for compression type
-        if archive_path.suffix in [".bz2", ".gz", ".xz", ".Z"]:
+        if archive_path.suffix in [".bz2", ".gz", ".xz", ".Z", ".tgz"]:
             is_compressed = True
             compression_type = archive_path.suffix[1:]  # Remove the dot
             decompressed_path = extract_to / archive_path.stem
@@ -47,7 +51,7 @@ def extract(
                     check=True,
                 )
             else:
-                open_func = {"bz2": bz2.open, "gz": gzip.open, "xz": lzma.open}[
+                open_func = {"bz2": bz2.open, "gz": gzip.open, "xz": lzma.open, "tgz": gzip.open }[
                     compression_type
                 ]
 
@@ -59,9 +63,7 @@ def extract(
 
         # Then handle archive format (if any)
         # final_path = decompressed_path
-        if decompressed_path.suffix == ".tar" or (
-            not is_compressed and archive_path.suffix == ".tar"
-        ):
+        if is_tarred:
             with tarfile.open(decompressed_path, "r:*") as tar:
                 tar.extractall(path=extract_to)
             if is_compressed:
@@ -83,20 +85,222 @@ def extract(
 
 
 def fetch_and_extract(
-    url: str, fetched_to: str = "downloaded_file", extract_to: Optional[str] = None
-) -> None:
-    """Fetch a file from a URL and optionally extract it"""
+    url: str, 
+    fetched_to: Optional[str] = None, 
+    extract_to: Optional[Union[str, Path]] = None,
+    expected_file: Optional[str] = None,
+    logger: Optional[Logger] = None
+) -> Path:
+    """Fetch a file from a URL and optionally extract it with robust file handling.
+    
+    Args:
+        url: URL to download from
+        fetched_to: Local path to save downloaded file. If None, uses basename of URL
+        extract_to: Directory to extract to. If None, uses parent of fetched_to
+        expected_file: Expected filename after extraction (helps locate extracted files)
+        logger: Logger for messages (fallback to console if not provided)
+        
+    Returns:
+        Path to the final extracted file or directory
+        
+    Note:
+        This function handles various archive formats by detecting file signatures
+        and ensures extracted files are placed in predictable locations.
+    """
     import shutil
-
     import requests
+    from urllib.parse import urlparse
+    
+    if logger is None:
+        logger = get_logger("fetch_and_extract")
+    
+    # Determine download path
+    if fetched_to is None:
+        parsed_url = urlparse(url)
+        fetched_to = Path(parsed_url.path).name
+        if not fetched_to:  # Handle cases where URL doesn't have a clear filename
+            fetched_to = "downloaded_file"
+    
+    fetched_path = Path(fetched_to)
+    
+    # Determine extraction directory
+    if extract_to is None:
+        extract_to = fetched_path.parent
+    extract_dir = Path(extract_to)
+    extract_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Download the file
+    logger.info(f"Downloading {url} to {fetched_path}")
+    try:
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        with open(fetched_path, "wb") as file:
+            shutil.copyfileobj(response.raw, file)
+        logger.info(f"Successfully downloaded to {fetched_path}")
+    except Exception as e:
+        logger.error(f"Failed to download {url}: {e}")
+        raise
+    
+    # Check if extraction is needed using file signatures
+    extracted_path = _extract_with_signature_detection(
+        fetched_path, extract_dir, expected_file, logger
+    )
+    
+    return extracted_path
 
-    console.print(f"Fetching {url}")
-    response = requests.get(url, stream=True)
-    with open(fetched_to, "wb") as file:
-        shutil.copyfileobj(response.raw, file)
 
-    if extract_to:
-        extract(fetched_to, extract_to)
+def _extract_with_signature_detection(
+    archive_path: Path, 
+    extract_dir: Path, 
+    expected_file: Optional[str] = None,
+    logger: Optional[Logger] = None
+) -> Path:
+    """Extract archive using magic number detection for robust format identification."""
+    import gzip
+    import bz2
+    import lzma
+    import tarfile
+    import zipfile
+    
+    if logger is None:
+        logger = get_logger("extract")
+    
+    # Read file signature to determine format
+    try:
+        with open(archive_path, 'rb') as f:
+            signature = f.read(16)
+    except Exception as e:
+        logger.error(f"Could not read file signature from {archive_path}: {e}")
+        return archive_path
+    
+    # No extraction needed for regular files
+    if not _is_archive_by_signature(signature):
+        logger.info(f"File {archive_path} is not compressed/archived - no extraction needed")
+        return archive_path
+    
+    logger.info(f"Extracting {archive_path} to {extract_dir}")
+    
+    try:
+        # Handle different formats based on signature
+        if signature.startswith(b'\x1f\x8b'):  # gzip
+            extracted_path = _extract_gzip(archive_path, extract_dir, expected_file, logger)
+        elif signature.startswith(b'BZ'):  # bzip2  
+            extracted_path = _extract_bzip2(archive_path, extract_dir, expected_file, logger)
+        elif signature.startswith((b'\xfd7zXZ', b'\xff\x06\x00\x00sNaPpY')):  # xz/lzma
+            extracted_path = _extract_xz(archive_path, extract_dir, expected_file, logger)
+        elif signature.startswith(b'PK'):  # zip
+            extracted_path = _extract_zip(archive_path, extract_dir, logger)
+        elif b'ustar' in signature or signature.startswith((b'\x1f\x8b', b'BZ')) and _is_tar_content(archive_path):
+            extracted_path = _extract_tar(archive_path, extract_dir, logger)
+        else:
+            logger.warning(f"Unknown archive format for {archive_path}, copying as-is")
+            extracted_path = extract_dir / archive_path.name
+            shutil.copy2(archive_path, extracted_path)
+        
+        logger.info(f"Successfully extracted to {extracted_path}")
+        return extracted_path
+        
+    except Exception as e:
+        logger.error(f"Extraction failed for {archive_path}: {e}")
+        # Return original file if extraction fails
+        return archive_path
+
+
+def _is_archive_by_signature(signature: bytes) -> bool:
+    """Check if file is an archive based on magic numbers."""
+    return (
+        signature.startswith(b'\x1f\x8b') or  # gzip
+        signature.startswith(b'BZ') or         # bzip2
+        signature.startswith((b'\xfd7zXZ', b'\xff\x06\x00\x00sNaPpY')) or  # xz/lzma
+        signature.startswith(b'PK') or        # zip
+        b'ustar' in signature                 # tar
+    )
+
+
+def _is_tar_content(file_path: Path) -> bool:
+    """Check if a potentially compressed file contains tar content."""
+    import tarfile
+    try:
+        with tarfile.open(file_path, 'r:*') as tar:
+            tar.getnames()  # Try to read tar structure
+            return True
+    except:
+        return False
+
+
+def _extract_gzip(archive_path: Path, extract_dir: Path, expected_file: Optional[str], logger) -> Path:
+    """Extract gzip files, handling both standalone .gz and .tar.gz files."""
+    import gzip
+    import tarfile
+    
+    # First check if it's a tar.gz
+    if _is_tar_content(archive_path):
+        return _extract_tar(archive_path, extract_dir, logger)
+    
+    # Handle standalone gzip
+    if expected_file:
+        output_path = extract_dir / expected_file
+    else:
+        # Remove .gz extension for output name
+        output_name = archive_path.stem
+        output_path = extract_dir / output_name
+    
+    with gzip.open(archive_path, 'rb') as gz_file, open(output_path, 'wb') as out_file:
+        shutil.copyfileobj(gz_file, out_file)
+    
+    return output_path
+
+
+def _extract_bzip2(archive_path: Path, extract_dir: Path, expected_file: Optional[str], logger) -> Path:
+    """Extract bzip2 files."""
+    import bz2
+    
+    if expected_file:
+        output_path = extract_dir / expected_file
+    else:
+        output_name = archive_path.stem
+        output_path = extract_dir / output_name
+    
+    with bz2.open(archive_path, 'rb') as bz_file, open(output_path, 'wb') as out_file:
+        shutil.copyfileobj(bz_file, out_file)
+    
+    return output_path
+
+
+def _extract_xz(archive_path: Path, extract_dir: Path, expected_file: Optional[str], logger) -> Path:
+    """Extract xz/lzma files."""
+    import lzma
+    
+    if expected_file:
+        output_path = extract_dir / expected_file
+    else:
+        output_name = archive_path.stem
+        output_path = extract_dir / output_name
+    
+    with lzma.open(archive_path, 'rb') as xz_file, open(output_path, 'wb') as out_file:
+        shutil.copyfileobj(xz_file, out_file)
+    
+    return output_path
+
+
+def _extract_tar(archive_path: Path, extract_dir: Path, logger) -> Path:
+    """Extract tar archives (including compressed tar files)."""
+    import tarfile
+    
+    with tarfile.open(archive_path, 'r:*') as tar:
+        tar.extractall(path=extract_dir)
+    
+    return extract_dir
+
+
+def _extract_zip(archive_path: Path, extract_dir: Path, logger) -> Path:
+    """Extract zip archives."""
+    import zipfile
+    
+    with zipfile.ZipFile(archive_path, 'r') as zip_file:
+        zip_file.extractall(extract_dir)
+    
+    return extract_dir
 
 
 def parse_memory(mem_str) -> int:

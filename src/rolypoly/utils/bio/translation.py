@@ -38,7 +38,7 @@ def translate_6frx_seqkit(
                          "min-len": min_orf_length,
                          "line-width": 0,
                          "frame": 6,
-                         "id-regexp": "(\\*)",
+                         "id-regexp": "'(\\*)'",  # Properly quote the regex
                          "threads": threads},
                      positional_args=[f"{input_file} --out-file {output_file}"],
                      positional_args_location="end")
@@ -100,6 +100,7 @@ def pyro_predict_orfs(
     gene_finder = pyro_gv.ViralGeneFinder(
         meta=True,
         min_gene=min_gene_length,
+        max_overlap=min(30, min_gene_length - 1) if min_gene_length > 30 else 20,  # Ensure max_overlap < min_gene
         
     )  # a single gv gene finder object
 

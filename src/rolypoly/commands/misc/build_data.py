@@ -5,6 +5,7 @@ import datetime
 import requests
 import subprocess
 import logging
+import json
 from pathlib import Path as pt
 import polars as pl
 
@@ -17,12 +18,19 @@ from rolypoly.utils.bio.alignments import hmmdb_from_directory, hmm_from_msa, mm
 from rolypoly.utils.various import (
     extract,
     fetch_and_extract,
+    run_command_comp,
 )
+from rolypoly.utils.bio.sequences import filter_fasta_by_headers
 
 from rich.console import Console
 console = Console()
 global tools
 tools = []
+
+### DEBUG ARGS (for manually building, not entering via CLI):
+# threads = 4
+# log_file = "rolypoly_build_data.log"
+# data_dir = "<REPO_PATH>/data"
 
 
 @command()
@@ -83,75 +91,38 @@ def build_data(data_dir, threads, log_file):
 
     # Add geNomad RNA viral markers
     prepare_genomad_rna_viral_markers(data_dir, threads, logger)
+    shutil.rmtree(genomad_dir) # the hmms and mmseqsdb would be moved into their dirs in data/profiles/..
 
     # RdRp-scan
-    prepare_rdrp_scan(data_dir, theards, logger)
+    prepare_rdrp_scan(data_dir, threads, logger)
 
-    # RVMT
-    rvmt_url = "https://portal.nersc.gov/dna/microbial/prokpubs/Riboviria/RiboV1.4/Alignments/zip.ali.220515.tgz"
-    rvmt_path = os.path.join(hmmdb_dir, "zip.ali.220515.tgz")
-    fetch_and_extract(
-        url=rvmt_url, fetched_to=rvmt_path, extract_to=os.path.join(hmmdb_dir, "RVMT/")
-    )
-    
-    # Use utility function to build HMMs from each subdirectory
-    os.makedirs(os.path.join(hmmdb_dir, "RVMT_HMMs"), exist_ok=True)
-    current_dir = os.getcwd()  # Save current directory
-    
-    for ali_folder in os.listdir(os.path.join(hmmdb_dir, "RVMT")):
-        ali_folder_path = os.path.join(hmmdb_dir, "RVMT", ali_folder)
-        if os.path.isdir(ali_folder_path):
-            for alignm_file in os.listdir(ali_folder_path):
-                if alignm_file.endswith(".FASTA"):
-                    ali_name = "RVMT_" + os.path.splitext(alignm_file)[0].replace("FASTA", "")
-                    msa_file_path = os.path.join(ali_folder_path, alignm_file)
-                    output_hmm_path = os.path.join(hmmdb_dir, "RVMT_HMMs", f"{ali_name}.hmm")
-                    hmm_from_msa(
-                        msa_file=msa_file_path,
-                        output=output_hmm_path,
-                        alphabet="amino",
-                        name=ali_name
-                    )
-    
-    # Concatenate all HMMs into a single file
-    subprocess.run(f"cat {hmmdb_dir}/RVMT_HMMs/*.hmm > {hmmdb_dir}/RVMT.hmm", shell=True)
-    os.chdir(current_dir)  # Restore original directory
+    # RVMT profiles
+    prepare_RVMT_profiles(data_dir, threads, logger)
 
-    # Build an MMseqs profile DB from the RVMT MSAs (if present)
-    try:
-        rvmt_msa_dir = os.path.join(hmmdb_dir, "RVMT")
-        mmseqs_profile_db_from_directory(
-            msa_dir=rvmt_msa_dir,
-            output=os.path.join(mmseqs_dbs, "RVMT_mmseqs_db"),
-            msa_pattern="*.FASTA",
-            info_table=None,
-        )
-    except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.warning(f"Failed to build mmseqs DB for RVMT MSAs: {e}")
+    # RVMT MMseqs database
+    prepare_rvmt_mmseqs(data_dir, threads, logger)
 
-    # PFAM_A_37 RdRps and RTs
-    fetch_and_extract(
-        url="https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam37.0/Pfam-A.hmm.gz",
-        fetched_to="tmp.hmm.gz",
-        extract_to="Pfam-A.hmm",
-    )
-    subprocess.run(
-        "echo PF04197.17,PF04196.17,PF22212.1,PF22152.1,PF22260.1,PF00680.25,PF00978.26,PF00998.28,PF02123.21,PF07925.16,PF00078.32,PF07727.19,PF13456.11 >tmp.lst",
-        shell=True,
-    )
-    subprocess.run("sed 's|,|\n|g' tmp.lst -i", shell=True)
-    subprocess.run("hmmfetch -f Pfam-A.hmm tmp.lst > rt_rdrp_pfamA37.hmm", shell=True)
+    # pfam RdRps and RTs    
+    prepare_pfam_rdrps_rt(data_dir, threads, logger)
 
-    subprocess.run(
-        "cat NCBI_ribovirus/proteins/datasets_efetch_refseq_ribovirus_proteins_rmdup.faa RVMT/RVMT_allorfs_filtered_no_chimeras.faa | seqkit rmdup | seqkit seq -w0 > prots_for_masking.faa",
-        shell=True,
-    )
+    # RVMT motifs
+    prepare_rvmt_motifs(data_dir, threads, logger)
+
+    # rRNA DBs
+    prepare_rrna_db(data_dir, logger)
+
+    # Rfam
+    download_and_extract_rfam(data_dir, logger)
+
+    # subprocess.run(
+    #     "cat NCBI_ribovirus/proteins/datasets_efetch_refseq_ribovirus_proteins_rmdup.faa RVMT/RVMT_allorfs_filtered_no_chimeras.faa | seqkit rmdup | seqkit seq -w0 > prots_for_masking.faa",
+    #     shell=True,
+    # )
     logger.info("Finished data preparation")
 
 
-def prepare_rvmt_mmseqs(data_dir, threads, log_file):
-    """Prepare RVMT database for MMseqs2 searches.
+def prepare_rvmt_mmseqs(data_dir, threads, logger: logging.Logger):
+    """Prepare RVMT database for seqs searches (mmseqs2 and diamond).
 
     Processes the RVMT (RNA Virus MetaTranscriptomes) database alignments
     and creates formatted databases for MMseqs2 searches.
@@ -159,42 +130,99 @@ def prepare_rvmt_mmseqs(data_dir, threads, log_file):
     Args:
         data_dir (str): Base directory for data storage
         threads (int): Number of CPU threads to use
-        log_file (str): Path to write log messages
+        logger: Logger object for recording progress and errors
 
     Note:
-        This function assumes RVMT alignments have been downloaded and
-        extracted to the appropriate location in data_dir.
+        Downloads RVMT contigs and metadata, filters out chimeric sequences,
+        and creates MMseqs2 and compressed databases for fast searches.
     """
 
-    console.print("Preparing RVMT mmseqs database")
-    rvmt_dir = os.path.join(data_dir, "RVMT")
-    mmdb_dir = os.path.join(data_dir, "mmdb")
+    logger.info("Preparing RVMT mmseqs database")
+    
+    # Create directories
+    rvmt_dir = os.path.join(data_dir, "reference_seqs", "RVMT")
+    mmdb_dir = os.path.join(data_dir, "profiles", "mmseqs_dbs", "RVMT")
     os.makedirs(rvmt_dir, exist_ok=True)
     os.makedirs(mmdb_dir, exist_ok=True)
 
-    os.chdir(rvmt_dir)
-
-    fetch_and_extract(
+    # Download RVMT contigs
+    logger.info("Downloading RVMT contigs")
+    contigs_fasta_path = fetch_and_extract(
         "https://portal.nersc.gov/dna/microbial/prokpubs/Riboviria/RiboV1.4/RiboV1.6_Contigs.fasta.gz",
-        fetched_to="tmp.fasta.gz",
-        extract_to="RiboV1.6_Contigs.fasta.gz",
+        fetched_to=os.path.join(rvmt_dir, "RiboV1.6_Contigs.fasta.gz"),
+        extract_to=rvmt_dir,
+        expected_file="RiboV1.6_Contigs.fasta",
+        logger=logger
     )
 
-    seqkit_command = "seqkit grep --invert-match -f ./chimeras_RVMT.lst RiboV1.6_Contigs.fasta  > tmp_nochimeras.fasta"
-    subprocess.run(seqkit_command, shell=True)
+    # Download and process RVMT info table to get chimeric sequences
+    logger.info("Downloading RVMT metadata")
+    chimera_ids = []
 
-    mmseqs_command = (
-        "mmseqs createdb tmp_nochimeras.fasta mmdb/RVMT_mmseqs_db2 --dbtype 2"
+    info_df = pl.read_csv(
+        "https://portal.nersc.gov/dna/microbial/prokpubs/Riboviria/RiboV1.4/RiboV1.6_Info.tsv",
+        separator="\t",
+        null_values=["NA", ""],
     )
-    subprocess.run(mmseqs_command, shell=True)
+    logger.info("Processing RVMT metadata to identify chimeric sequences")
+    # Check for chimeric in `Note` column
+    chimera_ids = []
+    # Filter for chimeric sequences
+    chimeras_df = info_df.filter(
+        pl.col('Note').cast(pl.Utf8).str.contains_any(["chim","rRNA"],ascii_case_insensitive=True)
+    )
+    chimera_ids = chimeras_df.select(pl.col("ND")).to_series().to_list()
 
-    kcompress_command = f"kcompress.sh in=tmp_nochimeras.fasta out=RiboV1.6_Contigs_flat.fasta fuse=2000 k=31 prealloc=true threads={threads}"
-    subprocess.run(kcompress_command, shell=True)
+    logger.info(f"Found {len(chimera_ids)} chimeric sequences to exclude")
 
-    os.chdir(data_dir)
+    # Filter out chimeric sequences using rolypoly's filter function
+    tmp_nochimeras_path = os.path.join(rvmt_dir, "tmp_nochimeras.fasta")
+    logger.info("Filtering out chimeric sequences")
+    filter_fasta_by_headers(
+        fasta_file=contigs_fasta_path,
+        headers=chimera_ids,
+        output_file=tmp_nochimeras_path,
+        invert=True,  # Keep sequences NOT in the chimera list
+    )
 
+    # Create MMseqs2 database
+    logger.info("Creating MMseqs2 database")
+    run_command_comp(
+        base_cmd="mmseqs createdb",
+        positional_args_location="start",
+        positional_args=[tmp_nochimeras_path, os.path.join(mmdb_dir, "RVMT_mmseqs_db")],
+        params={"dbtype": "2"},
+        logger=logger,
+    )
 
-def prepare_rrna_db(data_dir, log_file):
+    # Create compressed database with kcompress
+    logger.info("Creating compressed database with kcompress")
+    compressed_fasta_path = os.path.join(rvmt_dir, "RiboV1.6_Contigs_flat.fasta")
+    run_command_comp(
+        base_cmd="kcompress.sh",
+        params={
+            "in": tmp_nochimeras_path,
+            "out": compressed_fasta_path,
+            "fuse": "2000",
+            "k": "31",
+            "prealloc": "true",
+            "threads": str(threads),
+        },
+        assign_operator="=",
+        logger=logger,
+    )
+    
+    # Clean up temporary files
+    try:
+        os.remove(tmp_nochimeras_path)
+        os.remove(chimeras_file)
+        # Note: downloaded gz file is automatically managed by fetch_and_extract
+    except FileNotFoundError:
+        pass
+        
+    logger.info(f"RVMT databases created successfully in {rvmt_dir} and {mmdb_dir}")
+
+def prepare_rrna_db(data_dir, logger: logging.Logger):
     """Download and prepare ribosomal RNA databases.
 
     Downloads and processes reference databases for identifying ribosomal RNA
@@ -202,14 +230,14 @@ def prepare_rrna_db(data_dir, log_file):
 
     Args:
         data_dir (str): Base directory for data storage
-        log_file (str): Path to write log messages
+        logger: Logger object for recording progress and errors
 
     Note:
         Creates formatted databases suitable for sequence similarity searches
         and taxonomic classification.
     """
 
-    console.print("Preparing rRNA database")
+    logger.info("Preparing rRNA database")
     rrna_dir = os.path.join(data_dir, "rRNA")
     os.makedirs(rrna_dir, exist_ok=True)
     os.chdir(rrna_dir)
@@ -262,9 +290,6 @@ def prepare_rrna_db(data_dir, log_file):
 # 28S_fungal_sequences.tar.gz                2025-08-28 05:36   60M  
 # 28S_fungal_sequences.tar.gz.md5  
 
-
-
-
 def download_and_extract_rfam(data_dir, logger):
     """Download and process Rfam database files.
 
@@ -298,7 +323,6 @@ def download_and_extract_rfam(data_dir, logger):
         logger.error(f"Error downloading Rfam database: {e}")
     except Exception as e:
         logger.error(f"Error processing Rfam database: {e}")
-
 
 def tar_everything_and_upload_to_NERSC(data_dir, version=""):
     """Package and upload prepared data to NERSC.
@@ -353,10 +377,8 @@ def tar_everything_and_upload_to_NERSC(data_dir, version=""):
     # # On NERSC
     # scp uneri@xfer.jgi.lbl.gov:/REDACTED_HPC_PATH/projects/data2/data.tar.gz /REDACTED_NERSC_PATH/prokpubs/www/rolypoly/data/
     # chmod +777 -R /REDACTED_NERSC_PATH/prokpubs/www/rolypoly/data/
-
     # upload_command = f"gsutil cp {data_dir}.tar.gz gs://rolypoly-data/"
     # subprocess.run(upload_command, shell=True)
-
 
 def prepare_genomad_rna_viral_markers(data_dir, threads, logger: logging.Logger):
     """Download and prepare RNA viral HMMs from geNomad markers.
@@ -521,7 +543,7 @@ def prepare_genomad_rna_viral_markers(data_dir, threads, logger: logging.Logger)
 
     mmseqs_profile_db_from_directory(
         msa_dir =genomad_alignments_dir,
-        output = os.path.join(data_dir, "profiles/mmseqs_dbs/genomad/", "genomad_rna_viral_markers"),
+        output = os.path.join(data_dir, "profiles/mmseqs_dbs/genomad/", "rna_viral_markers"),
         info_table=f"{genomad_dir}/rna_viral_markers_with_annotation.csv",
         msa_pattern="*.faa",
         name_col="MARKER",
@@ -555,7 +577,7 @@ def prepare_rdrp_scan(data_dir, threads, logger: logging.Logger):
     
     # Use utility function to build HMM database from MSAs
     rdrp_scan_msa_dir = os.path.join(hmmdb_dir, "RdRp-scan/RdRp-scan-main/Profile_db_and_alignments")
-    rdrp_scan_output = os.path.join(hmmdb_dir, "RdRp-scan.hmm")
+    rdrp_scan_output = os.path.join(hmmdb_dir, "rdrp_scan.hmm")
     hmmdb_from_directory(
         msa_dir=rdrp_scan_msa_dir,
         output=rdrp_scan_output,
@@ -570,169 +592,114 @@ def prepare_rdrp_scan(data_dir, threads, logger: logging.Logger):
     )
     # clean up
     shutil.rmtree(hmmdb_dir + "/RdRp-scan") 
+    os.remove(hmmdb_dir + "/RdRp-scan.zip")
     
 
     logger.debug("Finished preparing rdrp-scan databases")
 
-    # Create directories
-    genomad_dir = os.path.join(data_dir, "profiles/genomad")
-    genomad_db_dir = os.path.join(genomad_dir, "genomad_db")
-    genomad_markers_dir = os.path.join(genomad_db_dir, "markers")
-    genomad_alignments_dir = os.path.join(genomad_markers_dir, "alignments")
-    genomad_mmseqs_dir = os.path.join(genomad_markers_dir, "mmseqs_dbs")
-    os.makedirs(genomad_dir, exist_ok=True)
-    os.makedirs(genomad_db_dir, exist_ok=True)
-    os.makedirs(genomad_markers_dir, exist_ok=True)
-    os.makedirs(genomad_alignments_dir, exist_ok=True)
+def prepare_pfam_rdrps_rt(data_dir, threads, logger: logging.Logger):
+    """Download and prepare RdRp profiles from PFAM.
 
-    # Download metadata and database
-    genomad_data = "https://zenodo.org/api/records/14886553/files-archive" # noqa
-    db_url = (
-        "https://zenodo.org/records/14886553/files/genomad_msa_v1.9.tar.gz?download=1"
+    Args:
+        data_dir (str): Base directory for data storage
+        threads (int): Number of CPU threads to use
+        logger: Logger object for recording progress and errors
+    """
+
+    logger.info("Preparing PFAM RdRps and RTs HMM database")
+
+
+    # PFAM_A_38 RdRps and RTs
+    # fetch Pfam-A.hmm.gz to the hmmdb directory and extract into that directory
+    pfam_url = "https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam38.0/Pfam-A.hmm.gz"
+    pfam_gz_path = os.path.join(hmmdb_dir, "Pfam-A.hmm.gz")
+    os.makedirs(hmmdb_dir, exist_ok=True)
+    fetch_and_extract(
+        url=pfam_url,
+        fetched_to=pfam_gz_path,
+        extract_to=hmmdb_dir,
     )
-    metadata_url = "https://zenodo.org/records/14886553/files/genomad_metadata_v1.9.tsv.gz?download=1"
-    # Download and read metadata
-    logger.info("Downloading geNomad metadata")
-    aria2c_command = f"aria2c -c -d {genomad_dir} -o ./genomad_metadata_v1.9.tsv.gz {metadata_url}"
-    subprocess.run(aria2c_command, shell=True)
-    
-    metadata_df = pl.read_csv(
-        f"{genomad_dir}/genomad_metadata_v1.9.tsv.gz",
-        separator="\t",
-        null_values=["NA"],
-        infer_schema_length=10000,
-    )
-    # only virus specific markers
-    # metadata_df = metadata_df.filter(pl.col("SPECIFICITY_CLASS") == "VV")
-    # only RNA viral markers
-    metadata_df = metadata_df.filter(pl.col("ANNOTATION_DESCRIPTION").str.to_lowercase().str.contains("rna-dependent rna polymerase") |
-                                    pl.col("TAXONOMY").str.contains("Riboviria") | 
-                                    pl.col("SOURCE").str.contains("RVMT")
-                                    )
-    # Next, filling missing annotation from InterPro.
-    # only ones without description
-    to_fill = metadata_df.filter(
-        pl.col("ANNOTATION_DESCRIPTION").is_null()
-    )
-    # if multiple maybe split->explode->groupby->agg->majority vote, something like:
-    # nah just using the first if multiple maybe split->explode->first:
-    # for now, only using a single accession (but word cloud/majority vote would probably work for multiple accessions)
-    # to_fill = to_fill.with_columns(pl.col("ANNOTATION_ACCESSIONS").str.split(";").list.first().alias("ANNOTATION_ACCESSIONS_first"))
-    to_fill = to_fill.with_columns(pl.col("ANNOTATION_ACCESSIONS").str.split(";").alias("ANNOTATION_ACCESSIONS_struct"))
-    to_fill = to_fill.explode("ANNOTATION_ACCESSIONS_struct")
 
-    to_fill = to_fill.with_columns(
-        pl.when(pl.col("ANNOTATION_ACCESSIONS").str.starts_with("PF")).then(pl.lit("Pfam"))
-        .when(pl.col("ANNOTATION_ACCESSIONS").str.starts_with("COG")).then(pl.lit("COG"))
-        .when(pl.col("ANNOTATION_ACCESSIONS").str.starts_with("K")).then(pl.lit("KEGG"))
-        .otherwise(pl.lit("unknown")).alias("source_db"))
+    RdRps_and_RTs = ["PF04197.17" ,"PF04196.17" ,"PF22212.1" ,"PF22152.1" ,"PF22260.1" ,"PF00680.25" ,"PF00978.26" ,"PF00998.28" ,"PF02123.21" ,"PF07925.16" ,"PF00078.32" ,"PF07727.19" ,"PF13456.11"]
 
-    # We (currently) only carte about viral specific markers, so filtering out the rest
-    # Not sure Kegg is on interpro.
-    to_fill = to_fill.filter(pl.col("source_db").str.contains("Pfam|COG"))
-    
-    def query_interpro(entry: str, source_db: str) :
-        """Fetch the InterPro description for a given entry.
-        """
-        # from bs4 import BeautifulSoup
-        import requests
-        if source_db == "unknown":
-            return None
-        url = f"https://www.ebi.ac.uk/interpro/api/entry/{source_db}/{entry}"
-        # print(url)                     #  debugging
 
-        response = requests.get(url)
-        if response.status_code != 200:
-            return None
+    # Use hmmfetch to extract the small set of Pfam HMMs we care about
+    selected_pfam_output = os.path.join(hmmdb_dir, "pfam_rdrps_and_rts.hmm")
+    try:
+        with open(selected_pfam_output, "wb") as outfh:
+            cmd = [
+                "hmmfetch",
+                os.path.join(hmmdb_dir, "Pfam-A.hmm"),
+            ] + RdRps_and_RTs
+            subprocess.run(cmd, stdout=outfh, check=True)
+        logger.info(f"Wrote selected Pfam HMMs to {selected_pfam_output}")
+    except Exception as e:
+        logger.warning(f"Could not run hmmfetch to extract Pfam models: {e}")
+        # Fallback: parse the Pfam-A.hmm file and extract models with matching ACC lines
+        pfam_hmm_path = os.path.join(hmmdb_dir, "Pfam-A.hmm")
+        try:
+            targets_base = {t.split(".")[0] for t in RdRps_and_RTs}
+            wrote_any = False
+            with open(pfam_hmm_path, "r", encoding="utf-8", errors="replace") as inf, open(selected_pfam_output, "w", encoding="utf-8") as outfh:
+                block_lines = []
+                for line in inf:
+                    block_lines.append(line)
+                    if line.strip() == "//":
+                        # end of model block
+                        block_text = "".join(block_lines)
+                        acc = None
+                        for bl in block_lines:
+                            if bl.startswith("ACC"):
+                                parts = bl.split()
+                                if len(parts) >= 2:
+                                    acc = parts[1].strip()
+                                    break
+                        if acc and acc.split(".")[0] in targets_base:
+                            outfh.write(block_text)
+                            wrote_any = True
+                        block_lines = []
+                # In case file doesn't end with // ensure no partial block missed
+            if wrote_any:
+                logger.info(f"Wrote selected Pfam HMMs to {selected_pfam_output} using fallback extractor")
+            else:
+                logger.warning("Fallback extractor did not find any matching Pfam accessions in Pfam-A.hmm")
+        except Exception as e2:
+            logger.error(f"Fallback extraction failed: {e2}")
 
-        data = response.json()
-        # print(data)                     #  debugging
+    # clean up downloaded gz
+    try:
+        os.remove(pfam_gz_path)
+    except Exception:
+        pass
 
-        # desc = data.get("metadata", {}).get("description")
-        desc = data.get("metadata", {}).get("name",{}).get("name",None)
-        return desc
+    logger.debug("Finished preparing rdrp-scan databases")
 
-    filled_interpro = []
-    from tqdm import tqdm
-    tiny_fill = to_fill.select(["ANNOTATION_ACCESSIONS_struct","source_db"]).unique()
-    
-    for row in tqdm(tiny_fill.to_dicts()):
-        if row["source_db"] == "unknown":
-            filled_interpro.append(None)
-        else:
-            this_desc =  query_interpro(row["ANNOTATION_ACCESSIONS_struct"], row["source_db"])
-            filled_interpro.append(this_desc)
-            print(f"{row['ANNOTATION_ACCESSIONS_struct']}\t{this_desc}")  # debugging
-            # filled_interpro.append(query_interpro(row["ANNOTATION_ACCESSIONS"], row["source_db"]))
-
-    tiny_fill = tiny_fill.with_columns(pl.Series(filled_interpro).alias("interpro"))
-    to_fill = to_fill.join(tiny_fill, on = ["ANNOTATION_ACCESSIONS_struct","source_db"], how="left")
-    to_fill = to_fill.with_columns(
-    pl.coalesce(
-                pl.col("ANNOTATION_DESCRIPTION"),
-                pl.col("interpro")).alias("ANNOTATION_DESCRIPTION"))
-    to_fill = to_fill.drop("ANNOTATION_ACCESSIONS_struct","interpro","source_db").unique()
-    to_fill = to_fill.filter(pl.col("ANNOTATION_DESCRIPTION").is_not_null()) 
-    # hopefully now we have filled some of the missing descriptions, and we don't have any duplicate MARKERs
-
-    metadata_df = metadata_df.filter(~pl.col("MARKER").is_in(to_fill["MARKER"].implode()))
-    metadata_df = metadata_df.vstack(to_fill)
-
-    metadata_df.write_csv(
-            f"{genomad_dir}/rna_viral_markers_with_annotation.csv"
-    )
-    
-
-    # Download MSAs
-    logger.info("Downloading geNomad database")
-    aria2c_command = f"aria2c -c -d {genomad_dir} -o ./genomad_msa_v1.9.tar.gz {db_url}"
-    subprocess.run(aria2c_command, shell=True)
-
-    # Extract RNA viral MSAs
-    marker_ids = metadata_df["MARKER"].to_list()
-
-    with tarfile.open(f"{genomad_dir}/genomad_msa_v1.9.tar.gz", "r") as tar:
-        for member in tar.getmembers():
-            if (
-                member.name.removeprefix("genomad_msa_v1.9/").removesuffix(".faa")
-                in marker_ids
-            ):
-                tar.extract(member, genomad_alignments_dir)
-    # need to move all files in genomad/genomad_db/markers/alignments/genomad_msa_v1.9/* to genomad/genomad_db/markers/alignments/
-    for file in os.listdir(genomad_alignments_dir + "/genomad_msa_v1.9"):
-        shutil.move(
-            genomad_alignments_dir + "/genomad_msa_v1.9/" + file,
-            genomad_alignments_dir + "/" + file,
-        )
-    # remove the genomad_msa_v1.9 directory
-    shutil.rmtree(genomad_alignments_dir + "/genomad_msa_v1.9")
-
-    output_hmm = os.path.join(
-        os.path.join(data_dir, "profiles/hmmdbs"), "genomad_rna_viral_markers.hmm"
+def prepare_RVMT_profiles(data_dir, threads, logger: logging.Logger):
+    """Prepare RVMT data."""
+    logger.info("Preparing RVMT HMM and MMseqs databases")
+    rvmt_url = "https://portal.nersc.gov/dna/microbial/prokpubs/Riboviria/RiboV1.4/Alignments/zip.ali.220515.tgz"
+    rvmt_path = os.path.join(hmmdb_dir, "zip.ali.220515.tgz")
+    fetch_and_extract(
+        url=rvmt_url, fetched_to=rvmt_path, extract_to=os.path.join(hmmdb_dir, "RVMT/")
     )
     hmmdb_from_directory(
-        genomad_alignments_dir,
-        output_hmm,
-        msa_pattern="*.faa",
-        info_table=f"{genomad_dir}/rna_viral_markers_with_annotation.csv",
-        name_col="MARKER",
-        accs_col="ANNOTATION_ACCESSIONS",
-        desc_col="ANNOTATION_DESCRIPTION",
-        gath_col=None # no gathering theshold pre-defined for genomad
+        msa_dir=os.path.join(hmmdb_dir, "RVMT/"),
+        output=os.path.join(hmmdb_dir, "rvmt.hmm"),
+        msa_pattern="ali*/*.FASTA",
+        info_table=None,
     )
-
+    
     mmseqs_profile_db_from_directory(
-        msa_dir =genomad_alignments_dir,
-        output = os.path.join(data_dir, "profiles/mmseqs_dbs/genomad/", "genomad_rna_viral_markers"),
-        info_table=f"{genomad_dir}/rna_viral_markers_with_annotation.csv",
-        msa_pattern="*.faa",
-        name_col="MARKER",
-        accs_col="ANNOTATION_ACCESSIONS",
-        desc_col="ANNOTATION_DESCRIPTION",
+        msa_dir=os.path.join(hmmdb_dir, "RVMT/"),
+        output=os.path.join(mmseqs_dbs, "RVMT/RVMT"),
+        msa_pattern="ali*/*.FASTA",
+        info_table=None,
     )
+    # clean up
+    shutil.rmtree(os.path.join(hmmdb_dir, "RVMT/"))
+    os.remove(os.path.join(hmmdb_dir, "zip.ali.220515.tgz"))
 
-    logger.info(f"Created RNA viral HMM database at {output_hmm}")
-
+    logger.info("Finished preparing RVMT databases")
 
 def prepare_vfam(data_dir, logger: logging.Logger):
     """Prepare VFAM HMM database."""
@@ -788,6 +755,134 @@ def prepare_vfam(data_dir, logger: logging.Logger):
     # remove the vfam msa directory
     shutil.rmtree(os.path.join(data_dir, "profiles","hmmdbs", "vfam","msa"))
     logger.info(f"Created VFAM HMM database at {os.path.join(data_dir, 'hmmdbs', 'vfam.hmm')}")
+
+
+def prepare_rvmt_motifs(data_dir, threads, logger):
+    """Prepare RVMT motif sequences for profile-based searches.
+
+    Extracts and processes the RVMT motif sequence library from the pre-downloaded
+    tar.gz file, organizing motifs by type (A=mot.1, B=mot.2, C=mot.3) and taxon.
+    Creates both HMM and MMseqs profile databases for fast searches.
+
+    Args:
+        data_dir (str): Base directory for data storage
+        threads (int): Number of CPU threads to use
+        logger: Logger object for recording progress and errors
+
+    Note:
+        This function assumes motif_sequence_library.tar.gz has been downloaded
+        to data_dir/profiles/motif_sequence_library.tar.gz
+    """
+
+    logger.info("Preparing RVMT motif sequences")
+    motif_dir = os.path.join(data_dir, "profiles/rvmt_motifs")
+    motif_alignments_dir = os.path.join(motif_dir, "Sequence_Library")
+    
+    os.makedirs(motif_dir, exist_ok=True)
+    os.makedirs(motif_alignments_dir, exist_ok=True)
+    
+    motif_archive = os.path.join(data_dir, "profiles/motif_sequence_library.tar.gz")
+    # fetch motif archive
+    logger.info(f"fetching Motif archive from https://portal.nersc.gov/dna/microbial/prokpubs/Riboviria/RiboV1.4/rdrps/motif_sequence_library.tar.gz")
+    fetch_and_extract(
+        url="https://portal.nersc.gov/dna/microbial/prokpubs/Riboviria/RiboV1.4/rdrps/motif_sequence_library.tar.gz",
+        fetched_to=motif_archive,
+        extract_to=motif_dir,
+    )
+    
+    # The archive contains Sequence_Library/ with mot.1/, mot.2/, mot.3/ subdirectories
+    sequence_library_dir = os.path.join(motif_dir, "Sequence_Library")
+    
+    if not os.path.exists(sequence_library_dir):
+        logger.error(f"Expected Sequence_Library directory not found after extraction")
+        return False
+    
+    # Process each motif type directory
+    motif_metadata = {}
+    
+    for motif_type_dir in os.listdir(sequence_library_dir):
+        if not motif_type_dir.startswith("mot."):
+            continue
+            
+        motif_type_path = os.path.join(sequence_library_dir, motif_type_dir)
+        if not os.path.isdir(motif_type_path):
+            continue
+            
+        # Map motif directory names to letters (A, B, C, D)
+        motif_type_map = {"mot.1": "A", "mot.2": "B", "mot.3": "C", "mot.4": "D"}
+        motif_letter = motif_type_map.get(motif_type_dir, motif_type_dir)
+        
+        logger.info(f"Processing motif type {motif_letter} ({motif_type_dir})")
+        
+        # Copy alignment files to organized structure
+        for afa_file in os.listdir(motif_type_path):
+            if afa_file.endswith(".afa"):
+                src = os.path.join(motif_type_path, afa_file)
+                # Create descriptive filename: motifA_taxon_id.afa
+                base_name = afa_file.replace(".afa", "")
+                new_name = f"motif{motif_letter}_{base_name}.afa"
+                dst = os.path.join(motif_alignments_dir, new_name)
+                shutil.copy2(src, dst)
+                
+                # Store metadata
+                motif_metadata[new_name.replace(".afa", "")] = {
+                    "motif_type": motif_letter,
+                    "original_name": afa_file,
+                    "taxon": base_name, # this is a placeholder for if eventually the taxon info is incorporated.
+                    "file_path": dst
+                }
+    
+    # Save metadata
+    metadata_file = os.path.join(motif_dir, "motif_metadata.json")
+    with open(metadata_file, 'w') as f:
+        json.dump(motif_metadata, f, indent=2)
+    
+    logger.info(f"Processed {len(motif_metadata)} motif alignments")
+    
+    # Create HMM database
+    output_hmm = os.path.join(data_dir, "profiles/hmmdbs", "rvmt_motifs.hmm")
+    logger.info(f"Building HMM database: {output_hmm}")
+    
+    hmmdb_from_directory(
+        msa_dir=motif_alignments_dir,
+        output=output_hmm,
+        msa_pattern="*.afa",
+        info_table=None,  # We'll use our metadata file instead
+        name_col=None,
+        accs_col=None,
+        desc_col=None
+    )
+    
+    # Create MMseqs profile database
+    mmseqs_output = os.path.join(data_dir, "profiles/mmseqs_dbs/rvmt_motifs", "rvmt_motifs")
+    os.makedirs(os.path.dirname(mmseqs_output), exist_ok=True)
+    logger.info(f"Building MMseqs profile database: {mmseqs_output}")
+    
+    mmseqs_profile_db_from_directory(
+        msa_dir=motif_alignments_dir,
+        output=mmseqs_output,
+        info_table=None,
+        msa_pattern="*.afa",
+        name_col=None,
+        accs_col=None,
+        desc_col=None
+    )
+    
+    # Clean up extracted directory
+    try:
+        shutil.rmtree(motif_alignments_dir)
+        shutil.rmtree(motif_dir)
+        os.remove(motif_archive)
+        os.remove(os.path.join(motif_dir, "motif_sequence_library.tar.gz"))
+
+    except Exception as e:
+        logger.warning(f"Could not remove motif alignments directory: {e}")
+    
+    # logger.info(f"RVMT motif preparation completed. Metadata saved to: {metadata_file}")
+    logger.info(f"HMM database: {output_hmm}")
+    logger.info(f"MMseqs database: {mmseqs_output}")
+    
+    return True
 
 # setup taxonkit
 # TODO: CONVERT TO PYTHON
