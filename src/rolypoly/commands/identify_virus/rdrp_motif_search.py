@@ -58,45 +58,14 @@ class RdRpMotifSearchConfig(BaseConfig):
         self.name = kwargs.get("name") or Path(self.input).stem
         
         # Database paths
-        self.data_dir = kwargs.get("data_dir", None)
+        self.data_dir = kwargs.get("data_dir", None) # if no custom data dir provided, will use default search paths
+        self.motif_metadata_path = Path(self.data_dir) / "profiles" / "motif_metadata.json"
+        
         if self.data_dir:
-            self.motif_db_path = Path(self.data_dir) / "profiles" / "hmmdbs" / "rvmt_motifs.hmm"
-            self.motif_metadata_path = Path(self.data_dir) / "profiles" / "rvmt_motifs" / "motif_metadata.json"
-        else:
-            # Try to find database in default locations
-            self.motif_db_path = self._find_motif_database()
-            self.motif_metadata_path = self._find_motif_metadata()
-
-    def _find_motif_database(self) -> Path:
-        """Find the RdRp motif HMM database"""
-        possible_paths = [
-            Path.cwd() / "data" / "profiles" / "hmmdbs" / "rvmt_motifs.hmm",
-            Path("~/.rolypoly/data/profiles/hmmdbs/rvmt_motifs.hmm").expanduser(),
-            Path("/data/profiles/hmmdbs/rvmt_motifs.hmm"),
-        ]
-        
-        for path in possible_paths:
-            if path.exists():
-                return path
-        
-        raise FileNotFoundError(
-            "RdRp motif database not found. "
-            "Please run 'rolypoly build-data' first or specify --data-dir"
-        )
-
-    def _find_motif_metadata(self) -> Path:
-        """Find the RdRp motif metadata file"""
-        db_dir = self.motif_db_path.parent.parent / "rvmt_motifs"
-        metadata_path = db_dir / "motif_metadata.json"
-        
-        if metadata_path.exists():
-            return metadata_path
-        
-        raise FileNotFoundError(
-            f"RdRp motif metadata not found at {metadata_path}. "
-            "Please run 'rolypoly build-data' first."
-        )
-
+            if self.search_tool == "hmmsearch":
+                self.motif_db_path = Path(self.data_dir) / "profiles" / "hmmdbs" / "rvmt_motifs.hmm"
+            else:
+                self.motif_db_path = Path(self.data_dir) / "profiles" / "mmseqs_dbs" / "rvmt_motifs/rvmt_motifs"
 
 @command(
     epilog="""\n\nEXAMPLES:\n\n  # Basic search with default flat TSV output and alignment\n  rolypoly rdrp-motif-search -i sequences.fasta -o results_dir\n\n  # Nested structure for programmatic analysis\n  rolypoly rdrp-motif-search -i sequences.fasta -o results_dir --output-structure nested\n\n  # Parquet output with structured data for analysis\n  rolypoly rdrp-motif-search -i sequences.fasta -o results_dir --output-format parquet\n\n  # Disable alignment to reduce output size\n  rolypoly rdrp-motif-search -i sequences.fasta -o results_dir --no-include-alignment\n\n  # High sensitivity search with custom parameters\n  rolypoly rdrp-motif-search -i sequences.fasta -o results_dir -e 0.1 --max-distance 300\n\nOUTPUT FORMATS:\n\n  flat + tsv: separate columns (motif_a_start, motif_b_start, etc.) - DEFAULT\n  nested + tsv: motif_details column as JSON string\n  flat + parquet: separate columns with native data types\n  nested + parquet: motif_details as structured data types\n"""
@@ -151,7 +120,7 @@ class RdRpMotifSearchConfig(BaseConfig):
 @option(
     "--search-tool",
     default="hmmsearch",
-    type=Choice(["hmmsearch"], case_sensitive=False),
+    type=Choice(["hmmsearch","mmseqs"], case_sensitive=False),
     help="Search tool to use (currently only hmmsearch supported)",
 )
 @option(
@@ -412,18 +381,35 @@ def search_motifs(config: RdRpMotifSearchConfig, protein_file: str) -> pl.DataFr
     output_file = os.path.join(config.temp_dir, f"{config.name}_motif_hits.tsv")
     
     # Use pyhmmer bindings through rolypoly utility
-    output_path = search_hmmdb(
-        amino_file=protein_file,
-        db_path=str(config.motif_db_path),
-        output=output_file,
-        threads=config.threads,
-        logger=config.logger,
-        match_region=True,
-        full_qseq=True,
-        ali_str=True,
-        inc_e=config.evalue,
-        mscore=None,  # Use E-value filtering
-    )
+    if config.search_tool == "hmmsearch":
+        output_path = search_hmmdb(
+            amino_file=protein_file,
+            db_path=str(config.motif_db_path),
+            output=output_file,
+            threads=config.threads,
+            logger=config.logger,
+            match_region=True,
+            full_qseq=True,
+            ali_str=True,
+            inc_e=config.evalue,
+            mscore=None,  # Use E-value filtering
+        )
+    if config.search_tool == "mmseqs":
+        from rolypoly.utils.bio.alignments import mmseqs_search
+        output_path = mmseqs_search(
+            query_db=protein_file,
+            db_path=str(config.motif_db_path),
+            output=output_file,
+            threads=config.threads,
+            logger=config.logger,
+            match_region=True,
+            full_qseq=True,
+            ali_str=True,
+            inc_e=config.evalue,
+            mscore=None,  # Use E-value filtering
+        )
+
+        
     
     # Read the results into a DataFrame
     if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
