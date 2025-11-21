@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Union
 from rich.console import Console
 import polars as pl
 
-from rolypoly.utils.logging.loggit import get_logger
+from rolypoly.utils.logging.loggit import get_logger # TODO: check if this can work with get_logger(None) so I don't need to have all the if logger is none then...
 from logging import Logger
 console = Console()
 
@@ -89,7 +89,10 @@ def fetch_and_extract(
     fetched_to: Optional[str] = None, 
     extract_to: Optional[Union[str, Path]] = None,
     expected_file: Optional[str] = None,
-    logger: Optional[Logger] = None
+    logger: Optional[Logger] = None,
+    overwrite: bool = True,
+    extract: bool = True,
+    rename_extracted: Optional[str] = None,
 ) -> Path:
     """Fetch a file from a URL and optionally extract it with robust file handling.
     
@@ -99,20 +102,23 @@ def fetch_and_extract(
         extract_to: Directory to extract to. If None, uses parent of fetched_to
         expected_file: Expected filename after extraction (helps locate extracted files)
         logger: Logger for messages (fallback to console if not provided)
+        overwrite: Whether to overwrite existing files/directories. - NOTE NOTE NOTE NOT IMPLEMENTED YET.
+        extract: Whether to extract the downloaded file if it's compressed/archived
+        rename_extracted: If provided, rename the final extracted file/directory to this name
         
     Returns:
-        Path to the final extracted file or directory
+        Path to the final extracted file or downloaded file if extract=False
         
     Note:
-        This function handles various archive formats by detecting file signatures
-        and ensures extracted files are placed in predictable locations.
+        This function handles various archive formats by detecting file signatures.
+        If rename_extracted is provided, it will rename the final result to that path.
+        The extract_to parameter is always treated as a directory path.
     """
     import shutil
-    import requests
     from urllib.parse import urlparse
     
     if logger is None:
-        logger = get_logger("fetch_and_extract")
+        logger = get_logger()
     
     # Determine download path
     if fetched_to is None:
@@ -121,32 +127,89 @@ def fetch_and_extract(
         if not fetched_to:  # Handle cases where URL doesn't have a clear filename
             fetched_to = "downloaded_file"
     
-    fetched_path = Path(fetched_to)
+    # Download the file using simple_fetch
+    fetched_path = simple_fetch(url, fetched_to, logger, overwrite)
     
-    # Determine extraction directory
+    # If extraction is disabled, handle renaming and return
+    if not extract:
+        if rename_extracted:
+            final_path = Path(rename_extracted)
+            final_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(fetched_path), str(final_path))
+            return final_path
+        return fetched_path
+    
+    # Determine extraction directory - always treat extract_to as directory
     if extract_to is None:
-        extract_to = fetched_path.parent
-    extract_dir = Path(extract_to)
+        extract_dir = fetched_path.parent
+    else:
+        extract_dir = Path(extract_to)
     extract_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Download the file
-    logger.info(f"Downloading {url} to {fetched_path}")
-    try:
-        response = requests.get(url, stream=True)
-        response.raise_for_status()
-        with open(fetched_path, "wb") as file:
-            shutil.copyfileobj(response.raw, file)
-        logger.info(f"Successfully downloaded to {fetched_path}")
-    except Exception as e:
-        logger.error(f"Failed to download {url}: {e}")
-        raise
     
     # Check if extraction is needed using file signatures
     extracted_path = _extract_with_signature_detection(
         fetched_path, extract_dir, expected_file, logger
     )
     
+    # Handle renaming of final result if requested
+    if rename_extracted and extracted_path != fetched_path:
+        final_path = Path(rename_extracted)
+        final_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # If extracted_path is a directory, move the entire directory
+        # If it's a file, move just the file
+        if extracted_path.is_dir():
+            if final_path.exists():
+                shutil.rmtree(final_path)
+            shutil.move(str(extracted_path), str(final_path))
+        else:
+            shutil.move(str(extracted_path), str(final_path))
+        
+        return final_path
+    
     return extracted_path
+
+
+def simple_fetch(
+    url: str,
+    output_path: Union[str, Path],
+    logger: Optional[Logger] = None,
+    overwrite: bool = True,
+) -> Path:
+    """Simple file download without any extraction.
+    
+    Args:
+        url: URL to download from
+        output_path: Local path to save the file
+        logger: Logger for messages
+        overwrite: Whether to overwrite existing files
+        
+    Returns:
+        Path to the downloaded file
+    """
+    import shutil
+    import requests
+    from urllib.parse import urlparse
+    
+    if logger is None:
+        logger = get_logger()
+    
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Download the file
+    logger.info(f"Downloading {url} to {output_path}")
+    try:
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        with open(output_path, "wb") as file:
+            shutil.copyfileobj(response.raw, file)
+        logger.info(f"Successfully downloaded to {output_path}")
+    except Exception as e:
+        logger.error(f"Failed to download {url}: {e}")
+        raise
+    
+    return output_path
 
 
 def _extract_with_signature_detection(
@@ -163,7 +226,7 @@ def _extract_with_signature_detection(
     import zipfile
     
     if logger is None:
-        logger = get_logger("extract")
+        logger = get_logger()
     
     # Read file signature to determine format
     try:
