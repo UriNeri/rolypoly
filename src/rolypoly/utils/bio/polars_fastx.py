@@ -167,6 +167,17 @@ def from_gff_eager(gff_file: Union[str, Path],unnest_attributes: bool = False) -
         )
     return df
 
+def count_kmers_df_explicit(df: pl.DataFrame, seq_col: str = "seq",id_col: str = "seqid", k: int = 3, relative: bool = False) -> pl.DataFrame:
+    """Calculate ALL k-mers counts for all sequences in a DataFrame. all possible k-mers are counted, not just the complete ones."""
+    # Split sequences into characters
+    import itertools
+    all_kmers = [''.join(p) for p in itertools.product('ATCG', repeat=k)]
+    count_df = df.with_columns(
+        pl.col(seq_col).str.extract_many(all_kmers, overlapping=True,ascii_case_insensitive=True).alias('kmers')
+    ).group_by(id_col).agg(
+        pl.col('kmers').explode().value_counts(normalize=relative).alias(f'kmer_{k}_relative' if relative else f'kmer_{k}_counts'),
+    )
+    return count_df
 
 def count_kmers_df(df: pl.DataFrame, seq_col: str = "seq", id_col: str = "seqid", k: int = 3, relative: bool = False) -> pl.DataFrame:
     """Calculate k-mer counts for all sequences in a DataFrame"""
@@ -317,6 +328,131 @@ def fasta_stats(
         df.write_csv(output_file, separator="\t")
     # print("Successfully wrote file after converting data types")
     return df
+
+
+def compute_aggregate_stats(
+    df: pl.DataFrame,
+    fields: list[str],
+) -> dict:
+    """
+    Compute aggregate statistics from a per-sequence stats DataFrame.
+    
+    Args:
+        df: DataFrame with per-sequence statistics
+        fields: List of field names to aggregate
+    
+    Returns:
+        Dictionary with aggregate statistics
+    """
+    agg_stats = {}
+    total_seqs = df.height
+    
+    if "length" in fields:
+        length_stats = df.select([
+            pl.col("length").min().alias("min_length"),
+            pl.col("length").max().alias("max_length"),
+            pl.col("length").mean().alias("mean_length"),
+            pl.col("length").median().alias("median_length"),
+            pl.col("length").std().alias("std_length"),
+            pl.col("length").sum().alias("total_length")
+        ]).to_dicts()[0]
+        agg_stats.update(length_stats)
+    
+    if "gc_content" in fields:
+        gc_stats = df.select([
+            pl.col("gc_content").min().alias("min_gc"),
+            pl.col("gc_content").max().alias("max_gc"),
+            pl.col("gc_content").mean().alias("mean_gc"),
+            pl.col("gc_content").median().alias("median_gc"),
+            pl.col("gc_content").std().alias("std_gc")
+        ]).to_dicts()[0]
+        agg_stats.update(gc_stats)
+    
+    if "n_count" in fields:
+        n_stats = df.select([
+            pl.col("n_count").min().alias("min_n_count"),
+            pl.col("n_count").max().alias("max_n_count"),
+            pl.col("n_count").mean().alias("mean_n_count"),
+            pl.col("n_count").sum().alias("total_n_count")
+        ]).to_dicts()[0]
+        agg_stats.update(n_stats)
+    
+    agg_stats["total_sequences"] = total_seqs
+    
+    return agg_stats
+
+
+def write_fastx_output(
+    df: pl.DataFrame,
+    output: str,
+    format: str,
+    logger,
+    write_to_stdout: bool = False,
+):
+    """
+    Write DataFrame output to file or stdout.
+    
+    Args:
+        df: DataFrame to write
+        output: Output path (or "stdout")
+        format: Output format (tsv, csv, parquet)
+        logger: Logger instance
+        write_to_stdout: Whether to write to stdout
+    """
+    if format.lower() == "parquet":
+        output_path = Path(output)
+        df.write_parquet(output_path)
+        logger.info(f"Results written to {output_path} (parquet format)")
+    
+    elif format.lower() == "csv":
+        if write_to_stdout:
+            print(df.write_csv())
+        else:
+            output_path = Path(output)
+            df.write_csv(output_path)
+            logger.info(f"Results written to {output_path} (CSV format)")
+    
+    elif format.lower() == "tsv":
+        if write_to_stdout:
+            print(df.write_csv(separator="\t"))
+        else:
+            output_path = Path(output)
+            df.write_csv(output_path, separator="\t")
+            logger.info(f"Results written to {output_path} (TSV format)")
+
+
+def write_markdown_summary(
+    output_path: Path,
+    input_file: str,
+    agg_stats: dict,
+    logger,
+):
+    """
+    Write aggregate statistics as a markdown report.
+    
+    Args:
+        output_path: Path to output file
+        input_file: Input file path (for reference in report)
+        agg_stats: Dictionary with aggregate statistics
+        logger: Logger instance
+    """
+    md_content = "# Sequence Statistics Report\n\n"
+    md_content += f"**Input file:** {input_file}\n"
+    
+    if "total_sequences" in agg_stats:
+        md_content += f"**Total sequences:** {agg_stats['total_sequences']}\n\n"
+    
+    md_content += "## Aggregate Statistics\n\n"
+    for key, value in agg_stats.items():
+        if isinstance(value, float):
+            md_content += f"- **{key}:** {value:.2f}\n"
+        else:
+            md_content += f"- **{key}:** {value}\n"
+    
+    with open(output_path, 'w') as f:
+        f.write(md_content)
+    
+    logger.info(f"Markdown report written to {output_path}")
 
 
 def least_rotation(s: str) -> str:
