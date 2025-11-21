@@ -32,12 +32,51 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
    - When done, move only final output files to user's output path, or rename the temp-dir if it's easier (same parent path maybe).
    - Try to clean up tmp files unless `--keep-tmp` flag is used.
 
+4. **Calling external tools**:
+   - Use `rolypoly.utils.command_runner.run_command_comp()` to run external commands.
+   - If that is not possible, use `subprocess.run()`.
+
+5. **Shared Code**:
+   - **Avoid creating intermediate helper modules** in `commands/` - utilities belong in `utils/`
+   - Place reusable functions in appropriate `utils/` subdirectories (e.g., `utils/bio/` for biological sequence operations)
+   - Check existing utilities before implementing new functionality
+
 ## Testing & Benchmarking
 1. **Testing**:
    - Add code `src/tests/*`
    - You can take a look at `/REDACTED_HPC_PATH/tests/rp_tests/` (on dori) which conntains example data for different commands, seperated by input size.
+   - **Running tests**: Use `pixi run python src/tests/test_cli_commands.py` or point directly to the interpreter at `.pixi/envs/default/bin/python` to ensure correct environment
+   - For quick tests during development, use `pixi run python <script.py>` to run Python scripts with the correct dependencies
 2. **Benchmarking**:
    - Use `/usr/bin/time` for resource monitoring. Alternatively, hyperfine is great too but. Ideallt - use SLURM and keep track of the job IDs for later analysis with seff/pyseff.
+
+## Example Workflow: Adding a New Command
+
+Here's a high-level workflow for adding a new command to RolyPoly:
+
+1. **Check for existing utilities**: Search `src/rolypoly/utils/` for existing functions that might help (especially `utils/bio/` for sequence operations)
+
+2. **Create the command file**: Add your command in the appropriate subdirectory under `src/rolypoly/commands/` (e.g., `commands/misc/my_command.py`)
+   - Use `@click.command()` decorator
+   - Follow naming conventions (short + long options, snake_case for parameters)
+   - Import and reuse existing utilities from `utils/` where possible
+
+3. **Add shared utilities if needed**: If you create reusable functions, place them in `src/rolypoly/utils/` (NOT in `commands/`)
+   - Use existing modules when appropriate (e.g., `utils/bio/polars_fastx.py` for FASTA/FASTQ operations)
+
+4. **Register the command**: **CRITICAL** - Add your command to `src/rolypoly/rolypoly.py` in the appropriate lazy_subcommands group
+   - Format: `"command-name": "rolypoly.commands.subdir.my_command.my_command_function"`
+   - The command won't appear in the CLI without this step!
+
+5. **Test the command**:
+   - Run `pixi run rolypoly <command-name> --help` to verify it loads
+   - Test with actual data
+   - Add test cases to `src/tests/` if appropriate
+
+6. **Document**: Update help strings and consider adding examples to README or docs
+   - Add a markdown file in the appropriate location under `docs/`
+   - Update the `mkdocs.yml` configuration file to include your new documentation
+   - Add to the index or relevant navigation section if needed
 
 ## **Note**
 This project is governed under the LBNL IP office. By contributing, you agree that your contributions will be subject to the terms of the GPLv3 license.
