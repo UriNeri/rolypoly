@@ -1,6 +1,14 @@
 """
 Sequence file I/O operations for reading and writing FASTA/FASTQ files.
 Basic sequence analysis and validation functions.
+
+Key functions: (subject to change...)
+    - read_fasta_needletail: Read FASTA/FASTQ files into lists
+    - read_fasta_df: Read FASTA/FASTQ files into polars DataFrame
+    - write_fasta_file: Write sequences to FASTA files
+    - filter_fasta_by_headers: Filter sequences by header patterns
+    - rmdup: Remove duplicate sequences (similar to seqkit rmdup)
+    - revcomp: Calculate reverse complement of sequences
 """
 import re
 from typing import List, Union, Dict, Tuple, Optional
@@ -77,22 +85,80 @@ def filter_fasta_by_headers(
         output_file (str): Path to write filtered sequences
         invert (bool, optional): If True, keep sequences that don't match.
     """
+    from rolypoly.utils.various import is_gzipped
+    import gzip
 
-    headers_list = []
+    # Load headers and optimize for lookup pattern
+    headers_exact = set()  # For exact matches
+    headers_patterns = []  # For substring patterns only if needed
+    
     if not isinstance(headers, list):
         with open(headers, "r") as f:
             for line in f:
-                headers_list.append(line.strip())
+                header = line.strip()
+                headers_exact.add(header)
     else:
-        headers_list = headers
+        headers_exact.update(headers)
 
-    with open(output_file, "w") as out_f:
-        for record in parse_fastx_file(fasta_file):
-            matches = any(header in str(getattr(record, 'id', '')) for header in headers_list)  # type: ignore
-            if (
-                matches ^ invert
-            ):  # XOR operation: write if (matches and not invert) or (not matches and invert)
-                out_f.write(f">{getattr(record, 'id', '')}\n{getattr(record, 'seq', '')}\n")  # type: ignore
+    # Determine if files are gzipped
+    is_gz_input = is_gzipped(fasta_file)
+    is_gz_output = output_file.endswith('.gz')
+    
+    try:
+        # Open output file with appropriate method
+        if is_gz_output:
+            out_f = gzip.open(output_file, 'wt', encoding='utf-8')
+        else:
+            out_f = open(output_file, 'w', encoding='utf-8')
+        
+        # Stream through records for memory efficiency
+        records_processed = 0
+        records_written = 0
+        
+        if not invert:
+            # Optimized path for non-inverted case - collect target headers into set for O(1) lookup
+            target_headers = headers_exact.copy()
+            
+            for record in parse_fastx_file(fasta_file):
+                records_processed += 1
+                record_id = str(getattr(record, 'id', ''))
+                
+                # Fast O(1) membership test
+                if record_id in target_headers:
+                    record_seq = str(getattr(record, 'seq', ''))
+                    out_f.write(f">{record_id}\n{record_seq}\n")
+                    records_written += 1
+                    target_headers.remove(record_id)  # Remove found header for efficiency
+                    
+                    # Early exit if all headers found
+                    if not target_headers:
+                        break
+                        
+                # Optional: log progress for large files (every 100k records)
+                if records_processed % 100000 == 0:
+                    print(f"Processed {records_processed} records, written {records_written}")
+        else:
+            # Original logic for inverted case
+            for record in parse_fastx_file(fasta_file):
+                records_processed += 1
+                record_id = str(getattr(record, 'id', ''))
+                record_seq = str(getattr(record, 'seq', ''))
+                
+                # For inverted case, check if record_id is NOT in headers
+                if record_id not in headers_exact:
+                    out_f.write(f">{record_id}\n{record_seq}\n")
+                    records_written += 1
+                    
+                # Optional: log progress for large files (every 100k records)
+                if records_processed % 100000 == 0:
+                    print(f"Processed {records_processed} records, written {records_written}")
+        
+        out_f.close()
+        
+    except Exception as e:
+        if 'out_f' in locals():
+            out_f.close()
+        raise Exception(f"Error filtering FASTA file {fasta_file}: {e}") from e
 
 
 def add_fasta_to_gff(config, gff_file):
@@ -290,6 +356,294 @@ def revcomp(seq: str) -> str:
     import mappy as mp
 
     return mp.revcomp(seq)
+
+
+def remove_duplicates(
+    input_file: Union[str, List[str]],
+    output_file: Optional[str] = None,
+    by: str = "name",
+    revcomp_as_distinct: bool = True,
+    ignore_case: bool = False,
+    save_duplicates: Optional[str] = None,
+    save_dup_list: Optional[str] = None,
+    return_stats: bool = False,
+    return_sequences: bool = False,
+    streaming: bool = True,
+    logger: Optional[logging.Logger] = None,
+) -> Optional[Dict[str, Union[int, pl.DataFrame, List[Tuple[str, str]]]]]:
+    """Remove duplicate sequences from FASTA/FASTQ files.
+    
+    Efficient deduplication similar to seqkit rmdup. Uses xxhash for fast hashing
+    and supports both streaming (memory-efficient) and in-memory modes.
+    Supports processing multiple input files without concatenation.
+    
+    Args:
+        input_file: Path to input FASTA/FASTQ file, or list of paths to process multiple files
+        output_file: Path to output file with unique sequences. If None and return_sequences=False, 
+                    prints to stdout. If return_sequences=True, output_file is optional.
+        by: Deduplication criterion - "id", "name", or "seq"
+            - "id": Use sequence ID (first word of header)
+            - "name": Use full header/name
+            - "seq": Use sequence content
+        revcomp_as_distinct: If False and by="seq", treats reverse complement as duplicate.
+                           Only applies when by="seq". Default True (revcomp is distinct).
+        ignore_case: Ignore case when comparing sequences/names. Default False.
+        save_duplicates: Optional path to save duplicate sequences
+        save_dup_list: Optional path to save list of duplicate IDs with counts
+        return_stats: Return statistics dictionary. Default False.
+        return_sequences: If True, return sequences in memory instead of/in addition to writing.
+                         When True and streaming=False, all sequences are loaded into memory first.
+                         When True and streaming=True, sequences are collected as processed. Default False.
+        streaming: If True (default), process records one at a time (low memory).
+                  If False and return_sequences=True, load all sequences into memory first for faster access.
+                  Only affects behavior when return_sequences=True. Default True.
+        logger: Logger instance
+    
+    Returns:
+        Optional dictionary with:
+            - total_records: Total sequences processed
+            - unique_records: Unique sequences kept
+            - duplicates_removed: Number of duplicates removed
+            - duplicate_groups: DataFrame with duplicate groups (if save_dup_list requested)
+            - sequences: List of (header, sequence) tuples (if return_sequences=True)
+    
+    Examples:
+        >>> # Remove duplicates by sequence ID, write to file
+        >>> remove_duplicates("input.fasta", "output.fasta")
+        
+        >>> # Remove duplicates and return sequences in memory
+        >>> result = remove_duplicates("input.fasta", return_sequences=True, return_stats=True)
+        >>> for header, seq in result['sequences']:
+        ...     print(f">{header}\\n{seq}")
+        
+        >>> # Non-streaming mode: load all into memory first (faster for multiple passes)
+        >>> result = remove_duplicates("input.fasta", return_sequences=True, streaming=False)
+        
+        >>> # Remove duplicates by sequence, treating revcomp as duplicate
+        >>> remove_duplicates("input.fasta", "output.fasta", by="seq", revcomp_as_distinct=False)
+        
+        >>> # Save duplicates and get statistics
+        >>> stats = remove_duplicates("input.fasta", "output.fasta", 
+        ...               save_duplicates="dups.fasta",
+        ...               save_dup_list="dup_list.txt",
+        ...               return_stats=True)
+        
+        >>> # Process multiple files without concatenation
+        >>> remove_duplicates(["file1.fasta", "file2.fasta", "file3.fasta"], "output.fasta")
+    
+    Note:
+        - Uses xxhash (if available) or blake2b for fast hashing
+        - Only first occurrence is kept for duplicates
+        - Streaming mode: processes records one at a time (low memory)
+        - Non-streaming mode: loads all sequences into memory first (only useful with return_sequences=True)
+        - When processing multiple files, duplicates are detected across all files
+    """
+    from rolypoly.utils.logging.loggit import get_logger
+    import hashlib
+    import sys
+    
+    logger = get_logger(logger)
+    
+    # Normalize input to list
+    input_files = [input_file] if isinstance(input_file, str) else input_file
+    
+    if len(input_files) > 1:
+        logger.info(f"Processing {len(input_files)} input files")
+    
+    # Validate parameters
+    if by not in ["id", "name", "seq"]:
+        raise ValueError(f"Invalid 'by' parameter: {by}. Must be 'id', 'name', or 'seq'")
+    
+    if not revcomp_as_distinct and by != "seq":
+        logger.warning("revcomp_as_distinct only applies when by='seq', ignoring")
+    
+    if not streaming and not return_sequences:
+        logger.warning("streaming=False only affects behavior when return_sequences=True, ignoring")
+    
+    # Open output files
+    out_fh = None
+    if output_file:
+        out_fh = open(output_file, 'w')
+    elif not return_sequences:
+        out_fh = sys.stdout
+    
+    dup_fh = None
+    if save_duplicates:
+        dup_fh = open(save_duplicates, 'w')
+    
+    # Tracking data structures
+    seen_hashes = set()  # Set of hashes we've seen
+    duplicate_groups = {}  # Maps hash -> list of IDs that are duplicates
+    unique_sequences = []  # Store unique sequences if return_sequences=True
+    
+    # Statistics
+    total_records = 0
+    unique_records = 0
+    duplicates_removed = 0
+    
+    # Non-streaming mode: load all sequences into memory first
+    if not streaming and return_sequences:
+        logger.debug("Loading all sequences into memory (non-streaming mode)")
+        all_records = []
+        for input_path in input_files:
+            for record in parse_fastx_file(input_path):
+                record_id = str(getattr(record, 'id', ''))
+                record_seq = str(getattr(record, 'seq', ''))
+                all_records.append((record_id, record_seq))
+        logger.debug(f"Loaded {len(all_records)} records into memory from {len(input_files)} file(s)")
+    else:
+        all_records = None
+    
+    try:
+        # Process records (either from memory or streaming)
+        if all_records:
+            records_iter = all_records
+        else:
+            # Create an iterator that chains all input files
+            def multi_file_iterator():
+                for input_path in input_files:
+                    for record in parse_fastx_file(input_path):
+                        yield record
+            records_iter = multi_file_iterator()
+        
+        for record in records_iter:
+            total_records += 1
+            
+            # Handle different record types (tuple from memory vs needletail object)
+            if isinstance(record, tuple):
+                record_id, record_seq = record
+            else:
+                record_id = str(getattr(record, 'id', ''))
+                record_seq = str(getattr(record, 'seq', ''))
+            
+            # Extract relevant field based on 'by' parameter
+            if by == "seq":
+                field = record_seq
+            elif by == "name":
+                field = record_id  # Full header
+            else:  # by == "id"
+                # Extract just the ID (first word)
+                field = record_id.split()[0] if record_id else record_id
+            
+            # Apply case sensitivity
+            if ignore_case:
+                field = field.lower()
+            
+            # Calculate hash using xxhash3 (faster than MD5/SHA) or fallback to hashlib
+            field_bytes = field.encode('utf-8')
+            try:
+                # Try xxhash3 if available (much faster)
+                import xxhash
+                hash_val = xxhash.xxh3_64(field_bytes).intdigest()
+            except ImportError:
+                # Fallback to hashlib (slower but always available)
+                hash_val = int.from_bytes(
+                    hashlib.blake2b(field_bytes, digest_size=8).digest(), 
+                    byteorder='big'
+                )
+            
+            # Check if this is a duplicate
+            is_duplicate = hash_val in seen_hashes
+            
+            # If checking sequences and revcomp should be treated as duplicates
+            if by == "seq" and not revcomp_as_distinct and not is_duplicate:
+                rc_seq = revcomp(field if not ignore_case else field.upper())
+                if ignore_case:
+                    rc_seq = rc_seq.lower()
+                rc_bytes = rc_seq.encode('utf-8')
+                try:
+                    import xxhash
+                    rc_hash = xxhash.xxh3_64(rc_bytes).intdigest()
+                except ImportError:
+                    rc_hash = int.from_bytes(
+                        hashlib.blake2b(rc_bytes, digest_size=8).digest(),
+                        byteorder='big'
+                    )
+                
+                if rc_hash in seen_hashes:
+                    is_duplicate = True
+                    hash_val = rc_hash  # Use the RC hash for tracking
+            
+            # Handle duplicate vs unique
+            if is_duplicate:
+                duplicates_removed += 1
+                
+                # Save to duplicate file if requested
+                if dup_fh:
+                    dup_fh.write(f">{record_id}\n{record_seq}\n")
+                
+                # Track for duplicate list
+                if save_dup_list:
+                    if hash_val not in duplicate_groups:
+                        duplicate_groups[hash_val] = []
+                    duplicate_groups[hash_val].append(record_id)
+            else:
+                # First occurrence - keep it
+                unique_records += 1
+                seen_hashes.add(hash_val)
+                
+                # Write to output file if specified
+                if out_fh:
+                    out_fh.write(f">{record_id}\n{record_seq}\n")
+                
+                # Store in memory if return_sequences=True
+                if return_sequences:
+                    unique_sequences.append((record_id, record_seq))
+                
+                # Initialize duplicate tracking
+                if save_dup_list:
+                    duplicate_groups[hash_val] = [record_id]
+        
+        logger.info(f"Processed {total_records} records: {unique_records} unique, {duplicates_removed} duplicates removed")
+        
+    finally:
+        # Close output files
+        if out_fh and output_file:
+            out_fh.close()
+        if dup_fh:
+            dup_fh.close()
+    
+    # Save duplicate list if requested
+    if save_dup_list:
+        with open(save_dup_list, 'w') as dup_list_fh:
+            # Sort by number of duplicates (descending)
+            sorted_groups = sorted(
+                [(hash_val, ids) for hash_val, ids in duplicate_groups.items() if len(ids) > 1],
+                key=lambda x: len(x[1]),
+                reverse=True
+            )
+            
+            for _, ids in sorted_groups:
+                dup_list_fh.write(f"{len(ids)}\t{', '.join(ids)}\n")
+    
+    # Return results if requested
+    if return_stats or return_sequences:
+        result = {}
+        
+        if return_stats:
+            result['total_records'] = total_records
+            result['unique_records'] = unique_records
+            result['duplicates_removed'] = duplicates_removed
+            
+            if save_dup_list and duplicate_groups:
+                # Create DataFrame of duplicate groups
+                dup_data = []
+                for hash_val, ids in duplicate_groups.items():
+                    if len(ids) > 1:
+                        dup_data.append({
+                            'count': len(ids),
+                            'ids': ', '.join(ids)
+                        })
+                
+                if dup_data:
+                    result['duplicate_groups'] = pl.DataFrame(dup_data).sort('count', descending=True)
+        
+        if return_sequences:
+            result['sequences'] = unique_sequences
+        
+        return result
+    
+    return None
 
 
 def process_sequences(df: pl.DataFrame) -> pl.DataFrame:
