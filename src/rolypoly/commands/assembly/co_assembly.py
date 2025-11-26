@@ -64,6 +64,7 @@ def refinement(input, reads, output, threads, memory, variant_caller, log_file):
 
     logger.info("Assembly refinement completed")
     console.print(f"Refined assembly(ies) saved in: {output}")
+    return final_assemblies
 
 
 def align_reads(assembly, reads, output_dir, threads, logger):

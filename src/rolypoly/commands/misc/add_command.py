@@ -20,7 +20,9 @@ console = Console()
     help='Common arguments to include (comma-separated: threads,input,output,memory,logfile,loglevel or "all")',
 )
 @click.option(
-    "--packages", default="all", help='Packages to import (comma-separated or "all")'
+    "--packages",
+    default="all",
+    help='Packages to import (comma-separated or "all")',
 )
 @click.option("--description", help="Command description")
 @click.option(
@@ -55,7 +57,9 @@ def add_command(
     commands_dir = package_src / "src" / "rolypoly" / "commands"
 
     if not commands_dir.exists():
-        console.print(f"[red]Commands directory {commands_dir} does not exist.[/red]")
+        console.print(
+            f"[red]Commands directory {commands_dir} does not exist.[/red]"
+        )
         return
 
     # If any required argument is missing and interactive mode is enabled, fall back to prompts
@@ -67,7 +71,9 @@ def add_command(
         if not name:
             name = click.prompt("Enter the command name")
         if not description:
-            description = click.prompt("Enter a short description for the command")
+            description = click.prompt(
+                "Enter a short description for the command"
+            )
 
     # If not interactive and missing required args, fail
     if not all([category, name, description]):
@@ -89,7 +95,8 @@ def add_command(
     elif interactive:
         while True:
             arg_name = click.prompt(
-                'Enter argument name (or "stoparg" to finish)', default="stoparg"
+                'Enter argument name (or "stoparg" to finish)',
+                default="stoparg",
             )
             if arg_name == "stoparg":
                 break
@@ -129,11 +136,17 @@ from rolypoly.utils.logging.config import BaseConfig
                         "from rolypoly.utils.citation_reminder import remind_citations\n"
                     )
                 if "ensure_memory" in pkg:
-                    f.write("from rolypoly.utils.various import ensure_memory\n")
+                    f.write(
+                        "from rolypoly.utils.various import ensure_memory\n"
+                    )
                 if "log_start_info" in pkg:
-                    f.write("from rolypoly.utils.logging.loggit import log_start_info\n")
+                    f.write(
+                        "from rolypoly.utils.logging.loggit import log_start_info\n"
+                    )
                 if "BaseConfig" in pkg:
-                    f.write("from rolypoly.utils.logging.config import BaseConfig\n")
+                    f.write(
+                        "from rolypoly.utils.logging.config import BaseConfig\n"
+                    )
 
         f.write("\n@click.command()\n")
         if common_args == "all":
@@ -216,7 +229,9 @@ if __name__ == "__main__":
             if not category_found:
                 # Add new category
                 lines.insert(i + 1, f'    "{category}": {{\n')
-                lines.insert(i + 2, f'        "name": "{category.capitalize()}",\n')
+                lines.insert(
+                    i + 2, f'        "name": "{category.capitalize()}",\n'
+                )
                 lines.insert(i + 3, '        "commands": {\n')
                 lines.insert(
                     i + 4,

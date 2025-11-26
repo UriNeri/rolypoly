@@ -51,7 +51,9 @@ datadir = rolypoly_dir / "data"
 # mkdir /clusterfs/jgi/scratch/science/metagen/neri/rolypoly/bench/gen_data
 # cd /clusterfs/jgi/scratch/science/metagen/neri/rolypoly/bench/gen_data
 # mkdir dsRNA_data mock_data synt_data VANA_data
-output_dir = Path("/clusterfs/jgi/scratch/science/metagen/neri/rolypoly/bench/gen_data")
+output_dir = Path(
+    "/clusterfs/jgi/scratch/science/metagen/neri/rolypoly/bench/gen_data"
+)
 output_dir.mkdir(parents=True, exist_ok=True)
 os.chdir(output_dir)
 
@@ -275,4 +277,6 @@ shutil.move(
 
 # source 6 - all orthorna viruses from ncbi
 download_genome(taxid="2732396")
-shutil.unpack_archive("2732396_fetched_genomes.zip", extract_dir="inputs/contigs")
+shutil.unpack_archive(
+    "2732396_fetched_genomes.zip", extract_dir="inputs/contigs"
+)

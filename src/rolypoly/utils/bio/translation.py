@@ -1,19 +1,17 @@
 """Translation and ORF prediction functions."""
 
 import multiprocessing.pool
-from needletail import parse_fastx_file
 import re
-from typing import Union, Dict, Tuple, List
+from pathlib import Path
+from typing import Dict, List, Tuple, Union
+
+from needletail import parse_fastx_file
 
 from rolypoly.utils.various import run_command_comp
-from pathlib import Path
 
 
 def translate_6frx_seqkit(
-    input_file: str,
-    output_file: str,
-    threads: int,
-    min_orf_length: int = 0,
+    input_file: str, output_file: str, threads: int, min_orf_length: int = 0
 ) -> None:
     """Translate nucleotide sequences in all 6 reading frames using seqkit.
 
@@ -29,23 +27,28 @@ def translate_6frx_seqkit(
     # import subprocess as sp
 
     # command = f"seqkit translate -x -F --clean --min-len {min_orf_length} -w 0 -f 6 {input_file} --id-regexp '(\\*)' --clean  --threads {threads} > {output_file}"
-    run_command_comp(base_cmd="seqkit translate",
-                     assign_operator="=",
-                     prefix_style="double",
-                     params={
-                         "allow-unknown-codon": True,
-                         "clean": True, 
-                         "min-len": min_orf_length,
-                         "line-width": 0,
-                         "frame": 6,
-                         "id-regexp": "'(\\*)'",  # Properly quote the regex
-                         "threads": threads},
-                     positional_args=[f"{input_file} --out-file {output_file}"],
-                     positional_args_location="end")
+    run_command_comp(
+        base_cmd="seqkit translate",
+        assign_operator="=",
+        prefix_style="double",
+        params={
+            "allow-unknown-codon": True,
+            "clean": True,
+            "min-len": min_orf_length,
+            "line-width": 0,
+            "frame": 6,
+            "id-regexp": "'(\\*)'",  # Properly quote the regex
+            "threads": threads,
+        },
+        positional_args=[f"{input_file} --out-file {output_file}"],
+        positional_args_location="end",
+    )
     # sp.run(command, shell=True, check=True)
 
 
-def translate_with_bbmap(input_file: str, output_file: str, threads: int) -> None:
+def translate_with_bbmap(
+    input_file: str, output_file: str, threads: int
+) -> None:
     """Translate nucleotide sequences using BBMap's callgenes.sh
 
     Args:
@@ -61,9 +64,7 @@ def translate_with_bbmap(input_file: str, output_file: str, threads: int) -> Non
     import subprocess as sp
 
     gff_o = output_file.replace(".faa", ".gff")
-    command = (
-        f"callgenes.sh threads={threads} in={input_file} outa={output_file} out={gff_o}"
-    )
+    command = f"callgenes.sh threads={threads} in={input_file} outa={output_file} out={gff_o}"
     sp.run(command, shell=True, check=True)
 
 
@@ -72,7 +73,7 @@ def pyro_predict_orfs(
     output_file: str,
     threads: int,
     min_gene_length: int = 30,
-    genetic_code: int = 11,  # NOT USED 
+    genetic_code: int = 11,  # NOT USED
 ) -> None:
     """Predict and translate Open Reading Frames using Pyrodigal.
 
@@ -92,18 +93,18 @@ def pyro_predict_orfs(
     # import pyrodigal_gv as pyro_gv
     import pyrodigal_rv as pyro_rv
 
-
     sequences = []
     ids = []
     for record in parse_fastx_file(input_file):
-        sequences.append((record.seq)) # type: ignore
-        ids.append((record.id)) # type: ignore
+        sequences.append((record.seq))  # type: ignore
+        ids.append((record.id))  # type: ignore
 
     gene_finder = pyro_rv.ViralGeneFinder(
         meta=True,
         min_gene=min_gene_length,
-        max_overlap=min(30, min_gene_length - 1) if min_gene_length > 30 else 20,  # Ensure max_overlap < min_gene
-        
+        max_overlap=min(30, min_gene_length - 1)
+        if min_gene_length > 30
+        else 20,  # Ensure max_overlap < min_gene
     )  # a single gv gene finder object
 
     with multiprocessing.pool.Pool(processes=threads) as pool:
@@ -115,9 +116,9 @@ def pyro_predict_orfs(
 
     with open(output_file.replace(".faa", ".gff"), "w") as dst:
         for i, orf in enumerate(orfs):
-            orf.write_gff(dst, sequence_id=ids[i], full_id=True) 
-            
-            
+            orf.write_gff(dst, sequence_id=ids[i], full_id=True)
+
+
 def predict_orfs_orffinder(
     input_fasta: Union[str, Path],
     output_file: Union[str, Path],
@@ -133,13 +134,16 @@ def predict_orfs_orffinder(
         params={
             "in": str(input_fasta),
             "out": str(output_file),
-            "ml": min_orf_length, # orfinder automatically replaces values below 30 to 30.
-            "s": start_codon, # ORF start codon to use, 0 is atg only, 1 atg + alt start codons
+            "ml": min_orf_length,  # orfinder automatically replaces values below 30 to 30.
+            "s": start_codon,  # ORF start codon to use, 0 is atg only, 1 atg + alt start codons
             "g": genetic_code,
-            "n": "false" if ignore_nested else "true", # do not ignore nested ORFs
-            "strand": strand, # both is plus and minus.
-            "outfmt": outfmt, # 1 is fasta, 3 is feature table
-        },prefix_style="single"
+            "n": "false"
+            if ignore_nested
+            else "true",  # do not ignore nested ORFs
+            "strand": strand,  # both is plus and minus.
+            "outfmt": outfmt,  # 1 is fasta, 3 is feature table
+        },
+        prefix_style="single",
     )
 
 
@@ -273,25 +277,28 @@ GENETIC_CODE_NAMES = {
 NT_NAME = "TCAG"
 NT_COMP = "AGTC"
 
-def make_translation_table(genetic_code: int) -> Tuple[Dict[str, str], Dict[str, bool]]:
+
+def make_translation_table(
+    genetic_code: int,
+) -> Tuple[Dict[str, str], Dict[str, bool]]:
     """Create codon translation and start codon lookup tables.
-    
+
     Args:
         genetic_code: Genetic code number to use
-        
+
     Returns:
         Tuple of (amino_acid_table, start_codon_table)
     """
     code_str = str(genetic_code)
     if code_str not in GENETIC_CODES_AA:
         raise ValueError(f"Unknown genetic code: {genetic_code}")
-    
+
     aa_string = GENETIC_CODES_AA[code_str]
     start_string = GENETIC_CODES_START[code_str]
-    
+
     tranaa = {}
     transt = {}
-    
+
     # Build codon tables
     for i in range(4):
         for j in range(4):
@@ -300,42 +307,44 @@ def make_translation_table(genetic_code: int) -> Tuple[Dict[str, str], Dict[str,
                 idx = i * 16 + j * 4 + k
                 tranaa[codon] = aa_string[idx]
                 transt[codon] = start_string[idx] != "-"
-    
+
     tranaa["---"] = "-"
     return tranaa, transt
 
+
 def translate_sequence(seq: str, frame: int, genetic_code: int = 11) -> str:
     """Translate a nucleotide sequence in a specific frame.
-    
+
     Args:
         seq: DNA sequence (uppercase, T not U)
         frame: Reading frame (1-3 for forward, -1 to -3 for reverse)
         genetic_code: Genetic code table to use
-        
+
     Returns:
         Translated amino acid sequence
     """
     tranaa, transt = make_translation_table(genetic_code)
-    
+
     # Handle reverse frames
     if frame < 0:
         # Reverse complement
         seq = seq[::-1]  # reverse
         seq = seq.translate(str.maketrans("AGCT", "TCGA"))  # complement
         frame = abs(frame)
-    
+
     offset = frame - 1
     translated = ""
-    
+
     for i in range(offset, len(seq) - 2, 3):
-        codon = seq[i:i+3]
+        codon = seq[i : i + 3]
         aa = tranaa.get(codon, "X")
         # Make start codons lowercase if specified
         if transt.get(codon, False):
             aa = aa.lower()
         translated += aa
-    
+
     return translated
+
 
 def print_translation_results(
     definition: str,
@@ -346,10 +355,10 @@ def print_translation_results(
     pmode: int = 0,
     nmode: int = 0,
     lmin: int = 16,
-    upper: bool = False
+    upper: bool = False,
 ) -> List[str]:
     """Format and return translation results.
-    
+
     Args:
         definition: Original sequence definition line
         translated_seq: Translated amino acid sequence
@@ -360,32 +369,32 @@ def print_translation_results(
         nmode: Naming mode (0-3, different naming schemes)
         lmin: Minimum ORF length in amino acids
         upper: Whether to uppercase the sequence
-        
+
     Returns:
         List of FASTA formatted strings
     """
     results = []
-    
+
     if pmode == 1 or pmode == 2:
         # Stop-to-stop or start-to-stop mode
         pattern = r"([A-Za-z]+)" if pmode == 1 else r"([a-z][A-Za-z]*)"
-        
+
         for match in re.finditer(pattern, translated_seq):
             seq = match.group(1).upper()
             if len(seq) < lmin:
                 continue
-                
+
             end_pos = match.end()
             start_pos = end_pos - len(seq)
-            
+
             # Calculate nucleotide positions
             r1 = start_pos * 3 + abs(frame)
             r2 = end_pos * 3 + abs(frame) - 1
-            
+
             if frame < 0:
                 r1 = nt_length - r1 + 1
                 r2 = nt_length - r2 + 1
-            
+
             # Format name based on naming mode
             if nmode == 1:
                 name = f"{seq_id}_{r1}_{r2} {definition} [frame {frame}] [range {r1}..{r2}] [len {len(seq)}]"
@@ -393,13 +402,13 @@ def print_translation_results(
                 name = f"{seq_id}.{r1}-{r2} {definition} [frame {frame}] [range {r1}..{r2}] [len {len(seq)}]"
             else:
                 name = f"{definition} [frame {frame}] [range {r1}..{r2}] [len {seq}]"
-            
+
             results.append(f">{name}\n{seq}")
-    
+
     else:
         # Full frame translation
         seq = translated_seq.upper() if upper else translated_seq
-        
+
         if nmode == 1 or nmode == 2:
             name = f"{seq_id}.{frame} {definition} [frame {frame}]"
         elif nmode == 3:
@@ -407,10 +416,11 @@ def print_translation_results(
             name = f"{seq_id}_fr{frame_num} {definition} [frame {frame}]"
         else:
             name = f"{definition} [frame {frame}]"
-        
+
         results.append(f">{name}\n{seq}")
-    
+
     return results
+
 
 def translate_fasta_sequences(
     sequences: List[Tuple[str, str]],  # (header, sequence) pairs
@@ -421,10 +431,10 @@ def translate_fasta_sequences(
     lmin: int = 16,
     idwrd: int = 2,
     upper: bool = False,
-    delim: str = r"[ ,;:|]"
+    delim: str = r"[ ,;:|]",
 ) -> List[str]:
     """Translate multiple FASTA sequences.
-    
+
     Args:
         sequences: List of (header, sequence) tuples
         frame: Reading frame (0 for all 6 frames, 1-3 forward, -1 to -3 reverse)
@@ -435,24 +445,24 @@ def translate_fasta_sequences(
         idwrd: Which word of ID to use (0 for all)
         upper: Uppercase output sequences
         delim: Delimiter pattern for parsing sequence IDs
-        
+
     Returns:
         List of FASTA formatted translation results
     """
     all_results = []
-    
+
     for header, seq in sequences:
         # Clean up sequence
         seq = seq.replace(" ", "").replace("\t", "").upper().replace("U", "T")
         seq_len = len(seq)
-        
+
         # Parse sequence ID
         seq_id = header.split()[0] if header.split() else header
         if idwrd > 0:
             id_parts = re.split(delim, seq_id)
             if len(id_parts) >= idwrd:
                 seq_id = id_parts[idwrd - 1]
-        
+
         # Determine frames to translate
         frames = []
         if frame > 0:
@@ -461,43 +471,50 @@ def translate_fasta_sequences(
             frames = [frame]
         else:  # frame == 0, translate all 6 frames
             frames = [1, 2, 3, -1, -2, -3]
-        
+
         # Translate in each frame
         for f in frames:
             translated = translate_sequence(seq, f, genetic_code)
             results = print_translation_results(
-                header, translated, f, seq_len, seq_id, pmode, nmode, lmin, upper
+                header,
+                translated,
+                f,
+                seq_len,
+                seq_id,
+                pmode,
+                nmode,
+                lmin,
+                upper,
             )
             all_results.extend(results)
-    
+
     return all_results
 
-# Native simple translation 
+
+# Native simple translation
 def translate(sequence: str, genetic_code: int = 11) -> str:
     """Translate a nucleotide sequence to amino acids using the specified genetic code.
-    
+
     Args:
         sequence: DNA sequence string (will be converted to uppercase, U->T)
         genetic_code: Genetic code table number (default 11 for bacterial/plastid)
-        
+
     Returns:
         Translated amino acid sequence
     """
     # Clean and prepare sequence
     seq = sequence.replace(" ", "").replace("\t", "").upper().replace("U", "T")
-    
+
     # Get translation table
     tranaa, transt = make_translation_table(genetic_code)
-    
+
     translated = ""
     for i in range(0, len(seq) - 2, 3):
-        codon = seq[i:i+3]
+        codon = seq[i : i + 3]
         aa = tranaa.get(codon, "X")
         # Make start codons lowercase
         if transt.get(codon, False):
             aa = aa.lower()
         translated += aa
-    
+
     return translated
-    
-    

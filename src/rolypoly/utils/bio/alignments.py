@@ -1,38 +1,40 @@
 """Alignments (MSAs, HMMs, and collection of them) and mapping utility functions."""
 
-import re
+import io
 import logging
+import re
 import tempfile
 from pathlib import Path
-from typing import List, Optional, Union, Dict
-import io
+from typing import Dict, List, Optional, Union
 
-from rich.progress import track
 import polars as pl
-import pyhmmer 
+import pyhmmer
+from rich.progress import track
 
 from rolypoly.utils.logging.loggit import get_logger
 from rolypoly.utils.various import find_files_by_extension, run_command_comp
 
+
 def find_msa_files(
     input_path: Union[str, Path],
     extensions: List[str] = None,
-    logger: Optional[logging.Logger] = None
+    logger: Optional[logging.Logger] = None,
 ) -> List[Path]:
     """Find all Multiple Sequence Alignment files in a directory or return single file.
-    
+
     Args:
         input_path: Path to directory or file
         extensions: List of extensions to look for
         logger: Logger instance
-        
+
     Returns:
         List of MSA file paths
     """
     if extensions is None:
         extensions = ["*.faa", "*.afa", "*.aln", "*.msa"]
-    
+
     return find_files_by_extension(input_path, extensions, "MSA files", logger)
+
 
 def calculate_percent_identity(cigar_string: str, num_mismatches: int) -> float:
     """Calculate sequence identity percentage from CIGAR string and edit distance.
@@ -59,51 +61,53 @@ def calculate_percent_identity(cigar_string: str, num_mismatches: int) -> float:
     """
 
     cigar_tuples = re.findall(r"(\d+)([MIDNSHPX=])", cigar_string)
-    matches = sum(int(length) for length, op in cigar_tuples if op in {"M", "=", "X"})
-    total_length = sum(
-        int(length) for length, op in cigar_tuples if op in {"M", "I", "D", "=", "X"}
+    matches = sum(
+        int(length) for length, op in cigar_tuples if op in {"M", "=", "X"}
     )
-    return (matches - num_mismatches) / total_length * 100 
-
+    total_length = sum(
+        int(length)
+        for length, op in cigar_tuples
+        if op in {"M", "I", "D", "=", "X"}
+    )
+    return (matches - num_mismatches) / total_length * 100
 
 
 def find_hmm_files(
     input_path: Union[str, Path],
     extensions: List[str] = None,
-    logger: Optional[logging.Logger] = None
+    logger: Optional[logging.Logger] = None,
 ) -> List[Path]:
     """Find all HMM files in a directory or return single file.
-    
+
     Args:
         input_path: Path to directory or file
         extensions: List of extensions to look for
         logger: Logger instance
-        
+
     Returns:
         List of HMM file paths
     """
     if extensions is None:
         extensions = ["*.hmm"]
-    
-    return find_files_by_extension(input_path, extensions, "HMM files", logger)
 
+    return find_files_by_extension(input_path, extensions, "HMM files", logger)
 
 
 def validate_database_directory(
     database_path: Union[str, Path],
     expected_types: List[str] = None,
-    logger: Optional[logging.Logger] = None
+    logger: Optional[logging.Logger] = None,
 ) -> Dict[str, Union[str, List[Path]]]:
     """Validate and categorize database directory contents.
-    
+
     This function handles the common pattern of validating custom database directories
     that can contain either HMM files or MSA files that need to be converted to HMMs.
-    
+
     Args:
         database_path: Path to database file or directory
         expected_types: List of expected file types ("hmm", "msa", "fasta")
         logger: Logger instance
-        
+
     Returns:
         Dictionary containing:
         - type: "hmm_file", "hmm_directory", "msa_file", "msa_directory", "mixed", "invalid"
@@ -112,20 +116,16 @@ def validate_database_directory(
     """
     logger = get_logger(logger)
     database_path = Path(database_path)
-    
+
     if expected_types is None:
         expected_types = ["hmm", "msa"]
-    
-    result = {
-        "type": "invalid",
-        "files": [],
-        "message": ""
-    }
-    
+
+    result = {"type": "invalid", "files": [], "message": ""}
+
     if not database_path.exists():
         result["message"] = f"Database path {database_path} does not exist"
         return result
-    
+
     if database_path.is_file():
         # Single file - determine type
         if database_path.suffix == ".hmm":
@@ -138,14 +138,14 @@ def validate_database_directory(
             result["message"] = f"Single MSA file: {database_path.name}"
         else:
             result["message"] = f"Unsupported file type: {database_path.suffix}"
-        
+
         return result
-    
+
     elif database_path.is_dir():
         # Directory - analyze contents
         hmm_files = find_hmm_files(database_path, logger=logger)
         msa_files = find_msa_files(database_path, logger=logger)
-        
+
         if hmm_files and not msa_files:
             result["type"] = "hmm_directory"
             result["files"] = hmm_files
@@ -157,12 +157,14 @@ def validate_database_directory(
         elif hmm_files and msa_files:
             result["type"] = "mixed"
             result["files"] = hmm_files + msa_files
-            result["message"] = f"Mixed directory: {len(hmm_files)} HMM files, {len(msa_files)} MSA files"
+            result["message"] = (
+                f"Mixed directory: {len(hmm_files)} HMM files, {len(msa_files)} MSA files"
+            )
         else:
             result["message"] = "Directory contains no HMM or MSA files"
-        
+
         return result
-    
+
     result["message"] = f"Path {database_path} is neither file nor directory"
     return result
 
@@ -178,10 +180,10 @@ def get_hmm_coverage(domain) -> float:
 
 
 def search_hmmdb(
-    amino_file : Union[str, Path],
-    db_path : Union[str, Path],
-    output : Union[str, Path],
-    threads : int,
+    amino_file: Union[str, Path],
+    db_path: Union[str, Path],
+    output: Union[str, Path],
+    threads: int,
     logger=None,
     inc_e=0.05,
     mscore=20,
@@ -291,23 +293,34 @@ def search_hmmdb(
 
     with open(output, "wb") as outfile:
         if output_format == "modomtblout":
-            outfile.write("\t".join(mod_title_domtblout).encode("utf-8") + b"\n")
+            outfile.write(
+                "\t".join(mod_title_domtblout).encode("utf-8") + b"\n"
+            )
         else:
             outfile.write(
                 "\n".join(
                     (
-                        og_tblout if output_format == "tblout" else og_domtblout_title
+                        og_tblout
+                        if output_format == "tblout"
+                        else og_domtblout_title
                     )
                 )
                 + "\n"
             )
         with pyhmmer.plan7.HMMFile(db_path) as hmms:
             for hits in pyhmmer.hmmsearch(
-                hmms, seqs, cpus=threads, T=mscore, E=inc_e, **pyhmmer_hmmsearch_args
+                hmms,
+                seqs,
+                cpus=threads,
+                T=mscore,
+                E=inc_e,
+                **pyhmmer_hmmsearch_args,
             ):
                 if output_format != "modomtblout":
                     # writes hits
-                    hits.write(outfile, format=format_dict[output_format], header=False)
+                    hits.write(
+                        outfile, format=format_dict[output_format], header=False
+                    )
                     continue
                 else:
                     if len(hits) >= 1:
@@ -325,7 +338,9 @@ def search_hmmdb(
                                 # Calculate hmm_coverage
                                 hmm_coverage = get_hmm_coverage(domain)
 
-                                dom_desc = hits.query.description or bytes("", "utf-8")
+                                dom_desc = hits.query.description or bytes(
+                                    "", "utf-8"
+                                )
 
                                 outputline = [
                                     f"{full_prot_name}",  # query_full_name
@@ -357,7 +372,9 @@ def search_hmmdb(
                                     outputline.append(
                                         f"{domain.alignment.identity_sequence}"
                                     )
-                                outfile.write(("\t".join(outputline) + "\n").encode())
+                                outfile.write(
+                                    ("\t".join(outputline) + "\n").encode()
+                                )
     return output
 
 
@@ -384,14 +401,16 @@ def hmm_from_msa(
         raise ValueError("alphabet must be either 'amino' or 'dna'")
 
     # Read the MSA file
-    with pyhmmer.easel.MSAFile(msa_file, digital=True, alphabet=alpha) as msa_file:
+    with pyhmmer.easel.MSAFile(
+        msa_file, digital=True, alphabet=alpha
+    ) as msa_file:
         msa = msa_file.read()
 
     # Set name and accession if provided
     if name:
         msa.name = name.encode("utf-8")
     else:
-        msa.name = msa.names[0] #.decode("utf-8")
+        msa.name = msa.names[0]  # .decode("utf-8")
     if accession:
         msa.accession = accession.encode("utf-8")
 
@@ -419,8 +438,8 @@ def hmmdb_from_directory(
     name_col="MARKER",
     accs_col="ANNOTATION_ACCESSIONS",
     desc_col="ANNOTATION_DESCRIPTION",
-    default_gath= "1",
-    gath_col= None #"GATHERING_THRESHOLD",
+    default_gath="1",
+    gath_col=None,  # "GATHERING_THRESHOLD",
 ):
     """Create a concatenated HMM database from a directory of MSA files.
 
@@ -438,7 +457,9 @@ def hmmdb_from_directory(
 
     msa_dir = Path(msa_dir)
     output = Path(output)
-    default_gath =  default_gath.encode("utf-8")  # default gathering threshold if none provided
+    default_gath = default_gath.encode(
+        "utf-8"
+    )  # default gathering threshold if none provided
 
     if info_table is not None:
         info_table = Path(info_table)
@@ -469,7 +490,9 @@ def hmmdb_from_directory(
                 info = info_table.filter(
                     pl.col(name_col).str.contains(msa.name.decode())
                 )
-                if info.height == 1: # should only be one match but just in case
+                if (
+                    info.height == 1
+                ):  # should only be one match but just in case
                     for col_key, col_val in cols_map.items():
                         if col_val is not None:
                             # print(col_val)
@@ -486,7 +509,7 @@ def hmmdb_from_directory(
                             else "1".encode("utf-8")
                         )
                     else:
-                        this_gath = default_gath # default gathering threshold
+                        this_gath = default_gath  # default gathering threshold
             else:
                 msa.description = "None".encode("utf-8")
             # Build the HMM
@@ -548,12 +571,11 @@ def mmseqs_profile_db_from_directory(
         if name_col not in info_table.columns:
             raise ValueError(f"info_table must contain a '{name_col}' column")
         some_bool = True
-        cols_map = {accs_col: "accession", desc_col: "description"}
+        # cols_map = {accs_col: "accession", desc_col: "description"}
     else:
         some_bool = False
-    
 
-    all_msa_blocks = [] # List to hold the content of each complete MSA block
+    all_msa_blocks = []  # List to hold the content of each complete MSA block
     # Process each MSA file
     for msa_file in track(
         msa_dir.glob(msa_pattern),
@@ -628,14 +650,20 @@ def mmseqs_profile_db_from_directory(
             text_block = raw_block.decode("latin-1")
 
         lines = text_block.splitlines()
-        gf_lines = [f"#=GF ID {display_label}", f"#=GF AC {accs_str}", f"#=GF DE {desc_str}"]
+        gf_lines = [
+            f"#=GF ID {display_label}",
+            f"#=GF AC {accs_str}",
+            f"#=GF DE {desc_str}",
+        ]
         if len(lines) > 0 and lines[0].startswith("# STOCKHOLM"):
             # Insert GF lines after the STOCKHOLM header
             lines[1:1] = gf_lines
             new_text = "\n".join(lines) + "\n"
         else:
             # Prepend a STOCKHOLM header and the GF lines
-            new_text = "# STOCKHOLM 1.0\n" + "\n".join(gf_lines) + "\n" + text_block
+            new_text = (
+                "# STOCKHOLM 1.0\n" + "\n".join(gf_lines) + "\n" + text_block
+            )
 
         msa_block = new_text.encode("utf-8")
         all_msa_blocks.append(msa_block)
@@ -668,7 +696,10 @@ def mmseqs_profile_db_from_directory(
             run_command_comp(
                 "mmseqs",
                 positional_args=["msa2profile", str(msa_db), str(output)],
-                params={"match-mode": int(match_mode), "match-ratio": float(match_ratio)},
+                params={
+                    "match-mode": int(match_mode),
+                    "match-ratio": float(match_ratio),
+                },
                 positional_args_location="start",
                 return_final_cmd=True,
                 check_status=True,
@@ -679,6 +710,7 @@ def mmseqs_profile_db_from_directory(
             raise RuntimeError(f"Failed to build mmseqs profile DB: {e}")
 
         return output
+
 
 def mmseqs_search(
     query_db: Union[str, Path],
@@ -699,13 +731,13 @@ def mmseqs_search(
         str(query_db),
         str(target_db),
         str(result_db),
-        str(tmp_dir)
+        str(tmp_dir),
     ]
-    params ={
+    params = {
         "threads": int(threads),
-        "sensitivity": int(sensitivity), # TODO: check if this should be float?
-        "a" : True # TODO: find out if this has a long form name so less chance of fudging the param prefix.
-        }
+        "sensitivity": int(sensitivity),  # TODO: check if this should be float?
+        "a": True,  # TODO: find out if this has a long form name so less chance of fudging the param prefix.
+    }
 
     if extra_opts:
         # split extra options naively on whitespace
@@ -753,7 +785,13 @@ def mmseqs_convertalis(
 
     run_command_comp(
         "mmseqs",
-        positional_args=["convertalis", str(query_db), str(target_db), str(alignment_db), str(out_file)],
+        positional_args=[
+            "convertalis",
+            str(query_db),
+            str(target_db),
+            str(alignment_db),
+            str(out_file),
+        ],
         params=params,
         check_status=True,
         check_output=True,
@@ -838,12 +876,18 @@ def msas_to_stockholm(
             text_block = raw_block.decode("latin-1")
 
         lines = text_block.splitlines()
-        gf_lines = [f"#=GF ID {display_label}", f"#=GF AC {accs_str}", f"#=GF DE {desc_str}"]
+        gf_lines = [
+            f"#=GF ID {display_label}",
+            f"#=GF AC {accs_str}",
+            f"#=GF DE {desc_str}",
+        ]
         if len(lines) > 0 and lines[0].startswith("# STOCKHOLM"):
             lines[1:1] = gf_lines
             new_text = "\n".join(lines) + "\n"
         else:
-            new_text = "# STOCKHOLM 1.0\n" + "\n".join(gf_lines) + "\n" + text_block
+            new_text = (
+                "# STOCKHOLM 1.0\n" + "\n".join(gf_lines) + "\n" + text_block
+            )
 
         all_msa_blocks.append(new_text.encode("utf-8"))
 
@@ -852,5 +896,3 @@ def msas_to_stockholm(
         fh.write(b"".join(all_msa_blocks))
 
     return out_sto
-
-

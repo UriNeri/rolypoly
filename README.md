@@ -118,7 +118,7 @@ Non-Python
 - [plass and penguin](https://github.com/soedinglab/plass)
 - [diamond](https://github.com/bbuchfink/diamond)
 - [pigz](https://github.com/madler/pigz)
-- [prodigal](https://github.com/hyattpd/Prodigal) - via pyrodigal-gv (add link)
+- [prodigal](https://github.com/hyattpd/Prodigal) - via pyrodigal-rv
 - [linearfold](https://github.com/LinearFold/LinearFold)
 - [HMMER](https://github.com/EddyRivasLab/hmmer) - via pyhmmer
 - [needletail](https://github.com/onecodex/needletail)
@@ -134,7 +134,6 @@ Non-Python
 * [rich_click](https://pypi.org/project/rich-click/)
 * [rich](https://github.com/Textualize/rich)
 * [pyhmmer](https://github.com/althonos/pyhmmer)
-* [pyrodigal-gv](https://github.com/althonos/pyrodigal-gv)
 * [pyrodigal-rv](https://github.com/landerdc/pyrodigal-rv)
 * [multiprocess](https://github.com/uqfoundation/multiprocess)
 * [requests](https://requests.readthedocs.io)

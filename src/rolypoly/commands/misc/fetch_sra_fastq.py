@@ -4,8 +4,9 @@ from pathlib import Path
 import requests
 import rich_click as click
 
-from rolypoly.utils.various import run_command_comp
 from rolypoly.utils.logging.loggit import setup_logging
+from rolypoly.utils.various import run_command_comp
+
 logger = setup_logging(None)
 
 
@@ -16,7 +17,9 @@ def get_downloader():
     elif shutil.which("wget"):
         return "wget"
     else:
-        logger.error("Neither aria2c nor wget found. Please install one of them.")
+        logger.error(
+            "Neither aria2c nor wget found. Please install one of them."
+        )
         raise SystemExit(1)
 
 

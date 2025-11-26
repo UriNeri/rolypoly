@@ -20,9 +20,9 @@ class FilterContigsConfig(BaseConfig):
     def __init__(self, **kwargs):
         # in this case output_dir and output are NOT the same, so we only explicitly make sure output_dir exists, and just "touch" the output file.
         if not Path(kwargs.get("output", "")).exists():
-            kwargs["output_dir"] = Path(kwargs.get("output")).parent # type: ignore # the main function always sets it, can't really be none
-            Path(kwargs.get("output")).parent.mkdir(parents=True, exist_ok=True) # type: ignore # the main function always sets it, can't really be none
-            Path(kwargs.get("output")).touch() # type: ignore # the main function always sets it, can't really be nones
+            kwargs["output_dir"] = Path(kwargs.get("output")).parent  # type: ignore # the main function always sets it, can't really be none
+            Path(kwargs.get("output")).parent.mkdir(parents=True, exist_ok=True)  # type: ignore # the main function always sets it, can't really be none
+            Path(kwargs.get("output")).touch()  # type: ignore # the main function always sets it, can't really be nones
 
         super().__init__(
             input=kwargs.get("input", ""),
@@ -34,16 +34,20 @@ class FilterContigsConfig(BaseConfig):
             config_file=kwargs.get("config_file", None),
             overwrite=kwargs.get("overwrite", False),
             log_level=kwargs.get("log_level", "INFO"),
-        )  
-        
+        )
+
         # initialize the rest of the parameters (i.e. the ones that are not in the BaseConfig class)
         self.host = Path(kwargs.get("host", "")).absolute().resolve()
         self.mode = kwargs.get("mode", "both")
         self.dont_mask = kwargs.get("dont_mask", False)
-        self.filter1_nuc = kwargs.get("filter1_nuc", "alnlen >= 120 & pident>=75")
-        self.filter2_nuc = kwargs.get("filter2_nuc", "qcov >= 0.95 & pident>=95")
-        self.mmseqs_args = (
-            kwargs.get("mmseqs_args", "--min-seq-id 0.5 --min-aln-len 80")
+        self.filter1_nuc = kwargs.get(
+            "filter1_nuc", "alnlen >= 120 & pident>=75"
+        )
+        self.filter2_nuc = kwargs.get(
+            "filter2_nuc", "qcov >= 0.95 & pident>=95"
+        )
+        self.mmseqs_args = kwargs.get(
+            "mmseqs_args", "--min-seq-id 0.5 --min-aln-len 80"
         )
         self.filter1_aa = kwargs.get("filter1_aa", "length >= 80 & pident>=75")
         self.filter2_aa = kwargs.get("filter2_aa", "qcovhsp >= 95 & pident>=80")
@@ -80,8 +84,12 @@ class FilterContigsConfig(BaseConfig):
     help="Filtering mode: nucleotide, amino acid, or both (nuc / aa / both)",
 )
 @click.option("-t", "--threads", default=1, help="Number of threads")
-@click.option("-M", "--memory", default="6g", help="Memory. Can be specified in gb ")
-@click.option("--keep-tmp", is_flag=True, default=False, help="Keep temporary files")
+@click.option(
+    "-M", "--memory", default="6g", help="Memory. Can be specified in gb "
+)
+@click.option(
+    "--keep-tmp", is_flag=True, default=False, help="Keep temporary files"
+)
 @click.option("-g", "--log-file", default=None, help="Path to log file")
 @click.option(
     "-Fm1",
@@ -226,7 +234,6 @@ def filter_contigs(
         f_out.write(remind_citations(tools, return_bibtex=True) or "")
 
 
-
 def filter_contigs_nuc(config: FilterContigsConfig):
     import subprocess
 
@@ -252,7 +259,7 @@ def filter_contigs_nuc(config: FilterContigsConfig):
 
     # Convert input to MMseqs2 DB if it's a fasta file
     input_db = config.input
-    if config.input.suffix.endswith((".faa", ".fasta", ".fas", ".fna")): # type: ignore - an initalized config.input is a path
+    if config.input.suffix.endswith((".faa", ".fasta", ".fas", ".fna")):  # type: ignore - an initalized config.input is a path
         input_db = config.temp_dir / "contig_db" / "cmmdb"
         input_db.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(
@@ -327,7 +334,7 @@ def filter_contigs_nuc(config: FilterContigsConfig):
     subprocess.run(mmseqs_search_cmd, check=True)
 
     # Convert results to desired format
-    result_file = config.temp_dir / f"{config.input.stem}_vs_host.tab" # type: ignore - an initalized config.input is a path
+    result_file = config.temp_dir / f"{config.input.stem}_vs_host.tab"  # type: ignore - an initalized config.input is a path
     config.logger.info(f"Converting results to desired format: {result_file}")
     subprocess.run(
         [
@@ -388,9 +395,9 @@ def filter_contigs_nuc(config: FilterContigsConfig):
         shutil.rmtree(tmpdir, ignore_errors=True)
         shutil.rmtree(resdb, ignore_errors=True)
         if input_db != config.input:
-            shutil.rmtree(input_db.parent, ignore_errors=True) # type: ignore - an initalized input_db is a path
+            shutil.rmtree(input_db.parent, ignore_errors=True)  # type: ignore - an initalized input_db is a path
         if host_db != config.host:
-            shutil.rmtree(host_db.parent, ignore_errors=True) # type: ignore - an initalized host_db is a path
+            shutil.rmtree(host_db.parent, ignore_errors=True)  # type: ignore - an initalized host_db is a path
         result_file.unlink(missing_ok=True)
 
 
@@ -442,7 +449,8 @@ def filter_contigs_aa(config: FilterContigsConfig):
         if not config.dont_mask:
             masked_fasta = config.temp_dir / "masked_host.fasta"
             rna_virus_prots = (
-                Path(os.environ.get("ROLYPOLY_DATA", "")) / "prots_for_masking.faa"
+                Path(os.environ.get("ROLYPOLY_DATA", ""))
+                / "prots_for_masking.faa"
             )
             diamond_mask_cmd = [
                 "diamond",
@@ -470,7 +478,7 @@ def filter_contigs_aa(config: FilterContigsConfig):
                     "qseqid sseqid pident length mismatch gapopen qlen qstart qend sstart send slen evalue bitscore qcovhsp",
                 ]
             )
-            with open(config.log_file, "a") as log_file: # type: ignore
+            with open(config.log_file, "a") as log_file:  # type: ignore
                 subprocess.run(
                     " ".join(diamond_mask_cmd),
                     check=True,
@@ -506,7 +514,7 @@ def filter_contigs_aa(config: FilterContigsConfig):
             "qtitle sseqid pident length mismatch gapopen qstart qend qlen sstart send slen evalue bitscore qstrand qframe qcovhsp",
         ]
     )
-    with open(config.log_file, "a") as log_file: # type: ignore
+    with open(config.log_file, "a") as log_file:  # type: ignore
         subprocess.run(
             " ".join(diamond_search_cmd),
             check=True,

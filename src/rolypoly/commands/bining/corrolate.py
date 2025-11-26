@@ -14,7 +14,10 @@ console = Console()
     help="Input directory containing rolypoly's virus identification and annotation results",
 )
 @click.option(
-    "-o", "--output", default=lambda: f"{os.getcwd()}_corrolate.tsv", help="output path"
+    "-o",
+    "--output",
+    default=lambda: f"{os.getcwd()}_corrolate.tsv",
+    help="output path",
 )
 @click.option("-t", "--threads", default=1, help="Number of threads")
 @click.option(

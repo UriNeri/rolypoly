@@ -19,11 +19,13 @@ click.rich_click.STYLE_COMMANDS_TABLE_PADDING = (0, 2)
 with resources.files("rolypoly").joinpath("rpconfig.json").open("r") as conff:
     config = load(conff)
 data_dir = config["ROLYPOLY_DATA"]
-os.environ["ROLYPOLY_DATA"] = data_dir # export to env just in case
+os.environ["ROLYPOLY_DATA"] = data_dir  # export to env just in case
 os.environ["citation_file"] = str(
-    resources.files("rolypoly")
-    .joinpath("../../misc/all_used_tools_dbs_citations.json")
+    resources.files("rolypoly").joinpath(
+        "../../misc/all_used_tools_dbs_citations.json"
+    )
 )
+
 
 @click.group(
     cls=LazyGroup,
@@ -42,7 +44,7 @@ os.environ["citation_file"] = str(
             "commands": {
                 "filter-reads": "rolypoly.commands.reads.filter_reads.filter_reads",
                 "shrink-reads": "rolypoly.commands.reads.shrink_reads.shrink_reads",
-                "mask-dna": "rolypoly.commands.reads.mask_dna.mask_dna", 
+                "mask-dna": "rolypoly.commands.reads.mask_dna.mask_dna",
             },
         },
         "annotation": {
@@ -97,19 +99,23 @@ os.environ["citation_file"] = str(
         },
     },
 )
-@click.version_option(version=flat_dict(get_version_info(),sep="\n"), prog_name="rolypoly")
+@click.version_option(
+    version=flat_dict(get_version_info(), sep="\n"), prog_name="rolypoly"
+)
 def rolypoly():
     """RolyPoly: RNA Virus analysis tookit.\n
     Use rolypoly `command` --help for more details \n"""
     pass
+
 
 @rolypoly.command()
 def version():
     """
     Print code version (commit or semvar) and data (date) information.
     """
-    #click wrapper for version/data information, so it could be called vai rolypoly version (on top of rolypoly --version)
-    print(flat_dict(get_version_info(),sep="\n"))
+    # click wrapper for version/data information, so it could be called vai rolypoly version (on top of rolypoly --version)
+    print(flat_dict(get_version_info(), sep="\n"))
+
 
 if __name__ == "__main__":
     rolypoly()

@@ -1,6 +1,7 @@
 """
 This is a place holder script.
 """
+
 import os
 
 import rich_click as click

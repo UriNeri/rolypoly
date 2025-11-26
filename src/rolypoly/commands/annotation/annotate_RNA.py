@@ -29,7 +29,7 @@ class RNAAnnotationConfig(BaseConfig):
         memory: str,
         override_parameters: dict[str, object] = {},
         skip_steps: list[str] = [],
-        rnamotif_tool = None,
+        rnamotif_tool=None,
         secondary_structure_tool: str = "RNAfold",
         ires_tool: str = "IRESfinder",
         trna_tool: str = "tRNAscan-SE",
@@ -37,7 +37,7 @@ class RNAAnnotationConfig(BaseConfig):
         custom_cm_db: str = "",
         output_format: str = "tsv",
         motif_db: str = "jaspar_rna",
-        **kwargs, # TODO: decide if this is really needed.
+        **kwargs,  # TODO: decide if this is really needed.
     ):
         # Extract BaseConfig parameters
         base_config_params = {
@@ -94,12 +94,28 @@ class RNAAnnotationConfig(BaseConfig):
     help="Input nucleotide sequence file (fasta, fna, fa, or faa)",
 )
 @click.option(
-    "-o", "--output-dir", default="./annotate_RNA_output", help="Output directory path"
+    "-o",
+    "--output-dir",
+    default="./annotate_RNA_output",
+    help="Output directory path",
 )
 @click.option("-t", "--threads", default=1, help="Number of threads")
-@click.option("-g", "--log-file", default="./annotate_RNA_logfile.txt", help="Path to log file")
-@click.option("-l", "--log-level", default="INFO", help="Log level", type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]))
-@click.option("-M", "--memory", default="4gb", help="Memory in GB. Example: -M 8gb")
+@click.option(
+    "-g",
+    "--log-file",
+    default="./annotate_RNA_logfile.txt",
+    help="Path to log file",
+)
+@click.option(
+    "-l",
+    "--log-level",
+    default="INFO",
+    help="Log level",
+    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]),
+)
+@click.option(
+    "-M", "--memory", default="4gb", help="Memory in GB. Example: -M 8gb"
+)
 @click.option(
     "-op",
     "--override_parameters",
@@ -188,7 +204,9 @@ def annotate_RNA(
         log_file=log_file,
         log_level=log_level,
         memory=ensure_memory(memory)["giga"],
-        override_parameters=json.loads(override_parameters) if override_parameters else {},
+        override_parameters=json.loads(override_parameters)
+        if override_parameters
+        else {},
         skip_steps=skip_steps.split(",") if skip_steps else [],
         secondary_structure_tool=secondary_structure_tool,
         ires_tool=ires_tool,
@@ -253,19 +271,24 @@ def predict_secondary_structure(config):
             raise ValueError(f"Input file {input_path} is not a FASTA file")
     elif input_path.is_dir():
         from rolypoly.utils.bio.library_detection import find_fasta_files
+
         fasta_files = find_fasta_files(input_path, logger=config.logger)
         if not fasta_files:
             raise ValueError(f"No FASTA files found in directory {input_path}")
         input_fasta = fasta_files[0]
     else:
-        raise ValueError(f"Input path {input_path} is neither a file nor a directory")
+        raise ValueError(
+            f"Input path {input_path} is neither a file nor a directory"
+        )
 
     output_file = config.output_dir / "secondary_structure.fold"
 
     if config.secondary_structure_tool == "RNAfold":
         predict_secondary_structure_rnafold(config, input_fasta, output_file)
     elif config.secondary_structure_tool == "RNAstructure":
-        predict_secondary_structure_rnastructure(config, input_fasta, output_file)
+        predict_secondary_structure_rnastructure(
+            config, input_fasta, output_file
+        )
     elif config.secondary_structure_tool == "LinearFold":
         predict_secondary_structure_linearfold(config, input_fasta, output_file)
 
@@ -278,7 +301,7 @@ def predict_secondary_structure_rnafold(config, input_fasta, output_file):
 
     with open(output_file, "w") as out_f:
         for record in parse_fastx_file(str(input_fasta)):
-            sequence = str(record.seq) # pyright: ignore 
+            sequence = str(record.seq)  # pyright: ignore
 
             # convert to RNA
             sequence = sequence.replace("T", "U")
@@ -296,13 +319,13 @@ def predict_secondary_structure_rnafold(config, input_fasta, output_file):
             # Generate dot-plot
             RNA.plot_structure_svg(
                 data=sequence,
-                filename=config.output_dir / f"{record.id}_plot.svg", # pyright: ignore
+                filename=config.output_dir / f"{record.id}_plot.svg",  # pyright: ignore
                 sequence=sequence,
-                structure=ss             
-            ) # pyright: ignore
+                structure=ss,
+            )  # pyright: ignore
 
             # Write results
-            out_f.write(f">{record.id}\n") # pyright: ignore
+            out_f.write(f">{record.id}\n")  # pyright: ignore
             out_f.write(f"Sequence: {sequence}\n")
             out_f.write(f"MFE structure: {ss}\n")
             out_f.write(f"MFE: {mfe:.2f} kcal/mol\n")
@@ -323,15 +346,15 @@ def predict_secondary_structure_rnastructure(config, input_fasta, output_file):
 
     with open(output_file, "w") as out_f:
         for record in parse_fastx_file(str(input_fasta)):
-            sequence = str(record.seq).replace("T", "U") # pyright: ignore
+            sequence = str(record.seq).replace("T", "U")  # pyright: ignore
 
             # Write sequence to temporary file
-            temp_seq_file = config.output_dir / f"{record.id}_temp.seq" # pyright: ignore
+            temp_seq_file = config.output_dir / f"{record.id}_temp.seq"  # pyright: ignore
             with open(temp_seq_file, "w") as temp_f:
                 temp_f.write(sequence)
 
             # Run RNAstructure Fold
-            ct_file = config.output_dir / f"{record.id}_temp.ct" # pyright: ignore
+            ct_file = config.output_dir / f"{record.id}_temp.ct"  # pyright: ignore
             params = config.step_params["RNAstructure"]
             cmd = [
                 "Fold",
@@ -357,7 +380,7 @@ def predict_secondary_structure_rnastructure(config, input_fasta, output_file):
                 )
 
             # Write results
-            out_f.write(f">{record.id}\n") # pyright: ignore
+            out_f.write(f">{record.id}\n")  # pyright: ignore
             out_f.write(f"Sequence: {sequence}\n")
             out_f.write(f"Structure: {structure}\n\n")
 
@@ -380,54 +403,62 @@ def predict_secondary_structure_linearfold(config, input_fasta, output_file):
     def process_sequence(record):
         """Process a single sequence with LinearFold."""
         sequence = str(record.seq).replace("T", "U")
-        
+
         try:
             # Prepare LinearFold command
             params = config.step_params["LinearFold"]
             beamsize = params.get("beamsize", 100)
-            
+
             # LinearFold expects input via stdin
             cmd = ["linearfold", "--beamsize", str(beamsize)]
-            
+
             # Run LinearFold with sequence input via stdin
             process = subprocess.run(
                 cmd,
                 input=sequence,
                 text=True,
                 capture_output=True,
-                timeout=300  # 5 minute timeout per sequence
+                timeout=300,  # 5 minute timeout per sequence
             )
-            
+
             if process.returncode == 0:
                 # Parse LinearFold output
-                output_lines = process.stdout.strip().split('\n')
+                output_lines = process.stdout.strip().split("\n")
                 if len(output_lines) >= 2:
                     # LinearFold outputs: sequence, then structure with energy
                     structure_line = output_lines[1]
                     # Extract structure and MFE from output like: "(((...))) (-2.34)"
-                    if '(' in structure_line and ')' in structure_line:
+                    if "(" in structure_line and ")" in structure_line:
                         parts = structure_line.split()
                         if len(parts) >= 2:
                             structure = parts[0]
                             # Extract MFE from parentheses
-                            mfe_str = parts[1].strip('()')
+                            mfe_str = parts[1].strip("()")
                             try:
                                 mfe = float(mfe_str)
                             except ValueError:
                                 mfe = 0.0
                             return (record.id, sequence, structure, mfe)
-                
-                config.logger.warning(f"Unexpected LinearFold output format for {record.id}: {process.stdout}")
+
+                config.logger.warning(
+                    f"Unexpected LinearFold output format for {record.id}: {process.stdout}"
+                )
                 return (record.id, sequence, "Error", 0.0)
             else:
-                config.logger.error(f"LinearFold failed for sequence {record.id}: {process.stderr}")
+                config.logger.error(
+                    f"LinearFold failed for sequence {record.id}: {process.stderr}"
+                )
                 return (record.id, sequence, "Error", 0.0)
-                
+
         except subprocess.TimeoutExpired:
-            config.logger.error(f"LinearFold timed out for sequence {record.id}")
+            config.logger.error(
+                f"LinearFold timed out for sequence {record.id}"
+            )
             return (record.id, sequence, "Error", 0.0)
         except Exception as e:
-            config.logger.error(f"Error processing sequence {record.id}: {str(e)}")
+            config.logger.error(
+                f"Error processing sequence {record.id}: {str(e)}"
+            )
             return (record.id, sequence, "Error", 0.0)
 
     # Process sequences in parallel
@@ -478,7 +509,7 @@ def search_ribozymes(config):
 
     # Prepare parameters
     params = config.step_params["cmsearch"].copy()
-    
+
     # Filter out False boolean values and only keep True boolean flags
     filtered_params = {}
     for param, value in params.items():
@@ -492,7 +523,9 @@ def search_ribozymes(config):
     positional_args = [str(cm_db_path), str(input_fasta)]
 
     # Add required parameters
-    filtered_params.update({"cpu": config.threads, "tblout": str(output_file), "o": "/dev/null"})
+    filtered_params.update(
+        {"cpu": config.threads, "tblout": str(output_file), "o": "/dev/null"}
+    )
 
     success = run_command_comp(
         base_cmd="cmscan",
@@ -506,19 +539,19 @@ def search_ribozymes(config):
         tools.append("cmsearch")
     return success
 
+
 def search_rna_elements(config):
     config.logger.info("Searching for RNA elements")
     input_fasta = config.input
     output_file = config.output_dir / "rna_elements.out"
     tools.append("RNAsselem")
-    
+
     # Prepare parameters
     params = config.step_params["RNAsselem"].copy()
-    
+
     # Add required parameters
     params.update({"i": str(input_fasta), "o": str(output_file)})
-    
-    
+
 
 def detect_ires(config):
     config.logger.info("Detecting IRES elements")
@@ -577,7 +610,7 @@ def detect_ires_irespy(config, input_fasta, output_file):
             params = config.step_params["IRESpy"].copy()
 
             # Add required parameters
-            params.update({"i": str(seq.seq), "o": str(output_file)}) # pyright: ignore 
+            params.update({"i": str(seq.seq), "o": str(output_file)})  # pyright: ignore
 
             success = run_command_comp(
                 base_cmd="irespy",
@@ -601,7 +634,7 @@ def detect_ires_irespy(config, input_fasta, output_file):
                     ]
                 )
                 out.write(
-                    f"{seq.id}\t{ires_data['ires_score']}\t{ires_data['ires_start']}\t{ires_data['ires_end']}\n" # pyright: ignore 
+                    f"{seq.id}\t{ires_data['ires_score']}\t{ires_data['ires_start']}\t{ires_data['ires_end']}\n"  # pyright: ignore
                 )
 
     config.logger.info(f"IRESpy completed. Output written to {output_file}")
@@ -628,7 +661,7 @@ def predict_trnas_with_aragorn(config):
 
     # Prepare parameters
     params = config.step_params["aragorn"].copy()
-    
+
     # Filter out False boolean values and only keep True boolean flags
     filtered_params = {}
     for param, value in params.items():
@@ -673,7 +706,7 @@ def predict_trnas_with_tRNAscan(config):
 
     # Prepare parameters
     params = config.step_params["tRNAscan-SE"].copy()
-    
+
     # Filter out False boolean values and only keep True boolean flags
     filtered_params = {}
     for param, value in params.items():
@@ -707,12 +740,10 @@ def predict_trnas_with_tRNAscan(config):
     return success
 
 
-def search_rna_motifs(config): # py 
+def search_rna_motifs(config):  # py
     """PSSM search using lightmotif."""
-    
-    config.logger.warning(
-        "RNA motif search is still in development."
-    )
+
+    config.logger.warning("RNA motif search is still in development.")
     # from pathlib import Path
 
     # import lightmotif
@@ -721,17 +752,17 @@ def search_rna_motifs(config): # py
     # config.logger.info(
     #     f"Searching for RNA structural elements using {config.motif_db} database"
     # )
-    
+
     # # Check ROLYPOLY_DATA environment variable
     # if "ROLYPOLY_DATA" not in os.environ:
     #     config.logger.error("ROLYPOLY_DATA environment variable is not set")
     #     return False
-        
+
     # datadir = Path(os.environ.get("ROLYPOLY_DATA", ""))
     # if not datadir.exists():
     #     config.logger.error(f"ROLYPOLY_DATA directory {datadir} does not exist")
     #     return False
-    
+
     # if config.motif_db == "RolyPoly":
     #     motifs_dir = datadir / "RNA_motifs" / "rolypoly"
     #     if not motifs_dir.exists():
@@ -752,7 +783,7 @@ def search_rna_motifs(config): # py
     #         config.logger.error(f"Motifs directory {motifs_dir} does not exist")
     #         return False
     #     config.logger.info(f"Loading motifs from {motifs_dir}")
-    
+
     # config.logger.info(f"Loading motifs from {config.motif_db} database")
 
     # input_fasta = config.input
@@ -765,7 +796,7 @@ def search_rna_motifs(config): # py
     #     if config.motif_db in ["RolyPoly", "jaspar_core"]:
     #         # Try loading the database name directly first
     #         try:
-    #             loader = lightmotif.lib.Loader(config.motif_db) # pyright: ignore 
+    #             loader = lightmotif.lib.Loader(config.motif_db) # pyright: ignore
     #             motifs.extend(list(loader))
     #         except Exception:
     #             # If that fails, skip motif search
@@ -773,9 +804,9 @@ def search_rna_motifs(config): # py
     #             return False
     #     else:
     #         # For custom paths, load from directory
-    #         loader = lightmotif.lib.Loader(str(motifs_dir)) # pyright: ignore 
+    #         loader = lightmotif.lib.Loader(str(motifs_dir)) # pyright: ignore
     #         motifs.extend(list(loader))
-            
+
     #     if motifs:
     #         config.logger.info(
     #             f"Successfully loaded {len(motifs)} motifs from {config.motif_db}"
@@ -796,19 +827,19 @@ def search_rna_motifs(config): # py
 
     #     # Process each sequence
     #     for record in parse_fastx_file(str(input_fasta)):
-    #         sequence = str(record.seq) # pyright: ignore 
+    #         sequence = str(record.seq) # pyright: ignore
 
     #         try:
     #             # Create an encoded sequence for scanning
     #             encoded = lightmotif.lib.create(sequence)
     #             if encoded is None:
     #                 config.logger.warning(
-    #                     f"Could not encode sequence {record.id} - skipping" # pyright: ignore 
+    #                     f"Could not encode sequence {record.id} - skipping" # pyright: ignore
     #                 )
     #                 continue
 
     #             # Create striped sequence for scanning
-    #             striped = lightmotif.lib.stripe(encoded) 
+    #             striped = lightmotif.lib.stripe(encoded)
 
     #             # Scan for each motif
     #             for motif in motifs:
@@ -853,7 +884,10 @@ def process_ribozymes_data(config, ribozymes_file):
 
     from rolypoly.utils.various import read_fwf
 
-    if not os.path.exists(ribozymes_file) or os.path.getsize(ribozymes_file) == 0:
+    if (
+        not os.path.exists(ribozymes_file)
+        or os.path.getsize(ribozymes_file) == 0
+    ):
         config.logger.warning(
             f"Ribozymes file {ribozymes_file} is empty or does not exist"
         )
@@ -862,7 +896,9 @@ def process_ribozymes_data(config, ribozymes_file):
     try:
         # First check if file has any non-comment lines
         with open(ribozymes_file, "r") as f:
-            has_data = any(not line.startswith("#") and line.strip() for line in f)
+            has_data = any(
+                not line.startswith("#") and line.strip() for line in f
+            )
 
         if not has_data:
             config.logger.warning(
@@ -933,16 +969,24 @@ def process_ribozymes_data(config, ribozymes_file):
             )
             return pl.DataFrame()
 
-        config.logger.debug(f"Raw ribozymes data from {ribozymes_file}: {raw_data}")
+        config.logger.debug(
+            f"Raw ribozymes data from {ribozymes_file}: {raw_data}"
+        )
 
         # Normalize to minimal schema, keeping important ribozyme-specific columns
-        from rolypoly.utils.bio.polars_fastx import create_minimal_annotation_schema
-        
+        from rolypoly.utils.bio.polars_fastx import (
+            create_minimal_annotation_schema,
+        )
+
         data = create_minimal_annotation_schema(
-            raw_data, 
+            raw_data,
             annotation_type="ribozyme",
             source=config.cm_db,
-            tool_specific_cols=['profile_name', 'evalue', 'ribozyme_description']
+            tool_specific_cols=[
+                "profile_name",
+                "evalue",
+                "ribozyme_description",
+            ],
         )
         return data
     except Exception as e:
@@ -955,8 +999,10 @@ def process_ires_iresfinder(ires_file):
 
     if ires_file.is_file():
         raw_data = pl.read_csv(ires_file, separator="\t")
-        from rolypoly.utils.bio.polars_fastx import create_minimal_annotation_schema
-        
+        from rolypoly.utils.bio.polars_fastx import (
+            create_minimal_annotation_schema,
+        )
+
         # Rename columns for normalization
         if "Sequence Name" in raw_data.columns:
             raw_data = raw_data.rename({"Sequence Name": "sequence_id"})
@@ -966,11 +1012,9 @@ def process_ires_iresfinder(ires_file):
             raw_data = raw_data.rename({"End": "end"})
         if "IRES Score" in raw_data.columns:
             raw_data = raw_data.rename({"IRES Score": "score"})
-            
+
         return create_minimal_annotation_schema(
-            raw_data,
-            annotation_type="IRES", 
-            source="IRESfinder"
+            raw_data, annotation_type="IRES", source="IRESfinder"
         )
     return pl.DataFrame()
 
@@ -980,8 +1024,10 @@ def process_ires_irespy(ires_file):
 
     if ires_file.is_file():
         raw_data = pl.read_csv(ires_file, separator="\t")
-        from rolypoly.utils.bio.polars_fastx import create_minimal_annotation_schema
-        
+        from rolypoly.utils.bio.polars_fastx import (
+            create_minimal_annotation_schema,
+        )
+
         # Rename columns for normalization
         if "Sequence Name" in raw_data.columns:
             raw_data = raw_data.rename({"Sequence Name": "sequence_id"})
@@ -991,11 +1037,9 @@ def process_ires_irespy(ires_file):
             raw_data = raw_data.rename({"End": "end"})
         if "IRES Score" in raw_data.columns:
             raw_data = raw_data.rename({"IRES Score": "score"})
-            
+
         return create_minimal_annotation_schema(
-            raw_data,
-            annotation_type="IRES", 
-            source="IRESpy"
+            raw_data, annotation_type="IRES", source="IRESpy"
         )
     return pl.DataFrame()
 
@@ -1009,80 +1053,82 @@ def process_trnas_data_tRNAscan_SE(trnas_file):
         # Line 2: More specific headers (Name, tRNA #, Begin, End, etc.)
         # Line 3: Dashes separator (---------, ------, etc.)
         # Then actual data starts
-        
+
         try:
             # Read the file and skip header lines
-            with open(trnas_file, 'r') as f:
+            with open(trnas_file, "r") as f:
                 lines = f.readlines()
-            
+
             # Find where actual data starts (after the dashes line)
             data_start = 0
             for i, line in enumerate(lines):
-                if line.strip().startswith('--------'):
+                if line.strip().startswith("--------"):
                     data_start = i + 1
                     break
-            
+
             if data_start == 0 or data_start >= len(lines):
                 # No data found
                 return pl.DataFrame()
-            
+
             # Extract data lines
             data_lines = lines[data_start:]
             data_lines = [line.strip() for line in data_lines if line.strip()]
-            
+
             if not data_lines:
                 return pl.DataFrame()
-            
+
             # Parse the data manually since the format is space-separated with variable spacing
             records = []
             for line in data_lines:
                 parts = line.split()
                 if len(parts) >= 9:  # Ensure we have enough columns
                     begin_pos = int(parts[2])  # Begin position
-                    end_pos = int(parts[3])    # End position
-                    
+                    end_pos = int(parts[3])  # End position
+
                     # Determine strand from Begin/End positions
                     # If Begin > End, it's on minus strand
                     # If Begin < End, it's on plus strand
                     if begin_pos > end_pos:
                         strand = "-"
-                        start = end_pos    # Start is the smaller coordinate
-                        end = begin_pos    # End is the larger coordinate
+                        start = end_pos  # Start is the smaller coordinate
+                        end = begin_pos  # End is the larger coordinate
                     else:
                         strand = "+"
                         start = begin_pos  # Start is the smaller coordinate
-                        end = end_pos      # End is the larger coordinate
-                    
+                        end = end_pos  # End is the larger coordinate
+
                     record = {
                         "sequence_id": parts[0],  # Sequence name
                         "type": "tRNA",
-                        "start": start,           # Corrected start position
-                        "end": end,               # Corrected end position  
-                        "score": float(parts[8]), # Infernal score
+                        "start": start,  # Corrected start position
+                        "end": end,  # Corrected end position
+                        "score": float(parts[8]),  # Infernal score
                         "source": "tRNAscan-SE",
-                        "strand": strand,         # Correctly determined strand
+                        "strand": strand,  # Correctly determined strand
                         "phase": ".",
-                        "tRNA_type": parts[4],    # tRNA type (Gln, Leu, etc.)
-                        "anticodon": parts[5],    # Anticodon
+                        "tRNA_type": parts[4],  # tRNA type (Gln, Leu, etc.)
+                        "anticodon": parts[5],  # Anticodon
                     }
                     records.append(record)
-            
+
             if records:
                 raw_data = pl.DataFrame(records)
-                from rolypoly.utils.bio.polars_fastx import create_minimal_annotation_schema
-                
+                from rolypoly.utils.bio.polars_fastx import (
+                    create_minimal_annotation_schema,
+                )
+
                 return create_minimal_annotation_schema(
                     raw_data,
                     annotation_type="tRNA",
-                    source="tRNAscan-SE", 
-                    tool_specific_cols=['tRNA_type', 'anticodon']
+                    source="tRNAscan-SE",
+                    tool_specific_cols=["tRNA_type", "anticodon"],
                 )
-                
+
         except Exception as e:
             # If parsing fails, return empty DataFrame
             print(f"Warning: Failed to parse tRNAscan-SE output: {e}")
             return pl.DataFrame()
-            
+
     return pl.DataFrame()
 
 
@@ -1119,10 +1165,11 @@ def process_rna_elements_data(rna_elements_file):
                 pl.lit("0").alias("score"),
                 pl.lit("RNAsselem").alias("source"),
                 pl.lit("+").alias("strand"),
-                pl.lit(".").alias("phase")
+                pl.lit(".").alias("phase"),
             ]
         )
     return pl.DataFrame()
+
 
 def process_rna_motifs_data(config, rna_motifs_file):
     import polars as pl
@@ -1142,6 +1189,7 @@ def process_rna_motifs_data(config, rna_motifs_file):
             ]
         )
     return pl.DataFrame()
+
 
 def read_multiDBN_to_dataframe(MultiDBN_file):
     import polars as pl
@@ -1188,7 +1236,6 @@ def combine_results(config):
     """Combine annotation results from different steps."""
     import polars as pl
 
-
     config.logger.info("Combining annotation results")
 
     all_results = []
@@ -1197,7 +1244,10 @@ def combine_results(config):
         # Process ribozymes
         if "search_ribozymes" not in config.skip_steps:
             ribozymes_file = config.output_dir / "ribozymes.out"
-            if os.path.exists(ribozymes_file) and os.path.getsize(ribozymes_file) > 0:
+            if (
+                os.path.exists(ribozymes_file)
+                and os.path.getsize(ribozymes_file) > 0
+            ):
                 ribozymes_data = process_ribozymes_data(config, ribozymes_file)
                 if not ribozymes_data.is_empty():
                     all_results.append(("ribozyme", ribozymes_data))
@@ -1232,7 +1282,9 @@ def combine_results(config):
                     )
                 if not trnas_data.is_empty():
                     all_results.append(("trna", trnas_data))
-                    config.logger.debug(f"Added tRNA data:\n{trnas_data.head()}")
+                    config.logger.debug(
+                        f"Added tRNA data:\n{trnas_data.head()}"
+                    )
 
         # Process RNA elements
         if "search_rna_elements" not in config.skip_steps:
@@ -1249,10 +1301,14 @@ def combine_results(config):
         if "search_rna_motifs" not in config.skip_steps:
             rna_motifs_file = config.output_dir / "rna_motifs.out"
             if rna_motifs_file.is_file():
-                rna_motifs_data = process_rna_motifs_data(config, rna_motifs_file)
+                rna_motifs_data = process_rna_motifs_data(
+                    config, rna_motifs_file
+                )
                 if not rna_motifs_data.is_empty():
                     all_results.append(("rna_motif", rna_motifs_data))
-                    config.logger.debug(f"Added RNA motifs data:\n{rna_motifs_data.head()}")
+                    config.logger.debug(
+                        f"Added RNA motifs data:\n{rna_motifs_data.head()}"
+                    )
 
         # Process secondary structure
         if "predict_secondary_structure" not in config.skip_steps:
@@ -1268,13 +1324,13 @@ def combine_results(config):
         # Combine all results using unified schema
         if all_results:
             from rolypoly.utils.bio.polars_fastx import ensure_unified_schema
-            
+
             # Ensure all dataframes have the same schema
             unified_dataframes = ensure_unified_schema(all_results)
-            
+
             if unified_dataframes:
                 # Stack all dataframes directly since they now have the same schema
-                combined_data = pl.concat(unified_dataframes, how='vertical')
+                combined_data = pl.concat(unified_dataframes, how="vertical")
                 config.logger.debug(f"Combined data:\n{combined_data.head()}")
                 if config.output_format == "gff3":
                     combined_data = add_missing_gff_columns(combined_data)
@@ -1292,7 +1348,9 @@ def combine_results(config):
                         f"Combined annotation results written to {output_file}"
                     )
             else:
-                config.logger.warning("Failed to create unified schema for results")
+                config.logger.warning(
+                    "Failed to create unified schema for results"
+                )
         else:
             config.logger.warning(
                 "No results to combine - no valid data found in any output files"
@@ -1342,11 +1400,15 @@ def convert_record_to_gff3_record(
 
     # try to identify a score column (score, Score, bitscore, qscore, bit)
     score_columns = ["score", "Score", "bitscore", "qscore", "bit", "bits"]
-    score_col = next((col for col in score_columns if col in row.keys()), "score")
+    score_col = next(
+        (col for col in score_columns if col in row.keys()), "score"
+    )
 
     # try to identify a source column (source, Source, db, DB)
     source_columns = ["source", "Source", "db", "DB"]
-    source_col = next((col for col in source_columns if col in row.keys()), "source")
+    source_col = next(
+        (col for col in source_columns if col in row.keys()), "source"
+    )
 
     # try to identify a type column (type, Type, feature, Feature)
     type_columns = ["type", "Type", "feature", "Feature"]
@@ -1354,24 +1416,39 @@ def convert_record_to_gff3_record(
 
     # try to identify a strand column (strand, Strand, sense, Sense)
     strand_columns = ["strand", "Strand", "sense", "Sense"]
-    strand_col = next((col for col in strand_columns if col in row.keys()), "strand")
+    strand_col = next(
+        (col for col in strand_columns if col in row.keys()), "strand"
+    )
 
     # try to identify a phase column (phase, Phase)
     phase_columns = ["phase", "Phase"]
-    phase_col = next((col for col in phase_columns if col in row.keys()), "phase")
+    phase_col = next(
+        (col for col in phase_columns if col in row.keys()), "phase"
+    )
 
     # Build GFF3 attributes string
     attrs = []
     # Define columns that should not be included in attributes
     excluded_cols = [
-        sequence_id_col, source_col, score_col, type_col, strand_col, phase_col,
-        "start", "end"  # Also exclude start/end since they're separate GFF3 fields
+        sequence_id_col,
+        source_col,
+        score_col,
+        type_col,
+        strand_col,
+        phase_col,
+        "start",
+        "end",  # Also exclude start/end since they're separate GFF3 fields
     ]
-    
+
     for key, value in row.items():
         if key not in excluded_cols:
             # Skip empty values (empty strings, None, ".", etc.)
-            if value and str(value).strip() and str(value) != "." and str(value) != "":
+            if (
+                value
+                and str(value).strip()
+                and str(value) != "."
+                and str(value) != ""
+            ):
                 attrs.append(f"{key}={value}")
 
     # Get values, using defaults for missing columns

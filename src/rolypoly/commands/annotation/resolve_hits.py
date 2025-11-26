@@ -1,18 +1,18 @@
-import rich_click as click
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
+
 import polars as pl
+import rich_click as click
 
 from rolypoly.utils.bio.interval_ops import consolidate_hits
 
+
 @click.command(name="resolve_overlaps")
-@click.option(
-    "-i", "--input", required=True, help="Input hit table file"
-)
+@click.option("-i", "--input", required=True, help="Input hit table file")
 @click.option(
     "-o",
     "--output",
     default=None,
-    help="Output consolidated hit table file (if no output file is will be piped to std.out"
+    help="Output consolidated hit table file (if no output file is will be piped to std.out",
 )
 @click.option(
     "-rc",
@@ -113,6 +113,7 @@ def consolidate_hits_rich(
              )
     """
     from sys import stdout
+
     if output is None:
         output = stdout
     tmpdf = consolidate_hits(
@@ -130,5 +131,5 @@ def consolidate_hits_rich(
 
     tmpdf.write_csv(output, separator="\t")
 
-# TODO: add tests to src/../tests/
 
+# TODO: add tests to src/../tests/

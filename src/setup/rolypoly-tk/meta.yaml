@@ -37,8 +37,8 @@ requirements:
     - pyhmmer >=0.11.0,<0.12
     - pymsaviz >=0.5.0,<0.6
     - pyranges >=0.1.4,<0.2
-    - pyrodigal-gv >=0.3.2,<0.4
     - requests >=2.32.3,<3
+    - pyrodigal-rv >=0.1.0,<0.2
     - rich-click >=1.8.8,<2
     - rich >=14.0.0,<15
     - viennarna >=2.7.0,<3
