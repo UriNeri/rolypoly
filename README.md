@@ -57,7 +57,7 @@ rolypoly [OPTIONS] <GROUP> <COMMAND> [ARGS]...
 - [`mask-dna`](https://pages.jgi.doe.gov/rolypoly/docs/commands/mask_dna): Mask DNA regions in RNA-seq reads (bbmap, seqkit)
 
 #### annotation
-- [`annotate`](https://pages.jgi.doe.gov/rolypoly/docs/commands/annotate): Genome feature annotation (prodigal, pyrodigal-gv, custom)
+- [`annotate`](https://pages.jgi.doe.gov/rolypoly/docs/commands/annotate): Genome feature annotation (prodigal, pyrodigal-rv, custom)
 - [`annotate-rna`](https://pages.jgi.doe.gov/rolypoly/docs/commands/annotate_rna): RNA secondary structure labelling and ribozyme detection (Infernal, ViennaRNA, Rfam)
 - [`annotate-prot`](https://pages.jgi.doe.gov/rolypoly/docs/commands/annotate_prot): Protein domain annotation and functional prediction (HMMER, Pfam, custom)
 
@@ -135,6 +135,7 @@ Non-Python
 * [rich](https://github.com/Textualize/rich)
 * [pyhmmer](https://github.com/althonos/pyhmmer)
 * [pyrodigal-gv](https://github.com/althonos/pyrodigal-gv)
+* [pyrodigal-rv](https://github.com/landerdc/pyrodigal-rv)
 * [multiprocess](https://github.com/uqfoundation/multiprocess)
 * [requests](https://requests.readthedocs.io)
 * [pgzip](https://github.com/pgzip/pgzip)

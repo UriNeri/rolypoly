@@ -127,7 +127,7 @@ console = Console(width=150)
         case_sensitive=False,
     ),
     help="""Tool for gene prediction. \n
-    * pyrodigal-gv: might work well for some viruses, but it's not as well tested for RNA viruses. Includes internal genetic code assignment. \n
+    * pyrodigal-rv: might work well for some viruses, but it's not as well tested for RNA viruses. Includes internal genetic code assignment. \n
     * ORFfinder: The default ORFfinder settings may have some false positives, but it's fast and easy to use. \n
     * six-frame: includes all 6 reading frames, so all possible ORFs are predicted - prediction is quick but will include many false positives, and the input for the domain search will be larger. \n
     """,

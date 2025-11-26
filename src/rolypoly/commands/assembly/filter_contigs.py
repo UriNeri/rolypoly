@@ -8,6 +8,8 @@ from rolypoly.utils.logging.config import BaseConfig
 
 # TODO: cleaning assembly graph directly? by mmseqs nucleic / diamond amino searching against user supplied host sequence
 # TODO: precompiled contamination DB? Masked RefSeq?
+# TODO: replace all the subprocess calls with the run_command_comp.
+
 
 global tools
 tools = []

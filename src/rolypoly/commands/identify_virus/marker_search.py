@@ -102,7 +102,7 @@ console = Console(width=150)
     "--aa-method",
     default="six_frame",
     type=Choice(["six_frame", "pyrodigal", "bbmap"]),
-    help="Method to translate nucleotide sequences into amino acids. Options: six frame translation using seqkit, pyrodigal-gv uses pyrodigal-meta with additional genetic codes, bbmap callgenes.sh (quick but less accurate for metagenomic data)",
+    help="Method to translate nucleotide sequences into amino acids. Options: six frame translation using seqkit, pyrodigal-rv uses pyrodigal-meta with additional genetic codes, bbmap callgenes.sh (quick but less accurate for metagenomic data)",
 )
 @option(
     "-db",
@@ -336,7 +336,7 @@ def marker_search(
         config.logger.info("Input identified as nucl")
         amino_file = str(config.temp_dir / f"{config.name}")
         if config.aa_method == "pyrodigal":
-            config.logger.info("Predicting ORFs using pyrodigal-gv")
+            config.logger.info("Predicting ORFs using pyrodigal-rv")
             amino_file = amino_file + "_pyro.faa"
             pyro_predict_orfs(input, amino_file, threads)
             tools.append("pyrodigal")

@@ -6,8 +6,11 @@ import requests
 import subprocess
 import logging
 import json
+import re
+import time
 from pathlib import Path as pt
 import polars as pl
+from xml.etree import ElementTree as ET
 
 from rich_click import command, option
 from rolypoly.utils.logging.citation_reminder import remind_citations
@@ -21,6 +24,7 @@ from rolypoly.utils.various import (
     run_command_comp,
 )
 from rolypoly.utils.bio.sequences import filter_fasta_by_headers, remove_duplicates
+from bbmapy import bbmask, kcompress, bbduk
 
 from rich.console import Console
 console = Console()
@@ -67,8 +71,8 @@ def build_data(data_dir, threads, log_file):
     masking_dir = os.path.join(contam_dir, "masking")
     os.makedirs(masking_dir, exist_ok=True)
 
-    taxonomy_dir = os.path.join(data_dir, "taxdump")
-    os.makedirs(taxonomy_dir, exist_ok=True)
+    # taxonomy_dir = os.path.join(data_dir, "taxdump")
+    # os.makedirs(taxonomy_dir, exist_ok=True)
 
     reference_seqs = os.path.join(data_dir, "reference_seqs")
     os.makedirs(reference_seqs, exist_ok=True)
@@ -105,7 +109,7 @@ def build_data(data_dir, threads, log_file):
     # RVMT MMseqs database
     prepare_rvmt_mmseqs(data_dir, threads, logger)
 
-    # NCBI ribovirus reference sequences
+    # NCBI ribovirus refseq
     prepare_ncbi_ribovirus(data_dir, threads, logger)
 
     # pfam RdRps and RTs    
@@ -114,9 +118,9 @@ def build_data(data_dir, threads, log_file):
     # RVMT motifs
     prepare_rvmt_motifs(data_dir, threads, logger)
 
-    # rRNA DBs
-    prepare_rrna_db(data_dir, logger)
-
+    # contaminations 
+    prepare_contamination_seqs(data_dir, threads, logger)
+    
     # Rfam
     download_and_extract_rfam(data_dir, logger)
 
@@ -259,79 +263,6 @@ def prepare_rvmt_mmseqs(data_dir, threads, logger: logging.Logger):
 
 
     logger.info(f"RVMT databases created successfully in {rvmt_dir} and {mmdb_dir}")
-
-def prepare_rrna_db(data_dir, logger: logging.Logger):
-    """Download and prepare ribosomal RNA databases.
-
-    Downloads and processes reference databases for identifying ribosomal RNA
-    sequences, including bacterial, archaeal, and eukaryotic rRNAs.
-
-    Args:
-        data_dir (str): Base directory for data storage
-        logger: Logger object for recording progress and errors
-
-    Note:
-        Creates formatted databases suitable for sequence similarity searches
-        and taxonomic classification.
-    """
-
-    logger.info("Preparing rRNA database")
-    rrna_dir = os.path.join(data_dir, "rRNA")
-    os.makedirs(rrna_dir, exist_ok=True)
-    os.chdir(rrna_dir)
-
-    fetch_and_extract(
-        "https://www.arb-silva.de/fileadmin/silva_databases/release_138_2/Exports/SILVA_138.2_SSURef_NR99_tax_silva.fasta.gz",
-        fetched_to="tmp.fasta.gz",
-        extract_to=rrna_dir,
-        rename_extracted="SILVA_138.2_SSURef_NR99_tax_silva.fasta",
-    )
-    fetch_and_extract(
-        "https://www.arb-silva.de/fileadmin/silva_databases/release_138_2/Exports/SILVA_138.2_LSURef_NR99_tax_silva.fasta.gz",
-        fetched_to="tmp.fasta.gz",
-        extract_to=rrna_dir,
-        rename_extracted="SILVA_138.2_LSURef_NR99_tax_silva.fasta",
-    )
-
-    subprocess.run("cat SILVA*fasta > merged.fas", shell=True)
-
-    bbduk_command = "bbduk.sh -Xmx1g in=merged.fas out=SILVA_138_merged_masked.fa zl=9 entropy=0.6 entropyk=4 entropywindow=24 maskentropy"
-    subprocess.run(bbduk_command, shell=True)
-
-    # now for NCBI refseq.
-    fetch_and_extract(
-        "https://ftp.ncbi.nlm.nih.gov/blast/db/16S_ribosomal_RNA.tar.gz",
-        fetched_to="tmp.fasta.gz",
-        extract_to=rrna_dir,
-        rename_extracted="NCBI_16S_ribosomal_RNA.fasta",
-    )    
-    fetch_and_extract(
-        "https://ftp.ncbi.nlm.nih.gov/blast/db/18S_fungal_sequences.tar.gz",
-        fetched_to="tmp.fasta.gz",
-        extract_to=rrna_dir,
-        rename_extracted="NCBI_18S_ribosomal_RNA.fasta",
-    )    
-    fetch_and_extract(
-        "https://ftp.ncbi.nlm.nih.gov/blast/db/28S_fungal_sequences.tar.gz",
-        fetched_to="tmp.fasta.gz",
-        extract_to=rrna_dir,
-        rename_extracted="28S_fungal_sequences.fasta",
-    )    
-    fetch_and_extract(
-        "https://ftp.ncbi.nlm.nih.gov/blast/db/16S_ribosomal_RNA.tar.gz",
-        fetched_to="tmp.fasta.gz",
-        extract_to="NCBI_16S_ribosomal_RNA.fasta",
-    )    
-    
-    #     16S_ribosomal_RNA-nucl-metadata.json       2025-08-26 05:36  468   
-    # 16S_ribosomal_RNA.tar.gz                   2025-08-26 05:36   64M  
-    # 16S_ribosomal_RNA.tar.gz.md5               2025-08-26 05:36   59   
-    # 18S_fungal_sequences-nucl-metadata.json    2025-08-28 05:36  489   
-    # 18S_fungal_sequences.tar.gz                2025-08-28 05:36   58M  
-    # 18S_fungal_sequences.tar.gz.md5            2025-08-28 05:36   62   
-    # 28S_fungal_sequences-nucl-metadata.json    2025-08-28 05:36  491   
-    # 28S_fungal_sequences.tar.gz                2025-08-28 05:36   60M  
-    # 28S_fungal_sequences.tar.gz.md5  
 
 def download_and_extract_rfam(data_dir, logger):
     """Download and process Rfam database files.
@@ -799,7 +730,7 @@ def prepare_vfam(data_dir, logger: logging.Logger):
     logger.info(f"Created VFAM HMM database at {os.path.join(data_dir, 'hmmdbs', 'vfam.hmm')}")
 
 def prepare_ncbi_ribovirus(data_dir, threads, logger: logging.Logger):
-    """Download and prepare NCBI ribovirus reference sequences.
+    """Download and prepare NCBI ribovirus reference sequences (RefSeq only).
     
     Downloads complete RefSeq genomes for RNA viruses (Riboviria), processes them
     with entropy masking and compression for efficient searches.
@@ -827,9 +758,6 @@ def prepare_ncbi_ribovirus(data_dir, threads, logger: logging.Logger):
     
     # Use esearch and efetch to download complete RefSeq ribovirus genomes
     logger.info(f"Downloading RefSeq ribovirus genomes for taxid {taxid}")
-
-    
-    
     
     # if from_ena == True:
     #     # Use EBI/ENA REST API instead of NCBI E-utilities
@@ -1063,9 +991,10 @@ def prepare_rvmt_motifs(data_dir, threads, logger):
     
     return True
 
-def prepare_masking_seqs(data_dir, threads, logger):
-    """Prepare masking sequences (rRNA and RVMT) for read filtering.
-    This concatenates the RVMT and NCBI ribovirus, applies entropy masking and compresses them for later masking potentail host data.
+def prepare_contamination_seqs(data_dir, threads, logger):
+    """Prepare the masking and contamination sequence sets used in sequence filtering.
+    The contamination sequences refers to adapters (from bbtools and Fire lab) and rRNA sequences (SILVA + NCBI).
+    The masking refers to creating a compressed set of viral sequences (made from concatenating RVMT and NCBI ribovirus, applies entropy masking and compressesion) that can be used for masking potentail viral sequences in host data.
 
     Args:
         data_dir (str): Base directory for data storage
@@ -1077,13 +1006,20 @@ def prepare_masking_seqs(data_dir, threads, logger):
 
     logger.info("Preparing masking sequences by combining RVMT and NCBI ribovirus")
     
-    # Ensure masking directory exists
-    masking_dir = os.path.join(data_dir, "contam", "masking")
-    os.makedirs(masking_dir, exist_ok=True)
-    
+    # Create directories
+    contam_dir = os.path.join(data_dir, "contam")
+    rrna_dir = os.path.join(contam_dir, "rrna")
+    adapter_dir = os.path.join(contam_dir, "adapters")
+    masking_dir = os.path.join(contam_dir, "masking")
+    os.makedirs(contam_dir, exist_ok=True)
+    os.makedirs(rrna_dir, exist_ok=True)
+    os.makedirs(adapter_dir, exist_ok=True)
+    os.makedirs(masking_dir, exist_ok=True) 
+
+
+    # Masking sequences preparation
     rvmt_fasta_path = os.path.join(data_dir, "reference_seqs", "RVMT", "RVMT_cleaned_contigs.fasta")
     ncbi_ribovirus_fasta_path = os.path.join(data_dir, "reference_seqs", "ncbi_ribovirus", "refseq_ribovirus_genomes.fasta")
-
 
     # Deduplicate directly from multiple files (no concatenation needed)
     deduplicated_fasta = os.path.join(masking_dir, "combined_deduplicated.fasta")
@@ -1095,9 +1031,28 @@ def prepare_masking_seqs(data_dir, threads, logger):
         by="seq",
         revcomp_as_distinct=False,  # Treat reverse complement as duplicate
         return_stats=True,
-        logger=logger
+        logger=logger,
     )
-    
+    #     (rolypoly_tk) ➜  rolypoly git:(main) ✗ time seqkit rmdup -i  -s /clusterfs/jgi/scratch/science/metagen/neri/code/rolypoly/data/reference_seqs/RVMT/RVMT_cleaned_contigs.fasta   /clusterfs/jgi/scratch/science/metagen/neri/code/rolypoly/data/reference_seqs/ncbi_ribovirus/refseq_ribovirus_genomes.fasta > /dev/null
+    # [INFO] 5399 duplicated records removed
+    # seqkit rmdup -i -s   > /dev/null  14.70s user 0.53s system 75% cpu 20.095 total
+    #     #(rolypoly_tk) ➜  rolypoly git:(main) ✗ time seqkit rmdup --quiet /clusterfs/jgi/scratch/science/metagen/neri/code/rolypoly/data/reference_seqs/RVMT/RVMT_cleaned_contigs.fasta   /clusterfs/jgi/scratch/science/metagen/neri/code/rolypoly/data/reference_seqs/ncbi_ribovirus/refseq_ribovirus_genomes.fasta --quiet | seqkit stats
+    # file  format  type  num_seqs        sum_len  min_len  avg_len    max_len
+    # -     FASTA   DNA    397,135  1,582,230,847      136  3,984.1  2,473,870
+    # seqkit rmdup --quiet   --quiet  0.85s user 0.58s system 10% cpu 13.454 total
+    # seqkit stats  10.93s user 0.31s system 83% cpu 13.450 total
+    # #In [10]: remove_duplicates(
+    # ...:         input_file=[rvmt_fasta_path, ncbi_ribovirus_fasta_path],
+    # ...:         output_file=deduplicated_fasta,
+    # ...:         by="seq",
+    # ...:         revcomp_as_distinct=False,  # Treat reverse complement as duplicate
+    # ...:         return_stats=True,
+    # ...:         logger=logger
+    # ...:     )
+    # INFO     2025-11-21 12:26:16 - Processing 2 input files                                                                               sequences.py:451
+    # INFO     2025-11-21 12:26:25 - Processed 397135 records: 391736 unique, 5399 duplicates removed                                       sequences.py:597
+    # Out[10]: {'total_records': 397135, 'unique_records': 391736, 'duplicates_removed': 5399} 
+        
     if stats:
         logger.info(f"Deduplication stats: {stats['unique_records']} unique sequences from {stats['total_records']} total, {stats['duplicates_removed']} duplicates removed")
     
@@ -1105,7 +1060,6 @@ def prepare_masking_seqs(data_dir, threads, logger):
     logger.info("Applying entropy masking to combined sequences")
     entropy_masked_path = os.path.join(masking_dir, "combined_entropy_masked.fasta")
     
-    from bbmapy import bbmask
     bbmask(
         in1=deduplicated_fasta,
         out=entropy_masked_path,
@@ -1114,11 +1068,10 @@ def prepare_masking_seqs(data_dir, threads, logger):
         threads=threads
     )
     
-    # Process with kcompress for efficient searches
+    # reduce size with kcompress 
     logger.info("Compressing sequences with kcompress")
     compressed_path = os.path.join(masking_dir, "combined_compressed.fasta")
     
-    from bbmapy import kcompress
     kcompress(
         in1=entropy_masked_path,
         out=compressed_path,
@@ -1128,11 +1081,255 @@ def prepare_masking_seqs(data_dir, threads, logger):
         threads=threads
     )
     
+    #  now complexity masing again just to be sure
+    bbmask(
+        in1=compressed_path,
+        out=entropy_masked_path,
+        entropy=0.2,
+        entropywindow=25,
+        threads=threads
+    )
+
+    # Prepare adapter sequences
+    logger.info("Fetching adapter sequences")
+    fetch_and_extract(
+        url="https://raw.githubusercontent.com/bbushnell/BBTools/refs/heads/master/resources/adapters.fa",
+        fetched_to=os.path.join(adapter_dir, "bbmap_adapters.fa"),
+        rename_extracted=os.path.join(adapter_dir, "bbmap_adapters.fa"),
+    )
+    fetch_and_extract(
+        url="https://raw.githubusercontent.com/FireLabSoftware/CountRabbit/refs/heads/main/illuminatetritis1223wMultiN.fa",
+        fetched_to=os.path.join(adapter_dir, "AFire_illuminatetritis1223.fa"),
+        rename_extracted=os.path.join(adapter_dir, "AFire_illuminatetritis1223.fa"),
+    )
+    # remove the poly-monomer from Fire lab adapters
+    filter_fasta_by_headers(
+        fasta_file=os.path.join(adapter_dir, "AFire_illuminatetritis1223.fa"),
+        output_file=os.path.join(adapter_dir, "AFire_illuminatetritis1223_filtered.fa"),
+        headers=["A70","T70"],
+        invert=True
+    )
+    shutil.move(
+        os.path.join(adapter_dir, "AFire_illuminatetritis1223_filtered.fa"),
+        os.path.join(adapter_dir, "AFire_illuminatetritis1223.fa"))
+
+    # ===== rRNA Database Preparation with Metadata =====
+    # Download and prepare ribosomal RNA sequences (bacterial, archaeal, eukaryotic)
+    # Creates a metadata table with taxonomy lineages and FTP download links for host genomes/transcriptomes
+    # This eliminates dependencies on taxonkit, ncbi-datasets CLI, and taxdump files
+    
+    logger.info("Preparing rRNA database with metadata")
+    rrna_dir = os.path.join(contam_dir, "rrna")
+    os.makedirs(rrna_dir, exist_ok=True)
+    
+    silva_release = "138.2"
+    
+    # Download SILVA rRNA sequences (SSU and LSU)
+    logger.info(f"Downloading SILVA {silva_release} rRNA sequences")
+    silva_ssu_path = os.path.join(rrna_dir, f"SILVA_{silva_release}_SSURef_NR99_tax_silva.fasta")
+    silva_lsu_path = os.path.join(rrna_dir, f"SILVA_{silva_release}_LSURef_NR99_tax_silva.fasta")
+    
+    fetch_and_extract(
+        f"https://www.arb-silva.de/fileadmin/silva_databases/release_{silva_release.replace('.', '_')}/Exports/SILVA_{silva_release}_SSURef_NR99_tax_silva.fasta.gz",
+        fetched_to=os.path.join(rrna_dir, "tmp_ssu.fasta.gz"),
+        extract_to=rrna_dir,
+        rename_extracted=silva_ssu_path,
+        logger=logger,
+    )
+    fetch_and_extract(
+        f"https://www.arb-silva.de/fileadmin/silva_databases/release_{silva_release.replace('.', '_')}/Exports/SILVA_{silva_release}_LSURef_NR99_tax_silva.fasta.gz",
+        fetched_to=os.path.join(rrna_dir, "tmp_lsu.fasta.gz"),
+        extract_to=rrna_dir,
+        rename_extracted=silva_lsu_path,
+        logger=logger,
+    )
+    
+    # Download SILVA taxonomy mappings (maps accessions to NCBI taxids)
+    logger.info("Downloading SILVA taxonomy mappings")
+    os.makedirs(silva_taxmap_dir, exist_ok=True)
+
+    silva_ssu_taxmap = pl.read_csv(
+        "https://www.arb-silva.de/fileadmin/silva_databases/current/Exports/taxonomy/ncbi/taxmap_embl-ebi_ena_ssu_ref_nr99_138.2.txt.gz",
+         truncate_ragged_lines=True, separator="\t",infer_schema_length=123123)
+    silva_lsu_taxmap = pl.read_csv(
+        "https://www.arb-silva.de/fileadmin/silva_databases/current/Exports/taxonomy/ncbi/taxmap_embl-ebi_ena_lsu_ref_nr99_138.2.txt.gz",
+         truncate_ragged_lines=True, separator="\t",infer_schema_length=123123)
+    silva_taxmap = pl.concat([silva_lsu_taxmap,silva_ssu_taxmap])
+    
+    # Parse SILVA headers and extract accessions
+    logger.info("Parsing SILVA sequences and extracting metadata")
+    from rolypoly.utils.bio.polars_fastx import from_fastx_eager
+    
+    silva_fasta_df = pl.concat([
+        from_fastx_eager(silva_ssu_path).with_columns(pl.lit("SSU").alias("rRNA_type")),
+        from_fastx_eager(silva_lsu_path).with_columns(pl.lit("LSU").alias("rRNA_type"))
+    ])
+    
+    # Extract accession from header (format: >accession.version rest_of_header)
+    silva_fasta_df = silva_fasta_df.with_columns(
+        primaryAccession=pl.col("header").str.extract(r"^([A-Za-z0-9_]+)(?:\.\d+)*", 1),  # DQ150555.1.2478 -> DQ150555
+        accession=pl.col("header").str.extract(r"^([A-Za-z0-9_]+(?:\.\d+)?)", 1),  # AY846379 or DQ150555.1
+        taxonomy_raw=pl.col("header").str.replace(r"^\S+\s+", "")
+    )
+    # silva_fasta_df = silva_fasta_df.with_columns(
+    #     pl.col("sequence").str.len_chars().alias("seq_length")
+    # )
+    # silva_taxmap = silva_taxmap.with_columns(
+    #     (pl.col("stop") - pl.col("start")).alias("seq_length")
+    # )
+
+    silva_df = silva_fasta_df.join(
+        silva_taxmap.select(["primaryAccession", "ncbi_taxonid", "submitted_path"]).unique(), # seq_length
+        on=["primaryAccession"],
+        how="inner"
+    )
+    # silva_fasta_df.write_parquet(os.path.join(rrna_dir, "silva_rrna_sequences.parquet"))
+    # silva_fasta_df1.height
+    # silva_fasta_df1["ncbi_taxonid"].nu ll_count()
+
+    # Load SILVA taxonomy mappings
+    logger.info(f"Merged taxonomy for {silva_df.filter(pl.col('ncbi_taxonid').is_not_null()).height} SILVA sequences")
+    
+    unique_taxids = silva_df.filter(pl.col("ncbi_taxonid").is_not_null()).select("ncbi_taxonid").unique()["ncbi_taxonid"].to_list()
+    logger.info(f"Total of {len(unique_taxids)} unique NCBI taxids found in SILVA sequences")
+
+    # Generate FTP download URLs for host genomes/transcriptomes
+    fetch_and_extract(
+        url="https://ftp.ncbi.nlm.nih.gov/genomes/genbank/assembly_summary_genbank.txt",
+        fetched_to=os.path.join(rrna_dir, "assembly_summary_genbank.txt"),
+        extract=False
+    )
+    # genbank_summary = pl.read_csv(os.path.join(rrna_dir, "assembly_summary_genbank.txt.gz",),
+    # infer_schema_length=100020, separator="\t", skip_rows=1,
+    # null_values=["na","NA","-"],ignore_errors=True,
+    # has_header=True)
+    # polars failed me, so using line by line iterator
+    from gzip import open as gz_open
+    with gz_open(os.path.join(rrna_dir, "assembly_summary_genbank.txt.gz"), 'r') as f:
+        header = None
+        records = []
+        i=0
+        for line in f:
+            if i==0:
+                i+=1
+                continue
+            line = line.rstrip(b"\n")
+            if i == 1:
+                header = line.decode()[1:].strip().split("\t")
+                i+=1
+                continue
+            fields = line.decode().strip().split("\t")
+            record = dict(zip(header, fields))
+            records.append(record)
+    genbank_summary = pl.from_records(records).rename({"taxid": "ncbi_taxonid"})
+    genbank_summary.collect_schema()
+    # Out[22]: 
+    # Schema([('assembly_accession', String),
+    #         ('bioproject', String),
+    #         ('biosample', String),
+    #         ('wgs_master', String),
+    #         ('refseq_category', String),
+    #         ('ncbi_taxonid', String),
+    #         ('species_taxid', String),
+    #         ('organism_name', String),
+    #         ('infraspecific_name', String),
+    #         ('isolate', String),
+    #         ('version_status', String),
+    #         ('assembly_level', String),
+    #         ('release_type', String),
+    #         ('genome_rep', String),
+    #         ('seq_rel_date', String),
+    #         ('asm_name', String),
+    #         ('asm_submitter', String),
+    #         ('gbrs_paired_asm', String),
+    #         ('paired_asm_comp', String),
+    #         ('ftp_path', String),
+    #         ('excluded_from_refseq', String),
+    #         ('relation_to_type_material', String),
+    #         ('asm_not_live_date', String),
+    #         ('assembly_type', String),
+    #         ('group', String),
+    #         ('genome_size', String),
+    #         ('genome_size_ungapped', String),
+    #         ('gc_percent', String),
+    #         ('replicon_count', String),
+    #         ('scaffold_count', String),
+    #         ('contig_count', String),
+    #         ('annotation_provider', String),
+    #         ('annotation_name', String),
+    #         ('annotation_date', String),
+    #         ('total_gene_count', String),
+    #         ('protein_coding_gene_count', String),
+    #         ('non_coding_gene_count', String),
+    #         ('pubmed_id', String)])
+
+    silva_df = silva_df.with_columns(
+        ncbi_taxonid=pl.col("ncbi_taxonid").cast(pl.String)
+    )
+    
+    silva_df1 = silva_df.join(
+        genbank_summary.select(["ncbi_taxonid", "ftp_path"]),
+        on=["ncbi_taxonid"],
+        how="left"
+    )
+    silva_df1
+
+    silva_df = silva_df.with_columns(
+        genome_ftp_url=pl.when(pl.col("ncbi_taxonid").is_not_null())
+            .then(pl.format("https://ftp.ncbi.nlm.nih.gov/genomes/all/refseq/taxid_{}/", pl.col("ncbi_taxonid")))
+            .otherwise(None),
+        datasets_api_url=pl.when(pl.col("ncbi_taxonid").is_not_null())
+            .then(pl.format("https://api.ncbi.nlm.nih.gov/datasets/v2alpha/genome/taxon/{}/download?include_annotation_type=GENOME_FASTA,RNA_FASTA", pl.col("ncbi_taxonid")))
+            .otherwise(None)
+    )
+    
+    
+    # Save metadata table
+    metadata_output = os.path.join(rrna_dir, "rrna_metadata.tsv")
+    silva_df.write_csv(metadata_output, separator="\t")
+    logger.info(f"Saved rRNA metadata table with {len(silva_df)} entries to {metadata_output}")
+    
+    # Merge SILVA sequences and apply entropy masking
+    logger.info("Merging and masking SILVA sequences")
+    silva_merged = os.path.join(rrna_dir, "SILVA_merged.fasta")
+    silva_masked = os.path.join(rrna_dir, "SILVA_merged_masked.fasta")
+    
+    # Concatenate SILVA files
+    run_command_comp(
+        base_cmd="cat",
+        positional_args=[silva_ssu_path, silva_lsu_path],
+        positional_args_location="end",
+        params={},
+        output_file=silva_merged,
+        logger=logger,
+    )
+    
+    # Apply entropy masking
+    bbduk(
+        in1=silva_merged,
+        out=silva_masked,
+        entropy=0.6,
+        entropyk=4,
+        entropywindow=24,
+        maskentropy=True,
+        ziplevel=9,
+    )
+    
+    logger.info(f"Created masked SILVA rRNA database: {silva_masked}")
+
+
+    
+
+    # clean up 
+    try:
+        os.remove(deduplicated_fasta)
+        os.remove(compressed_path)
+    except Exception as e:
+        logger.warning(f"Could not remove intermediate files: {e}")
+    
     logger.info(f"Masking sequences prepared in {masking_dir}")
     
-
     
-
 if __name__ == "__main__":
     build_data()
 
@@ -1203,33 +1400,6 @@ if __name__ == "__main__":
 # # # Perform the search and download the sequences
 # # esearch -db nuccore -query "$search_term" | efetch -format fasta > "rrna_genes_refseq.fasta"
 # bbduk.sh -Xmx1g in=rmdup_rRNA_ncbi.fasta  out=rmdup_rRNA_ncbi_masked.fa zl=9 entropy=0.6 entropyk=4 entropywindow=24 maskentropy
-
-# ##### Create AMR DBs #####
-# mkdir dbs
-# mkdir dbs/NCBI_pathogen_AMR
-# cd dbs/NCBI_pathogen_AMR
-# wget https://ftp.ncbi.nlm.nih.gov/pathogen/Antimicrobial_resistance/Data/2024-05-02.2/ReferenceGeneCatalog.txt
-# awk -v RS='\t' '/refseq_nucleotide_accession/{print NR; exit}' ReferenceGeneCatalog.txt
-# # 11
-# # awk -F'\t' -v ORS=" " '{print $11}' ReferenceGeneCatalog.txt |sed 's|genbank_nucleotide_accession||g' > genbank_nucleotide_accessions.lst
-# awk -F'\t'  '{print $11}' ReferenceGeneCatalog.txt |sed 's|genbank_nucleotide_accession||g' > genbank_nucleotide_accessions.lst
-
-# datasets download gene accession $(cat genbank_nucleotide_accessions.lst)   --filename AMR_genes.zip
-# echo "CXAL01000043.1 CXAL01000043.1 CXAL01000043.1 CXAL01000043.1 CXAL01000043.1 CXAL01000043.1 CXAL01000043.1 CXAL01000043.1 CXAL01000043.1 CXAL01000043.1 CP001050.1 CP001050.1 CP001050.1 CP001050.1 CP001050.1 CP030821.1 CP030821.1 CP030821.1 CP030821.1 CP030821.1 CP030821.1 BX571856.1 BX571856.1 BX571856.1 BX571856.1 BX571856.1 BX571856.1 " > small_file.txt
-# datasets download gene accession  $(cat small_file.txt)  --filename AMR_genes.zip
-# datasets download gene accession NG_048523
-# datasets download gene accession CXAL01000043.1 CXAL01000043.1
-#   # Read each taxon name from the file and fetch the corresponding genome data (zip from ncbi)
-#   while IFS= read -r line;
-#   do
-#       echo "Processing $line    "
-#       datasets download gene accession "${line}"  --filename "${line}"_fetched_genomes.zip
-#   done < genbank_nucleotide_accessions.lst
-
-# # cd2mec
-# # cd dbs
-# # cd nt
-# # aws s3 cp --no-sign-request s3://ncbi-blast-databases/2024-06-01-01-05-03/ ./ --recursive --exclude "*" --include "nt.*"
 
 # setup taxonkit
 # TODO: CONVERT TO PYTHON
