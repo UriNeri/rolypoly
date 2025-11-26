@@ -34,7 +34,7 @@ os.environ["citation_file"] = str(
             "commands": {
                 "get-data": "rolypoly.commands.misc.get_external_data.get_data",
                 "version": "rolypoly.rolypoly.version",
-                # "build-data": "rolypoly.commands.misc.build_data.build_data", # this is for me.
+                # "build-data": "rolypoly.commands.misc.build_data.build_data", # this is for dev work.
             },
         },
         "reads": {

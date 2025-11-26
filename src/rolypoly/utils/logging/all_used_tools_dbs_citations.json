@@ -199,6 +199,10 @@
     "citation": "https://doi.org/10.21105/joss.04296",
     "code": "https://github.com/althonos/pyrodigal-gv"
   },
+  "pyrodigal-rv": {
+    "name": "pyrodigal-rv",
+    "code": "https://github.com/laanderdc/pyrodigal-rv"
+  },
   "lightmotif": {
     "name": "lightmotif",
     "code": "https://github.com/althonos/lightmotif"

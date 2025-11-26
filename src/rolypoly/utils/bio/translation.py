@@ -76,7 +76,7 @@ def pyro_predict_orfs(
 ) -> None:
     """Predict and translate Open Reading Frames using Pyrodigal.
 
-    Uses either Pyrodigal-GV (optimized for viruses) or standard Pyrodigal
+    Uses either Pyrodigal-rv (optimized for viruses) or standard Pyrodigal
     to predict and translate ORFs from nucleotide sequences.
 
     Args:
@@ -89,7 +89,9 @@ def pyro_predict_orfs(
         - Creates both protein sequences (.faa) and gene annotations (.gff)
         - genetic_code is 11 for standard/bacterial
     """
-    import pyrodigal_gv as pyro_gv
+    # import pyrodigal_gv as pyro_gv
+    import pyrodigal_rv as pyro_rv
+
 
     sequences = []
     ids = []
@@ -97,7 +99,7 @@ def pyro_predict_orfs(
         sequences.append((record.seq)) # type: ignore
         ids.append((record.id)) # type: ignore
 
-    gene_finder = pyro_gv.ViralGeneFinder(
+    gene_finder = pyro_rv.ViralGeneFinder(
         meta=True,
         min_gene=min_gene_length,
         max_overlap=min(30, min_gene_length - 1) if min_gene_length > 30 else 20,  # Ensure max_overlap < min_gene

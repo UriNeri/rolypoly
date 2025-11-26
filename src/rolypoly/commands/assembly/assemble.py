@@ -7,6 +7,10 @@ from typing import Dict, Optional, Tuple, Union
 import rich_click as click
 
 from rolypoly.utils.logging.config import BaseConfig
+# TODO: replace all the subprocess calls with the run_command_comp.
+# TODO: figure out how to not require Console AND logging.
+
+
 
 global tools
 tools = []
