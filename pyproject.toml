@@ -72,31 +72,56 @@ platforms = ["linux-64"]
 [tool.pixi.pypi-dependencies]
 rolypoly_tk = { path = ".", editable = true }
 
+# Core dependencies needed for base rolypoly functionality
 [tool.pixi.dependencies]
-aragorn = ">=1.2.41,<2"
-aria2 = ">=1.37.0,<2"
-bowtie = ">=1.3.1,<2"
-diamond = ">=2.1.12,<3"
-linearfold = ">=1.0.1.dev20220829,<2"
-megahit = ">=1.2.9,<2"
-mmseqs2 = ">=17.b804f,<18"
-ncbi-datasets-cli = ">=18.3.1,<19"
-pigz = ">=2.8,<3"
-plass = ">=5.cf8933,<6"
-seqkit = ">=2.10.0,<3"
-spades = ">=4.2.0,<5"
-trnascan-se = ">=2.0.12,<3"
-falco = ">=1.2.5,<2"
 pip = ">=25.1.1,<26"
-uv = ">=0.7.13,<0.8"
-freebayes = ">=1.3.10,<2"
+
+# Feature-based dependencies for modular installation
+[tool.pixi.feature.reads.dependencies]
+# For reads processing commands (filter-reads, shrink-reads, mask-dna)
+seqkit = ">=2.10.0,<3"
+bowtie = ">=1.3.1,<2"
+falco = ">=1.2.5,<2"
+pigz = ">=2.8,<3"
+
+[tool.pixi.feature.assembly.dependencies]
+# For assembly commands (assemble, filter-contigs)  
+spades = ">=4.2.0,<5"
+megahit = ">=1.2.9,<2"
+plass = ">=5.cf8933,<6"
+mmseqs2 = ">=17.b804f,<18"
+
+[tool.pixi.feature.annotation-rna.dependencies]
+# For RNA annotation commands (annotate-rna)
+infernal = ">=1.1.5,<2"
+linearfold = ">=1.0.1.dev20220829,<2"
+aragorn = ">=1.2.41,<2"
+trnascan-se = ">=2.0.12,<3"
+
+[tool.pixi.feature.annotation-prot.dependencies]
+# For protein annotation commands (annotate-prot)
+# hmmer = ">=3.4,<4"
+mmseqs2 = ">=17.b804f,<18"
+diamond = ">=2.1.12,<3"
+
+[tool.pixi.feature.identify.dependencies]
+# For virus identification commands (marker-search, search-viruses)
+mmseqs2 = ">=17.b804f,<18"
+hmmer = ">=3.4,<4"
+diamond = ">=2.1.12,<3"
+
+[tool.pixi.feature.misc.dependencies]
+# For miscellaneous commands (fetch-sra, quick-taxonomy, etc.)
+ncbi-datasets-cli = ">=18.3.1,<19"
+aria2 = ">=1.37.0,<2"
 taxonkit = ">=0.20.0,<0.21"
+freebayes = ">=1.3.10,<2"
 
 [tool.pixi.feature.dev.dependencies]
-# Additional tools needed specifically for building/testing/inspecting
-hmmer = ">=3.4,<4"
-infernal = ">=1.1.5,<2"
-edirect = "*"
+# Development and testing tools
+entrez-direct = ">=24.0,<25"
+ipython = ">=8.18.1,<9"
+uv = ">=0.7.13,<0.8"
 
 
 [tool.pixi.tasks]
@@ -107,15 +132,27 @@ gh-pull = "src/setup/on_gh.sh pull"
 python = "~=3.9.0"
 
 [tool.pixi.environments]
+# Minimal environment with just core Python dependencies
 default = { features = ["py39"] }
-dev = { features = ["py39", "build", "format", "publish", "test"] }
-full = { features = [
-    "py39",
-    "build",
-    "format",
-    "publish",
-    "test"
-] }
+
+# Complete environment with all dependencies (for full functionality)
+complete = { features = ["py39", "reads", "assembly", "annotation-rna", "annotation-prot", "identify", "misc"] }
+
+# Development environment
+dev = { features = ["py39", "reads", "assembly", "annotation-rna", "annotation-prot", "identify", "misc", "build", "format", "publish", "dev"] }
+
+# Specific command group environments for targeted installations
+reads-only = { features = ["py39", "reads"] }
+assembly-only = { features = ["py39", "assembly"] }
+annotation-only = { features = ["py39", "annotation-rna", "annotation-prot"] }
+annotation-rna-only = { features = ["py39", "annotation-rna"] }
+annotation-prot-only = { features = ["py39", "annotation-prot"] }
+identify-only = { features = ["py39", "identify"] }
+misc-only = { features = ["py39", "misc"] }
+
+# Common workflow combinations
+basic-analysis = { features = ["py39", "reads", "assembly", "identify"] }
+full-annotation = { features = ["py39", "reads", "assembly", "annotation-rna", "annotation-prot", "identify"] }
 
 # [tool.pixi.project]
 # platforms = []
@@ -129,7 +166,7 @@ publish-pypi = "twine upload dist/* --verbose"
 [tool.pixi.feature.build.tasks]
 build-pypi = "hatch version micro && hatch build --clean"
 
-[tool.pixi.feature.test.tasks]
+[tool.pixi.feature.dev.tasks]
 test-import = "python -c 'import rolypoly; print(rolypoly.__version__)'"
 
 [tool.ruff]

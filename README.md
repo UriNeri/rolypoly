@@ -13,6 +13,10 @@ RolyPoly is an open, still in progress project - I aim to summrise the main func
 For more detailed information, please refer to the [docs](https://pages.jgi.doe.gov/rolypoly/docs/). While it isn't updated often, it should still be helpful. Most commands support a `--help` flag and that tends to be the most up date.
 
 ## Installation
+
+### Quick and Easy - One Conda/Mamba Environment
+**Recommended for most users** who want a "just works" solution and primarily intend to use rolypoly as a CLI tool in an independent environment.
+
 We hope to have rolypoly available from bioconda in the near future.  
 In the meantime, it can be installed with the [`quick_setup.sh`](https://code.jgi.doe.gov/rolypoly/rolypoly/-/raw/main/src/setup/quick_setup.sh) script which which will also fetch the pre-generated data rolypoly will require.
 
@@ -21,22 +25,43 @@ curl -O https://code.jgi.doe.gov/rolypoly/rolypoly/-/raw/main/src/setup/quick_se
 bash quick_setup.sh 
 ```
 
-You can specify custom paths for the code, databases, and conda enviroment location:
+#### Quick Setup - Additional Options
+You can specify custom paths for the code, databases, and conda environment location:
 ```bash
 bash quick_setup.sh /path/to/conda/env /path/to/install/rolypoly_code /path/to/store/databases /path/to/logfile
 ```
-By default if no positional arguments are supplied, rolypoly is installed into the session current folder (path the quick_setup.sh is called from): 
-- database in `./rolypoly/data/`
-- code in `./rolypoly/code/ `
-- conda enviroment in `./rolypoly/env/`
-- log file in `./RolyPoly_quick_setup.log` 
+By default if no positional arguments are supplied, rolypoly is installed into the session current folder (path the quick_setup.sh is called from):   
+- database in `./rolypoly/data/`  
+- code in `./rolypoly/code/ `  
+- conda enviroment in `./rolypoly/env/`  
+- log file in `./RolyPoly_quick_setup.log`   
 
-To install rolypoly in development mode, use:
+
+
+### Modular / Dev - Command-Specific Pixi Environments
+**For software developers** looking to try or make use of specific rolypoly features with minimal risk of dependency conflicts. This approach allows you to install only the tools you need for specific functionality.
+
 ```bash
-bash quick_setup.sh /path/to/conda/env /path/to/install/rolypoly_code /path/to/store/databases /path/to/logfile TRUE
-```
-Or use [pixi](https://pixi.sh) for environment mangement (*recomended for rolling development*)
+# Install pixi first (if not already installed)
+curl -fsSL https://pixi.sh/install.sh | bash
 
+# Clone the repository
+git clone https://code.jgi.doe.gov/rolypoly/rolypoly.git
+cd rolypoly
+
+# Install for specific functionality (examples):
+pixi install -e reads-only        # Just read processing tools
+pixi install -e assembly-only     # Just assembly tools  
+pixi install -e basic-analysis    # Reads + assembly + identification
+pixi install -e complete          # All tools (equivalent to legacy install)
+
+# Run commands in the appropriate environment
+pixi run -e reads-only rolypoly filter-reads --help
+# or load the environment
+pixi shell -e reads-only
+rolypoly filter-reads --help
+```  
+For detailed modular installation options, see the [installation documentation](https://pages.jgi.doe.gov/rolypoly/docs/installation).
 
 ## Usage
 RolyPoly is a command-line tool with subcommands grouped by analysis stage. For a detailed help (in terminal), use `rolypoly --help` or `rolypoly <group> --help`. For more specific help, see the [docs](https://pages.jgi.doe.gov/rolypoly/docs/commands/index.md).
@@ -104,6 +129,9 @@ Under development:
 For more details about the implementation status and roadmap please contact us directly or open an issue.
 
 ## Dependencies
+
+**📦 Modular Installation Available**: RolyPoly supports both quick setup (one environment for all tools) and modular installation (command-specific environments). The modular approach is particularly useful for software developers who want to integrate specific rolypoly features with minimal dependency conflicts. See the [installation documentation](./docs/docs/mkdocs_docs/installation.md) for details.
+
 Not all 3rd party software is used by all the different commands. RolyPoly includes a "citation reminder" that will try to list all the external software used by a command. The "reminded citations" are pretty printed to console (stdout) but are also written to a logfile. The bibtex file rolypoly uses for this is included in the codebase.
 
 <details><summary>Click to show dependencies</summary>  
