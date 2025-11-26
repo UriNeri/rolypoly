@@ -3,6 +3,7 @@ from pathlib import Path
 
 import rich_click as click
 
+
 @click.command()
 @click.option(
     "-i",
@@ -30,13 +31,15 @@ import rich_click as click
     help="Path to log file",
 )
 @click.option(
-    "-ll",  
+    "-ll",
     "--log-level",
     default="INFO",
     help="Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
 )
 @click.option(
-    "--skip-existing", is_flag=True, help="Skip commands if output files already exist"
+    "--skip-existing",
+    is_flag=True,
+    help="Skip commands if output files already exist",
 )
 # Assembly options
 @click.option(
@@ -85,7 +88,8 @@ import rich_click as click
     help="If set, host fasta won't be masked for potential RNA virus-like seqs",
 )
 @click.option(
-    "--mmseqs-args", help="Additional arguments to pass to MMseqs2 search command"
+    "--mmseqs-args",
+    help="Additional arguments to pass to MMseqs2 search command",
 )
 @click.option(
     "--diamond-args",
@@ -93,7 +97,9 @@ import rich_click as click
     help="Additional arguments to pass to Diamond search command",
 )
 # Marker gene search options
-@click.option("--db", default="all", help="Database to use for marker gene search")
+@click.option(
+    "--db", default="all", help="Database to use for marker gene search"
+)
 def run_pipeline(
     input,
     output_dir,
@@ -148,6 +154,7 @@ def run_pipeline(
         None: Results are written to the specified output directory
     """
     import sys
+
     from rolypoly.commands.annotation.annotate import annotate
     from rolypoly.commands.assembly.assemble import assembly
     from rolypoly.commands.assembly.filter_contigs import filter_contigs

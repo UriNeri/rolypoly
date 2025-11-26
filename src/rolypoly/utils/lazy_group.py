@@ -29,15 +29,24 @@ class LazyGroup(click.RichGroup):
     def _init_command_groups(self):
         """Initialize command groups from lazy_subcommands configuration."""
         for name, value in list(self.lazy_subcommands.items()):
-            if isinstance(value, dict) and "name" in value and "commands" in value:
+            if (
+                isinstance(value, dict)
+                and "name" in value
+                and "commands" in value
+            ):
                 # Store group info for help display
-                self._command_groups[name] = {"name": value["name"], "commands": {}}
+                self._command_groups[name] = {
+                    "name": value["name"],
+                    "commands": {},
+                }
 
                 # Add commands directly to main group but track their group
                 for cmd_name, cmd_path in value["commands"].items():
                     if not cmd_path.startswith("hidden:"):
                         self.lazy_subcommands[cmd_name] = cmd_path
-                        self._command_groups[name]["commands"][cmd_name] = cmd_path
+                        self._command_groups[name]["commands"][cmd_name] = (
+                            cmd_path
+                        )
 
                 # Remove the group definition from lazy_subcommands
                 del self.lazy_subcommands[name]
@@ -147,7 +156,9 @@ class LazyGroup(click.RichGroup):
                     show_header=False, box=None, padding=(0, 2), show_edge=False
                 )
                 table.add_column("Command", style="bold cyan", width=20)
-                table.add_column("Description", no_wrap=False)  # Allow text wrapping
+                table.add_column(
+                    "Description", no_wrap=False
+                )  # Allow text wrapping
 
                 for cmd_name, help_str in sorted(valid_commands):
                     table.add_row(cmd_name, help_str or "")

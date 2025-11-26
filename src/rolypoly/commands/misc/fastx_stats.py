@@ -1,15 +1,13 @@
+from pathlib import Path
 
-
+import polars as pl
 import rich_click as click
 from rich.console import Console
-from pathlib import Path
-import polars as pl
 
 console = Console()
 
-@click.command(
-        name="fastx_stats"
-)
+
+@click.command(name="fastx_stats")
 @click.option(
     "-i",
     "--input",
@@ -32,11 +30,7 @@ console = Console()
     hidden=True,
 )
 @click.option(
-    "-ll",
-    "--log-level",
-    hidden=True,
-    default="INFO",
-    help="Log level",
+    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
 )
 @click.option(
     "--min_length",
@@ -61,7 +55,9 @@ console = Console()
 @click.option(
     "-f",
     "--fields",
-    type=click.Choice(case_sensitive=False, choices=["length", "gc_content", "n_count"]),
+    type=click.Choice(
+        case_sensitive=False, choices=["length", "gc_content", "n_count"]
+    ),
     multiple=True,
     default=["length", "gc_content", "n_count"],
     help="Fields to calculate statistics for",
@@ -85,19 +81,26 @@ def fastx_stats(
 ):
     """
     Calculate aggregate statistics for sequences (min, max, mean, median, etc.).
-    
+
     This command computes summary statistics across all sequences in a FASTA/FASTQ file.
     For per-sequence calculations, use the 'fastx-calc' command instead.
     """
+    from rolypoly.utils.bio.polars_fastx import (
+        compute_aggregate_stats,
+        fasta_stats,
+        write_fastx_output,
+        write_markdown_summary,
+    )
     from rolypoly.utils.logging.loggit import log_start_info, setup_logging
-    from rolypoly.utils.bio.polars_fastx import fasta_stats, compute_aggregate_stats, write_fastx_output, write_markdown_summary
 
     logger = setup_logging(log_file, log_level)
     log_start_info(logger, locals())
 
-    write_to_stdout = (output == "stdout")
+    write_to_stdout = output == "stdout"
     if write_to_stdout and format.lower() == "md":
-        logger.error("Markdown format cannot be written to stdout. Please specify an output file.")
+        logger.error(
+            "Markdown format cannot be written to stdout. Please specify an output file."
+        )
         return
 
     # Compute per-sequence stats using fasta_stats
@@ -105,23 +108,23 @@ def fastx_stats(
     if "header" not in fields_list:
         fields_list.insert(0, "header")
     fields_str = ",".join(fields_list)
-    
+
     df = fasta_stats(
         input_file=input,
         output_file=None,
         min_length=min_length,
         max_length=max_length,
         fields=fields_str,
-        circular=circular
+        circular=circular,
     )
-    
+
     total_seqs = df.height
     logger.info(f"Processing {total_seqs} sequences from {input}")
-    
+
     # Compute aggregate statistics
     agg_stats = compute_aggregate_stats(df, list(fields))
     df_output = pl.DataFrame([agg_stats])
-    
+
     # Output results
     if format.lower() == "md":
         output_path = Path(output)
@@ -132,14 +135,13 @@ def fastx_stats(
             output=output,
             format=format,
             logger=logger,
-            write_to_stdout=write_to_stdout
+            write_to_stdout=write_to_stdout,
         )
-    
+
     logger.info(f"✓ Aggregate statistics computed for {total_seqs} sequences")
     if write_to_stdout and format.lower() != "md":
         pass  # Already printed to stdout
     elif format.lower() != "md":
         logger.info(f"✓ Output written to {output}")
-    
-    logger.info("Sequence statistics calculation completed successfully")
 
+    logger.info("Sequence statistics calculation completed successfully")

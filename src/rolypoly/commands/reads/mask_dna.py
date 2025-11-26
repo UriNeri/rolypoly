@@ -7,12 +7,14 @@ import rich_click as click
 from bbmapy import bbmap, bbmask, kcompress
 from rich.console import Console
 
-from rolypoly.utils.various import ensure_memory
-from rolypoly.utils.bio.interval_ops import mask_sequence_mp
 from rolypoly.utils.bio.alignments import calculate_percent_identity
+from rolypoly.utils.bio.interval_ops import mask_sequence_mp
+from rolypoly.utils.various import ensure_memory
 
 global datadir
-datadir = Path(os.environ.get("ROLYPOLY_DATA", "")) # THIS IS A HACK, I need to figure out how to set the datadir if code is accessed from outside the package (currently it's set in the rolypoly.py  and exported into the env).
+datadir = Path(
+    os.environ.get("ROLYPOLY_DATA", "")
+)  # THIS IS A HACK, I need to figure out how to set the datadir if code is accessed from outside the package (currently it's set in the rolypoly.py  and exported into the env).
 
 
 @click.command()
@@ -20,12 +22,21 @@ datadir = Path(os.environ.get("ROLYPOLY_DATA", "")) # THIS IS A HACK, I need to 
 @click.option("-M", "--memory", default="6gb", help="Memory in GB")
 @click.option("-o", "--output", required=True, help="Output file name")
 @click.option(
-    "-f", "--flatten", is_flag=True, help="Attempt to kcompress.sh the masked file"
+    "-f",
+    "--flatten",
+    is_flag=True,
+    help="Attempt to kcompress.sh the masked file",
 )
 @click.option("-i", "--input", required=True, help="Input fasta file")
-@click.option("-F", "--mmseqs", is_flag=True, help="use mmseqs2 instead of bbmap.sh")
-@click.option("-lm", "--low-mem", is_flag=True, help="use minimap2 instead of bbmap.sh")
-@click.option("-bt", "--bowtie", is_flag=True, help="use bowtie1 instead of bbmap.sh")
+@click.option(
+    "-F", "--mmseqs", is_flag=True, help="use mmseqs2 instead of bbmap.sh"
+)
+@click.option(
+    "-lm", "--low-mem", is_flag=True, help="use minimap2 instead of bbmap.sh"
+)
+@click.option(
+    "-bt", "--bowtie", is_flag=True, help="use bowtie1 instead of bbmap.sh"
+)
 @click.option(
     "-r",
     "--reference",
@@ -71,7 +82,9 @@ def mask_dna(
         console.print("Using minimap2 (low memory mode)")
 
         # Create a mappy aligner object
-        aligner = mp.Aligner(str(reference), k=11, n_threads=threads, best_n=150)
+        aligner = mp.Aligner(
+            str(reference), k=11, n_threads=threads, best_n=150
+        )
         if not aligner:
             raise Exception("ERROR: failed to load/build index")
 
@@ -186,4 +199,6 @@ def mask_dna(
         )
         os.rename(f"{output_file}_flat.fa", output_file)
     shutil.rmtree("ref", ignore_errors=True)
-    console.print(f"[green]Masking completed. Output saved to {output_file}[/green]") 
+    console.print(
+        f"[green]Masking completed. Output saved to {output_file}[/green]"
+    )

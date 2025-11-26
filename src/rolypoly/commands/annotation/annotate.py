@@ -1,6 +1,6 @@
-from typing import Union
 import os
 from pathlib import Path
+from typing import Union
 
 import rich_click as click
 from rich.console import Console
@@ -38,7 +38,9 @@ class AnnotationConfig(BaseConfig):
 
         # Create subdirectories first
         (self.output_dir / "rna_annotation").mkdir(parents=True, exist_ok=True)
-        (self.output_dir / "protein_annotation").mkdir(parents=True, exist_ok=True)
+        (self.output_dir / "protein_annotation").mkdir(
+            parents=True, exist_ok=True
+        )
 
         self.skip_steps = kwargs.get("skip_steps", [])
         self.rna_config: Union[RNAAnnotationConfig, None] = None
@@ -54,7 +56,10 @@ class AnnotationConfig(BaseConfig):
     help="Input nucleotide sequence file (fasta, fna, fa, or faa)",
 )
 @click.option(
-    "-o", "--output", default="rolypoly_annotation", help="Output file location."
+    "-o",
+    "--output",
+    default="rolypoly_annotation",
+    help="Output file location.",
 )
 @click.option("-t", "--threads", default=1, help="Number of threads")
 @click.option(
@@ -63,7 +68,9 @@ class AnnotationConfig(BaseConfig):
     default=lambda: Path(os.getcwd()) / "annotate_logfile.txt",
     help="Path to log file",
 )
-@click.option("-M", "--memory", default="6gb", help="Memory in GB. Example: -M 8gb")
+@click.option(
+    "-M", "--memory", default="6gb", help="Memory in GB. Example: -M 8gb"
+)
 @click.option(
     "--override-parameters",
     default="{}",
@@ -77,7 +84,9 @@ class AnnotationConfig(BaseConfig):
 @click.option(
     "--secondary-structure-tool",
     default="LinearFold",
-    type=click.Choice(["LinearFold", "RNAfold"]), #, "SQUARNA", "RNAstructure", "IPknot"
+    type=click.Choice(
+        ["LinearFold", "RNAfold"]
+    ),  # , "SQUARNA", "RNAstructure", "IPknot"
     help="Tool for secondary structure prediction",
 )
 @click.option(
@@ -101,14 +110,25 @@ class AnnotationConfig(BaseConfig):
 @click.option(
     "--gene-prediction-tool",
     default="pyrodigal",
-    type=click.Choice(["pyrodigal", "orffinder", "six_frames", "MetaGeneAnnotator"]),
+    type=click.Choice(
+        ["pyrodigal", "orffinder", "six_frames", "MetaGeneAnnotator"]
+    ),
     help="Tool for gene prediction",
 )
 @click.option(
     "--domain-db",
     default="Pfam",
     type=click.Choice(
-        ["Pfam", "Vfam", "InterPro", "Phrogs", "RVMT", "genomad", "all", "custom"]
+        [
+            "Pfam",
+            "Vfam",
+            "InterPro",
+            "Phrogs",
+            "RVMT",
+            "genomad",
+            "all",
+            "custom",
+        ]
     ),
     help="Database for domain detection (NOTE: currently packaged with rolypoly data: Pfam, genomad, RVMT)",
 )
@@ -118,7 +138,9 @@ class AnnotationConfig(BaseConfig):
     help="Path to a custom domain database in HMM format (for use with --domain-db custom)",
 )
 @click.option(
-    "--min-orf-length", default=30, help="Minimum ORF length for gene prediction"
+    "--min-orf-length",
+    default=30,
+    help="Minimum ORF length for gene prediction",
 )
 @click.option(
     "--log-level",
@@ -131,7 +153,8 @@ class AnnotationConfig(BaseConfig):
     "--search-tool",
     default="hmmsearch",
     type=click.Choice(
-        ["hmmsearch", "hmmscan", "mmseqs2", "DIAMOND", "nail"], case_sensitive=False
+        ["hmmsearch", "hmmscan", "mmseqs2", "DIAMOND", "nail"],
+        case_sensitive=False,
     ),
     help="Tool/command for protein domain detection. hmmer commands are via pyhmmer bindings. ",
 )
@@ -159,7 +182,9 @@ def annotate(
 
     from rolypoly.utils.logging.loggit import log_start_info
 
-    override_parameters = json.loads(override_parameters) if override_parameters else {}
+    override_parameters = (
+        json.loads(override_parameters) if override_parameters else {}
+    )
     skip_steps_list = skip_steps.split(",") if skip_steps else []
     output_path = Path(output).resolve()
 
@@ -176,10 +201,10 @@ def annotate(
 
     # Create RNA config
     rna_config = RNAAnnotationConfig(
-        input= Path(config.input).absolute().resolve(), # type: ignore
+        input=Path(config.input).absolute().resolve(),  # type: ignore
         output_dir=config.output_dir / "rna_annotation",
         threads=threads,
-        log_level=log_level,        
+        log_level=log_level,
         log_file=config.logger,  # Pass the logger directly
         memory=memory,
         override_parameters=override_parameters,

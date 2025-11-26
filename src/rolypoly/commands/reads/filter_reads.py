@@ -6,10 +6,10 @@ from typing import Tuple, Union
 import rich_click as click
 from rich.console import Console
 
+from rolypoly.utils.bio.library_detection import handle_input_fastq
 from rolypoly.utils.logging.config import BaseConfig
 from rolypoly.utils.logging.output_tracker import OutputTracker
 from rolypoly.utils.various import ensure_memory, run_command_comp
-from rolypoly.utils.bio.library_detection import handle_input_fastq
 
 global tools
 tools = ["bbmap", "seqkit", "datasets"]
@@ -18,6 +18,7 @@ global output_tracker
 output_tracker = OutputTracker()
 
 console = Console()
+
 
 class ReadFilterConfig(BaseConfig):
     def __init__(self, **kwargs):
@@ -46,7 +47,9 @@ class ReadFilterConfig(BaseConfig):
         if isinstance(skip_steps_value, list):
             self.skip_steps: list[str] = skip_steps_value
         elif isinstance(skip_steps_value, str):
-            self.skip_steps = skip_steps_value.split(",") if skip_steps_value else []
+            self.skip_steps = (
+                skip_steps_value.split(",") if skip_steps_value else []
+            )
         else:
             self.skip_steps = []
         self.known_dna = (
@@ -73,7 +76,11 @@ class ReadFilterConfig(BaseConfig):
             # "filter_by_tile": {"nullifybrokenquality": "t"},
             "filter_known_dna": {"k": 31, "mincovfraction": 0.7, "hdist": 0},
             "decontaminate_rrna": {"k": 31, "mincovfraction": 0.5, "hdist": 0},
-            "filter_identified_dna": {"k": 31, "mincovfraction": 0.7, "hdist": 0},
+            "filter_identified_dna": {
+                "k": 31,
+                "mincovfraction": 0.7,
+                "hdist": 0,
+            },
             "dedupe": {"dedupe": True, "passes": 1, "s": 0},
             "trim_adapters": {
                 "ktrim": "r",
@@ -130,7 +137,7 @@ def process_reads(
     # config.logger.info("Checking dependencies    ")
     base_dir = Path(config.temp_dir)
     config.save(output_path=base_dir / "rp_filter_reads_config.json")  # type: ignore
-    
+
     # actual processing start here
     fastq_file, config.file_name = process_input_fastq(config)
 
@@ -148,7 +155,7 @@ def process_reads(
     config.memory = ensure_memory(config.memory, fastq_file)  # type: ignore ------ this second ensure is because we now have the fastq file to check its size.
     steps = [
         # handle_input_fastq, # moved to outside of the steps to avoid ensures the input is interleaved by moving it through rename or reformat
-        # filter_by_tile, # filters out reads by tile # dropped - breaks when the fastq headers are not pristine, and should not be used if multiple libraries are merged/concated 
+        # filter_by_tile, # filters out reads by tile # dropped - breaks when the fastq headers are not pristine, and should not be used if multiple libraries are merged/concated
         filter_known_dna,  # filters out known DNA sequences
         decontaminate_rrna,  # decontaminates rRNA sequences
         filter_identified_dna,  # filters out reads that are likely host (based on the stats file of the previous step)
@@ -164,11 +171,13 @@ def process_reads(
     ]
 
     current_input = fastq_file
-    from rich.spinner import SPINNERS # type: ignore
+    from rich.spinner import SPINNERS  # type: ignore
 
-    SPINNERS["myspinner"] = {"interval": 2500, "frames": ["🦠 ", "🧬 ", "🔬 "]} # type: ignore
+    SPINNERS["myspinner"] = {"interval": 2500, "frames": ["🦠 ", "🧬 ", "🔬 "]}  # type: ignore
 
-    with console.status("[bold green] Working on     ", spinner="myspinner") as status:
+    with console.status(
+        "[bold green] Working on     ", spinner="myspinner"
+    ) as status:
         for step in steps:
             step_name = (
                 step.__name__
@@ -179,7 +188,9 @@ def process_reads(
 
                 # Check for existing output file
                 expected_output = Path(f"{step_name}_{config.file_name}.fq.gz")
-                if config.skip_existing and check_existing_file(expected_output):
+                if config.skip_existing and check_existing_file(
+                    expected_output
+                ):
                     config.logger.info(
                         f"Skipping {step_name} as output file already exists"
                     )
@@ -221,16 +232,20 @@ def process_reads(
         config.skip_existing
         and check_existing_file(Path(f"dedup_merged_{config.file_name}.fq.gz"))
     ):
-        dedup_merged = dedupe(Path(merged_file), config, output_tracker, "final_merged")
+        dedup_merged = dedupe(
+            Path(merged_file), config, output_tracker, "final_merged"
+        )  # noqa (F841)
 
     unmerged_file = output_tracker.get_latest_non_merged_file()
     if not (
         config.skip_existing
-        and check_existing_file(Path(f"dedup_interleaved_{config.file_name}.fq.gz"))
+        and check_existing_file(
+            Path(f"dedup_interleaved_{config.file_name}.fq.gz")
+        )
     ):
         dedup_interleaved = dedupe(
             Path(unmerged_file), config, output_tracker, "final_interleaved"
-        )
+        )  # noqa (F841)
 
     generate_reports(
         config.file_name, config.threads, config.skip_existing, config.logger
@@ -241,7 +256,9 @@ def process_reads(
         try:
             os.unlink(fastq_file)
         except Exception as e:
-            config.logger.error(f"Error deleting input file {config.input}: {str(e)}")
+            config.logger.error(
+                f"Error deleting input file {config.input}: {str(e)}"
+            )
     config.logger.info("Read processing completed successfully.")
 
 
@@ -253,7 +270,9 @@ def process_reads(
     type=int,
     help="Number of threads to use. Example: -t 4",
 )
-@click.option("-M", "-mem", "--memory", default="6gb", help="Memory. Example: -M 8gb")
+@click.option(
+    "-M", "-mem", "--memory", default="6gb", help="Memory. Example: -M 8gb"
+)
 @click.option(
     "-o",
     "-out",
@@ -262,7 +281,9 @@ def process_reads(
     type=click.Path(),
     help="Output directory. Example: -o output",
 )
-@click.option("--keep-tmp", is_flag=True, default=False, help="Keep temporary files")
+@click.option(
+    "--keep-tmp", is_flag=True, default=False, help="Keep temporary files"
+)
 @click.option(
     "-g",
     "--log-file",
@@ -438,7 +459,9 @@ def filter_reads(
         # config.logger.info(f"override parameters type is : {type(config.override_parameters)} {config.override_parameters} ")
         process_reads(config, output_tracker)
     except Exception as e:
-        config.logger.error(f"An error occurred during read processing: {str(e)}")
+        config.logger.error(
+            f"An error occurred during read processing: {str(e)}"
+        )
         raise
 
     config.logger.info("Read processing completed, probably successfully.")
@@ -485,16 +508,17 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
     """Process input FASTQ files and prepare them for filtering."""
     from bbmapy import reformat
     from bbmapy.update import ensure_java_availability
+
     ensure_java_availability()
-    
+
     # Create a temporary file for intermediate concatenation
     temp_interleaved = config.output_dir / "temp_concat_interleaved.fq.gz"
     final_interleaved = config.output_dir / "concat_interleaved.fq.gz"
-    
+
     # file detection functions now sourced from seperate script (21.08.2025)
     file_info = handle_input_fastq(config.input, logger=config.logger)
     file_name = file_info.get("file_name", "rolypoly_filtered_reads")
-    
+
     # Process paired-end files
     if len(file_info["R1_R2_pairs"]) != 0:
         for i, pair in enumerate(file_info["R1_R2_pairs"]):
@@ -512,7 +536,9 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
 
     # Process interleaved files
     if len(file_info["interleaved_files"]) != 0:
-        config.logger.info(f"Interleaved files: {file_info['interleaved_files']}")
+        config.logger.info(
+            f"Interleaved files: {file_info['interleaved_files']}"
+        )
         for i, intfile in enumerate(file_info["interleaved_files"]):
             out_file = temp_interleaved if i == 0 else final_interleaved
             reformat(
@@ -524,17 +550,26 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
                 Xmx=str(config.memory["giga"]),
                 int=True,
             )
-    
+
     # Process single-end files
-    if "single_end_files" in file_info and len(file_info["single_end_files"]) != 0:
+    if (
+        "single_end_files" in file_info
+        and len(file_info["single_end_files"]) != 0
+    ):
         config.logger.info(f"Single-end files: {file_info['single_end_files']}")
         for i, sefile in enumerate(file_info["single_end_files"]):
-            out_file = temp_interleaved if i == 0 and not temp_interleaved.exists() else final_interleaved
+            out_file = (
+                temp_interleaved
+                if i == 0 and not temp_interleaved.exists()
+                else final_interleaved
+            )
             reformat(
                 in_file=str(sefile),
                 out=str(out_file),
                 threads=config.threads,
-                overwrite="t" if i == 0 and not temp_interleaved.exists() else "f",
+                overwrite="t"
+                if i == 0 and not temp_interleaved.exists()
+                else "f",
                 append="f" if i == 0 and not temp_interleaved.exists() else "t",
                 Xmx=str(config.memory["giga"]),
             )
@@ -546,9 +581,14 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
         else:
             temp_interleaved.rename(final_interleaved)
 
-    if (len(file_info["R1_R2_pairs"]) > 1 or 
-        len(file_info["interleaved_files"]) > 1 or
-        ("single_end_files" in file_info and len(file_info["single_end_files"]) > 1)):
+    if (
+        len(file_info["R1_R2_pairs"]) > 1
+        or len(file_info["interleaved_files"]) > 1
+        or (
+            "single_end_files" in file_info
+            and len(file_info["single_end_files"]) > 1
+        )
+    ):
         config.skip_steps.append("filter_by_tile")
         config.skip_steps.append("error_correct_1")
         config.skip_steps.append("error_correct_2")
@@ -612,7 +652,7 @@ def filter_known_dna(
     """Filter known DNA sequences."""
     from bbmapy import bbduk
 
-    from rolypoly.commands.reads.mask_dna import mask_dna   
+    from rolypoly.commands.reads.mask_dna import mask_dna
 
     ref_file = str(config.known_dna)
     if "mask_known_dna" not in config.skip_steps:
@@ -639,10 +679,14 @@ def filter_known_dna(
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
-            stats=config.temp_dir / f"stats_filter_known_dna_{config.file_name}.txt",
+            stats=config.temp_dir
+            / f"stats_filter_known_dna_{config.file_name}.txt",
         )
         output_tracker.add_file(
-            str(output_file), "filter_known_dna", "bbduk.sh", is_merged=False,
+            str(output_file),
+            "filter_known_dna",
+            "bbduk.sh",
+            is_merged=False,
             end_type=None,
             interleaved=True,
             is_gz=True,
@@ -659,7 +703,9 @@ def decontaminate_rrna(
     """Decontaminate rRNA sequences."""
     from bbmapy import bbduk
 
-    output_file = config.temp_dir / f"decontaminate_rrna_{config.file_name}.fq.gz"
+    output_file = (
+        config.temp_dir / f"decontaminate_rrna_{config.file_name}.fq.gz"
+    )
     rrna_fas1 = Path(config.datadir) / "rRNA/SILVA_138_merged_masked.fa"  # type: ignore
     rrna_fas2 = Path(config.datadir) / "rRNA/rmdup_rRNA_ncbi_masked.fa"  # type: ignore
     try:
@@ -673,10 +719,14 @@ def decontaminate_rrna(
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
-            stats=config.temp_dir / f"stats_decontaminate_rrna_{config.file_name}.txt",
+            stats=config.temp_dir
+            / f"stats_decontaminate_rrna_{config.file_name}.txt",
         )
         output_tracker.add_file(
-            str(output_file), "decontaminate_rrna", "bbduk.sh", is_merged=False,
+            str(output_file),
+            "decontaminate_rrna",
+            "bbduk.sh",
+            is_merged=False,
             end_type=None,
             interleaved=True,
             is_gz=True,
@@ -695,12 +745,14 @@ def fetch_and_mask_genomes(config: ReadFilterConfig) -> Union[str, Path]:
     # Create a dedicated subfolder for fetched genomes using absolute paths
     fetched_dna_dir = config.temp_dir / "fetched_dna" / "genomes"
     fetched_dna_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Get absolute paths
     abs_gbs_file = (fetched_dna_dir / "gbs_50m.fasta").absolute()
 
     if "filter_rp_identified_DNA_genomes" not in config.skip_steps:
-        stats_file = Path(config.temp_dir / f"stats_decontaminate_rrna_{config.file_name}.txt").absolute()
+        stats_file = Path(
+            config.temp_dir / f"stats_decontaminate_rrna_{config.file_name}.txt"
+        ).absolute()
         if not stats_file.exists():
             config.logger.warning(
                 f"Stats file {stats_file} not found. Skipping fetch and mask genomes step."
@@ -736,13 +788,17 @@ def fetch_and_mask_genomes(config: ReadFilterConfig) -> Union[str, Path]:
         try:
             abs_tmp_stats.unlink()
         except Exception as e:
-            config.logger.warning(f"Could not remove temporary stats file: {str(e)}")
+            config.logger.warning(
+                f"Could not remove temporary stats file: {str(e)}"
+            )
 
     if "mask_fetched_dna" not in config.skip_steps:
         mask_args = {
             "threads": config.threads,
             "memory": config.memory["giga"],
-            "output": str(fetched_dna_dir / f"masked_gbs_50m_{config.file_name}.fasta"),
+            "output": str(
+                fetched_dna_dir / f"masked_gbs_50m_{config.file_name}.fasta"
+            ),
             "flatten": False,
             "input": str(abs_gbs_file),
         }
@@ -761,7 +817,9 @@ def filter_identified_dna(
     host_file = fetch_and_mask_genomes(config)
     if host_file == "host_empty":
         return "host_empty"
-    output_file = config.temp_dir / f"filter_identified_dna_{config.file_name}.fq.gz"
+    output_file = (
+        config.temp_dir / f"filter_identified_dna_{config.file_name}.fq.gz"
+    )
     try:
         params = config.step_params["filter_identified_dna"]
         bbduk(
@@ -777,7 +835,10 @@ def filter_identified_dna(
             / f"stats_filter_identified_dna_{config.file_name}.txt",
         )
         output_tracker.add_file(
-            str(output_file), "filter_identified_dna", "bbduk.sh", is_merged=False,
+            str(output_file),
+            "filter_identified_dna",
+            "bbduk.sh",
+            is_merged=False,
             end_type=None,
             interleaved=True,
             is_gz=True,
@@ -801,11 +862,14 @@ def dedupe(
         output_file = config.temp_dir / f"dedupe_first_{config.file_name}.fq.gz"
         is_merged = False
     elif phase == "final_merged":
-        output_file = config.temp_dir / f"dedupe_final_merged_{config.file_name}.fq.gz"
+        output_file = (
+            config.temp_dir / f"dedupe_final_merged_{config.file_name}.fq.gz"
+        )
         is_merged = True
     elif phase == "final_interleaved":
         output_file = (
-            config.temp_dir / f"dedupe_final_interleaved_{config.file_name}.fq.gz"
+            config.temp_dir
+            / f"dedupe_final_interleaved_{config.file_name}.fq.gz"
         )
         is_merged = False
     try:
@@ -820,7 +884,10 @@ def dedupe(
             interleaved="t",
         )
         output_tracker.add_file(
-            str(output_file), f"dedupe_{phase}", "clumpify.sh", is_merged=is_merged,
+            str(output_file),
+            f"dedupe_{phase}",
+            "clumpify.sh",
+            is_merged=is_merged,
             end_type=None,
             interleaved=True,
             is_gz=True,
@@ -852,10 +919,14 @@ def trim_adapters(
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
-            stats=config.temp_dir / f"stats_trim_adapters_{config.file_name}.txt",
+            stats=config.temp_dir
+            / f"stats_trim_adapters_{config.file_name}.txt",
         )
         output_tracker.add_file(
-            str(output_file), "trim_adapters", "bbduk.sh", is_merged=False,
+            str(output_file),
+            "trim_adapters",
+            "bbduk.sh",
+            is_merged=False,
             end_type=None,
             interleaved=True,
             is_gz=True,
@@ -890,7 +961,10 @@ def remove_synthetic_artifacts(
             / f"stats_remove_synthetic_artifacts_{config.file_name}.txt",
         )
         output_tracker.add_file(
-            str(output_file), "remove_synthetic_artifacts", "bbduk.sh", is_merged=False,
+            str(output_file),
+            "remove_synthetic_artifacts",
+            "bbduk.sh",
+            is_merged=False,
             end_type=None,
             interleaved=True,
             is_gz=True,
@@ -921,7 +995,10 @@ def entropy_filter(
             interleaved="t",
         )
         output_tracker.add_file(
-            str(output_file), "entropy_filter", "bbduk.sh", is_merged=False,
+            str(output_file),
+            "entropy_filter",
+            "bbduk.sh",
+            is_merged=False,
             end_type=None,
             interleaved=True,
             is_gz=True,
@@ -952,7 +1029,10 @@ def error_correct_1(
             interleaved="t",
         )
         output_tracker.add_file(
-            str(output_file), "error_correct_phase_1", "bbmerge.sh", is_merged=False,
+            str(output_file),
+            "error_correct_phase_1",
+            "bbmerge.sh",
+            is_merged=False,
             end_type=None,
             interleaved=True,
             is_gz=True,
@@ -983,7 +1063,10 @@ def error_correct_2(
             interleaved="t",
         )
         output_tracker.add_file(
-            str(output_file), "error_correct_phase_2", "bbmerge.sh", is_merged=False,
+            str(output_file),
+            "error_correct_phase_2",
+            "bbmerge.sh",
+            is_merged=False,
             end_type=None,
             interleaved=True,
             is_gz=True,
@@ -1014,17 +1097,24 @@ def merge_reads(
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
-            simd=True, # assumes simd support, avx256 and java >=17 are required.
-            outadapter=config.temp_dir / f"out_adapter_merged_{config.file_name}.txt",
+            simd=True,  # assumes simd support, avx256 and java >=17 are required.
+            outadapter=config.temp_dir
+            / f"out_adapter_merged_{config.file_name}.txt",
         )
         output_tracker.add_file(
-            str(output_file), "merge_reads", "bbmerge.sh", is_merged=True,
+            str(output_file),
+            "merge_reads",
+            "bbmerge.sh",
+            is_merged=True,
             end_type="paired",
             interleaved=True,
             is_gz=True,
         )
         output_tracker.add_file(
-            str(unmerged_file), "merge_reads_unmerged", "bbmerge.sh", is_merged=False,
+            str(unmerged_file),
+            "merge_reads_unmerged",
+            "bbmerge.sh",
+            is_merged=False,
             end_type="single",
             interleaved=False,
             is_gz=True,
@@ -1056,7 +1146,10 @@ def quality_trim_unmerged(
             interleaved="t",
         )
         output_tracker.add_file(
-            str(output_file), "quality_trim_unmerged", "bbduk.sh", is_merged=False,
+            str(output_file),
+            "quality_trim_unmerged",
+            "bbduk.sh",
+            is_merged=False,
             end_type="single",
             interleaved=False,
             is_gz=True,
@@ -1069,8 +1162,7 @@ def quality_trim_unmerged(
 
 
 def cleanup_and_move_files(
-    config: ReadFilterConfig,
-    output_tracker: OutputTracker,
+    config: ReadFilterConfig, output_tracker: OutputTracker
 ):
     """Clean up and move files to their final locations.
     Args:
@@ -1108,7 +1200,9 @@ def cleanup_and_move_files(
         for stat_file in temp_dir.glob(pattern):
             if stat_file.exists():
                 try:
-                    shutil.move(str(stat_file), str(run_info_dir / stat_file.name))
+                    shutil.move(
+                        str(stat_file), str(run_info_dir / stat_file.name)
+                    )
                 except Exception as e:
                     config.logger.warning(
                         f"Could not move {stat_file} to run_info: {str(e)}"
@@ -1141,13 +1235,17 @@ def cleanup_and_move_files(
                     shutil.rmtree(str(target))
                 shutil.move(str(fetched_dna_dir), str(target))
             except Exception as e:
-                config.logger.warning(f"Could not move fetched_dna directory: {str(e)}")
+                config.logger.warning(
+                    f"Could not move fetched_dna directory: {str(e)}"
+                )
 
     # Clean up temporary directory if not keeping it
     if not config.keep_tmp and temp_dir != output_dir:
         try:
             shutil.rmtree(temp_dir)
-            config.logger.info(f"Temporary directory {temp_dir} cleaned up and removed")
+            config.logger.info(
+                f"Temporary directory {temp_dir} cleaned up and removed"
+            )
         except Exception as e:
             config.logger.error(f"Error removing temporary directory: {str(e)}")
             # Don't raise the error since the important files *should* have been moved

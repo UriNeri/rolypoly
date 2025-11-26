@@ -6,6 +6,7 @@ from rich_click import Choice, command, option
 
 from rolypoly.utils.logging.config import BaseConfig
 
+
 class RVirusSearchConfig(BaseConfig):
     def __init__(self, **kwargs):
         # Always treat output as a directory
@@ -113,7 +114,9 @@ console = Console(width=150)
         options: NeoRdRp_v2.1, RdRp-scan, RVMT, TSA_2018, Pfam_A_37, genomad, all, \n
         For custom path, either an .hmm file, a directory with .hmm files, or a folder with MSA files (which would be used to build an HMM DB)""",
 )
-@option("-t", "--threads", default=1, help="Number of threads to use for searching")
+@option(
+    "-t", "--threads", default=1, help="Number of threads to use for searching"
+)
 @option(
     "-g",
     "--log-file",
@@ -121,7 +124,11 @@ console = Console(width=150)
     help="Absolute path to logfile",
 )
 @option(
-    "-m", "--memory", hidden=True, default="6g", help="Memory limit for the job in GB"
+    "-m",
+    "--memory",
+    hidden=True,
+    default="6g",
+    help="Memory limit for the job in GB",
 )
 @option(
     "-cf",
@@ -211,17 +218,20 @@ def marker_search(
 
     import polars as pl
 
-    from rolypoly.utils.logging.citation_reminder import remind_citations
-    from rolypoly.utils.bio.sequences import guess_fasta_alpha
     from rolypoly.utils.bio.alignments import (
         hmm_from_msa,
         hmmdb_from_directory,
         search_hmmdb,
     )
-    from rolypoly.utils.bio.translation import pyro_predict_orfs, translate_6frx_seqkit, translate_with_bbmap
     from rolypoly.utils.bio.interval_ops import consolidate_hits
+    from rolypoly.utils.bio.sequences import guess_fasta_alpha
+    from rolypoly.utils.bio.translation import (
+        pyro_predict_orfs,
+        translate_6frx_seqkit,
+        translate_with_bbmap,
+    )
+    from rolypoly.utils.logging.citation_reminder import remind_citations
     from rolypoly.utils.logging.loggit import log_start_info
-
 
     # Determine if output should be treated as directory based on resolve_mode and path
     output = str(Path(output).absolute())
@@ -262,7 +272,9 @@ def marker_search(
     # Logging
     log_start_info(config.logger, config.to_dict())
 
-    config.logger.info(f"Starting RNA virus marker protein search with: {config.input}")
+    config.logger.info(
+        f"Starting RNA virus marker protein search with: {config.input}"
+    )
 
     # Determine the databases to use
     hmmdbdir = Path(os.environ["ROLYPOLY_DATA"]) / "hmmdbs"
@@ -281,7 +293,9 @@ def marker_search(
     elif database.startswith("/") or database.startswith("./"):
         custom_database = str(Path(database).resolve())
         if not Path(custom_database).exists():
-            config.logger.error(f"Custom database path {custom_database} does not exist")
+            config.logger.error(
+                f"Custom database path {custom_database} does not exist"
+            )
             return
         else:
             # check if a file it's an hmm or an msa file
@@ -299,32 +313,54 @@ def marker_search(
                 }
             # if it's a directory:
             elif Path(custom_database).is_dir():
-                from rolypoly.utils.bio.library_detection import validate_database_directory
-                
-                db_info = validate_database_directory(custom_database, logger=config.logger)
-                config.logger.info(f"Database directory analysis: {db_info['message']}")
-                
+                from rolypoly.utils.bio.library_detection import (
+                    validate_database_directory,
+                )
+
+                db_info = validate_database_directory(
+                    custom_database, logger=config.logger
+                )
+                config.logger.info(
+                    f"Database directory analysis: {db_info['message']}"
+                )
+
                 if db_info["type"] == "hmm_directory":
                     # concatenate all hmms into one file
-                    with open(Path(custom_database) / "concatenated.hmm", "w") as f:
+                    with open(
+                        Path(custom_database) / "concatenated.hmm", "w"
+                    ) as f:
                         for hmm_file in db_info["files"]:
                             with open(hmm_file, "r") as hmm_file_obj:
                                 f.write(hmm_file_obj.read())
-                    database_paths = {"Custom": str(Path(custom_database) / "concatenated.hmm")}
+                    database_paths = {
+                        "Custom": str(
+                            Path(custom_database) / "concatenated.hmm"
+                        )
+                    }
                 elif db_info["type"] == "msa_directory":
-                    from rolypoly.utils.bio.alignments import hmmdb_from_directory
+                    from rolypoly.utils.bio.alignments import (
+                        hmmdb_from_directory,
+                    )
 
                     hmmdb_from_directory(
                         msa_dir=custom_database,
                         output=Path(custom_database) / "all_msa_built.hmm",
                         # alphabet="aa",
                     )
-                    database_paths = {"Custom": str(Path(custom_database) / "all_msa_built.hmm")}
+                    database_paths = {
+                        "Custom": str(
+                            Path(custom_database) / "all_msa_built.hmm"
+                        )
+                    }
                 else:
-                    config.logger.error(f"Unsupported database directory type: {db_info['type']}")
+                    config.logger.error(
+                        f"Unsupported database directory type: {db_info['type']}"
+                    )
                     return
             else:
-                config.logger.error(f"Invalid custom database path: {custom_database}")
+                config.logger.error(
+                    f"Invalid custom database path: {custom_database}"
+                )
                 return
     else:
         databases = database.split(",")
@@ -351,7 +387,9 @@ def marker_search(
             translate_6frx_seqkit(input, amino_file, threads)
             tools.append("seqkit")
     elif input_alpha == "aa":
-        config.logger.info("Using supplied amino acid fasta file, skipping translation")
+        config.logger.info(
+            "Using supplied amino acid fasta file, skipping translation"
+        )
         amino_file = input
     else:
         config.logger.error(
@@ -448,7 +486,9 @@ def marker_search(
         shutil.rmtree(config.temp_dir)
         config.logger.info(f"Removed temporary directory: {config.temp_dir}")
 
-    config.logger.info(f"""Finished RNA virus marker protein search using : {input}""")
+    config.logger.info(
+        f"""Finished RNA virus marker protein search using : {input}"""
+    )
     output_files = [ix.absolute() for ix in Path(output).glob("*.tsv")]
     config.logger.info(f"""Outputs saved to {output_files}""")
 
@@ -457,6 +497,7 @@ def marker_search(
 
     with open(f"{config.log_file}", "w") as f_out:
         f_out.write(remind_citations(tools, return_bibtex=True) or "")
+
 
 if __name__ == "__main__":
     marker_search()

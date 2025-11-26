@@ -51,16 +51,18 @@ def get_data(info, rolypoly_data, log_file):
 
     import requests
 
-    from rolypoly.utils.logging.loggit import setup_logging, get_version_info
+    from rolypoly.utils.logging.loggit import get_version_info, setup_logging
+
     logger = setup_logging(log_file)
 
     # probably a good time to verify java is present
     from bbmapy.update import ensure_java_availability
+
     ensure_java_availability()
 
     # Load configuration first
     config_path = str(resources.files("rolypoly") / "rpconfig.json")
-    
+
     if os.path.exists(config_path):
         with open(config_path, "r") as f:
             config = json.load(f)
@@ -98,7 +100,8 @@ def get_data(info, rolypoly_data, log_file):
             if chunk:
                 f.write(chunk)
     extract(
-        archive_path=f"{ROLYPOLY_DATA}/data.tar.gz", extract_to=f"{ROLYPOLY_DATA}"
+        archive_path=f"{ROLYPOLY_DATA}/data.tar.gz",
+        extract_to=f"{ROLYPOLY_DATA}",
     )
     most_recent_folder = find_most_recent_folder(f"{ROLYPOLY_DATA}")
     move_contents_to_parent(most_recent_folder)

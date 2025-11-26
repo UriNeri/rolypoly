@@ -1,18 +1,22 @@
-
-
+import polars as pl
 import rich_click as click
 from rich.console import Console
-from pathlib import Path
-import polars as pl
+
 from rolypoly.utils.bio.polars_fastx import from_fastx_eager as read_fasta_df
-from rolypoly.utils.bio.sequences import rename_sequences, process_sequences
+from rolypoly.utils.bio.sequences import process_sequences, rename_sequences
+
 console = Console()
+
 
 @click.command(name="rename_seqs")
 @click.option("-i", "--input", required=True, help="Input FASTA file")
 @click.option("-o", "--output", required=True, help="Output FASTA file")
-@click.option("-m", "--mapping", required=True, help="Output mapping file (TSV)")
-@click.option("-p", "--prefix", default="CID", help="Prefix for new sequence IDs")
+@click.option(
+    "-m", "--mapping", required=True, help="Output mapping file (TSV)"
+)
+@click.option(
+    "-p", "--prefix", default="CID", help="Prefix for new sequence IDs"
+)
 @click.option(
     "--hash/--no-hash",
     default=False,
@@ -23,7 +27,9 @@ console = Console()
     default=True,
     help="Include sequence statistics in mapping file (length, GC content)",
 )
-def rename_seqs(input: str, output: str, mapping: str, prefix: str, hash: bool, stats: bool):
+def rename_seqs(
+    input: str, output: str, mapping: str, prefix: str, hash: bool, stats: bool
+):
     """Rename sequences in a FASTA file with consistent IDs (supports numbering or hashing, appending attributes like GC and length).
 
     This tool renames sequences in a FASTA file using either sequential numbers
@@ -31,6 +37,7 @@ def rename_seqs(input: str, output: str, mapping: str, prefix: str, hash: bool, 
     Optionally includes sequence statistics (length, GC content).
     """
     from rolypoly.utils.logging.loggit import get_logger
+
     logger = get_logger()
 
     # Read input FASTA

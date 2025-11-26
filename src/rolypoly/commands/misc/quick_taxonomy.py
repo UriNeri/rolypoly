@@ -1,6 +1,7 @@
 """
 this script is a place holder
 """
+
 from pathlib import Path
 
 import rich_click as click
@@ -53,7 +54,9 @@ def run_genomad_hmm_search(input_fasta, output_dir, threads, logger):
     from rolypoly.utils.bio.alignments import search_hmmdb
 
     hmm_db = (
-        Path(os.environ["ROLYPOLY_DATA"]) / "hmmdbs" / "genomad_rna_viral_markers.hmm"
+        Path(os.environ["ROLYPOLY_DATA"])
+        / "hmmdbs"
+        / "genomad_rna_viral_markers.hmm"
     )
     output_file = output_dir / "genomad_hmm_results.txt"
 
@@ -120,7 +123,9 @@ def assign_taxonomy(sequence_id, markers, hmm_results, min_score=50):
     }
 
     # Look for RdRP markers first (highest confidence)
-    rdrp_markers = seq_markers.filter(pl.col("target").str.contains("RdRP|RdRp|rdrp"))
+    rdrp_markers = seq_markers.filter(
+        pl.col("target").str.contains("RdRP|RdRp|rdrp")
+    )
     if not rdrp_markers.is_empty():
         best_hit = rdrp_markers.sort("score", descending=True).row(0)
         tax["taxonomy"] = (
@@ -134,15 +139,21 @@ def assign_taxonomy(sequence_id, markers, hmm_results, min_score=50):
         hmm_hits = seq_hmms.sort("score", descending=True)
         for hit in hmm_hits.iter_rows():
             tax["evidence"].append(f"RNA viral marker: {hit['target']}")
-            if tax["confidence"] < 0.8:  # Only update if current confidence is low
+            if (
+                tax["confidence"] < 0.8
+            ):  # Only update if current confidence is low
                 tax["confidence"] = min(0.8, hit["score"] / 100)
 
     # Check other viral markers
-    other_markers = seq_markers.filter(~pl.col("target").str.contains("RdRP|RdRp|rdrp"))
+    other_markers = seq_markers.filter(
+        ~pl.col("target").str.contains("RdRP|RdRp|rdrp")
+    )
     if not other_markers.is_empty():
         for hit in other_markers.iter_rows():
             tax["evidence"].append(f"Other marker: {hit['target']}")
-            if tax["confidence"] < 0.6:  # Only update if current confidence is low
+            if (
+                tax["confidence"] < 0.6
+            ):  # Only update if current confidence is low
                 tax["confidence"] = min(0.6, hit["score"] / 100)
 
     return tax
@@ -185,7 +196,9 @@ def summarize_taxonomy(assignments):
 @click.option("-o", "--output", default="output", help="Output directory")
 @click.option("-t", "--threads", default=1, help="Number of threads")
 @click.option("--log-file", default="command.log", help="Path to log file")
-@click.option("-ll", "--log-level", hidden=True, default="INFO", help="Log level")
+@click.option(
+    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
+)
 @click.option("--marker_results", default=None, type=str, help="marker_results")
 @click.option(
     "--format",
@@ -226,7 +239,7 @@ def quick_taxonomy(
 
     sequences = []
     for record in parse_fastx_file(input):
-        sequences.append({"id": record.id, "seq": record.seq}) # type: ignore
+        sequences.append({"id": record.id, "seq": record.seq})  # type: ignore
 
     if not sequences:
         logger.error(f"No sequences found in {input}")
@@ -335,7 +348,9 @@ def quick_taxonomy(
 
             total = sum(summary["taxonomy_distribution"].values())
             for tax, count in summary["taxonomy_distribution"].items():
-                dist_table.add_row(tax, str(count), f"{count / total * 100:.1f}%")
+                dist_table.add_row(
+                    tax, str(count), f"{count / total * 100:.1f}%"
+                )
 
             console.print("\n")
             console.print(dist_table)

@@ -2,6 +2,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional
+
 from typing_extensions import Union
 
 from rolypoly.utils.logging.loggit import setup_logging
@@ -50,7 +51,7 @@ class BaseConfig:
         self.threads = threads
         self.memory = self.parse_memory(memory)
         self.config_file = Path(config_file) if config_file else None
-        self.log_file = (log_file) 
+        self.log_file = log_file
         self.overwrite = overwrite
         self.output = Path(output)
         self.output_dir = self.output if self.output.is_dir() else self.output

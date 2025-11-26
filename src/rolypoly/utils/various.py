@@ -1,17 +1,22 @@
 import os
 import shutil
+from logging import Logger
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-from rich.console import Console
 import polars as pl
+from rich.console import Console
 
-from rolypoly.utils.logging.loggit import get_logger # TODO: check if this can work with get_logger(None) so I don't need to have all the if logger is none then...
-from logging import Logger
+from rolypoly.utils.logging.loggit import (
+    get_logger,  # TODO: check if this can work with get_logger(None) so I don't need to have all the if logger is none then...
+)
+
 console = Console()
 
+
 def extract(
-    archive_path: Union[str, Path], extract_to: Optional[Union[str, Path]] = None
+    archive_path: Union[str, Path],
+    extract_to: Optional[Union[str, Path]] = None,
 ) -> None:
     """Extract compressed and/or archived files"""
     import bz2
@@ -24,7 +29,9 @@ def extract(
 
     archive_path = Path(archive_path)
     if not archive_path.is_file():
-        console.print(f"[bold red]'{archive_path}' is not a valid file![/bold red]")
+        console.print(
+            f"[bold red]'{archive_path}' is not a valid file![/bold red]"
+        )
         return
 
     extract_to = Path(extract_to) if extract_to else archive_path.parent
@@ -35,8 +42,10 @@ def extract(
         decompressed_path = archive_path
         is_compressed = False
         # Check for .tar.gz, .tar.bz2, .tar.xz files specifically
-        is_tarred = (archive_path.suffix in [".tar", ".tgz"] or 
-                    archive_path.name.endswith(('.tar.gz', '.tar.bz2', '.tar.xz')))
+        is_tarred = archive_path.suffix in [
+            ".tar",
+            ".tgz",
+        ] or archive_path.name.endswith((".tar.gz", ".tar.bz2", ".tar.xz"))
 
         # Check for compression type
         if archive_path.suffix in [".bz2", ".gz", ".xz", ".Z", ".tgz"]:
@@ -51,9 +60,12 @@ def extract(
                     check=True,
                 )
             else:
-                open_func = {"bz2": bz2.open, "gz": gzip.open, "xz": lzma.open, "tgz": gzip.open }[
-                    compression_type
-                ]
+                open_func = {
+                    "bz2": bz2.open,
+                    "gz": gzip.open,
+                    "xz": lzma.open,
+                    "tgz": gzip.open,
+                }[compression_type]
 
                 with (
                     open_func(archive_path, "rb") as source,
@@ -85,8 +97,8 @@ def extract(
 
 
 def fetch_and_extract(
-    url: str, 
-    fetched_to: Optional[str] = None, 
+    url: str,
+    fetched_to: Optional[str] = None,
     extract_to: Optional[Union[str, Path]] = None,
     expected_file: Optional[str] = None,
     logger: Optional[Logger] = None,
@@ -95,7 +107,7 @@ def fetch_and_extract(
     rename_extracted: Optional[str] = None,
 ) -> Path:
     """Fetch a file from a URL and optionally extract it with robust file handling.
-    
+
     Args:
         url: URL to download from
         fetched_to: Local path to save downloaded file. If None, uses basename of URL
@@ -105,10 +117,10 @@ def fetch_and_extract(
         overwrite: Whether to overwrite existing files/directories. - NOTE NOTE NOTE NOT IMPLEMENTED YET.
         extract: Whether to extract the downloaded file if it's compressed/archived
         rename_extracted: If provided, rename the final extracted file/directory to this name
-        
+
     Returns:
         Path to the final extracted file or downloaded file if extract=False
-        
+
     Note:
         This function handles various archive formats by detecting file signatures.
         If rename_extracted is provided, it will rename the final result to that path.
@@ -116,20 +128,22 @@ def fetch_and_extract(
     """
     import shutil
     from urllib.parse import urlparse
-    
+
     if logger is None:
         logger = get_logger()
-    
+
     # Determine download path
     if fetched_to is None:
         parsed_url = urlparse(url)
         fetched_to = Path(parsed_url.path).name
-        if not fetched_to:  # Handle cases where URL doesn't have a clear filename
+        if (
+            not fetched_to
+        ):  # Handle cases where URL doesn't have a clear filename
             fetched_to = "downloaded_file"
-    
+
     # Download the file using simple_fetch
     fetched_path = simple_fetch(url, fetched_to, logger, overwrite)
-    
+
     # If extraction is disabled, handle renaming and return
     if not extract:
         if rename_extracted:
@@ -138,24 +152,24 @@ def fetch_and_extract(
             shutil.move(str(fetched_path), str(final_path))
             return final_path
         return fetched_path
-    
+
     # Determine extraction directory - always treat extract_to as directory
     if extract_to is None:
         extract_dir = fetched_path.parent
     else:
         extract_dir = Path(extract_to)
     extract_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Check if extraction is needed using file signatures
     extracted_path = _extract_with_signature_detection(
         fetched_path, extract_dir, expected_file, logger
     )
-    
+
     # Handle renaming of final result if requested
     if rename_extracted and extracted_path != fetched_path:
         final_path = Path(rename_extracted)
         final_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # If extracted_path is a directory, move the entire directory
         # If it's a file, move just the file
         if extracted_path.is_dir():
@@ -164,9 +178,9 @@ def fetch_and_extract(
             shutil.move(str(extracted_path), str(final_path))
         else:
             shutil.move(str(extracted_path), str(final_path))
-        
+
         return final_path
-    
+
     return extracted_path
 
 
@@ -177,26 +191,26 @@ def simple_fetch(
     overwrite: bool = True,
 ) -> Path:
     """Simple file download without any extraction.
-    
+
     Args:
         url: URL to download from
         output_path: Local path to save the file
         logger: Logger for messages
         overwrite: Whether to overwrite existing files
-        
+
     Returns:
         Path to the downloaded file
     """
     import shutil
+
     import requests
-    from urllib.parse import urlparse
-    
+
     if logger is None:
         logger = get_logger()
-    
+
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Download the file
     logger.info(f"Downloading {url} to {output_path}")
     try:
@@ -208,61 +222,72 @@ def simple_fetch(
     except Exception as e:
         logger.error(f"Failed to download {url}: {e}")
         raise
-    
+
     return output_path
 
 
 def _extract_with_signature_detection(
-    archive_path: Path, 
-    extract_dir: Path, 
+    archive_path: Path,
+    extract_dir: Path,
     expected_file: Optional[str] = None,
-    logger: Optional[Logger] = None
+    logger: Optional[Logger] = None,
 ) -> Path:
     """Extract archive using magic number detection for robust format identification."""
-    import gzip
-    import bz2
-    import lzma
-    import tarfile
-    import zipfile
-    
+
     if logger is None:
         logger = get_logger()
-    
+
     # Read file signature to determine format
     try:
-        with open(archive_path, 'rb') as f:
+        with open(archive_path, "rb") as f:
             signature = f.read(16)
     except Exception as e:
         logger.error(f"Could not read file signature from {archive_path}: {e}")
         return archive_path
-    
+
     # No extraction needed for regular files
     if not _is_archive_by_signature(signature):
-        logger.info(f"File {archive_path} is not compressed/archived - no extraction needed")
+        logger.info(
+            f"File {archive_path} is not compressed/archived - no extraction needed"
+        )
         return archive_path
-    
+
     logger.info(f"Extracting {archive_path} to {extract_dir}")
-    
+
     try:
         # Handle different formats based on signature
-        if signature.startswith(b'\x1f\x8b'):  # gzip
-            extracted_path = _extract_gzip(archive_path, extract_dir, expected_file, logger)
-        elif signature.startswith(b'BZ'):  # bzip2  
-            extracted_path = _extract_bzip2(archive_path, extract_dir, expected_file, logger)
-        elif signature.startswith((b'\xfd7zXZ', b'\xff\x06\x00\x00sNaPpY')):  # xz/lzma
-            extracted_path = _extract_xz(archive_path, extract_dir, expected_file, logger)
-        elif signature.startswith(b'PK'):  # zip
+        if signature.startswith(b"\x1f\x8b"):  # gzip
+            extracted_path = _extract_gzip(
+                archive_path, extract_dir, expected_file, logger
+            )
+        elif signature.startswith(b"BZ"):  # bzip2
+            extracted_path = _extract_bzip2(
+                archive_path, extract_dir, expected_file, logger
+            )
+        elif signature.startswith(
+            (b"\xfd7zXZ", b"\xff\x06\x00\x00sNaPpY")
+        ):  # xz/lzma
+            extracted_path = _extract_xz(
+                archive_path, extract_dir, expected_file, logger
+            )
+        elif signature.startswith(b"PK"):  # zip
             extracted_path = _extract_zip(archive_path, extract_dir, logger)
-        elif b'ustar' in signature or signature.startswith((b'\x1f\x8b', b'BZ')) and _is_tar_content(archive_path):
+        elif (
+            b"ustar" in signature
+            or signature.startswith((b"\x1f\x8b", b"BZ"))
+            and _is_tar_content(archive_path)
+        ):
             extracted_path = _extract_tar(archive_path, extract_dir, logger)
         else:
-            logger.warning(f"Unknown archive format for {archive_path}, copying as-is")
+            logger.warning(
+                f"Unknown archive format for {archive_path}, copying as-is"
+            )
             extracted_path = extract_dir / archive_path.name
             shutil.copy2(archive_path, extracted_path)
-        
+
         logger.info(f"Successfully extracted to {extracted_path}")
         return extracted_path
-        
+
     except Exception as e:
         logger.error(f"Extraction failed for {archive_path}: {e}")
         # Return original file if extraction fails
@@ -272,34 +297,38 @@ def _extract_with_signature_detection(
 def _is_archive_by_signature(signature: bytes) -> bool:
     """Check if file is an archive based on magic numbers."""
     return (
-        signature.startswith(b'\x1f\x8b') or  # gzip
-        signature.startswith(b'BZ') or         # bzip2
-        signature.startswith((b'\xfd7zXZ', b'\xff\x06\x00\x00sNaPpY')) or  # xz/lzma
-        signature.startswith(b'PK') or        # zip
-        b'ustar' in signature                 # tar
+        signature.startswith(b"\x1f\x8b")  # gzip
+        or signature.startswith(b"BZ")  # bzip2
+        or signature.startswith(
+            (b"\xfd7zXZ", b"\xff\x06\x00\x00sNaPpY")
+        )  # xz/lzma
+        or signature.startswith(b"PK")  # zip
+        or b"ustar" in signature  # tar
     )
 
 
 def _is_tar_content(file_path: Path) -> bool:
     """Check if a potentially compressed file contains tar content."""
     import tarfile
+
     try:
-        with tarfile.open(file_path, 'r:*') as tar:
+        with tarfile.open(file_path, "r:*") as tar:
             tar.getnames()  # Try to read tar structure
             return True
     except:
         return False
 
 
-def _extract_gzip(archive_path: Path, extract_dir: Path, expected_file: Optional[str], logger) -> Path:
+def _extract_gzip(
+    archive_path: Path, extract_dir: Path, expected_file: Optional[str], logger
+) -> Path:
     """Extract gzip files, handling both standalone .gz and .tar.gz files."""
     import gzip
-    import tarfile
-    
+
     # First check if it's a tar.gz
     if _is_tar_content(archive_path):
         return _extract_tar(archive_path, extract_dir, logger)
-    
+
     # Handle standalone gzip
     if expected_file:
         output_path = extract_dir / expected_file
@@ -307,62 +336,75 @@ def _extract_gzip(archive_path: Path, extract_dir: Path, expected_file: Optional
         # Remove .gz extension for output name
         output_name = archive_path.stem
         output_path = extract_dir / output_name
-    
-    with gzip.open(archive_path, 'rb') as gz_file, open(output_path, 'wb') as out_file:
+
+    with (
+        gzip.open(archive_path, "rb") as gz_file,
+        open(output_path, "wb") as out_file,
+    ):
         shutil.copyfileobj(gz_file, out_file)
-    
+
     return output_path
 
 
-def _extract_bzip2(archive_path: Path, extract_dir: Path, expected_file: Optional[str], logger) -> Path:
+def _extract_bzip2(
+    archive_path: Path, extract_dir: Path, expected_file: Optional[str], logger
+) -> Path:
     """Extract bzip2 files."""
     import bz2
-    
+
     if expected_file:
         output_path = extract_dir / expected_file
     else:
         output_name = archive_path.stem
         output_path = extract_dir / output_name
-    
-    with bz2.open(archive_path, 'rb') as bz_file, open(output_path, 'wb') as out_file:
+
+    with (
+        bz2.open(archive_path, "rb") as bz_file,
+        open(output_path, "wb") as out_file,
+    ):
         shutil.copyfileobj(bz_file, out_file)
-    
+
     return output_path
 
 
-def _extract_xz(archive_path: Path, extract_dir: Path, expected_file: Optional[str], logger) -> Path:
+def _extract_xz(
+    archive_path: Path, extract_dir: Path, expected_file: Optional[str], logger
+) -> Path:
     """Extract xz/lzma files."""
     import lzma
-    
+
     if expected_file:
         output_path = extract_dir / expected_file
     else:
         output_name = archive_path.stem
         output_path = extract_dir / output_name
-    
-    with lzma.open(archive_path, 'rb') as xz_file, open(output_path, 'wb') as out_file:
+
+    with (
+        lzma.open(archive_path, "rb") as xz_file,
+        open(output_path, "wb") as out_file,
+    ):
         shutil.copyfileobj(xz_file, out_file)
-    
+
     return output_path
 
 
 def _extract_tar(archive_path: Path, extract_dir: Path, logger) -> Path:
     """Extract tar archives (including compressed tar files)."""
     import tarfile
-    
-    with tarfile.open(archive_path, 'r:*') as tar:
+
+    with tarfile.open(archive_path, "r:*") as tar:
         tar.extractall(path=extract_dir)
-    
+
     return extract_dir
 
 
 def _extract_zip(archive_path: Path, extract_dir: Path, logger) -> Path:
     """Extract zip archives."""
     import zipfile
-    
-    with zipfile.ZipFile(archive_path, 'r') as zip_file:
+
+    with zipfile.ZipFile(archive_path, "r") as zip_file:
         zip_file.extractall(extract_dir)
-    
+
     return extract_dir
 
 
@@ -383,9 +425,9 @@ def parse_memory(mem_str) -> int:
         "t": 1024**4,
     }
 
-    if isinstance(mem_str,dict):
+    if isinstance(mem_str, dict):
         return parse_memory(mem_str.get("bytes"))
-    elif isinstance(mem_str,int):
+    elif isinstance(mem_str, int):
         return mem_str
 
     mem_str = mem_str.lower().strip()
@@ -411,7 +453,9 @@ def convert_bytes_to_units(byte_size: int) -> Dict[str, str]:
     }
 
 
-def ensure_memory(memory: Union[str, int, dict], file_path: Optional[str] = None) -> Dict[str, str]:
+def ensure_memory(
+    memory: Union[str, int, dict], file_path: Optional[str] = None
+) -> Dict[str, str]:
     """Check if requested memory is available and appropriate"""
     import psutil
 
@@ -582,7 +626,9 @@ def find_most_recent_folder(path):
     import os
 
     # Get a list of all directories in the specified path
-    folders = [f for f in glob.glob(os.path.join(path, "*")) if os.path.isdir(f)]
+    folders = [
+        f for f in glob.glob(os.path.join(path, "*")) if os.path.isdir(f)
+    ]
     # Return None if no folders found
     if not folders:
         return None
@@ -618,7 +664,9 @@ def move_contents_to_parent(folder, overwrite=True):
 
 def check_file_exists(file_path):
     if not Path(file_path).exists():
-        console.print(f"[bold red]File not found: {file_path} Tüdelü![/bold red]")
+        console.print(
+            f"[bold red]File not found: {file_path} Tüdelü![/bold red]"
+        )
         raise FileNotFoundError(f"File not found: {file_path}")
 
 
@@ -632,22 +680,51 @@ def check_file_size(file_path):
 
 def is_file_empty(file_path, size_threshold=28):
     if not Path(file_path).exists():
-        console.print(f"[bold red]File '{file_path}' does not exist.[/bold red]")
+        console.print(
+            f"[bold red]File '{file_path}' does not exist.[/bold red]"
+        )
         return True
     file_size = Path(file_path).stat().st_size
-    return file_size < size_threshold  # 28b is around the size of an empty <long-name>fastq.gz file
+    return (
+        file_size < size_threshold
+    )  # 28b is around the size of an empty <long-name>fastq.gz file
 
 
-def flat_dict(d: dict[str, str], sep: str = ",", prefix: str = "", suffix: str = "", join_with: str = ": ") -> str:
-    """ convert a dict to a string """
-    return f"{prefix}{join_with}{sep}".join([f"{k}{join_with}{v}" for k, v in d.items()]) + f"{suffix}"
+def flat_dict(
+    d: dict[str, str],
+    sep: str = ",",
+    prefix: str = "",
+    suffix: str = "",
+    join_with: str = ": ",
+) -> str:
+    """convert a dict to a string"""
+    return (
+        f"{prefix}{join_with}{sep}".join(
+            [f"{k}{join_with}{v}" for k, v in d.items()]
+        )
+        + f"{suffix}"
+    )
 
-def flat_list(somelist: list[str], sep: str = ",", prefix: str = "", suffix: str = "", join_with: str = ": ") -> str:
-    """ convert a list to a string """
+
+def flat_list(
+    somelist: list[str],
+    sep: str = ",",
+    prefix: str = "",
+    suffix: str = "",
+    join_with: str = ": ",
+) -> str:
+    """convert a list to a string"""
     return f"{prefix}{join_with}{sep}".join(somelist) + f"{suffix}"
 
-def flat_nested(ld: Union[dict, list], sep: str = ",", prefix: str = "", suffix: str = "", join_with: str = ": ") -> str:
-    """ convert a list or dict to string """
+
+def flat_nested(
+    ld: Union[dict, list],
+    sep: str = ",",
+    prefix: str = "",
+    suffix: str = "",
+    join_with: str = ": ",
+) -> str:
+    """convert a list or dict to string"""
     if isinstance(ld, dict):
         return flat_dict(ld, sep, prefix, suffix, join_with)
     elif isinstance(ld, list):
@@ -655,10 +732,20 @@ def flat_nested(ld: Union[dict, list], sep: str = ",", prefix: str = "", suffix:
     else:
         raise Warning(f"Input must be a dictionary or list, got {type(ld)}")
 
-def flat_df_cols(df, sep: str = ",", prefix: str = "", suffix: str = "", join_with: str = ": "):
-    """ convert all columns that are pl.List and pl.Struct into string columns"""
+
+def flat_df_cols(
+    df,
+    sep: str = ",",
+    prefix: str = "",
+    suffix: str = "",
+    join_with: str = ": ",
+):
+    """convert all columns that are pl.List and pl.Struct into string columns"""
     import polars as pl
-    return df.with_columns(pl.all().map_elements(lambda x: flat_nested(x), return_dtype=pl.Utf8))
+
+    return df.with_columns(
+        pl.all().map_elements(lambda x: flat_nested(x), return_dtype=pl.Utf8)
+    )
 
 
 def flatten_struct(
@@ -717,9 +804,13 @@ def flatten_struct(
             f'separator "{separator}" found in column names, e.g. "{witness}". '
             "If columns would be repeated, this function will error"
         )
-    non_struct_columns = list(set(ldf.collect_schema().names()) - set(struct_columns))
+    non_struct_columns = list(
+        set(ldf.collect_schema().names()) - set(struct_columns)
+    )
     struct_schema = ldf.select(*struct_columns).collect_schema()
-    col_dtype_expr_names = [(struct_schema[c], pl.col(c), c) for c in struct_columns]
+    col_dtype_expr_names = [
+        (struct_schema[c], pl.col(c), c) for c in struct_columns
+    ]
     result_names: Dict[str, pl.Expr] = {}
     level = 0
     while (limit is None and col_dtype_expr_names) or (
@@ -735,7 +826,9 @@ def flatten_struct(
                     )
                 result_names[name] = col_expr
                 continue
-            if any(separator in (witness := field.name) for field in dtype.fields):
+            if any(
+                separator in (witness := field.name) for field in dtype.fields
+            ):
                 print(
                     f'separator "{separator}" found in field names, e.g. "{witness}" in {name}. '
                     "If columns would be repeated, this function will error"
@@ -759,7 +852,9 @@ def flatten_struct(
     if drop_original_struct and level == limit and col_dtype_expr_names:
         for _, col_expr, name in col_dtype_expr_names:
             result_names[name] = col_expr
-    if any((witness := column) in non_struct_columns for column in result_names):
+    if any(
+        (witness := column) in non_struct_columns for column in result_names
+    ):
         raise ValueError(
             f"Column name {witness} would be created after flatten_struct, but it's already a non-struct column"
         )
@@ -771,12 +866,35 @@ def flatten_struct(
 
     return ldf.collect()
 
-def flatten_all_structs(df: Union[pl.DataFrame, pl.LazyFrame], separator: str = ",", drop_original_struct: bool = True, recursive: bool = True, limit: Optional[int] = None) -> pl.DataFrame:
-    """Flatten all struct columns in a dataframe"""
-    struct_cols = [col for col, dtype in df.schema.items() if dtype == pl.Struct]
-    return flatten_struct(df, struct_cols, separator=separator, drop_original_struct=drop_original_struct, recursive=recursive, limit=limit)
 
-def convert_nested_cols(df: Union[pl.DataFrame, pl.LazyFrame], separator: str = ",", drop_original_struct: bool = True, recursive: bool = True, limit: Optional[int] = None) -> pl.DataFrame:
+def flatten_all_structs(
+    df: Union[pl.DataFrame, pl.LazyFrame],
+    separator: str = ",",
+    drop_original_struct: bool = True,
+    recursive: bool = True,
+    limit: Optional[int] = None,
+) -> pl.DataFrame:
+    """Flatten all struct columns in a dataframe"""
+    struct_cols = [
+        col for col, dtype in df.schema.items() if dtype == pl.Struct
+    ]
+    return flatten_struct(
+        df,
+        struct_cols,
+        separator=separator,
+        drop_original_struct=drop_original_struct,
+        recursive=recursive,
+        limit=limit,
+    )
+
+
+def convert_nested_cols(
+    df: Union[pl.DataFrame, pl.LazyFrame],
+    separator: str = ",",
+    drop_original_struct: bool = True,
+    recursive: bool = True,
+    limit: Optional[int] = None,
+) -> pl.DataFrame:
     """Converts nested columns  by the dtype. Structs are flattened, while lists, arrays and objects are converted to strings."""
     if isinstance(df, pl.LazyFrame):
         df = df.collect()
@@ -784,12 +902,23 @@ def convert_nested_cols(df: Union[pl.DataFrame, pl.LazyFrame], separator: str = 
     # print(f"list_cols: {list_cols}")
     array_cols = [col for col, dtype in df.schema.items() if dtype == pl.Array]
     # print(f"array_cols: {array_cols}")
-    object_cols = [col for col, dtype in df.schema.items() if dtype == pl.Object]
+    object_cols = [
+        col for col, dtype in df.schema.items() if dtype == pl.Object
+    ]
     # print(f"object_cols: {object_cols}")
-    struct_cols = [col for col, dtype in df.schema.items() if dtype == pl.Struct]
+    struct_cols = [
+        col for col, dtype in df.schema.items() if dtype == pl.Struct
+    ]
     # print(f"struct_cols: {struct_cols}")
     for col in struct_cols:
-        df = flatten_struct(df, col, separator=separator, drop_original_struct=drop_original_struct, recursive=recursive, limit=limit)
+        df = flatten_struct(
+            df,
+            col,
+            separator=separator,
+            drop_original_struct=drop_original_struct,
+            recursive=recursive,
+            limit=limit,
+        )
     for col in set(list_cols + array_cols + object_cols):
         # Convert list elements to strings and join them
         df = df.with_columns(
@@ -829,26 +958,26 @@ def find_files_by_extension(
     input_path: Union[str, Path],
     extensions: List[str],
     file_type: str = "files",
-    logger: Optional[Logger] = None
+    logger: Optional[Logger] = None,
 ) -> List[Path]:
     """Find all files matching specified extensions in a directory or return single file.
-    
+
     This is for convenience, not sure if actually reduces nmber oflines.
-    
+
     Args:
         input_path: Path to directory or file
         extensions: List of glob patterns to look for (e.g., ["*.fa", "*.fasta"])
         file_type: Human-readable description of file type for logging
         logger: Logger instance
-        
+
     Returns:
         List of matching file paths
     """
     logger = get_logger(logger)
     input_path = Path(input_path)
-    
+
     found_files = []
-    
+
     if input_path.is_file():
         # Check if single file matches any extension
         for ext in extensions:
@@ -856,23 +985,26 @@ def find_files_by_extension(
                 found_files = [input_path]
                 break
         if not found_files:
-            logger.warning(f"Single file {input_path} doesn't match expected {file_type} extensions: {extensions}")
+            logger.warning(
+                f"Single file {input_path} doesn't match expected {file_type} extensions: {extensions}"
+            )
     elif input_path.is_dir():
         for ext in extensions:
             found_files.extend(input_path.glob(ext))
         found_files = sorted(set(found_files))  # Remove duplicates and sort
     else:
         logger.warning(f"Input path does not exist: {input_path}")
-        
+
     logger.debug(f"Found {len(found_files)} {file_type} in {input_path}")
     return found_files
 
+
 def is_gzipped(file_path: Union[str, Path]) -> bool:
     """Check if a file is gzip compressed.
-    
+
     Args:
         file_path: Path to the file to check
-        
+
     Returns:
         True if file is gzip compressed, False otherwise
     """
@@ -882,10 +1014,13 @@ def is_gzipped(file_path: Union[str, Path]) -> bool:
     except (OSError, IOError):
         return False
 
+
 def check_file_exist_isempty(file_path):
     check_file_exists(file_path)
     if is_file_empty(file_path):
-        console.print(f"[yellow]File {file_path} exists, but is empty.[/yellow]")
+        console.print(
+            f"[yellow]File {file_path} exists, but is empty.[/yellow]"
+        )
         return False
         # console.print("This might mean all reads were filtered. Exiting without proceeding to downstream steps.")
         # raise ValueError(f"File {file_path} is empty")
@@ -921,7 +1056,9 @@ def read_fwf(filename, widths, columns, dtypes, comment_prefix=None, **kwargs):
     #     columns = ["column1"]
     # if dtypes is None:
     #     dtypes = [pl.Utf8]
-    column_information = [(*x, y, z) for x, y, z in zip(widths, columns, dtypes)]
+    column_information = [
+        (*x, y, z) for x, y, z in zip(widths, columns, dtypes)
+    ]
 
     return pl.read_csv(
         filename,
@@ -975,15 +1112,15 @@ def cast_cols_to_match(df1_to_cast, df2_to_match):
         if col in df1_to_cast.columns:
             target_type = df2_to_match.schema[col]
             source_type = df1_to_cast.schema[col]
-            
+
             # Skip casting if target type is null or if types are already compatible
             if target_type == pl.Null or source_type == target_type:
                 continue
-                
+
             # Skip casting if source has null and target is string
             if source_type == pl.Null and target_type in [pl.Utf8, pl.String]:
                 continue
-                
+
             try:
                 df1_to_cast = df1_to_cast.with_columns(
                     pl.col(col).cast(target_type)
@@ -997,21 +1134,21 @@ def cast_cols_to_match(df1_to_cast, df2_to_match):
 def vstack_easy(df1_to_stack, df2_to_stack):
     """Stack two DataFrames vertically after matching their column types and order."""
     # import polars as pl
-    
+
     # # Get common columns between both DataFrames
     # common_columns = [col for col in df1_to_stack.columns if col in df2_to_stack.columns]
-    
+
     # if not common_columns:
     #     # If no common columns, return the first DataFrame as is
     #     return df1_to_stack
-    
+
     # # Filter both DataFrames to only common columns
     # df1_filtered = df1_to_stack.select(common_columns)
     # df2_filtered = df2_to_stack.select(common_columns)
-    
+
     # # Cast columns to match types
     # df2_filtered = cast_cols_to_match(df2_filtered, df1_filtered)
-    
+
     # return df1_filtered.vstack(df2_filtered)
     df2_to_stack = cast_cols_to_match(df2_to_stack, df1_to_stack)
     df2_to_stack = order_columns_to_match(df2_to_stack, df1_to_stack)
@@ -1132,7 +1269,9 @@ def run_command_comp(
                     )
                     memory_info += proc.memory_info().rss
                     logger.info(f"Current CPU Usage: {cpu_percent}%")
-                    logger.info(f"Current Memory Usage: {memory_info / 1024:.2f} KB")
+                    logger.info(
+                        f"Current Memory Usage: {memory_info / 1024:.2f} KB"
+                    )
                     sleep(0.01)
                 except NoSuchProcess:
                     break

@@ -1,21 +1,22 @@
 import logging
 from pathlib import Path
-from typing import Dict, Union, Optional
+from typing import Dict, Optional, Union
 
 from rich.console import Console
 from rich.logging import RichHandler
 
+
 def get_version_info() -> dict[str, str]:
-    """Get the current version of RolyPoly (code and data). 
+    """Get the current version of RolyPoly (code and data).
     Returns a dictionary with the following keys:
     - "code": git hash (if available) or semver if installed via pip/uv.
     - "data": version of the data from the config file.
     """
+    import json
     import os
     import subprocess
     from importlib import resources
     from importlib.metadata import version
-    import json
 
     cwd = os.getcwd()
     version_info = {}
@@ -23,9 +24,14 @@ def get_version_info() -> dict[str, str]:
     try:
         os.chdir(str(resources.files("rolypoly")))
         # Try to get git hash first
-        git_hash = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL
-        ).decode("ascii").strip()
+        git_hash = (
+            subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                stderr=subprocess.DEVNULL,
+            )
+            .decode("ascii")
+            .strip()
+        )
         version_info["code"] = git_hash
     except subprocess.CalledProcessError:
         # If git fails, try to get installed package version assuming it was installed via pip
@@ -50,7 +56,7 @@ def get_version_info() -> dict[str, str]:
                     if "Date:" in line:
                         version_info["data"] = line.split("Date:")[1].strip()
                         break
-                    
+
     return version_info
 
 
@@ -61,7 +67,7 @@ def setup_logging(
 ) -> logging.Logger:
     """Setup logging configuration for RolyPoly with both file and console logging using rich formatting."""
     import subprocess
-    
+
     # If log_file is already a logger, return it
     if isinstance(log_file, logging.Logger):
         return log_file
@@ -94,7 +100,7 @@ def setup_logging(
             "critical": logging.CRITICAL,
         }.get(log_level.lower(), logging.INFO)
     else:
-        log_level = log_level # I think this is fine (i.e. 10/20/30/40/50 mapped automatically into debug/info/warning/error/critical)?
+        log_level = log_level  # I think this is fine (i.e. 10/20/30/40/50 mapped automatically into debug/info/warning/error/critical)?
 
     logger.setLevel(log_level)
     logger.propagate = (
@@ -118,7 +124,8 @@ def setup_logging(
     file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(log_level)
     file_formatter = logging.Formatter(
-        "%(asctime)s --- %(levelname)s --- %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+        "%(asctime)s --- %(levelname)s --- %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
     file_handler.setFormatter(file_formatter)
     logger.addHandler(file_handler)
@@ -147,6 +154,7 @@ def log_start_info(logger: logging.Logger, config_dict: Dict):
     for key, value in config_dict.items():
         logger.debug(f"{key}: {value}")
 
+
 def get_logger(logger: Optional[logging.Logger] = None) -> logging.Logger:
     """Get a logger instance, creating a default one if none provided."""
     if logger is None:
@@ -154,7 +162,7 @@ def get_logger(logger: Optional[logging.Logger] = None) -> logging.Logger:
         if not logger.handlers:
             handler = logging.StreamHandler()
             formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
             )
             handler.setFormatter(formatter)
             logger.addHandler(handler)

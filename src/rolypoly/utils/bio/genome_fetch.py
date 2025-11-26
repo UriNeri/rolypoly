@@ -9,12 +9,12 @@ import subprocess as sp
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-from rolypoly.utils.various import extract_zip, run_command_comp
 from rolypoly.utils.bio.sequences import filter_fasta_by_headers
-
+from rolypoly.utils.various import extract_zip, run_command_comp
 
 global datadir
 datadir = Path(os.environ.get("ROLYPOLY_DATA", ""))
+
 
 def download_genome(taxid: str) -> None:
     """Download genome data from NCBI for a given taxon ID.
@@ -34,9 +34,9 @@ def download_genome(taxid: str) -> None:
         "include": "rna,genome",
         "filename": f"{taxid}_fetched_genomes.zip",
         "assembly-version": "latest",
-        "exclude-atypical": True,      # flag without a value
+        "exclude-atypical": True,  # flag without a value
         "assembly-source": "RefSeq",
-        "no-progressbar": True,       # flag without a value
+        "no-progressbar": True,  # flag without a value
     }
 
     # Run the command using the common wrapper from `various.py`
@@ -45,12 +45,12 @@ def download_genome(taxid: str) -> None:
         positional_args=positional_args,
         positional_args_location="start",
         params=params,
-        logger=None,            # falls back to an internal logger
-        output_file="",         # no output file to verify here
+        logger=None,  # falls back to an internal logger
+        output_file="",  # no output file to verify here
         skip_existing=False,
-        check_status=True,      # raise if the command fails
+        check_status=True,  # raise if the command fails
         check_output=False,
-        prefix_style="double",    # let the helper decide "-" vs "--"
+        prefix_style="double",  # let the helper decide "-" vs "--"
         param_sep=" ",
         assign_operator=" ",
         resource_monitoring=False,
@@ -58,7 +58,7 @@ def download_genome(taxid: str) -> None:
     )
 
 
-def process_with_timeout(func: callable, arg: any, timeout: int) -> any: #type: ignore
+def process_with_timeout(func: callable, arg: any, timeout: int) -> any:  # type: ignore
     """Execute a function with a timeout.
 
     Args:
@@ -144,31 +144,44 @@ def fetch_genomes(
                 break
 
     if not taxons:
-        print("No valid taxons found in the input file. Skipping genome fetching.")
+        print(
+            "No valid taxons found in the input file. Skipping genome fetching."
+        )
         return
 
     # Use taxonkit to get taxids
     breakpoint()
     from rolypoly.utils.various import run_command_comp
-    run_command_comp(base_cmd="taxonkit",
-                     positional_args=["name2taxid"],
-                     positional_args_location="end",
-                       params={
-                           "data-dir": str.join(datadir,f"/taxdump/taxdump"),
-                             "input": "\n".join(taxons).encode()
-                             },
-                             positional_args_location="start",
-                             assign_operator=" ",
-                             prefix_style="double",
-                             param_sep=" ",
-                             return_final_cmd=True   )
-        #   name2taxid --data-dir {datadir}/taxdump", input="\n".join(taxons).encode(), stdout=stdout,shell=True)
+
+    run_command_comp(
+        base_cmd="taxonkit",
+        positional_args=["name2taxid"],
+        positional_args_location="end",
+        params={
+            "data-dir": str.join(datadir, "/taxdump/taxdump"),
+            "input": "\n".join(taxons).encode(),
+        },
+        assign_operator=" ",
+        prefix_style="double",
+        param_sep=" ",
+        return_final_cmd=True,
+    )
+    #   name2taxid --data-dir {datadir}/taxdump", input="\n".join(taxons).encode(), stdout=stdout,shell=True)
+    from sys import stdout
 
     with open("tmp_gbs_50m_taxids.lst", "w") as f:
-        sp.run(["taxonkit", "name2taxid", f"--data-dir {datadir}/taxdump"], input="\n".join(taxons).encode(), stdout=stdout)
-        sp.run(["taxonkit", "name2taxid", f"--data-dir {datadir}/taxdump"], input="\n".join(taxons).encode(), stdout=stdout,shell=True)
+        sp.run(
+            ["taxonkit", "name2taxid", f"--data-dir {datadir}/taxdump"],
+            input="\n".join(taxons).encode(),
+            stdout=stdout,
+        )
+        sp.run(
+            ["taxonkit", "name2taxid", f"--data-dir {datadir}/taxdump"],
+            input="\n".join(taxons).encode(),
+            stdout=stdout,
+            shell=True,
+        )
 
-    from sys import stdout
     # Use datasets to download genomes``
     with open("tmp_gbs_50m_taxids.lst", "r") as f:
         taxids = [
@@ -176,7 +189,9 @@ def fetch_genomes(
             for line in f
             if line != ""
         ]
-    taxids = list(set(taxids).difference(["", "562"]))  # Remove empty and E. coli
+    taxids = list(
+        set(taxids).difference(["", "562"])
+    )  # Remove empty and E. coli
 
     if not taxids:
         print("No valid taxids found. Skipping genome fetching.")
@@ -202,7 +217,9 @@ def fetch_genomes(
 
     with ProcessPoolExecutor(max_workers=threads) as executor:
         futures = [
-            executor.submit(process_with_timeout, extract_zip, zip_file, timeout)
+            executor.submit(
+                process_with_timeout, extract_zip, zip_file, timeout
+            )
             for zip_file in zip_files
         ]
         for future in concurrent.futures.as_completed(futures):
@@ -226,7 +243,9 @@ def fetch_genomes(
         if rna_file:
             chosen_file = rna_file
         else:
-            chosen_file = fna_files[0]  # choose the first file if no RNA file found
+            chosen_file = fna_files[
+                0
+            ]  # choose the first file if no RNA file found
         ref_seqs.add(str(chosen_file))
 
     if not ref_seqs:
@@ -263,4 +282,4 @@ def fetch_genomes(
             try:
                 os.remove(file)
             except Exception as e:
-                print(f"Error removing {file}: {e}") 
+                print(f"Error removing {file}: {e}")

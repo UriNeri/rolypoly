@@ -21,9 +21,9 @@ class OutputTracker:
                 "file_size": pl.Int64,
                 "timestamp": pl.Datetime,
                 "is_merged": pl.Boolean,
-                "end_type": pl.Utf8,          # paired / single / null
-                "interleaved": pl.Boolean,    # True / False / null
-                "is_gz": pl.Boolean,          # True / False / null
+                "end_type": pl.Utf8,  # paired / single / null
+                "interleaved": pl.Boolean,  # True / False / null
+                "is_gz": pl.Boolean,  # True / False / null
             }
         )
 
@@ -87,15 +87,21 @@ class OutputTracker:
 
         return file_types.get(ext, "unknown")
 
-    def get_latest_output(self, file_type: Optional[str] = None) -> Optional[str]:
+    def get_latest_output(
+        self, file_type: Optional[str] = None
+    ) -> Optional[str]:
         """Get the most recently added file of a specific type. If file_type is None, returns latest of any type."""
         import polars as pl
 
         filtered_df = (
-            self.df.filter(pl.col("file_type") == file_type) if file_type else self.df
+            self.df.filter(pl.col("file_type") == file_type)
+            if file_type
+            else self.df
         )
         return (
-            filtered_df.tail(1)["absolute_path"][0] if filtered_df.height > 0 else None
+            filtered_df.tail(1)["absolute_path"][0]
+            if filtered_df.height > 0
+            else None
         )
 
     def get_latest_non_merged_file(self) -> Optional[str]:
@@ -145,5 +151,3 @@ class OutputTracker:
         tracker = cls()
         tracker.df = pl.read_csv(input_file)
         return tracker
-
-

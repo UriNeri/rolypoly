@@ -19,7 +19,9 @@ console = Console()
     default=lambda: f"{os.getcwd()}_RP_mapping",
     help="output file location - set suffix to .tab, .sam or html [default: .tab]",
 )
-@click.option("--keep-tmp", is_flag=True, default=False, help="Keep temporary files")
+@click.option(
+    "--keep-tmp", is_flag=True, default=False, help="Keep temporary files"
+)
 @click.option(
     "--db",
     type=click.Choice(["RVMT", "NCBI_Ribovirus", "all", "other"]),
@@ -43,7 +45,9 @@ console = Console()
     required=True,
     help="Input path to nucl fasta file OR preformatted mmseqs db",
 )
-def virus_mapping(threads, memory, output, keep_tmp, db, db_path, log_file, input):
+def virus_mapping(
+    threads, memory, output, keep_tmp, db, db_path, log_file, input
+):
     """MMseqs2 Virus mapping/search wrapper - takes in reads/contigs (i.e. nucs), and search them against precompiled virus databases OR user-supplied databases."""
     import shutil
     import subprocess
@@ -120,9 +124,13 @@ def virus_mapping(threads, memory, output, keep_tmp, db, db_path, log_file, inpu
         logger.info("Converting input to mmseqs DB")
         tmp = pt(tmpdir) / "pl_sv_contig_db"
         os.makedirs(tmp, exist_ok=True)
-        mmseqs_createdb_cmd = f"mmseqs createdb {str(input)} {tmp}/mmdb  --dbtype 2"
+        mmseqs_createdb_cmd = (
+            f"mmseqs createdb {str(input)} {tmp}/mmdb  --dbtype 2"
+        )
         subprocess.run(mmseqs_createdb_cmd, shell=True, check=True)
-        input = tmp / "mmdb"  # Ensure the path is updated correctly after creation
+        input = (
+            tmp / "mmdb"
+        )  # Ensure the path is updated correctly after creation
 
     DB_PATHS = {
         "NCBI_Ribovirus": datadir / "NCBI_ribovirus/mmdb/refseq_ribovirus",
@@ -142,7 +150,9 @@ def virus_mapping(threads, memory, output, keep_tmp, db, db_path, log_file, inpu
             logger.info("Converting target db to mmseqs DB")
             tmp = pt(tmpdir) / "rp_sv_custom_db"
             os.makedirs(tmp, exist_ok=True)
-            mmseqs_createdb_cmd = f"mmseqs createdb {db_path} {tmp}/cmmdb  --dbtype 2"
+            mmseqs_createdb_cmd = (
+                f"mmseqs createdb {db_path} {tmp}/cmmdb  --dbtype 2"
+            )
             subprocess.run(mmseqs_createdb_cmd, shell=True, check=True)
             db_path = (
                 tmp / "cmmdb"

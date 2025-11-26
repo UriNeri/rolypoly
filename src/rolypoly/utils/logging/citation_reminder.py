@@ -16,7 +16,9 @@ def load_citations():
         "citatioasdn_file"
     )  # TODO: update the citations file that is in the data directory.
     if citation_file is None:
-        citation_file = Path(__file__).parent / "all_used_tools_dbs_citations.json"
+        citation_file = (
+            Path(__file__).parent / "all_used_tools_dbs_citations.json"
+        )
     with open(citation_file, "r") as f:
         return json.load(f)
 
@@ -112,7 +114,9 @@ def get_citation_from_doi(doi_or_url, return_bibtex=False):
         else:
             return f"{doi_or_url}"
     except Exception as e:
-        console.print(f"Unable to fetch citation for DOI: {doi_or_url}", style="red")
+        console.print(
+            f"Unable to fetch citation for DOI: {doi_or_url}", style="red"
+        )
         console.print(f"exact error is {e}")
         console.print(f"Suggestion: {doi_or_url}", style="yellow")
         return f"{doi_or_url}"
@@ -145,8 +149,10 @@ def remind_citations(
     tools = list(set(tools))
     citations = get_citations(tools)
     if len(citations) == 0:
-        console.print(Text("No citations found for the provided tools.", style="red"))
-        return 
+        console.print(
+            Text("No citations found for the provided tools.", style="red")
+        )
+        return
     else:
         console.print(
             Text(

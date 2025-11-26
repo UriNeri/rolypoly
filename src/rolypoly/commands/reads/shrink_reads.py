@@ -1,19 +1,22 @@
 import os
 from pathlib import Path
+
 import rich_click as click
 
+from rolypoly.utils.bio.library_detection import (
+    create_sample_file,
+    handle_input_fastq,
+)
 from rolypoly.utils.logging.loggit import log_start_info, setup_logging
-from rolypoly.utils.bio.library_detection import handle_input_fastq, create_sample_file
 
-@click.command(
-        name="shrink_reads",
-        no_args_is_help=True)
+
+@click.command(name="shrink_reads", no_args_is_help=True)
 @click.option(
     "-i",
     "-in",
     "--input",
     required=False,
-    help="""Input raw reads file(s) or directory containing them. For paired-end reads, you can provide an interleaved file or the R1 and R2 files separated by comma."""
+    help="""Input raw reads file(s) or directory containing them. For paired-end reads, you can provide an interleaved file or the R1 and R2 files separated by comma.""",
 )
 @click.option(
     "-o",
@@ -22,21 +25,22 @@ from rolypoly.utils.bio.library_detection import handle_input_fastq, create_samp
     hidden=True,
     default=os.getcwd(),
     type=click.Path(),
-    help="path to output directory"
+    help="path to output directory",
 )
 @click.option(
     "-st",
     "--subset-type",
     default="top_reads",
     type=click.Choice(["top_reads", "random"]),
-    help="how to sample reads from input."
+    help="how to sample reads from input.",
 )
 @click.option(
     "-sz",
     "--sample-size",
     default=1000,
     type=click.FLOAT,
-    help="Will only return (at most) this much reads (if <1, will be interpreted as a proportion of total reads, else as the exact number of reads to get)")
+    help="Will only return (at most) this much reads (if <1, will be interpreted as a proportion of total reads, else as the exact number of reads to get)",
+)
 @click.option(
     "-g",
     "--log-file",
@@ -55,7 +59,7 @@ def shrink_reads(
     input,
     output,
     subset_type,
-    sample_size, 
+    sample_size,
     # threads, # TODO: no real threading support yet, maybe will have it if multiple input files are used (one per thread)
     log_file,
     log_level,
@@ -87,12 +91,12 @@ def shrink_reads(
             logger.info(f"Processing file: {file_path}")
             output_file = output_dir / f"{file_path.stem}_shrinked.fastq"
             create_sample_file(
-                    file_path,
-                    subset_type=subset_type,
-                    sample_size=sample_size,
-                    logger=logger,
-                    output_file=output_file,
-                )
+                file_path,
+                subset_type=subset_type,
+                sample_size=sample_size,
+                logger=logger,
+                output_file=output_file,
+            )
             logger.info(f"Written shrinked reads to {output_file}")
 
         # Process paired‑end files
@@ -102,21 +106,23 @@ def shrink_reads(
             logger.debug("""Note - to ensure paired reads are sampled, this will be slow (i.e. if reads_x/1 was selected from file R1, and his pair reads_x/2 is at the bottom of the R2 file, I can't think of a method to get it without going over all of R2 (if compressed). 
                          However, read order is usually assumed to be the same for R1 and R2...
                          """)
-            
+
             logger.info(f"Sampling {sample_size} from {r1_path}")
             output_R1_file = output_dir / f"{r1_path.stem}_shrinked_R1.fastq"
             output_R2_file = output_dir / f"{r1_path.stem}_shrinked_R2.fastq"
             # breakpoint()
-            output_file = str(output_R1_file)+","+str(output_R2_file)
+            output_file = str(output_R1_file) + "," + str(output_R2_file)
             create_sample_file(
-                    file_path=str(r1_path)+","+str(r2_path),
-                    subset_type=subset_type,
-                    sample_size=sample_size,
-                    logger=logger,
-                    output_file=output_file,
-                )
-                                         
-            logger.info(f"Written shrinked reads to {output_R1_file} and {output_R2_file}")
+                file_path=str(r1_path) + "," + str(r2_path),
+                subset_type=subset_type,
+                sample_size=sample_size,
+                logger=logger,
+                output_file=output_file,
+            )
+
+            logger.info(
+                f"Written shrinked reads to {output_R1_file} and {output_R2_file}"
+            )
 
         logger.info("Finished read processing")
         logger.info(f"Output: {output_dir}")
