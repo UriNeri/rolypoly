@@ -21,6 +21,9 @@ from rolypoly.utils.bio.sequences import (
     filter_fasta_by_headers,
     remove_duplicates,
 )
+
+from rolypoly.utils.bio.polars_fastx import from_fastx_eager
+
 from rolypoly.utils.logging.citation_reminder import remind_citations
 from rolypoly.utils.logging.loggit import get_version_info, setup_logging
 from rolypoly.utils.various import fetch_and_extract, run_command_comp
@@ -56,6 +59,10 @@ def build_data(data_dir, threads, log_file):
     global hmmdb_dir
     global mmseqs_dbs
     global contam_dir
+    global trna_dir
+    
+    
+
 
     logger = setup_logging(log_file)
     logger.info(f"Starting data preparation to : {data_dir}")
@@ -65,7 +72,9 @@ def build_data(data_dir, threads, log_file):
 
     rrna_dir = os.path.join(contam_dir, "rrna")
     os.makedirs(rrna_dir, exist_ok=True)
-
+    
+    trna_dir = os.path.join(contam_dir, "trna")
+    os.makedirs(trna_dir, exist_ok=True)
     adapter_dir = os.path.join(contam_dir, "adapters")
     os.makedirs(adapter_dir, exist_ok=True)
 
@@ -123,6 +132,9 @@ def build_data(data_dir, threads, log_file):
 
     # contaminations
     prepare_contamination_seqs(data_dir, threads, logger)
+    
+    # plastid reference sequences
+    prepare_plastid_data(data_dir, logger)
 
     # Rfam
     download_and_extract_rfam(data_dir, logger)
@@ -137,7 +149,7 @@ def build_data(data_dir, threads, log_file):
 def prepare_rvmt_mmseqs(data_dir, threads, logger: logging.Logger):
     """Prepare RVMT database for seqs searches (mmseqs2 and diamond).
 
-    Processes the RVMT (RNA Virus MetaTranscriptomes) database alignments
+    Processes the RVMT database alignments
     and creates formatted databases for MMseqs2 searches.
 
     Args:
@@ -1319,7 +1331,6 @@ def prepare_contamination_seqs(data_dir, threads, logger):
 
     # Parse SILVA headers and extract accessions
     logger.info("Parsing SILVA sequences and extracting metadata")
-    from rolypoly.utils.bio.polars_fastx import from_fastx_eager
 
     silva_fasta_df = pl.concat(
         [
@@ -1331,6 +1342,9 @@ def prepare_contamination_seqs(data_dir, threads, logger):
             ),
         ]
     )
+    logger.info(f"total SILVA sequences {silva_fasta_df.height}")
+
+
 
     # Extract accession from header (format: >accession.version rest_of_header)
     silva_fasta_df = silva_fasta_df.with_columns(
@@ -1447,9 +1461,6 @@ def prepare_contamination_seqs(data_dir, threads, logger):
     #         ('non_coding_gene_count', String),
     #         ('pubmed_id', String)])
 
-    genbank_summary.write_parquet(
-        os.path.join(rrna_dir, "genbank_assembly_summary.parquet")
-    )
     genbank_summary.write_csv(
         os.path.join(rrna_dir, "genbank_assembly_summary.tsv"), separator="\t"
     )
@@ -1509,7 +1520,6 @@ def prepare_contamination_seqs(data_dir, threads, logger):
         os.path.join(rrna_dir, "genbank_assembly_summary.tsv"), separator="\t"
     )
     
-
     # next, for every unique ncbi_taxonid, we select the one that has the most protein_coding_gene_count, then refseq_category, then tie breaking with non_coding_gene_count, tie breaking by latest assembly (by seq_rel_date).
     temp_genbank = genbank_summary.sort(
         by=[
@@ -1523,7 +1533,8 @@ def prepare_contamination_seqs(data_dir, threads, logger):
         f"Filtered GenBank summary to {temp_genbank.height} unique taxid entries for SILVA sequences"
     )
     temp_genbank = temp_genbank.filter(pl.col("ncbi_taxonid").is_in(unique_taxids)).unique()
-    # only 30k out ok ~100k?
+    temp_genbank.height
+    # only 30482 out ok ~100k?
     fetch_and_extract( url="http://ftp.ncbi.nlm.nih.gov/gene/DATA/gene2accession.gz",
         fetched_to=os.path.join(rrna_dir, "gene2accession.gz"),
         extract=False,
@@ -1539,6 +1550,8 @@ def prepare_contamination_seqs(data_dir, threads, logger):
         # n_rows=100
     )
     gene2accession.write_parquet(os.path.join(rrna_dir, "gene2accession.parquet"))
+    # gene2accession = pl.read_parquet(os.path.join(rrna_dir, "gene2accession.parquet"))
+    # gene2accession.collect_schema()
     # Schema([('#tax_id', Int64),
     #     ('GeneID', Int64),
     #     ('status', String),
@@ -1557,10 +1570,12 @@ def prepare_contamination_seqs(data_dir, threads, logger):
     #     ('Symbol', String)])
     gene2accession = gene2accession.rename({"#tax_id": "ncbi_taxonid"})
     test_df = gene2accession.filter(pl.col("ncbi_taxonid").is_in(unique_taxids))
+    test_df.height # 148449745
     test_df2 = gene2accession.select(["ncbi_taxonid","assembly"]).unique()
+    test_df2.height # 52548
 
-    # for every taxid, 
-    # Out[22]:
+
+
 
     silva_df = silva_df.with_columns(
         ncbi_taxonid=pl.col("ncbi_taxonid").cast(pl.String)
@@ -1635,6 +1650,169 @@ def prepare_contamination_seqs(data_dir, threads, logger):
         logger.warning(f"Could not remove intermediate files: {e}")
 
     logger.info(f"Masking sequences prepared in {masking_dir}")
+
+
+def prepare_plastid_data(data_dir, logger):
+    """Prepare plastid sequence data for contamination filtering.
+
+    Downloads NCBI RefSeq plastid sequences, combines them, and removes duplicates.
+
+    Args:
+        data_dir (str): Base directory for data storage
+        logger: Logger object for recording progress and errors
+    returns:
+        None
+    """
+    plastid_dir = os.path.join(data_dir, "reference_seqs", "plastid_refseq")
+    os.makedirs(plastid_dir, exist_ok=True)
+    
+    logger.info("Downloading NCBI RefSeq plastid sequences")
+    
+    base_url = "https://ftp.ncbi.nlm.nih.gov/refseq/release/plastid/plastid."
+    suffix = ".genomic.fna.gz"
+    files_to_get = ["1.1", "1.2", "2.1", "2.2", "3.1"]
+    
+    all_files =[]
+    downloaded_files = []
+    
+    for version in files_to_get:
+        file_url = f"{base_url}{version}{suffix}"
+        gz_filename = f"plastid.{version}.genomic.fna.gz"
+        fasta_filename = f"plastid.{version}.genomic.fna"
+        
+        logger.info(f"Downloading plastid version {version}")
+        
+        # Download and extract the file
+        try:
+            extracted_path = fetch_and_extract(
+                url=file_url,
+                fetched_to=os.path.join(plastid_dir, gz_filename),
+                extract_to=plastid_dir,
+                expected_file=fasta_filename,
+                logger=logger,
+            )
+            downloaded_files.append(extracted_path)
+            all_files.append(extracted_path)
+            all_files.append(os.path.join(plastid_dir, gz_filename))
+            logger.info(f"Successfully downloaded and extracted {fasta_filename}")
+        except Exception as e:
+            logger.error(f"Failed to download plastid version {version}: {e}")
+            continue
+    
+    if not downloaded_files:
+        logger.error("No plastid files were successfully downloaded")
+        return
+    
+    # Combine and deduplicate the sequences
+    combined_fasta = os.path.join(plastid_dir, "combined_plastid_refseq.fasta")
+    logger.info(f"Combining and deduplicating {len(downloaded_files)} plastid files")
+    
+    stats = remove_duplicates(
+        input_file=downloaded_files,
+        output_file=combined_fasta,
+        by="seq",
+        revcomp_as_distinct=False,  # Treat reverse complement as duplicate
+        return_stats=True,
+        logger=logger,
+    )
+    
+    if stats:
+        logger.info(
+            f"Plastid deduplication stats: {stats['unique_records']} unique sequences from {stats['total_records']} total, {stats['duplicates_removed']} duplicates removed"
+        )
+    
+    # Clean up individual files to save space (optional)
+    try:
+        for file_path in all_files:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                logger.debug(f"Removed intermediate file: {os.path.basename(file_path)}")
+    except Exception as e:
+        logger.warning(f"Could not remove intermediate plastid files: {e}")
+    
+    logger.info(f"Plastid sequences prepared in {plastid_dir}")
+
+
+def prepare_mito_data(data_dir, logger):
+    """Prepare mito sequence data for contamination filtering.
+
+    Downloads NCBI RefSeq mito sequences, combines them, and removes duplicates.
+
+    Args:
+        data_dir (str): Base directory for data storage
+        logger: Logger object for recording progress and errors
+    returns:
+        None
+    """
+    mito_dir = os.path.join(data_dir, "reference_seqs", "mito_refseq")
+    os.makedirs(mito_dir, exist_ok=True)
+    
+    logger.info("Downloading NCBI RefSeq mito sequences")
+    
+    base_url = "https://ftp.ncbi.nlm.nih.gov/refseq/release/mitochondrion/mitochondrion."
+    suffix = ".genomic.fna.gz"
+    files_to_get = ["1.1"] #
+    
+    all_files =[]
+    downloaded_files = []
+    
+    for version in files_to_get:
+        file_url = f"{base_url}{version}{suffix}"
+        gz_filename = f"mito.{version}.genomic.fna.gz"
+        fasta_filename = f"mito.{version}.genomic.fna"
+        
+        logger.info(f"Downloading mito version {version}")
+        
+        # Download and extract the file
+        try:
+            extracted_path = fetch_and_extract(
+                url=file_url,
+                fetched_to=os.path.join(mito_dir, gz_filename),
+                extract_to=mito_dir,
+                expected_file=fasta_filename,
+                logger=logger,
+            )
+            downloaded_files.append(extracted_path)
+            all_files.append(extracted_path)
+            all_files.append(os.path.join(mito_dir, gz_filename))
+            logger.info(f"Successfully downloaded and extracted {fasta_filename}")
+        except Exception as e:
+            logger.error(f"Failed to download mito version {version}: {e}")
+            continue
+    
+    if not downloaded_files:
+        logger.error("No mito files were successfully downloaded")
+        return
+    
+    # Combine and deduplicate the sequences
+    combined_fasta = os.path.join(mito_dir, "combined_mito_refseq.fasta")
+    logger.info(f"Combining and deduplicating {len(downloaded_files)} mito files")
+    
+    stats = remove_duplicates(
+        input_file=downloaded_files,
+        output_file=combined_fasta,
+        by="seq",
+        revcomp_as_distinct=False,  # Treat reverse complement as duplicate
+        return_stats=True,
+        logger=logger,
+    )
+    
+    if stats:
+        logger.info(
+            f"mito deduplication stats: {stats['unique_records']} unique sequences from {stats['total_records']} total, {stats['duplicates_removed']} duplicates removed"
+        )
+    
+    # Clean up individual files to save space (optional)
+    try:
+        for file_path in all_files:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                logger.debug(f"Removed intermediate file: {os.path.basename(file_path)}")
+    except Exception as e:
+        logger.warning(f"Could not remove intermediate mito files: {e}")
+    
+    logger.info(f"mito sequences prepared in {mito_dir}")
+
 
 
 if __name__ == "__main__":

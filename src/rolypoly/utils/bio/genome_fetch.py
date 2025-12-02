@@ -14,7 +14,7 @@ from rolypoly.utils.various import extract_zip, run_command_comp
 
 global datadir
 datadir = Path(os.environ.get("ROLYPOLY_DATA", ""))
-
+# "_rna_from_genomic.fna.gz"
 
 def download_genome(taxid: str) -> None:
     """Download genome data from NCBI for a given taxon ID.

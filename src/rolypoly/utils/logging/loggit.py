@@ -79,15 +79,20 @@ def setup_logging(
 
     if log_file is None:
         log_file = Path.cwd() / "rolypoly.log"
+        # from sys import stdout
 
+        
     # Convert log_file to Path if it's a string
     if isinstance(log_file, str):
         log_file = Path(log_file)
 
     # Create an empty log file if it doesn't exist
     if not log_file.exists():
-        print(f"Creating log file: {log_file}")
-        subprocess.call(f"echo ' ' > {log_file}", shell=True)
+        # print(f"Creating log file: {log_file}")
+        from os import  devnull
+        # touch(log_file)
+        log_file = devnull
+        # subprocess.call(f"echo ' ' > {log_file}", shell=True)
 
     # Create logger
     logger = logging.getLogger(logger_name)

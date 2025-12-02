@@ -120,8 +120,12 @@ freebayes = ">=1.3.10,<2"
 [tool.pixi.feature.dev.dependencies]
 # Development and testing tools
 entrez-direct = ">=24.0,<25"
-ipython = ">=8.18.1,<9"
+ipython = "*"
 uv = ">=0.7.13,<0.8"
+jupyter = "*"
+ipykernel = ">=6.30.1,<7"
+blast = ">=2.17.0,<3"
+aria2 = ">=1.37.0,<2"
 
 
 [tool.pixi.tasks]

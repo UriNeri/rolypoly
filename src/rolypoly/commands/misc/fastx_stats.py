@@ -119,7 +119,7 @@ def fastx_stats(
     )
 
     total_seqs = df.height
-    logger.info(f"Processing {total_seqs} sequences from {input}")
+    logger.debug(f"Processing {total_seqs} sequences from {input}")
 
     # Compute aggregate statistics
     agg_stats = compute_aggregate_stats(df, list(fields))
@@ -138,10 +138,10 @@ def fastx_stats(
             write_to_stdout=write_to_stdout,
         )
 
-    logger.info(f"✓ Aggregate statistics computed for {total_seqs} sequences")
+    logger.debug(f"✓ Aggregate statistics computed for {total_seqs} sequences")
     if write_to_stdout and format.lower() != "md":
         pass  # Already printed to stdout
     elif format.lower() != "md":
         logger.info(f"✓ Output written to {output}")
 
-    logger.info("Sequence statistics calculation completed successfully")
+    # logger.info("Sequence statistics calculation completed successfully")
