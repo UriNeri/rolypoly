@@ -236,3 +236,16 @@ node_modules/
 package.json
 .gitignore
 package-lock.json
+notebooks/Exprimental/taxdump/citations.dmp
+notebooks/Exprimental/taxdump/delnodes.dmp
+notebooks/Exprimental/taxdump/division.dmp
+notebooks/Exprimental/taxdump/gc.prt
+notebooks/Exprimental/taxdump/gencode.dmp
+notebooks/Exprimental/taxdump/images.dmp
+notebooks/Exprimental/taxdump/merged.dmp
+notebooks/Exprimental/taxdump/names.dmp
+notebooks/Exprimental/taxdump/nodes.dmp
+notebooks/Exprimental/taxdump/readme.txt
+notebooks/Exprimental/taxdump/taxdump.tar.gz
+temp/cellular_organisms_genbank.zip
+reference.fasta

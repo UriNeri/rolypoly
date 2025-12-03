@@ -85,7 +85,7 @@ def extract(
                 zip_ref.extractall(extract_to)
 
         console.print(
-            f"[green]Successfully processed '{archive_path}' to '{extract_to}'[/green]"
+            f"[green]Successfully decompressed '{archive_path}' to '{extract_to}'[/green]"
         )
 
     except Exception as e:
@@ -1286,6 +1286,11 @@ def run_command_comp(
         logger.warning(f"Error: {e}")
         return False
     if check_output:
+        if output_file == "":
+            logger.warning(
+                "Output file check requested but no output_file provided, assuming success."
+            )
+            return True
         return check_file_exist_isempty(output_file)
     if return_final_cmd:
         return cmd_str

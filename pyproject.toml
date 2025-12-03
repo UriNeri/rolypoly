@@ -49,6 +49,7 @@ rolypoly = "rolypoly.rolypoly:rolypoly"
 build = ["hatch >=1.14.0,<2", "pip >=25.0.1,<26"]
 format = ["ruff >=0.11.3,<0.12"]
 publish = ["twine >=6.1.0,<7"]
+dev = ["aria2p>=0.12.1,<0.13", "tqdm>=4.67.1,<5", "fsspec>=2025.10.0,<2026"]
 
 [build-system]
 requires = ["hatchling"]
