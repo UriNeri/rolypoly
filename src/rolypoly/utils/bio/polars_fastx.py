@@ -25,13 +25,13 @@ class SequenceExpr:
     def gc_content(self) -> pl.Expr:
         """Calculate GC content of sequence"""
         return (
-            self._expr.str.count_matches("G")
-            + self._expr.str.count_matches("C")
+            self._expr.str.count_matches("G|g")
+            + self._expr.str.count_matches("C|c")
         ) / self._expr.str.len_chars()
 
     def n_count(self) -> pl.Expr:
         """Count N's in sequence"""
-        return self._expr.str.count_matches("N")
+        return self._expr.str.count_matches("N|n")
 
     def length(self) -> pl.Expr:
         """Get sequence length"""
