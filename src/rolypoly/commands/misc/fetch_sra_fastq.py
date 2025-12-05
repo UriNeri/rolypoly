@@ -97,7 +97,7 @@ def download_fastq(run_id, output_path):
                     params={
                         "dir": str(output_path),
                         "out": filename,
-                        "max-connection-per-server": "16",
+                        "max-connection-per-server": "10",
                         "split": "16",
                         "summary-interval": "0",  # Disable download summary
                         "console-log-level": "warn",  # Only show warnings and errors
