@@ -71,7 +71,10 @@ def write_fasta_file(
             )
     elif seqs is not None and headers is not None:
         for i, seq in enumerate(seqs):
-            output_file.write(f"{header_delim}{headers[i]}{seq_delim}{seq}")
+            if i == 0:
+                output_file.write(f">{headers[i]}{seq_delim}{seq}") # no leading newline for first record
+            else:
+                output_file.write(f"{header_delim}{headers[i]}{seq_delim}{seq}")
     else:
         raise ValueError("No records, seqs, or headers provided")
 
