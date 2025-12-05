@@ -287,7 +287,7 @@ def fasta_stats(
     output_file: Optional[str] = None,  #
     min_length: Optional[int] = None,
     max_length: Optional[int] = None,
-    fields: str = "header,sequence,length,gc_content,n_count,hash",
+    fields: str = "header,sequence,length,gc_content,n_count,hash, avg_quality",
     # kmer_length: int = 3,
     circular: bool = False,
 ) -> pl.DataFrame:
@@ -304,6 +304,7 @@ def fasta_stats(
         pl.DataFrame: DataFrame with sequence statistics
     Note:
         - No support yet for reverse complement (not in circular or hash). TODO: <--
+        - avg_quality assumes the input is fastq
     """
     # import sys
     # output_path = Path(output_file) if output_file else sys.stdout
@@ -341,12 +342,17 @@ def fasta_stats(
         # "kmer_freq": {"desc": "K-mer frequencies"},
         "header": {"desc": "Sequence header"},
         "sequence": {"desc": "DNA/RNA sequence"},
+        "avg_quality": {"desc": "Quality scores (for FASTQ)"},
     }
 
     # Parse fields
     selected_fields = ["header"]
     if fields:
-        selected_fields = [f.strip().lower() for f in fields.split(",")]
+        # Handle both string and list inputs
+        if isinstance(fields, str):
+            selected_fields = [f.strip().lower() for f in fields.split(",")]
+        else:
+            selected_fields = [f.strip().lower() for f in fields]
         # Validate fields
         valid_fields = list(field_options.keys())
         invalid_fields = [f for f in selected_fields if f not in valid_fields]
@@ -370,6 +376,19 @@ def fasta_stats(
         stats_expr.append(pl.col("sequence").seq.n_count().alias("n_count"))
     if "hash" in selected_fields:
         stats_expr.append(pl.col("sequence").seq.generate_hash().alias("hash"))
+        
+    if "avg_quality" in selected_fields:
+        # Calculate mean quality score per read from PHRED+33 encoded quality string
+        # Use hex encoding to convert characters to their byte values
+        stats_expr.append(
+            pl.col("quality")
+            .str.encode("hex")
+            .str.extract_all(r"[0-9a-f]{2}")
+            .list.eval(pl.element().str.to_integer(base=16) - 33)
+            .list.mean()
+            .alias("avg_quality")
+        )
+
     # if "codon_usage" in selected_fields:
     #     stats_expr.append(pl.col("sequence").seq.codon_usage().alias("codon_usage"))
     # if "kmer_freq" in selected_fields:
@@ -443,6 +462,19 @@ def compute_aggregate_stats(df: pl.DataFrame, fields: list[str]) -> dict:
             ]
         ).to_dicts()[0]
         agg_stats.update(n_stats)
+
+    if "avg_quality" in fields or "quality" in fields:
+        if "avg_quality" in df.columns:
+            quality_stats = df.select(
+                [
+                    pl.col("avg_quality").min().alias("min_avg_quality"),
+                    pl.col("avg_quality").max().alias("max_avg_quality"),
+                    pl.col("avg_quality").mean().alias("mean_avg_quality"),
+                    pl.col("avg_quality").median().alias("median_avg_quality"),
+                    pl.col("avg_quality").std().alias("std_avg_quality"),
+                ]
+            ).to_dicts()[0]
+            agg_stats.update(quality_stats)
 
     agg_stats["total_sequences"] = total_seqs
 
