@@ -32,7 +32,7 @@ dependencies = [
     "viennarna>=2.7.0,<3",
     "intervaltree>=3.1.0,<4",
     "polars>=1.29.0,<2",
-    "bbmapy>=0.0.51,<0.0.52",
+    "bbmapy>=0.0.53,<0.0.58",
     "xxhash>=3.6.0,<4",
     "pyrodigal-rv>=0.1.0,<0.2",
 ]
@@ -49,7 +49,7 @@ rolypoly = "rolypoly.rolypoly:rolypoly"
 build = ["hatch >=1.14.0,<2", "pip >=25.0.1,<26"]
 format = ["ruff >=0.11.3,<0.12"]
 publish = ["twine >=6.1.0,<7"]
-dev = ["aria2p>=0.12.1,<0.13", "tqdm>=4.67.1,<5", "fsspec>=2025.10.0,<2026"]
+dev = ["aria2p>=0.12.1,<0.13", "tqdm>=4.67.1,<5", "fsspec>=2025.10.0,<2026", "networkx>=3.2.1,<4", "matplotlib>=3.9.4,<4", "baltic>=0.3.0,<0.4", "tskit>=0.6.4,<0.7"]
 
 [build-system]
 requires = ["hatchling"]
