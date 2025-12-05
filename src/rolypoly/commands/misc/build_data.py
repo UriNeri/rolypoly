@@ -72,9 +72,10 @@ def build_data(data_dir, threads, log_file):
 
     rrna_dir = os.path.join(contam_dir, "rrna")
     os.makedirs(rrna_dir, exist_ok=True)
-    
+
     trna_dir = os.path.join(contam_dir, "trna")
     os.makedirs(trna_dir, exist_ok=True)
+
     adapter_dir = os.path.join(contam_dir, "adapters")
     os.makedirs(adapter_dir, exist_ok=True)
 
@@ -135,6 +136,8 @@ def build_data(data_dir, threads, log_file):
     
     # plastid reference sequences
     prepare_plastid_data(data_dir, logger)
+    # tRNA reference sequences
+    prepare_trna_data(data_dir, logger)
 
     # Rfam
     download_and_extract_rfam(data_dir, logger)
@@ -1650,6 +1653,44 @@ def prepare_contamination_seqs(data_dir, threads, logger):
         logger.warning(f"Could not remove intermediate files: {e}")
 
     logger.info(f"Masking sequences prepared in {masking_dir}")
+
+
+
+def prepare_trna_data(data_dir, logger):
+    trna_dir = os.path.join(data_dir, "tr", "trna")
+    file_url = "https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/fasta_files/RF00005.fa.gz"
+    trna_seqs = os.path.join(trna_dir, "tRNA_sequences.fasta")
+    gz_filename = "RF00005.fa.gz"
+    deduplicated_fasta = os.path.join(trna_dir, "tRNA_sequences_deduplicated.fasta")
+
+    fetch_and_extract(
+                    url=file_url,
+                    fetched_to=os.path.join(trna_dir, gz_filename),
+                    extract_to=trna_dir,
+                    expected_file=trna_seqs,
+                )
+    logger.info(f"Downloaded tRNA sequences to {trna_seqs}")
+    # remove duplicates
+    remove_duplicates(
+        input_file=trna_seqs,
+        output_file=deduplicated_fasta,
+        return_stats=True,
+        by = "seq"
+    )
+    from rolypoly.utils.bio.polars_fastx import fasta_stats
+    from rolypoly.utils.bio.sequences import write_fasta_file
+    info_table = fasta_stats(deduplicated_fasta)
+    info_table = info_table.filter(
+    pl.col("length").is_between(50,250),
+    pl.col("gc_content") >= 0.01,
+    )
+
+    write_fasta_file(
+    seqs=info_table["sequence"].to_list(),
+    headers=info_table["header"].to_list(),
+    output_file=os.path.join(trna_dir, "tRNA_sequences_deduplicated_filtered.fasta"),
+    )
+    logger.info(f"Wrote filtered tRNA sequences to {os.path.join(trna_dir, 'tRNA_sequences_deduplicated_filtered.fasta')}")
 
 
 def prepare_plastid_data(data_dir, logger):
