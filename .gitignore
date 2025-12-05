@@ -251,6 +251,4 @@ temp/cellular_organisms_genbank.zip
 reference.fasta
 notebooks/Exprimental/plast_mito_trrna_stats/taxdump/
 **.fa.gz
-
-temp/**
-temp/scripts/fetcher.sh
+temp/
