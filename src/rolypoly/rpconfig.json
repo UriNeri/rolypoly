@@ -1,4 +1,4 @@
 {
-    "ROLYPOLY_DATA": "/REDACTED_HPC_PATH/projects/data2/data/",
+    "ROLYPOLY_DATA": "<REPO_PATH>/data/",
     "ROLYPOLY_TEST_DIR": "/REDACTED_HPC_PATH/tests/rp_tests/"
 }

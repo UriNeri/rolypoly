@@ -76,7 +76,7 @@ console = Console(width=150)
         - one_per_query: one hit per query sequence is reported \n
         - split: each overlapping domain is split into a new row \n
         - drop_contained: hits that are contained within (i.e. enveloped by) other hits are dropped. \n
-        - none: no resolution of overlapping hits is performed. \n
+        - none: no resolution of overlapping hits is performed. NOTE - EXPECT A POTENTIALLY LARGE OUTPUT \n
         - simple: heuristic/personal observation based - chains drop_contained output with split mode. \n
         """,
 )
@@ -413,9 +413,9 @@ def marker_search(
             inc_e=config.inc_evalue,
             mscore=config.score,
             output_format="modomtblout",
-            ali_str=True,
-            full_qseq=True,
-            match_region=True,
+            ali_str=False,
+            full_qseq=False,
+            match_region=False,
         )
         config.logger.debug(f"temp output: {tmp_output}")
         all_outputs.append(tmp_output)
@@ -434,28 +434,21 @@ def marker_search(
     results_file = Path(output) / "marker_search_results.tsv"
 
     if config.resolve_mode == "simple":
+        config.logger.info("Using adaptive 'simple' mode for overlap resolution with polyprotein detection")
+        
+        # Use consolidate_hits with adaptive overlap enabled
         testdf = consolidate_hits(
             input=stack_df,
             one_per_query=False,
             one_per_range=True,
-            min_overlap_positions=config.min_overlap_positions,
+            min_overlap_positions=config.min_overlap_positions,  # Will be overridden by adaptive logic
             merge=False,
             split=False,
             column_specs="query_full_name,hmm_full_name",
             rank_columns="-full_hmm_score,+full_hmm_evalue,-hmm_cov",
             drop_contained=True,
-        )
-
-        testdf = consolidate_hits(
-            input=testdf,
-            one_per_query=False,
-            one_per_range=False,
-            min_overlap_positions=config.min_overlap_positions,
-            merge=False,
-            split=True,
-            column_specs="query_full_name,hmm_full_name",
-            rank_columns="-full_hmm_score,+full_hmm_evalue",
-            drop_contained=False,
+            alphabet="aa",
+            adaptive_overlap=True,
         )
 
     elif config.resolve_mode != "none":
@@ -465,7 +458,6 @@ def marker_search(
             "one_per_query": False,
             "merge": False,
             "drop_contained": False,
-            "simple": False,
         }
         resolve_mode_dict[config.resolve_mode] = True
         testdf = consolidate_hits(
@@ -475,6 +467,8 @@ def marker_search(
             rank_columns="-full_hmm_score,+full_hmm_evalue",
             **resolve_mode_dict,
         )
+    else:
+        testdf = stack_df
 
     # Write to a file in the output directory instead of the directory itself
     testdf.write_csv(results_file, separator="\t")

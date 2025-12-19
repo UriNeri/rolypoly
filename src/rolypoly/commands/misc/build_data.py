@@ -118,6 +118,7 @@ def build_data(data_dir, threads, log_file):
 
     # RVMT profiles
     prepare_RVMT_profiles(data_dir, threads, logger)
+    
 
     # RVMT MMseqs database
     prepare_rvmt_mmseqs(data_dir, threads, logger)
@@ -341,7 +342,7 @@ def tar_everything_and_upload_to_NERSC(data_dir, version=""):
     if version == "":
         version = get_version_info()
     with open(pt(data_dir) / "README.md", "w") as f_out:
-        f_out.write(f"RolyPoly version: {version}\n")
+        f_out.write(f"RolyPoly version: {version['code']}\n")
         f_out.write(f"Date: {datetime.datetime.now()}\n")
         f_out.write(f"Data dir: {data_dir}\n")
         f_out.write(
@@ -730,7 +731,7 @@ def prepare_pfam_rdrps_rt(data_dir, threads, logger: logging.Logger):
 
 
 def prepare_RVMT_profiles(data_dir, threads, logger: logging.Logger):
-    """Prepare RVMT data."""
+    """Prepare RVMT RdRp profile + annotation db (NVPC)."""
     logger.info("Preparing RVMT HMM and MMseqs databases")
     rvmt_url = "https://portal.nersc.gov/dna/microbial/prokpubs/Riboviria/RiboV1.4/Alignments/zip.ali.220515.tgz"
     rvmt_path = os.path.join(hmmdb_dir, "zip.ali.220515.tgz")
@@ -752,6 +753,46 @@ def prepare_RVMT_profiles(data_dir, threads, logger: logging.Logger):
         msa_pattern="ali*/*.FASTA",
         info_table=None,
     )
+
+    # now for nvpc
+    fetch_and_extract(url="https://portal.nersc.gov/dna/microbial/prokpubs/Riboviria/RiboV1.4/zenodo/v4/RVMT_Zenodo_V4/Domains_Annotations/NVPC/msaFiles.tar.gz",
+        fetched_to=os.path.join(hmmdb_dir, "NVPC_msaFiles.tar.gz"),
+        extract_to=os.path.join(hmmdb_dir, "RVMT/NVPC/"),
+    )
+
+    # nvpc_info = pl.read_csv("https://portal.nersc.gov/dna/microbial/prokpubs/Riboviria/RiboV1.4/zenodo/v4/RVMT_Zenodo_V4/Domains_Annotations/NVPC/NVPC_info.tsv",
+    #     separator="\t",
+    #     null_values=["NA", ""],
+    # ).rename({"New_Name":"Name"}).unique()
+    # nvpc_descriptions = pl.read_excel("https://portal.nersc.gov/dna/microbial/prokpubs/Riboviria/RiboV1.4/zenodo/v4/RVMT_Zenodo_V4/Domains_Annotations/misc/NeoCM3_full.xlsx")
+    # nvpc_descriptions = nvpc_descriptions.select(["profile_accession","New_Name","Comment"]).rename({"New_Name":"Name","Comment":"Description"}).unique()
+    # # add a column with now manyu times each new_name appears
+    # # nvpc_descriptions = nvpc_descriptions.filter(pl.col("Description").str.contains_any(["rdrp_fragment","caution","the profile should be split or ditched altogeth"],ascii_case_insensitive=True))
+    # nvpc_info = nvpc_info.join(temp_df, on="Name", how="inner")
+    # nvpc_descriptions = nvpc_descriptions.join(nvpc_info, on="Name", how="inner")
+    # nvpc_descriptions = nvpc_descriptions.filter(pl.col("profile_accession").is_in(nvpc_info["profile_accession"].implode()))
+    # #  sort by number of new_name (most duplicates first)
+    # nvpc_descriptions.write_csv(os.path.join(hmmdb_dir, "RVMT/NVPC/NVPC_descriptions.csv"),include_header=True)
+
+hmmdb_from_directory(
+    msa_dir=os.path.join(hmmdb_dir, "RVMT/NVPC/"),
+    output=os.path.join(hmmdb_dir, "nvpc.hmm"),
+    msa_pattern="msaFiles/*.afa",
+    info_table=os.path.join(hmmdb_dir, "RVMT/NVPC/NVPC_descriptions.csv"),
+    accs_col="profile_accession",
+    name_col="Name",
+    desc_col="Description",
+    default_gath="5"
+)
+
+    mmseqs_profile_db_from_directory(
+        msa_dir=os.path.join(hmmdb_dir, "RVMT/NVPC/"),
+        output=os.path.join(mmseqs_dbs, "RVMT/NVPC"),
+        msa_pattern="ali*/*.FASTA",
+        info_table=(os.path.join(hmmdb_dir, "RVMT/NVPC/NVPC_descriptions.csv"),include_header=True),
+    )
+
+    
     # clean up
     shutil.rmtree(os.path.join(hmmdb_dir, "RVMT/"))
     os.remove(os.path.join(hmmdb_dir, "zip.ali.220515.tgz"))
