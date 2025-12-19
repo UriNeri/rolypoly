@@ -275,7 +275,8 @@ def rdrp_motif_search(
 
     try:
         process_rdrp_motif_search(config)
-        remind_citations(["hmmer", "pyhmmer"], config.logger)
+        if config.log_level != "DEBUG":
+            remind_citations(["hmmer", "pyhmmer"], config.logger)
     except Exception as e:
         config.logger.error(f"Error during RdRp motif search: {str(e)}")
         raise

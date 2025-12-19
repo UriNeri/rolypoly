@@ -16,6 +16,101 @@ from rolypoly.utils.various import vstack_easy
 # TODO: make this more robust and less dependent on external libraries. Candidate destination library is polars-bio.
 
 
+def calculate_adaptive_overlap_threshold(
+    ali_len: int, is_polyprotein_like: bool = False
+) -> int:
+    """Calculate adaptive overlap threshold based on alignment length.
+    
+    Args:
+        ali_len: Alignment length in amino acids
+        is_polyprotein_like: Whether the sequence appears to be a polyprotein
+        
+    Returns:
+        Overlap threshold in amino acids
+    """
+    if is_polyprotein_like:
+        # Use stricter thresholds for polyproteins to preserve domain boundaries
+        if ali_len < 100:
+            return 5
+        elif ali_len < 200:
+            return 8
+        elif ali_len < 400:
+            return 12
+        else:
+            return 15
+    else:
+        # Use more relaxed thresholds for fuzzy domain boundaries
+        if ali_len < 100:
+            return 10
+        elif ali_len < 200:
+            return 15
+        elif ali_len < 400:
+            return 25
+        else:
+            return 40
+
+
+def detect_polyprotein_pattern(
+    hit_df: pl.DataFrame, 
+    query_id: str,
+    query_id_col: str = "query_full_name",
+    target_id_col: str = "hmm_full_name",
+    q1_col: str = "ali_from",
+    q2_col: str = "ali_to",
+    bin_size: int = 50
+) -> bool:
+    """Detect if a query sequence has a polyprotein-like pattern.
+    
+    Looks for multiple distinct regions with many different profile hits,
+    suggesting a polyprotein with multiple domains.
+    
+    Args:
+        hit_df: DataFrame with hits for a single query
+        query_id: The query sequence ID
+        query_id_col: Column name for query IDs
+        target_id_col: Column name for target profile IDs
+        q1_col: Column name for alignment start
+        q2_col: Column name for alignment end
+        bin_size: Size of bins in amino acids
+        
+    Returns:
+        True if polyprotein pattern detected
+    """
+    query_hits = hit_df.filter(pl.col(query_id_col) == query_id)
+    
+    if len(query_hits) < 10:  # Need sufficient hits to detect pattern
+        return False
+    
+    # Get query length
+    qlen = query_hits.select(pl.col("qlen").max()).item()
+    if qlen < 200:  # Short sequences unlikely to be polyproteins
+        return False
+    
+    # Create bins
+    n_bins = (qlen // bin_size) + 1
+    bin_profile_counts = [set() for _ in range(n_bins)]
+    
+    # Assign hits to bins based on their midpoint
+    for row in query_hits.iter_rows(named=True):
+        start = row[q1_col]
+        end = row[q2_col]
+        midpoint = (start + end) // 2
+        bin_idx = min(midpoint // bin_size, n_bins - 1)
+        bin_profile_counts[bin_idx].add(row[target_id_col])
+    
+    # Count bins with significant profile diversity
+    bins_with_hits = [len(profiles) for profiles in bin_profile_counts if len(profiles) > 0]
+    
+    if len(bins_with_hits) < 2:
+        return False
+    
+    # Check if there are at least 2 bins with multiple unique profiles
+    diverse_bins = sum(1 for count in bins_with_hits if count >= 3)
+    
+    # Polyprotein pattern: multiple regions with diverse hits
+    return diverse_bins >= 2
+
+
 def consolidate_hits(
     input: Union[str, pl.DataFrame],
     rank_columns: str = "-score",
@@ -26,9 +121,31 @@ def consolidate_hits(
     column_specs: str = "qseqid,sseqid",
     drop_contained: bool = False,
     split: bool = False,
+    alphabet: str = "aa",
+    adaptive_overlap: bool = False,
 ) -> pl.DataFrame:
     """Resolves overlaps in a tabular hit table file or polars dataframe.
-    Notes: some flags are mutually exclusive, e.g. you cannot set both split and merge, or rather - if you do that, you'll get unexpected results."""
+    
+    Args:
+        input: Input hit table (file path or DataFrame)
+        rank_columns: Columns to rank by (prefix with - for descending, + for ascending)
+        one_per_query: Keep only one hit per query sequence
+        one_per_range: Keep only one hit per overlapping range
+        min_overlap_positions: Minimum overlap to consider (used if adaptive_overlap=False)
+        merge: Merge overlapping hits
+        column_specs: Query and target column names (comma-separated)
+        drop_contained: Drop hits contained within other hits
+        split: Split overlapping ranges
+        alphabet: Sequence alphabet ('aa' for amino acid, 'nucl' for nucleotide)
+        adaptive_overlap: Use adaptive overlap thresholds based on alignment length and polyprotein detection
+        
+    Returns:
+        DataFrame with resolved overlaps
+        
+    Notes: 
+        Some flags are mutually exclusive, e.g. you cannot set both split and merge.
+        Adaptive overlap is only applied for amino acid sequences (alphabet='aa').
+    """
 
     # Read the input hit table
     hit_table = (
@@ -37,6 +154,48 @@ def consolidate_hits(
     og_cols = hit_table.columns
 
     work_table = hit_table.clone().unique()
+    
+    # Apply adaptive overlap thresholds if requested (only for amino acid sequences)
+    if adaptive_overlap and alphabet == "aa":
+        # Parse column specs to get query and target ID columns
+        query_id_col, target_id_col = column_specs.split(",")
+        
+        # Detect column names for positions
+        q1_col, q2_col = get_column_names(work_table)
+        
+        # Detect polyprotein patterns for each query
+        unique_queries = work_table.select(query_id_col).unique().to_series().to_list()
+        polyprotein_queries = set()
+        
+        for query_id in unique_queries:
+            if detect_polyprotein_pattern(
+                work_table,
+                query_id,
+                query_id_col=query_id_col,
+                target_id_col=target_id_col,
+                q1_col=q1_col,
+                q2_col=q2_col
+            ):
+                polyprotein_queries.add(query_id)
+        
+        # Calculate adaptive thresholds for each hit
+        def calc_overlap_threshold(row):
+            ali_len = row[q2_col] - row[q1_col]
+            is_polyprotein = row[query_id_col] in polyprotein_queries
+            return calculate_adaptive_overlap_threshold(ali_len, is_polyprotein)
+        
+        # Add adaptive threshold column
+        work_table = work_table.with_columns(
+            pl.struct([query_id_col, q1_col, q2_col])
+            .map_elements(calc_overlap_threshold, return_dtype=pl.Int64)
+            .alias("adaptive_threshold")
+        )
+        
+        # Use minimum threshold as conservative baseline for this batch
+        min_overlap_positions = work_table.select(pl.col("adaptive_threshold").min()).item()
+        
+        # Drop the adaptive threshold column before processing
+        work_table = work_table.drop("adaptive_threshold")
 
     # Parse column specs and rank columns
     query_id_col, target_id_col = column_specs.split(",")
@@ -67,7 +226,7 @@ def consolidate_hits(
         work_table_culled = work_table_culled.rename(
             {rank_list_renamed[i]: rank_list[i] for i in range(len(rank_list))}
         )
-        return work_table_culled.select(og_cols)
+        return work_table_culled.select(og_cols).unique()
 
     # cast coordinates to int64
     work_table = work_table.with_columns(
@@ -96,7 +255,7 @@ def consolidate_hits(
             {rank_list_renamed[i]: rank_list[i] for i in range(len(rank_list))}
         )
         # breakpoint()
-        return work_table.select(og_cols)
+        return work_table.select(og_cols).unique()
 
     # drop contained hits
     if drop_contained:
@@ -116,39 +275,58 @@ def consolidate_hits(
         work_table_culled = work_table_culled.rename(
             {rank_list_renamed[i]: rank_list[i] for i in range(len(rank_list))}
         )
-        return work_table_culled.select(og_cols)
+        return work_table_culled.select(og_cols).unique()
 
     # one-per-range
     if one_per_range:
         print("Dropping to best hit per range")
-        # Converted to GenomicRanges
-        gr_hits = GenomicRanges(
-            seqnames=work_table.get_column(query_id_col),
-            names=work_table.get_column("uid"),
-            ranges=IRanges(
-                start=work_table.get_column(q1_col).cast(pl.Int32),
-                width=work_table.get_column("width"),
-            ),
-        )
-
-        # Find overlaps
-        overlapping_hits = gr_hits.find_overlaps(
-            gr_hits,
-            min_overlap=min_overlap_positions,
-            select="first",
-            query_type="any",
-        )
-
-        # Get unique intervals
-        unique_hits = list(set(overlapping_hits))
-        work_table_culled = work_table.filter(
-            pl.col("uid").cast(pl.Utf8).is_in(unique_hits)
-        ).unique(subset="uid")
-
+        
+        # Group by query and use interval tree to find non-overlapping hits
+        grouped_by_query = work_table.group_by(query_id_col)
+        subdfs = []
+        
+        for _, subdf in grouped_by_query:
+            if len(subdf) == 0:
+                continue
+            
+            # Create interval tree for this query
+            tree = itree.IntervalTree()
+            kept_uids = []
+            
+            # Sort by rank (already sorted in work_table)
+            for row in subdf.iter_rows(named=True):
+                start = row[q1_col]
+                end = row[q2_col]
+                uid = row['uid']
+                
+                # Check if this interval significantly overlaps with any kept interval
+                overlaps = tree.overlap(start, end)
+                has_significant_overlap = False
+                
+                for ovl in overlaps:
+                    overlap_size = min(end, ovl.end) - max(start, ovl.begin)
+                    if overlap_size >= min_overlap_positions:
+                        has_significant_overlap = True
+                        break
+                
+                # If no significant overlap, keep this hit
+                if not has_significant_overlap:
+                    tree.addi(start, end, uid)
+                    kept_uids.append(uid)
+            
+            # Filter to kept UIDs
+            if kept_uids:
+                subdfs.append(subdf.filter(pl.col('uid').is_in(kept_uids)))
+        
+        if subdfs:
+            work_table_culled = pl.concat(subdfs)
+        else:
+            work_table_culled = work_table.head(0)  # Empty dataframe with same schema
+        
         work_table_culled = work_table_culled.rename(
             {rank_list_renamed[i]: rank_list[i] for i in range(len(rank_list))}
         )
-        return work_table_culled.select(og_cols)
+        return work_table_culled.select(og_cols).unique()
 
     # merge overlapping hits into one
     if merge:
@@ -228,7 +406,7 @@ def consolidate_hits(
             on=[query_id_col, target_id_col, q1_col, q2_col],
             how="left",
         )
-        return resolved_hits.select(og_cols)
+        return resolved_hits.select(og_cols).unique()
 
 
 # TODO: finish implementing functionaliy, write tests and examples.

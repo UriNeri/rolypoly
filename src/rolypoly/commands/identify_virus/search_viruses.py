@@ -223,9 +223,9 @@ def virus_mapping(
     logger.info(f"Final output: {output}")
     tools.append("mmseqs2")
     # remind_citations(tools)
-    with open(f"{log_file}", "a") as f_out:
-        f_out.write(remind_citations(tools, return_bibtex=True) or "")
-
+    if logger.log_level != "DEBUG":
+        with open(f"{log_file}", "a") as f_out:
+            f_out.write(remind_citations(tools, return_bibtex=True) or "")
 
 if __name__ == "__main__":
     virus_mapping()

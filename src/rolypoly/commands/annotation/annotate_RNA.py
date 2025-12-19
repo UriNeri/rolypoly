@@ -193,7 +193,8 @@ def annotate_RNA(
     motif_db,
 ):
     """Predict viral sequence RNA secondary structure, search for ribozymes, IRES, tRNAs, and other RNA structural elements.
-    By default, the following steps are run in the following order: predict_secondary_structure, search_ribozymes, detect_ires, predict_trnas, search_rna_elements.
+    By default, the following steps are run in the following order: predict_secondary_structure (LinearFold), search_ribozymes (Rfam via cmscan), predict_trnas (tRNAscan-SE).
+    Additional steps (detect_ires, search_rna_motifs, search_rna_elements) are currently disabled as they are under development.
     Use --skip-steps to skip specific steps."""
     import json
 
@@ -226,8 +227,9 @@ def annotate_RNA(
         raise
 
     # remind_citations(tools)
-    with open(f"{config.log_file}", "w") as f_out:
-        f_out.write(remind_citations(tools, return_bibtex=True) or "")
+    if config.log_level != "DEBUG":
+        with open(f"{config.log_file}", "w") as f_out:
+            f_out.write(remind_citations(tools, return_bibtex=True) or "")
 
 
 def process_RNA_annotations(config):
@@ -237,12 +239,13 @@ def process_RNA_annotations(config):
     # logging.basicConfig(level=logging.INFO)
 
     steps = [
-        predict_secondary_structure,
-        search_ribozymes,
-        detect_ires,
-        predict_trnas,
-        search_rna_motifs,
-        search_rna_elements,
+        predict_secondary_structure,  # LinearFold
+        search_ribozymes,  # Rfam via cmscan
+        # detect_ires,  # Not yet tested/finalized
+        predict_trnas,  # tRNAscan-SE
+        # search_rna_motifs,  # Not yet tested/finalized
+        # search_rna_elements,  # RNAsselem - not yet tested
+        resolve_rna_element_overlaps,  # Resolve overlapping RNA element hits
     ]
 
     # TODO: Consider, maybe, use ChangeDirectory into a temp dir which on a "finally" leaves it and copies only whats needed
@@ -541,16 +544,22 @@ def search_ribozymes(config):
 
 
 def search_rna_elements(config):
-    config.logger.info("Searching for RNA elements")
-    input_fasta = config.input
-    output_file = config.output_dir / "rna_elements.out"
-    tools.append("RNAsselem")
+    """Search for RNA structural elements using RNAsselem.
+    
+    Note: This function is not yet tested and is commented out for now.
+    """
+    config.logger.warning("search_rna_elements (RNAsselem) is not yet tested and is currently disabled")
+    return
+    # config.logger.info("Searching for RNA elements")
+    # input_fasta = config.input
+    # output_file = config.output_dir / "rna_elements.out"
+    # tools.append("RNAsselem")
 
-    # Prepare parameters
-    params = config.step_params["RNAsselem"].copy()
+    # # Prepare parameters
+    # params = config.step_params["RNAsselem"].copy()
 
-    # Add required parameters
-    params.update({"i": str(input_fasta), "o": str(output_file)})
+    # # Add required parameters
+    # params.update({"i": str(input_fasta), "o": str(output_file)})
 
 
 def detect_ires(config):
@@ -1208,11 +1217,17 @@ def read_multiDBN_to_dataframe(MultiDBN_file):
             sequence = lines[1]
             structure_line = lines[2].split()
             structure = structure_line[0]
-            mfe = (
-                float(structure_line[1].strip("()"))
-                if len(structure_line) > 1
-                else -0.1
-            )
+            
+            # Try to parse energy value, handle LinearFold errors
+            mfe = -0.1  # default
+            if len(structure_line) > 1:
+                try:
+                    # Energy should be in format "(value)"
+                    energy_str = structure_line[1].strip("()")
+                    mfe = float(energy_str)
+                except ValueError:
+                    # LinearFold error message like "Error in structure prediction"
+                    mfe = -0.1
 
             records.append(
                 {
@@ -1230,6 +1245,67 @@ def read_multiDBN_to_dataframe(MultiDBN_file):
             )
 
     return pl.DataFrame(records)
+
+
+def resolve_rna_element_overlaps(config):
+    """Resolve overlapping RNA element hits using consolidate_hits."""
+    import polars as pl
+    from pathlib import Path
+    from rolypoly.utils.bio.interval_ops import consolidate_hits
+    
+    config.logger.info("Resolving overlapping RNA element hits")
+    
+    # Files that might have overlapping hits
+    element_files = [
+        (config.output_dir / "ribozymes.out", "cmscan"),
+        # Note: IRES, tRNA, and motif files typically don't need overlap resolution
+        # as they represent discrete elements, but can be added if needed
+    ]
+    
+    for element_file, tool_name in element_files:
+        if not element_file.exists() or element_file.stat().st_size == 0:
+            config.logger.debug(f"Element file {element_file} doesn't exist or is empty, skipping")
+            continue
+        
+        config.logger.info(f"Resolving overlaps in {element_file.name}")
+        
+        try:
+            # Read element hits
+            element_df = pl.read_csv(element_file, separator="\t", comment_prefix="#")
+            
+            if element_df.height == 0:
+                config.logger.info(f"No hits in {element_file.name}, skipping")
+                continue
+            
+            # For RNA elements, use nucleotide alphabet and fixed thresholds
+            # (no polyprotein detection for nucleotide sequences)
+            resolved_df = consolidate_hits(
+                input=element_df,
+                column_specs="target_name,query_name",  # Adjust based on actual column names
+                rank_columns="-score,+e_value",
+                one_per_query=False,
+                one_per_range=True,
+                drop_contained=True,
+                min_overlap_positions=10,
+                alphabet="nucl",  # Nucleotide alphabet - no polyprotein detection
+                adaptive_overlap=False,  # Use fixed thresholds for RNA
+            )
+            
+            # Write resolved results
+            resolved_file = element_file.parent / f"{element_file.stem}_resolved.out"
+            resolved_df.write_csv(resolved_file, separator="\t")
+            
+            config.logger.info(
+                f"Resolved {element_df.height} hits to {resolved_df.height} non-overlapping hits. "
+                f"Output: {resolved_file}"
+            )
+            
+        except Exception as e:
+            config.logger.warning(f"Could not resolve overlaps in {element_file}: {e}")
+            # Non-critical error, continue processing
+            continue
+    
+    config.logger.info("RNA element overlap resolution completed")
 
 
 def combine_results(config):

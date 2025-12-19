@@ -259,6 +259,7 @@ def process_protein_annotations(config):
     steps = [
         predict_orfs,  # i.e. call genes
         search_protein_domains,
+        resolve_domain_overlaps,  # Resolve overlapping domain hits
         combine_results,
     ]
 
@@ -355,7 +356,7 @@ def get_database_paths(config, tool_name):
     # Database paths for different tools
     DB_PATHS = {
         "hmmsearch": {
-            "RVMT".lower(): hmmdbdir / "RVMT/NVPC.hmm",
+            "RVMT".lower(): hmmdbdir / "nvpc.hmm",
             "Pfam".lower(): hmmdbdir / "pfam/Pfam-A.hmm",
             "genomad".lower(): hmmdbdir / "genomad.hmm",
             "vfam".lower(): hmmdbdir / "vfam.hmm",
@@ -756,6 +757,81 @@ def search_protein_domains_diamond(config):
             )
         )
         config.logger.info(f"Finished searching {db_name} for domains")
+
+
+def resolve_domain_overlaps(config):
+    """Resolve overlapping domain hits using consolidate_hits."""
+    import polars as pl
+    from rolypoly.utils.bio.interval_ops import consolidate_hits
+    
+    global output_files  # Declare at the start of function
+    
+    config.logger.info("Resolving overlapping domain hits")
+    
+    # Get domain search output files
+    domain_files = output_files.filter(
+        pl.col("description").str.contains("protein domains")
+    )
+    
+    if domain_files.height == 0:
+        config.logger.info("No domain files to process for overlap resolution")
+        return
+    
+    # Process each domain file
+    for row in domain_files.iter_rows(named=True):
+        domain_file = Path(row["file"])
+        if not domain_file.exists() or domain_file.stat().st_size == 0:
+            config.logger.warning(f"Domain file {domain_file} is empty or doesn't exist, skipping")
+            continue
+            
+        config.logger.info(f"Resolving overlaps in {domain_file.name}")
+        
+        try:
+            # Read domain hits
+            domain_df = pl.read_csv(domain_file, separator="\t")
+            
+            if domain_df.height == 0:
+                config.logger.info(f"No hits in {domain_file.name}, skipping")
+                continue
+            
+            # Resolve overlaps with adaptive thresholds for polyprotein detection
+            resolved_df = consolidate_hits(
+                input=domain_df,
+                column_specs="query_full_name,hmm_full_name",
+                rank_columns="-full_hmm_score,+full_hmm_evalue,-hmm_cov",
+                one_per_query=False,
+                one_per_range=True,
+                drop_contained=True,
+                alphabet="aa",
+                adaptive_overlap=True,
+            )
+            
+            # Write resolved results
+            resolved_file = domain_file.parent / f"{domain_file.stem}_resolved.tsv"
+            resolved_df.write_csv(resolved_file, separator="\t")
+            
+            config.logger.info(
+                f"Resolved {domain_df.height} hits to {resolved_df.height} non-overlapping hits. "
+                f"Output: {resolved_file}"
+            )
+            
+            # Update output_files to include resolved file
+            output_files = output_files.vstack(
+                pl.DataFrame({
+                    "file": [str(resolved_file)],
+                    "description": [f"resolved {row['description']}"],
+                    "db": [row["db"]],
+                    "tool": [f"{row['tool']}_resolved"],
+                    "params": [row["params"]],
+                    "command": [f"{row['command']} | consolidate_hits(adaptive_overlap=True)"],
+                })
+            )
+            
+        except Exception as e:
+            config.logger.error(f"Error resolving overlaps in {domain_file}: {e}")
+            continue
+    
+    config.logger.info("Domain overlap resolution completed")
 
 
 def combine_results(config):

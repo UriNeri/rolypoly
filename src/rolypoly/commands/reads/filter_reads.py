@@ -465,8 +465,9 @@ def filter_reads(
         raise
 
     config.logger.info("Read processing completed, probably successfully.")
-    with open(f"{config.log_file}", "w") as f_out:
-        f_out.write(remind_citations(tools, return_bibtex=True) or "")
+    if config.log_level != "DEBUG":
+        with open(f"{config.log_file}", "w") as f_out:
+            f_out.write(remind_citations(tools, return_bibtex=True) or "")
 
 
 def generate_reports(file_name: str, threads: int, skip_existing: bool, logger):
