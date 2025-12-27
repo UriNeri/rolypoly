@@ -419,6 +419,13 @@ def hmm_from_msa(
     background = pyhmmer.plan7.Background(alpha)
     hmm, _, _ = builder.build_msa(msa, background)
 
+    # Transfer metadata from MSA to HMM
+    hmm.name = msa.name
+    if hasattr(msa, 'accession') and msa.accession is not None:
+        hmm.accession = msa.accession
+    if hasattr(msa, 'description') and msa.description is not None:
+        hmm.description = msa.description
+
     # Set gathering threshold if provided
     if set_ga:
         hmm.cutoffs.gathering = set_ga, set_ga
@@ -440,6 +447,9 @@ def hmmdb_from_directory(
     desc_col="ANNOTATION_DESCRIPTION",
     default_gath="1",
     gath_col=None,  # "GATHERING_THRESHOLD",
+    logger: Optional[logging.Logger] = None,
+    missing_include: bool = False,
+    debug: bool = False,
 ):
     """Create a concatenated HMM database from a directory of MSA files.
 
@@ -449,12 +459,20 @@ def hmmdb_from_directory(
         msa_pattern: str, glob pattern to match MSA files
         info_table: str or Path, path to a table file containing information about the MSA files - name, accession, description. merge attempted based on the stem of the MSA file names to match the `name` column of the info table.
         name_col: str, column name in the info table to use for the HMM name
-        accs_col: str, column name in the info table to use for the HMM accession
+        accs_col: str, column name in the info table to use for the HMM accession (must be unique!)
         desc_col: str, column name in the info table to use for the HMM description
         gath_col: str, column name for gathering threshold
         default_gath: str, default gathering threshold if none provided in info table
-    """
+        missing_include: bool, whether to include MSAs with no matching info table entry (Default value = False)
+        logger: logging.Logger, optional logger for debug output
 
+    """
+    
+    logger = get_logger(logger)
+    if debug:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
     msa_dir = Path(msa_dir)
     output = Path(output)
     default_gath = default_gath.encode(
@@ -467,7 +485,7 @@ def hmmdb_from_directory(
         if name_col not in info_table.columns:
             raise ValueError(f"info_table must contain a '{name_col}' column")
         some_bool = True
-        cols_map = {accs_col: "accession", desc_col: "description"}
+        cols_map = {accs_col: "accession", desc_col: "description"} # not used?
     else:
         some_bool = False
 
@@ -475,41 +493,84 @@ def hmmdb_from_directory(
     # create a temporary directory
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_dir = Path(temp_dir)
+        files = list(msa_dir.glob(msa_pattern))
         # Process each MSA file and collect HMMs
         for msa_file in track(
-            msa_dir.glob(msa_pattern),
+            files,
             description="Processing MSA files",
-            total=len(list(msa_dir.glob(msa_pattern))),
+            total=len(files),
         ):
+            
             this_gath = default_gath
             with pyhmmer.easel.MSAFile(msa_file, digital=True) as msa_file_obj:
                 msa = msa_file_obj.read()
             msa.name = msa_file.stem.encode("utf-8")
             # get info from the info table
             if some_bool:
-                info = info_table.filter(
-                    pl.col(name_col).str.contains(msa.name.decode())
-                )
-                if (
-                    info.height == 1
-                ):  # should only be one match but just in case
-                    for col_key, col_val in cols_map.items():
-                        if col_val is not None:
-                            # print(col_val)
-                            msa.__setattr__(
-                                col_val,
-                                info[col_key].item().encode("utf-8")
-                                if info[col_key].item() is not None
-                                else "None".encode("utf-8"),
-                            )
+                # Prefer matching on accession (unique), then fall back to name-based heuristics
+                stem_parts = msa_file.stem.split(".")
+                base_id = msa_file.stem
+                if len(stem_parts) >= 2:
+                    base_id = f"{stem_parts[0]}.{stem_parts[1]}"
+
+                info = pl.DataFrame()
+                # Strategy 1: exact match on accession column
+                if accs_col in info_table.columns:
+                    info = info_table.filter(pl.col(accs_col) == base_id)
+                # Strategy 2: if no exact accession match, allow contains on accession
+                if info.height == 0 and accs_col in info_table.columns:
+                    info = info_table.filter(pl.col(accs_col).str.contains(base_id))
+                # Strategy 3: contains match on name column with the base id or full stem
+                if info.height == 0:
+                    info = info_table.filter(
+                        pl.col(name_col).str.contains(base_id)
+                        | pl.col(name_col).str.contains(msa_file.stem)
+                    )
+                # Strategy 4: exact match on name column with full stem
+                if info.height == 0:
+                    info = info_table.filter(pl.col(name_col) == msa_file.stem)
+
+                if info.height >= 1:
+                    # If multiple rows match (names can duplicate), take the first but ensure accession uniqueness
+                    info_row = info.row(0, named=True)
+                    # Set MSA labels from metadata
+                    if name_col in info.columns and info_row.get(name_col) is not None:
+                        msa.name = str(info_row.get(name_col)).encode("utf-8")
+                    if accs_col in info.columns and info_row.get(accs_col) is not None:
+                        msa.accession = str(info_row.get(accs_col)).encode("utf-8")
+                    if desc_col in info.columns and info_row.get(desc_col) is not None:
+                        msa.description = str(info_row.get(desc_col)).encode("utf-8")
+
                     if gath_col in info.columns:
                         this_gath = (
-                            info[gath_col].item().encode("utf-8")
-                            if info[gath_col].item() is not None
-                            else "1".encode("utf-8")
+                            str(info_row.get(gath_col)).encode("utf-8")
+                            if info_row.get(gath_col) is not None
+                            else b"1"
                         )
                     else:
                         this_gath = default_gath  # default gathering threshold
+
+                    logger.debug(
+                        "Matched MSA '%s' (base_id=%s) -> accession='%s'; name='%s'; desc='%s'",
+                        msa_file.name,
+                        base_id,
+                        info_row.get(accs_col, ""),
+                        info_row.get(name_col, ""),
+                        info_row.get(desc_col, ""),
+                    )
+                else:
+                    logger.debug(
+                        "No metadata match found for MSA '%s' (base_id=%s)",
+                        msa_file.name,
+                        base_id,
+                    )
+                    # Skip unmatched MSAs if missing_include is False
+                    if not missing_include:
+                        logger.debug(
+                            "Skipping unmatched MSA '%s' (missing_include=False)",
+                            msa_file.name,
+                        )
+                        continue
             else:
                 msa.description = "None".encode("utf-8")
             # Build the HMM
@@ -517,11 +578,19 @@ def hmmdb_from_directory(
             background = pyhmmer.plan7.Background(msa.alphabet)
             hmm, _, _ = builder.build_msa(msa, background)
 
+            # Transfer metadata from MSA to HMM
+            hmm.name = msa.name
+            if hasattr(msa, 'accession') and msa.accession is not None:
+                hmm.accession = msa.accession
+            if hasattr(msa, 'description') and msa.description is not None:
+                hmm.description = msa.description
+
             # Set gathering threshold if provided (or default to 1)
             hmm.cutoffs.gathering = (float(this_gath), float(this_gath))
             hmms.append(hmm)
             # write the hmm to a file
-            fh = open(temp_dir / f"{msa.name.decode()}.hmm", "wb")
+            safe_name = msa.name.decode().replace("/", "_")
+            fh = open(temp_dir / f"{safe_name}.hmm", "wb")
             hmm.write(fh, binary=False)
             fh.close()
         # pyhmmer.hmmer.hmmpress(iter(hmms), output=output) # this is broken
