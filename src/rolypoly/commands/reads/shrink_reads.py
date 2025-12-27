@@ -123,6 +123,20 @@ def shrink_reads(
             logger.info(
                 f"Written shrinked reads to {output_R1_file} and {output_R2_file}"
             )
+        # Process interleaved files
+        for file_path in file_info.get("interleaved_files", []):
+            file_path = Path(file_path)
+            logger.info(f"Processing file: {file_path}")
+            output_file = output_dir / f"{file_path.stem}_shrinked.fastq"
+            create_sample_file(
+                file_path,
+                subset_type=subset_type,
+                sample_size=sample_size,
+                logger=logger,
+                output_file=output_file,
+            )
+            logger.info(f"Written shrinked reads to {output_file}")
+
 
         logger.info("Finished read processing")
         logger.info(f"Output: {output_dir}")

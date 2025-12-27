@@ -44,12 +44,48 @@ def create_sample_file(
     is_paired_files = False if "," not in str(file_path) else True
     is_gz_output = True if Path(output_file).suffix == ".gz" else False
 
+    # Helper to get total reads in a FASTQ file
+    def _get_total_reads(fpath, gzipped):
+        import subprocess as sp
+        if gzipped:
+            cmd = f"zgrep -c '^@' {fpath}"
+        else:
+            cmd = f"grep -c '^@' {fpath}"
+        try:
+            return int(
+                sp.run(
+                    cmd,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+            )
+        except Exception as e:
+            logger.error(f"Failed to count reads in {fpath}: {e}")
+            raise
+
+    # Decide if we need to get total reads first
+    need_total_reads = False
+    if subset_type == "random":
+        need_total_reads = True
+    elif subset_type == "top_reads" and isinstance(sample_size, float) and sample_size < 1.0:
+        need_total_reads = True
+    logger.debug(f"need_total_reads: {need_total_reads}")
+
     if not is_paired_files:
         is_gz = is_gzipped(file_path)
+        total_reads = None
+        if need_total_reads:
+            total_reads = _get_total_reads(file_path, is_gz)
+            # If sample_size is float, convert to int number of reads
+            if isinstance(sample_size, float):
+                sample_size = int(sample_size * total_reads)
         logger.debug(f"Sampling {subset_type} of {sample_size} of {file_path}")
         try:
             if subset_type == "top_reads":
-                sample_size = int(sample_size) * 4  # 4 lines per read
+                sample_size_int = int(sample_size)
+                sample_size_int = sample_size_int - (sample_size_int % 2)  # ensure even for pairs
+                n_lines = sample_size_int * 4  # 4 lines per read
                 # Stream first n lines without loading entire file
                 if is_gz:
                     f_in = gzip.open(
@@ -64,88 +100,33 @@ def create_sample_file(
                 else:
                     f_out = open(output_file, "w", encoding="utf-8")
                 for i, line in enumerate(f_in):
-                    # print ("a")
-                    if i >= sample_size:
+                    if i >= n_lines:
                         break
                     f_out.write(line)
                 f_out.close()
-                #     sample_size = total_reads
-                #     logger.warning(f"Total reads in {file_path} is less than requested sample size, will just copy the input buddy")
-                #     import shutil
-                #     shutil.copyfile(file_path, output_file)
-                #     return None
-                # elif total_reads == 0:
-                #     logger.warning(f"No obvious reads in fastq (looked for header lines starting with @ and found none)")
-                #     return None # TODO: DECIDE, should this be an error
-
-            # if total_reads <= sample_size:
+                f_in.close()
             elif subset_type == "random":
-                logger.debug(
-                    f"Sampling {sample_size * 100}% of reads randomly from {file_path}"
-                )
-                # from rolypoly.utils.bio.polars_fastx import from_fastx_lazy as read_fastx
-                # from needletail import parse_fastx_file
-                # test_for_getting_total_number_of_records = parse_fastx_file(file_path)
-                # I am putting way too much time into this but if possible to get an approximate
-                # for the total number of reads than maybe use:
-                #  https://github.com/Yixuan-Wang/blog-contents/issues/29
-                # most bioinformatics stuff use defaults so maybe ... using the top n reads can get the avg read # length and then use more approximations to oget a rough estimate of total reads based on (maybe? #original file size (pre compression) to current file size (post compression)
-                # giving up on that ^ idea for now as will first need to make a function that takes a fastq_df and otputs it to fastq (not sure what to do about the "seperator" line).
-                import subprocess as sp
-
-                if is_gz:
-                    total_reads = int(
-                        sp.run(
-                            "zgrep -c '@' {}".format(file_path),
-                            shell=True,
-                            capture_output=True,
-                            text=True,
-                        ).stdout.strip()
-                    )
-                else:
-                    total_reads = int(
-                        sp.run(
-                            "grep -c '@' {}".format(file_path),
-                            shell=True,
-                            capture_output=True,
-                            text=True,
-                        ).stdout.strip()
-                    )
-
-                # convert proportion to number of reads
-                sample_size = int(sample_size * total_reads)
-                # adjust to an even number of reads
-                sample_size = sample_size - (sample_size % 2)
                 from random import sample
-
-                lines_2_get = sample(
-                    population=range(0, int(total_reads * 8), 8),
-                    k=int(sample_size),
-                )
                 import itertools
-
                 import numpy as np
-
-                lines_2_get = np.sort(
-                    list(
-                        itertools.chain.from_iterable(
-                            [
-                                x
-                                for x in [
-                                    range(i, i + 8, 1) for i in lines_2_get
-                                ]
-                            ]
-                        )
-                    )
-                )
-                # lines_2_get.sort()
+                sample_size_int = int(sample_size)
+                sample_size_int = sample_size_int - (sample_size_int % 2)
+                if total_reads is None:
+                    total_reads = _get_total_reads(file_path, is_gz)
+                if sample_size_int > total_reads:
+                    logger.warning(f"Requested sample_size {sample_size_int} > total_reads {total_reads}, using all reads.")
+                    sample_size_int = total_reads - (total_reads % 2)
+                # Each read = 4 lines, so sample indices of reads
+                read_indices = sample(range(total_reads), sample_size_int)
+                read_indices = np.sort(read_indices)
+                # Convert to line numbers
+                lines_2_get = np.sort(list(itertools.chain.from_iterable([[i*4 + j for j in range(4)] for i in read_indices])))
                 target_set = set(lines_2_get)
                 target_iter = iter(lines_2_get)
                 try:
                     next_target = next(target_iter)
                 except StopIteration:
-                    next_target = None  # nothing to extract
-
+                    next_target = None
                 f_in = (
                     gzip.open(
                         file_path, "rt", encoding="utf-8", errors="ignore"
@@ -159,30 +140,21 @@ def create_sample_file(
                     else open(output_file, "w", encoding="utf-8")
                 )
                 for i, line in enumerate(f_in):
-                    # stop iterating once we passed the last needed line
                     if next_target is not None and i > lines_2_get[-1]:
                         break
-
-                    # fast O(1) membership test
                     if i in target_set:
                         f_out.write(line)
-                        # advance to the next needed index
                         try:
                             next_target = next(target_iter)
                         except StopIteration:
-                            next_target = None  # no more lines needed
-                    # close the input file (handled automatically if using a context manager)
+                            next_target = None
                 f_in.close()
                 f_out.close()
-
-            # return output_file
-
         except Exception as e:
             logger.error(f"Error creating sample file from {file_path}: {e}")
             raise
     elif "," in str(file_path):
-        # Assume 2 paired end files. LIke above but first pass on R1 file we keep the read names selectd, then second pass on R2 file we keep the read headers that have 2 instead of 1 in final header char.
-        # Also output will be 2 files.
+        # Assume 2 paired end files. Like above but first pass on R1 file we keep the read names selected, then second pass on R2 file we keep the read headers that have 2 instead of 1 in final header char.
         logger.debug(f"Sampling {subset_type} of {sample_size} of {file_path}")
         try:
             r1_path, r2_path = str(file_path).split(",")
@@ -190,56 +162,35 @@ def create_sample_file(
             r2_path = Path(r2_path)
             is_gz = is_gzipped(r1_path)
             r1_output_file, r2_output_file = output_file.split(",")
-
-            import subprocess as sp
-
+            total_reads = None
+            if need_total_reads:
+                total_reads = _get_total_reads(r1_path, is_gz)
+                if isinstance(sample_size, float):
+                    sample_size = int(sample_size * total_reads)
             if subset_type == "top_reads":
-                lines_2_get = [i for i in range(0, int(sample_size * 2), 4)]
+                sample_size_int = int(sample_size)
+                sample_size_int = sample_size_int - (sample_size_int % 2)
+                lines_2_get = [i for i in range(0, sample_size_int * 2, 4)]
             else:
                 from random import sample
-
-                if is_gz:
-                    total_reads = int(
-                        sp.run(
-                            "zgrep -c '@' {}".format(r1_path),
-                            shell=True,
-                            capture_output=True,
-                            text=True,
-                        ).stdout.strip()
-                    )
-                else:
-                    total_reads = int(
-                        sp.run(
-                            "grep -c '@' {}".format(r1_path),
-                            shell=True,
-                            capture_output=True,
-                            text=True,
-                        ).stdout.strip()
-                    )
-                logger.debug(f"Total reads in {r1_path}: {total_reads}")
-                lines_2_get = sample(
-                    population=range(0, int(total_reads * 4), 4),
-                    k=int(sample_size * 0.5 * total_reads),
-                )
-            import itertools
-
-            import numpy as np
-
-            lines_2_get = np.sort(
-                list(
-                    itertools.chain.from_iterable(
-                        [range(i, i + 4, 1) for i in lines_2_get]
-                    )
-                )
-            )
-
+                import itertools
+                import numpy as np
+                sample_size_int = int(sample_size)
+                sample_size_int = sample_size_int - (sample_size_int % 2)
+                if total_reads is None:
+                    total_reads = _get_total_reads(r1_path, is_gz)
+                if sample_size_int > total_reads:
+                    logger.warning(f"Requested sample_size {sample_size_int} > total_reads {total_reads}, using all reads.")
+                    sample_size_int = total_reads - (total_reads % 2)
+                read_indices = sample(range(total_reads), sample_size_int)
+                read_indices = np.sort(read_indices)
+                lines_2_get = np.sort(list(itertools.chain.from_iterable([[i*4 + j for j in range(4)] for i in read_indices])))
             target_set = set(lines_2_get)
             target_iter = iter(lines_2_get)
             try:
                 next_target = next(target_iter)
             except StopIteration:
-                next_target = None  # nothing to extract
-
+                next_target = None
             # first pass - R1
             headers = []
             f_in = (
@@ -252,33 +203,21 @@ def create_sample_file(
                 if is_gz_output
                 else open(r1_output_file, "w", encoding="utf-8")
             )
-
             for i, line in enumerate(f_in):
-                # print (i)
-                # break
-
-                # stop iterating once we passed the last needed line
                 if next_target is None or i >= lines_2_get[-1] + 1:
                     break
-
                 if i in target_set:
                     f_out.write(line)
                     if line.startswith("@"):
                         headers.append(line.strip())
-                    # advance to the next needed index
                     try:
                         next_target = next(target_iter)
                     except StopIteration:
-                        next_target = None  # no more lines needed
-                # close the input file (handled automatically if using a context manager)
+                        next_target = None
             f_in.close()
             f_out.close()
-
             # second pass - R2
-            # headers_2 = [str(head).removesuffix("1") + "2" for head in headers]
             headers_2 = {str(h).removesuffix("1") + "2" for h in headers}
-            # ^ tbh I think just using the same lines as R1 would have been enough, as the expection is that the order of reads in R1 and R2 is the same..
-
             f_in = (
                 gzip.open(r2_path, "rt", encoding="utf-8", errors="ignore")
                 if is_gz
@@ -289,39 +228,30 @@ def create_sample_file(
                 if is_gz_output
                 else open(r2_output_file, "w", encoding="utf-8")
             )
-
             while headers_2:
                 try:
-                    line = next(f_in)  # read a line from R2
+                    line = next(f_in)
                 except StopIteration:
-                    # End of file reached before we found all headers → warn & break
                     logger.warning(
                         f"Reached end of {r2_path} before finding all expected headers. "
                         f"{len(headers_2)} read pair(s) missing."
                     )
                     break
-
-                # Only act on header lines (they start with '@' in FASTQ)
                 if line.startswith("@"):
                     stripped = line.strip()
                     if stripped in headers_2:
-                        # Write the full read (header + three following lines)
-                        f_out.write(line)  # header
-                        f_out.write(next(f_in))  # sequence
-                        f_out.write(next(f_in))  # '+' line
-                        f_out.write(next(f_in))  # quality scores
-                        headers_2.remove(stripped)  # this pair is done
+                        f_out.write(line)
+                        f_out.write(next(f_in))
+                        f_out.write(next(f_in))
+                        f_out.write(next(f_in))
+                        headers_2.remove(stripped)
                         continue
-
-            # Clean‑up
             f_in.close()
             f_out.close()
-
             if headers_2.__len__() > 0:
                 logger.warning(
                     "WHOW! not all headers were found in R2 - THIS IS NOT A GOOD SIGN"
                 )
-                # close the input file (handled automatically if using a context manager)
         except Exception as e:
             logger.error(f"Error creating sample file from {file_path}: {e}")
 
@@ -365,6 +295,8 @@ def determine_fastq_type(
         header_count = fastq_df.select(
             pl.col("header").str.tail(2).value_counts()
         ).unnest("header")
+        logger.debug(f"example read headers: {fastq_df.select(pl.col('header')).head(5).to_series().to_list()}")
+        # Check suffix patterns for paired-end indicators
         logger.debug(f"header_count: {header_count}")
         pair_1_count = header_count.filter(
             pl.col("header").is_in([" 1", "/1"])
@@ -372,6 +304,34 @@ def determine_fastq_type(
         pair_2_count = header_count.filter(
             pl.col("header").is_in([" 2", "/2"])
         )["count"].sum()
+        # Check if header looks like old Casava format,e.g. @A00178:83:HJ73JDSXX:1:1101:10285:2394 1:N:0:AGGCTTCT+AGAAGCCT (the "n:" part after the space is the important bit, and we will want to look for the leading string to it to exist in both the 1 and 2 forms)
+        if pair_1_count == 0 and pair_2_count == 0:
+            # Check for Casava format: space followed by 1: or 2:
+            # Extract base header (before space) for reads with " 1:" and " 2:"
+            headers_with_1 = fastq_df.filter(
+                pl.col("header").str.contains(r" 1:")
+            ).select(
+                pl.col("header").str.split(" ").list.get(0).alias("base_header")
+            )
+            
+            headers_with_2 = fastq_df.filter(
+                pl.col("header").str.contains(r" 2:")
+            ).select(
+                pl.col("header").str.split(" ").list.get(0).alias("base_header")
+            )
+            
+            # Check if there are overlapping base headers (indicating paired reads)
+            if headers_with_1.height > 0 and headers_with_2.height > 0:
+                set_1 = set(headers_with_1["base_header"].to_list())
+                set_2 = set(headers_with_2["base_header"].to_list())
+                overlap = set_1.intersection(set_2)
+                
+                if len(overlap) == len(set_1) and len(overlap) == len(set_2):
+                    # Found matching pairs in Casava format
+                    pair_1_count = headers_with_1.height
+                    pair_2_count = headers_with_2.height
+                    logger.warning(f"Detected Casava paired-end format in headers - treating as interleaved paired-end reads... this could be wrong...")
+
         # total_length = fastq_df.select(pl.col("sequence").str.len_chars()).sum().item() # could have just
         average_read_length = (
             fastq_df.select(pl.col("sequence").str.len_chars()).mean().item()
@@ -589,7 +549,7 @@ def identify_fastq_files(
     # Log debug, should usualy be printed in the summary
     logger.debug("File identification summary:")
     logger.debug(f"  - Rolypoly libraries: {len(file_info['rolypoly_data'])}")
-    logger.debug(f"  - R1/R2 pairs: {len(file_info['R1_R2_pairs'])}")
+    logger.debug(f"  - R1/R2 file pairs: {len(file_info['R1_R2_pairs'])}")
     logger.debug(
         f"  - Interleaved files: {len(file_info['interleaved_files'])}"
     )
