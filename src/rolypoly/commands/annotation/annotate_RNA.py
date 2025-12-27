@@ -37,6 +37,8 @@ class RNAAnnotationConfig(BaseConfig):
         custom_cm_db: str = "",
         output_format: str = "tsv",
         motif_db: str = "jaspar_rna",
+        resolve_mode: str = "simple",
+        min_overlap_positions: int = 10,
         **kwargs,  # TODO: decide if this is really needed.
     ):
         # Extract BaseConfig parameters
@@ -59,6 +61,9 @@ class RNAAnnotationConfig(BaseConfig):
         self.output_format = output_format
         self.motif_db = motif_db
         self.skip_steps = skip_steps or []
+        self.resolve_mode = resolve_mode
+        self.min_overlap_positions = min_overlap_positions
+        
         self.step_params = {
             "RNAfold": {
                 "temperature": 25
@@ -174,6 +179,37 @@ class RNAAnnotationConfig(BaseConfig):
     default="RolyPoly",
     help="Database to use for RNA motif scanning - RolyPoly, jaspar_core, or a path to a folder containg a pwm/msa files",
 )
+@click.option(
+    "-rm",
+    "--resolve-mode",
+    default="simple",
+    type=click.Choice(
+        [
+            "merge",
+            "one_per_range",
+            "one_per_query",
+            "split",
+            "drop_contained",
+            "none",
+            "simple",
+        ]
+    ),
+    help="""How to deal with overlapping RNA element hits in the same sequence. \n
+        - merge: all overlapping hits are merged into one range \n
+        - one_per_range: one hit per range is reported \n
+        - one_per_query: one hit per query sequence is reported \n
+        - split: each overlapping element is split into a new row \n
+        - drop_contained: hits that are contained within other hits are dropped \n
+        - none: no resolution of overlapping hits is performed \n
+        - simple: heuristic-based approach using drop_contained \n
+        """,
+)
+@click.option(
+    "-mo",
+    "--min-overlap-positions",
+    default=10,
+    help="Minimal number of overlapping positions between two intersecting ranges before they are considered as overlapping (used in some resolve_mode(s)).",
+)
 def annotate_RNA(
     input,
     output_dir,
@@ -191,6 +227,8 @@ def annotate_RNA(
     custom_cm_db,
     output_format,
     motif_db,
+    resolve_mode,
+    min_overlap_positions,
 ):
     """Predict viral sequence RNA secondary structure, search for ribozymes, IRES, tRNAs, and other RNA structural elements.
     By default, the following steps are run in the following order: predict_secondary_structure (LinearFold), search_ribozymes (Rfam via cmscan), predict_trnas (tRNAscan-SE).
@@ -217,6 +255,8 @@ def annotate_RNA(
         custom_cm_db=custom_cm_db,
         output_format=output_format,
         motif_db=motif_db,
+        resolve_mode=resolve_mode,
+        min_overlap_positions=min_overlap_positions,
     )
     # config.logger.info("Starting RNA annotation process")
 
@@ -1277,19 +1317,43 @@ def resolve_rna_element_overlaps(config):
                 config.logger.info(f"No hits in {element_file.name}, skipping")
                 continue
             
-            # For RNA elements, use nucleotide alphabet and fixed thresholds
-            # (no polyprotein detection for nucleotide sequences)
-            resolved_df = consolidate_hits(
-                input=element_df,
-                column_specs="target_name,query_name",  # Adjust based on actual column names
-                rank_columns="-score,+e_value",
-                one_per_query=False,
-                one_per_range=True,
-                drop_contained=True,
-                min_overlap_positions=10,
-                alphabet="nucl",  # Nucleotide alphabet - no polyprotein detection
-                adaptive_overlap=False,  # Use fixed thresholds for RNA
-            )
+            # Resolve overlaps based on user-specified mode
+            if config.resolve_mode == "simple":
+                # Use 'simple' mode for RNA elements (no adaptive overlap for nucleotides)
+                resolved_df = consolidate_hits(
+                    input=element_df,
+                    column_specs="target_name,query_name",
+                    rank_columns="-score,+e_value",
+                    one_per_query=False,
+                    one_per_range=True,
+                    min_overlap_positions=config.min_overlap_positions,
+                    merge=False,
+                    split=False,
+                    drop_contained=True,
+                    alphabet="nucl",
+                    adaptive_overlap=False,  # No polyprotein detection for RNA
+                )
+            elif config.resolve_mode != "none":
+                # Use specified resolve mode
+                resolve_mode_dict = {
+                    "split": False,
+                    "one_per_range": False,
+                    "one_per_query": False,
+                    "merge": False,
+                    "drop_contained": False,
+                }
+                resolve_mode_dict[config.resolve_mode] = True
+                resolved_df = consolidate_hits(
+                    input=element_df,
+                    min_overlap_positions=config.min_overlap_positions,
+                    column_specs="target_name,query_name",
+                    rank_columns="-score,+e_value",
+                    alphabet="nucl",
+                    **resolve_mode_dict,
+                )
+            else:
+                # No resolution
+                resolved_df = element_df
             
             # Write resolved results
             resolved_file = element_file.parent / f"{element_file.stem}_resolved.out"
