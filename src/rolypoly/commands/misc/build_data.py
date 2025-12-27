@@ -1,4 +1,5 @@
 import datetime
+from glob import glob
 import json
 import logging
 import os
@@ -23,7 +24,7 @@ from rolypoly.utils.bio.sequences import (
 )
 
 from rolypoly.utils.bio.polars_fastx import from_fastx_eager
-
+# import tqdm 
 from rolypoly.utils.logging.citation_reminder import remind_citations
 from rolypoly.utils.logging.loggit import get_version_info, setup_logging
 from rolypoly.utils.various import fetch_and_extract, run_command_comp
@@ -60,9 +61,6 @@ def build_data(data_dir, threads, log_file):
     global mmseqs_dbs
     global contam_dir
     global trna_dir
-    
-    
-
 
     logger = setup_logging(log_file)
     logger.info(f"Starting data preparation to : {data_dir}")
@@ -306,23 +304,20 @@ def download_and_extract_rfam(data_dir, logger):
     """
 
     rfam_url = "https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/Rfam.cm.gz"
-    rfam_cm_path = data_dir / "Rfam.cm.gz"
-    rfam_extract_path = data_dir / "Rfam.cm"
-    subprocess.run("cmpress Rfam.cm", shell=True)
+    rfam_cm_path = data_dir + "/Rfam.cm.gz"
+    rfam_extract_path = data_dir + "/profiles/cm/"
+    # subprocess.run("cmpress Rfam.cm", shell=True)
 
-    logger.info("Downloading Rfam database    ")
+    logger.info("Downloading Rfam database")
     try:
         fetch_and_extract(
             rfam_url,
-            fetched_to=str(rfam_cm_path),
-            extract_to=str(rfam_extract_path),
+            extract_to=rfam_extract_path,
+
         )
         logger.info("Rfam database downloaded and extracted successfully.")
-        rfam_cm_path.unlink()  # Remove the .gz file after extraction
     except requests.exceptions.RequestException as e:
         logger.error(f"Error downloading Rfam database: {e}")
-    except Exception as e:
-        logger.error(f"Error processing Rfam database: {e}")
 
 
 def tar_everything_and_upload_to_NERSC(data_dir, version=""):
@@ -485,13 +480,14 @@ def prepare_genomad_rna_viral_markers(
         return desc
 
     filled_interpro = []
-    from tqdm import tqdm
+    from rich.progress import track
+
 
     tiny_fill = to_fill.select(
         ["ANNOTATION_ACCESSIONS_struct", "source_db"]
     ).unique()
 
-    for row in tqdm(tiny_fill.to_dicts()):
+    for row in track(tiny_fill.to_dicts()):
         if row["source_db"] == "unknown":
             filled_interpro.append(None)
         else:
@@ -587,6 +583,13 @@ def prepare_genomad_rna_viral_markers(
     # clean up
     try:
         os.remove(f"{genomad_dir}/genomad_metadata_v1.9.tsv.gz")
+        # move the info table to the head folder of profiles (from all dbs)
+        shutil.move(
+            f"{genomad_dir}/rna_viral_markers_with_annotation.csv",
+            os.path.join(data_dir, "profiles/genomad_rna_viral_markers_with_annotation.csv"),
+        )
+        os.remove(f"{genomad_dir}/genomad_msa_v1.9.tar.gz")
+        shutil.rmtree(genomad_db_dir)
     except Exception as e:
         logger.warning(f"Could not remove file: {e}")
 
@@ -774,29 +777,48 @@ def prepare_RVMT_profiles(data_dir, threads, logger: logging.Logger):
     # #  sort by number of new_name (most duplicates first)
     # nvpc_descriptions.write_csv(os.path.join(hmmdb_dir, "RVMT/NVPC/NVPC_descriptions.csv"),include_header=True)
 
-hmmdb_from_directory(
-    msa_dir=os.path.join(hmmdb_dir, "RVMT/NVPC/"),
-    output=os.path.join(hmmdb_dir, "nvpc.hmm"),
-    msa_pattern="msaFiles/*.afa",
-    info_table=os.path.join(hmmdb_dir, "RVMT/NVPC/NVPC_descriptions.csv"),
-    accs_col="profile_accession",
-    name_col="Name",
-    desc_col="Description",
-    default_gath="5"
-)
+    info_table=pl.read_csv(os.path.join(profile_dir, "NVPC_descriptions.csv"))
+    # remove any msa file that doesn't have a matching profile_accession in the info table
+    import glob
+    msa_files = glob.glob(os.path.join(hmmdb_dir, "RVMT/NVPC/msaFiles/*.afa"))
+    valid_accessions = set(info_table["profile_accession"].to_list())
+    for msa_file in msa_files:
+        base_name = os.path.basename(msa_file)
+        #get the NVPC.NNNn part (first two parts separated by .)
+        acc = ".".join(os.path.splitext(base_name)[0].split(".")[:2])
+        if acc not in valid_accessions:
+            logger.info(f"Removed MSA file without matching accession: {msa_file}")
+            os.remove(msa_file)
+
+    hmmdb_from_directory(
+        msa_dir=os.path.join(hmmdb_dir, "RVMT/NVPC/"),
+        output=os.path.join(hmmdb_dir, "nvpc.hmm"),
+        msa_pattern="msaFiles/*.afa",
+        info_table=os.path.join(profile_dir, "NVPC_descriptions.csv"),
+        accs_col="profile_accession",
+        name_col="Name",
+        desc_col="Description",
+        missing_include=False,
+        default_gath="5",
+        debug=False,
+    )
 
     mmseqs_profile_db_from_directory(
         msa_dir=os.path.join(hmmdb_dir, "RVMT/NVPC/"),
-        output=os.path.join(mmseqs_dbs, "RVMT/NVPC"),
+        output=os.path.join(mmseqs_dbs, "nvpc/nvpc"),
         msa_pattern="ali*/*.FASTA",
-        info_table=(os.path.join(hmmdb_dir, "RVMT/NVPC/NVPC_descriptions.csv"),include_header=True),
+        info_table=os.path.join(profile_dir, "NVPC_descriptions.csv"),
+        accs_col="profile_accession",
+        name_col="Name",
+        desc_col="Description",
+        # missing_include=False,
     )
 
     
     # clean up
     shutil.rmtree(os.path.join(hmmdb_dir, "RVMT/"))
     os.remove(os.path.join(hmmdb_dir, "zip.ali.220515.tgz"))
-
+    os.remove(os.path.join(hmmdb_dir, "NVPC_msaFiles.tar.gz"))
     logger.info("Finished preparing RVMT databases")
 
 
@@ -826,7 +848,7 @@ def prepare_vfam(data_dir, logger: logging.Logger):
 
     vfam_df.write_csv(
         os.path.join(
-            data_dir, "profiles", "hmmdbs", "vfam", "vfam.annotations.tsv.gz"
+            data_dir, "profiles", "hmmdbs", "vfam.annotations.tsv.gz"
         )
     )
     version = requests.get(
@@ -838,14 +860,32 @@ def prepare_vfam(data_dir, logger: logging.Logger):
     fetch_and_extract(
         url="https://fileshare.lisc.univie.ac.at//vog/latest/vfam.raw_algs.tar.gz",
         fetched_to=os.path.join(
-            data_dir, "profiles", "hmmdbs", "vfam", "vfam.raw_algs.tar.gz"
+            data_dir, "profiles", "hmmdbs", "vfam.raw_algs.tar.gz"
         ),
         extract_to=os.path.join(data_dir, "profiles", "hmmdbs", "vfam"),
     )
 
+
+    import glob
+    # remove GroupNames and msa files that only have 2 or less sequences, or that have "hypothetical" in the description
+    msa_files = glob.glob(os.path.join(os.path.join(data_dir, "profiles", "hmmdbs", "vfam"), "msa/*.msa"))
+    valid_accessions = set(vfam_df.filter(
+        (~pl.col("ConsensusFunctionalDescription").str.contains("hypothetical")) & 
+        (pl.col("SpeciesCount") > 2)
+    )["#GroupName"].to_list())
+    for msa_file in msa_files:
+        base_name = os.path.basename(msa_file)
+        #get the NVPC.NNNn part (first two parts separated by .)
+        acc = ".".join(os.path.splitext(base_name)[0].split(".")[:2])
+        if acc not in valid_accessions:
+            # logger.info(f"Removed MSA file without matching accession: {msa_file}")
+            os.remove(msa_file)
+
+
     output_hmm = os.path.join(
         os.path.join(data_dir, "profiles/hmmdbs"), "vfam.hmm"
     )
+    
     hmmdb_from_directory(
         os.path.join(data_dir, "profiles", "hmmdbs", "vfam", "msa"),
         output_hmm,
@@ -854,8 +894,6 @@ def prepare_vfam(data_dir, logger: logging.Logger):
             os.path.join(
                 data_dir,
                 "profiles",
-                "hmmdbs",
-                "vfam",
                 "vfam.annotations.tsv.gz",
             )
         ),
@@ -866,11 +904,21 @@ def prepare_vfam(data_dir, logger: logging.Logger):
     )
 
     # Build the mmseqs database
-    mmseqs_commands = [
-        "mmseqs createdb tmp_nochimeras.fasta mmdb/RVMT_mmseqs_db2 --dbtype 2",
-        "mmseqs createdb tmp_nochimeras.fasta mmdb/RVMT_mmseqs_db2 --dbtype 2",
-    ]
-    subprocess.run(mmseqs_commands, shell=True)
+    mmseqs_profile_db_from_directory(
+        os.path.join(data_dir, "profiles", "hmmdbs", "vfam", "msa"),
+        output=os.path.join(mmseqs_dbs, "vfam/vfam"),
+        msa_pattern="*.msa",
+        info_table=(
+            os.path.join(
+                data_dir,
+                "profiles",
+                "vfam.annotations.tsv.gz",
+            )
+        ),
+        name_col="#GroupName",
+        accs_col="#GroupName",
+        desc_col="ConsensusFunctionalDescription",
+    )
 
     # remove the vfam msa directory
     shutil.rmtree(os.path.join(data_dir, "profiles", "hmmdbs", "vfam", "msa"))
@@ -1285,6 +1333,36 @@ def prepare_contamination_seqs(data_dir, threads, logger):
         threads=threads,
     )
 
+    # now a similar process for the orfs
+    rvmt_fasta_path = os.path.join(
+        data_dir, "reference_seqs", "RVMT", "RVMT_cleaned_orfs.faa"
+    )
+    ncbi_ribovirus_fasta_path = os.path.join(
+        data_dir,
+        "reference_seqs",
+        "ncbi_ribovirus",
+        "refseq_ribovirus_genomes_orfs.faa",
+    )
+
+    # Deduplicate directly from multiple files (no concatenation needed)
+    deduplicated_fasta = os.path.join(
+        masking_dir, "combined_deduplicated_orfs.faa"
+    )
+    
+    logger.info(
+        f"Deduplicating sequences from {len([rvmt_fasta_path, ncbi_ribovirus_fasta_path])} files"
+    )
+
+    stats = remove_duplicates(
+        input_file=[rvmt_fasta_path, ncbi_ribovirus_fasta_path],
+        output_file=deduplicated_fasta,
+        by="seq",
+        revcomp_as_distinct=False,  # Treat reverse complement as duplicate
+        return_stats=True,
+        logger=logger,
+    )
+
+
     # clean up intermediate files
     try:
         os.remove(deduplicated_fasta)
@@ -1387,8 +1465,6 @@ def prepare_contamination_seqs(data_dir, threads, logger):
         ]
     )
     logger.info(f"total SILVA sequences {silva_fasta_df.height}")
-
-
 
     # Extract accession from header (format: >accession.version rest_of_header)
     silva_fasta_df = silva_fasta_df.with_columns(
@@ -1618,9 +1694,6 @@ def prepare_contamination_seqs(data_dir, threads, logger):
     test_df2 = gene2accession.select(["ncbi_taxonid","assembly"]).unique()
     test_df2.height # 52548
 
-
-
-
     silva_df = silva_df.with_columns(
         ncbi_taxonid=pl.col("ncbi_taxonid").cast(pl.String)
     )
@@ -1722,7 +1795,7 @@ def prepare_trna_data(data_dir, logger):
     from rolypoly.utils.bio.sequences import write_fasta_file
     info_table = fasta_stats(deduplicated_fasta)
     info_table = info_table.filter(
-    pl.col("length").is_between(50,250),
+    pl.col("length").is_between(60,250),
     pl.col("gc_content") >= 0.01,
     )
 
@@ -1803,7 +1876,7 @@ def prepare_plastid_data(data_dir, logger):
             f"Plastid deduplication stats: {stats['unique_records']} unique sequences from {stats['total_records']} total, {stats['duplicates_removed']} duplicates removed"
         )
     
-    # Clean up individual files to save space (optional)
+    # Clean up individual files
     try:
         for file_path in all_files:
             if os.path.exists(file_path):

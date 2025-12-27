@@ -5,7 +5,7 @@ from pathlib import Path
 
 import requests
 
-from rolypoly.utils.bio.genome_fetch import download_genome
+from rolypoly.utils.bio.genome_fetch import fetch_genomes_from_mapping
 
 
 def download_file(url, filename):
@@ -157,17 +157,13 @@ run_command(
 )
 
 # host genome - https://www.ncbi.nlm.nih.gov/nuccore/NC_000913.3
-download_genome(taxid="9606")
-shutil.unpack_archive("9606_fetched_genomes.zip", extract_dir="inputs/hosts")
-shutil.move(
-    "inputs/hosts/ncbi  GCF_000001405.40_GRCh38.p14_genomic.fna",
-    "inputs/hosts/human_genome.fasta",
+fetch_genomes_from_mapping(
+    taxids=[9606],
+    mapping_path=str(datadir / "contam/rrna/rrna_to_genome_mapping.parquet"),
+    output_file="inputs/hosts/human_genome.fasta",
+    prefer_transcript=False,
+    exclude_viral=False,
 )
-run_command(
-    "seqkit rmdup inputs/hosts/ncbi_dataset/data/*/*fna -w0 > inputs/hosts/human_genome_rmdup.fasta"
-)
-shutil.rmtree("inputs/hosts/ncbi_dataset")
-os.unlink("9606_fetched_genomes.zip")
 os.unlink("inputs/hosts/md5sum.txt")
 os.unlink("inputs/hosts/README.md")
 
@@ -276,7 +272,10 @@ shutil.move(
 
 
 # source 6 - all orthorna viruses from ncbi
-download_genome(taxid="2732396")
-shutil.unpack_archive(
-    "2732396_fetched_genomes.zip", extract_dir="inputs/contigs"
+fetch_genomes_from_mapping(
+    taxids=[2732396],
+    mapping_path=str(datadir / "contam/rrna/rrna_to_genome_mapping.parquet"),
+    output_file="inputs/contigs/orthorna_viruses.fasta",
+    prefer_transcript=False,
+    exclude_viral=False,
 )
