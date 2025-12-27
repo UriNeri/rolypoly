@@ -14,7 +14,7 @@ from rolypoly.utils.logging.loggit import get_logger
 global datadir
 datadir = Path(
     os.environ.get("ROLYPOLY_DATA", "")
-)  # THIS IS A HACK, I need to figure out how to set the datadir if code is accessed from outside the package (currently it's set in the rolypoly.py  and exported into the env).
+)  # THIS IS A HACK, I need to figure out how to set the datadir if code is accessed from outside the package (currently it's set in the rolypoly.py and exported into the env).
 
 
 @click.command()
@@ -28,7 +28,7 @@ datadir = Path(
     help="Attempt to kcompress.sh the masked file",
 )
 @click.option("-i", "--input", required=True, help="Input fasta file")
-@click.option("-a", "--aligner", required=False,default="mmseqs2", help="Which tool to use for identifying shared sequence (minimap2, mmseqs2, diamond, bowtie1, bbmap)")
+@click.option("-a", "--aligner", required=False,default="diamond", help="Which tool to use for identifying shared sequence (minimap2, mmseqs2, diamond, bowtie1, bbmap)")
 @click.option(
     "-r",
     "--reference",
@@ -163,32 +163,50 @@ def mask_dna(
         logger.info(
             f"Note! using as reference: {reference} "
         )
-        dimamond_search_cmd = [
-            "diamond",
-            "blastx",
-            "--query",
-            str(input_file),
-            "--db",
-            str(reference),
-            "--out",
-            f"{tmpdir}/tmp_mapped.tsv",
-            "--id",
-            "70",
-            "--subject-cover",
-            "40",
-            "--min-query-len",
-            "20",
-            "--threads",
-            str(threads),
-            "--max-target-seqs",
-            "10000000",
-            "--unal",
-            "0",
-            "--outfmt",
-            "6 qseqid qstart qend qstrand"
-        ]
-        logger.info(f"Running command: {' '.join(dimamond_search_cmd)}")
-        sp.run(dimamond_search_cmd, check=True, shell=True)
+        test = run_command_comp(
+            assign_operator=" ",
+            base_cmd="diamond blastx",
+            positional_args=["qseqid qstart qend qstrand"],
+            positional_args_location="end",
+            param_sep=" ",
+            params={
+                "query":str(input_file),
+                "db":str(reference),
+                "out":f"{tmpdir}/tmp_mapped.tsv",
+                "id": "70",
+                "subject-cover": "40",
+                "min-query-len": "20",
+                "threads": threads,
+                "max-target-seqs":123123123,
+                "outfmt": "6"
+            }
+        )
+        # dimamond_search_cmd = [
+        #     "diamond",
+        #     "blastx",
+        #     "--query",
+        #     str(input_file),
+        #     "--db",
+        #     str(reference),
+        #     "--out",
+        #     f"{tmpdir}/tmp_mapped.tsv",
+        #     "--id",
+        #     "70",
+        #     "--subject-cover",
+        #     "40",
+        #     "--min-query-len",
+        #     "20",
+        #     "--threads",
+        #     str(threads),
+        #     "--max-target-seqs",
+        #     "10000000",
+        #     "--unal",
+        #     "0",
+        #     "--outfmt",
+        #     "6 "
+        # ]
+        # logger.info(f"Running command: {' '.join(dimamond_search_cmd)}")
+        # sp.run(dimamond_search_cmd, check=True, shell=True)
         
         mask_nuc_range(
             input_fasta=str(input_file),

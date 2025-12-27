@@ -12,7 +12,7 @@ from rolypoly.utils.logging.output_tracker import OutputTracker
 from rolypoly.utils.various import ensure_memory, run_command_comp
 
 global tools
-tools = ["bbmap", "seqkit", "datasets"]
+tools = ["bbmap"]
 
 global output_tracker
 output_tracker = OutputTracker()
@@ -173,7 +173,29 @@ def process_reads(
     current_input = fastq_file
     from rich.spinner import SPINNERS  # type: ignore
 
-    SPINNERS["myspinner"] = {"interval": 2500, "frames": ["🦠 ", "🧬 ", "🔬 "]}  # type: ignore
+    SPINNERS["myspinner"] = {"interval": 5500, "frames": ["🦠 ", "🧬 ", "🔬 ", "⏣ ", "🧿 "]}  # type: ignore
+    # SPINNERS["myspinner"] = {"interval": 200, "frames": [
+	# 		"◜",
+	# 		"◠",
+	# 		"◝",
+	# 		"◞",
+	# 		"◡",
+	# 		"◟"
+	# 	]}  # type: ignore
+    # SPINNERS["myspinner"] = {"interval": 200, "frames":  [
+	# 		" 🧑⚽️       🧑 ",
+	# 		"🧑  ⚽️      🧑 ",
+	# 		"🧑   ⚽️     🧑 ",
+	# 		"🧑    ⚽️    🧑 ",
+	# 		"🧑     ⚽️   🧑 ",
+	# 		"🧑      ⚽️  🧑 ",
+	# 		"🧑       ⚽️🧑  ",
+	# 		"🧑      ⚽️  🧑 ",
+	# 		"🧑     ⚽️   🧑 ",
+	# 		"🧑    ⚽️    🧑 ",
+	# 		"🧑   ⚽️     🧑 ",
+	# 		"🧑  ⚽️      🧑 "
+	# 	]}  # type: ignore
 
     with console.status(
         "[bold green] Working on     ", spinner="myspinner"
@@ -229,8 +251,9 @@ def process_reads(
     # Final deduplication step
     merged_file = output_tracker.get_latest_merged_file()
     if not (
-        config.skip_existing
-        and check_existing_file(Path(f"dedup_merged_{config.file_name}.fq.gz"))
+        config.skip_existing and
+        check_existing_file(Path(f"dedup_merged_{config.file_name}.fq.gz")) and
+        merged_file == None
     ):
         dedup_merged = dedupe(
             Path(merged_file), config, output_tracker, "final_merged"
