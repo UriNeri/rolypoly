@@ -1,5 +1,5 @@
 {
     "ROLYPOLY_DATA": "/clusterfs/jgi/scratch/science/metagen/neri/code/rolypoly/data/",
     "ROLYPOLY_TEST_DIR": "/clusterfs/jgi/scratch/science/metagen/neri/tests/rp_tests/",
-    "ROLYPOLY_REMIND_CITATION": "False"
+    "ROLYPOLY_REMIND_CITATIONS": "False"
 }

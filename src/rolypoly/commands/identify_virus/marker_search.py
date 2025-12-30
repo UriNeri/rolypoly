@@ -489,7 +489,7 @@ def marker_search(
     tools.append("pyhmmer")
     tools.append("hmmer")
 
-    with open(f"{config.log_file}", "w") as f_out:
+    with open(f"{config.log_file}", "a") as f_out:
         f_out.write(remind_citations(tools, return_bibtex=True) or "")
 
 

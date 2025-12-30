@@ -1018,7 +1018,7 @@ def assembly(
         f"Reads aligned to the assembly (interleaved and merged) are in {config.output_dir}/assembly_bowtie_interleaved.sam.gz and {config.output_dir}/assembly_bowtie_merged_reads.sam.gz"
     )
     if config.log_level != "DEBUG":
-        with open(f"{config.log_file}", "w") as f_out:
+        with open(f"{config.log_file}", "a") as f_out:
             f_out.write(remind_citations(tools, return_bibtex=True) or "")
 
 

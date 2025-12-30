@@ -18,7 +18,7 @@ global output_tracker
 output_tracker = OutputTracker()
 
 console = Console()
-
+config = None
 
 class ReadFilterConfig(BaseConfig):
     def __init__(self, **kwargs):
@@ -143,6 +143,9 @@ def process_reads(
 
     config.logger.info(f"file_name: {config.file_name}")
     config.logger.info(f"fastq_file: {fastq_file}")
+    # config.logger.info(f"remind citation is {os.environ.get('ROLYPOLY_REMIND_CITATION', 'not_set')}    ")
+    # exit()
+    # breakpoint()
     output_tracker.add_file(
         filename=str(config.input),
         command="handle_input_fastq",
@@ -152,6 +155,7 @@ def process_reads(
         interleaved=None,
         is_gz=None,
     )  # retroactive addition
+
     config.memory = ensure_memory(config.memory, fastq_file)  # type: ignore ------ this second ensure is because we now have the fastq file to check its size.
     steps = [
         # handle_input_fastq, # moved to outside of the steps to avoid ensures the input is interleaved by moving it through rename or reformat
@@ -171,6 +175,8 @@ def process_reads(
     ]
 
     current_input = fastq_file
+
+
 
     from rich.spinner import SPINNERS  # type: ignore
     config.logger.info("Starting read processing    ")
@@ -480,7 +486,8 @@ def filter_reads(
 
     config.logger.info("Read processing completed, probably successfully.")
     if config.log_level != "DEBUG":
-        with open(f"{config.log_file}", "w") as f_out:
+        config.logger.info(f"remind citation is {os.environ.get('ROLYPOLY_REMIND_CITATIONS', 'not_set')}    ")
+        with open(f"{config.log_file}", "a") as f_out:
             f_out.write(remind_citations(tools, return_bibtex=True) or "")
 
 
@@ -516,9 +523,7 @@ def generate_reports(file_name: str, threads: int, skip_existing: bool, logger):
         logger.info("falco report already exists, skipping")
 
 
-# Using the file_detection module instead of local implementation
-
-
+# Using the file_detection module instead of local implementation, below takes the library detection from there.
 def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
     """Process input FASTQ files and prepare them for filtering."""
     from bbmapy import reformat
@@ -539,8 +544,8 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
         for i, pair in enumerate(file_info["R1_R2_pairs"]):
             out_file = temp_interleaved if i == 0 else final_interleaved
             config.logger.info(f"Concatenating {pair[0]} and {pair[1]}")
-            reformat(
-                in1=str(pair[0]),
+            bb_stdout,bb_stderr= reformat(
+                in1=str(pair[0]),capture_output=True,
                 in2=str(pair[1]),
                 out=str(out_file),
                 threads=config.threads,
@@ -548,6 +553,7 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
                 append="f" if i == 0 else "t",
                 Xmx=str(config.memory["giga"]),
             )
+            config.logger.info(" ".join((bb_stderr, bb_stdout)))
 
     # Process interleaved files
     if len(file_info["interleaved_files"]) != 0:
@@ -556,8 +562,8 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
         )
         for i, intfile in enumerate(file_info["interleaved_files"]):
             out_file = temp_interleaved if i == 0 else final_interleaved
-            reformat(
-                in_file=str(intfile),
+            bb_stdout,bb_stderr= reformat(
+                in_file=str(intfile), capture_output=True,
                 out=str(out_file),
                 threads=config.threads,
                 overwrite="t" if i == 0 else "f",
@@ -565,6 +571,8 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
                 Xmx=str(config.memory["giga"]),
                 int=True,
             )
+            config.logger.info(" ".join((bb_stderr, bb_stdout)))
+
 
     # Process single-end files
     if (
@@ -578,8 +586,9 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
                 if i == 0 and not temp_interleaved.exists()
                 else final_interleaved
             )
-            reformat(
-                in_file=str(sefile),
+
+            bb_stdout,bb_stderr= reformat(
+                in_file=str(sefile),capture_output=True,
                 out=str(out_file),
                 threads=config.threads,
                 overwrite="t"
@@ -588,6 +597,8 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
                 append="f" if i == 0 and not temp_interleaved.exists() else "t",
                 Xmx=str(config.memory["giga"]),
             )
+            config.logger.info(" ".join((bb_stderr, bb_stdout)))
+
 
     # Clean up temporary file if it exists
     if temp_interleaved.exists():
@@ -612,53 +623,6 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
         )
 
     return final_interleaved, file_name
-
-
-# def filter_by_tile(
-#     input_file: Path, config: ReadFilterConfig, output_tracker: OutputTracker
-# ) -> Path:
-#     """Filter reads by tile."""  # this commands tends to break so it has extra logging and is skipped if error occurs.
-#     from bbmapy import filterbytile
-#     import time
-
-#     config.logger.info(f"Starting: Filter by Tile for file {input_file}")
-#     output_file = config.temp_dir / f"filter_by_tile_{config.file_name}.fq.gz"
-
-#     try:
-#         # config.logger.info("Preparing to run filterbytile")
-#         params = config.step_params["filter_by_tile"]
-#         config.logger.info(f"Parameters for filterbytile: {params}")
-
-#         start_time = time.time()
-#         filterbytile(
-#             in_file=str(input_file),
-#             out=str(output_file),
-#             Xmx=config.memory["giga"],
-#             threads=str(config.threads),
-#             overwrite="t",
-#             interleaved="t",
-#             # monitor= config.step_timeout,
-#             **params,
-#         )
-#         end_time = time.time()
-
-#         config.logger.info(
-#             f"filterbytile completed in {end_time - start_time:.2f} seconds"
-#         )
-
-#         if not Path(output_file).exists():
-#             raise FileNotFoundError(
-#                 f"Expected output file {output_file} was not created"
-#             )
-
-#         output_tracker.add_file(
-#             str(output_file), "filter_by_tile", "filterbytile.sh", is_merged=False
-#         )
-#         return Path(output_file)
-#     except Exception as e:
-#         config.logger.error(f"Error in filter_by_tile: {str(e)}")
-#         config.logger.error("Proceeding with last usable input")
-#         return input_file
 
 
 def filter_known_dna(
@@ -686,8 +650,8 @@ def filter_known_dna(
     output_file = config.temp_dir / f"filter_known_dna_{config.file_name}.fq.gz"
     try:
         params = config.step_params["filter_known_dna"]
-        bbduk(
-            in_file=str(input_file),
+        bb_stdout, bb_stderr = bbduk(
+            in_file=str(input_file), capture_output=True,
             out=str(output_file),
             ref=str(ref_file),
             **params,
@@ -698,6 +662,8 @@ def filter_known_dna(
             stats=config.temp_dir
             / f"stats_filter_known_dna_{config.file_name}.txt",
         )
+        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+
         output_tracker.add_file(
             str(output_file),
             "filter_known_dna",
@@ -726,8 +692,8 @@ def decontaminate_rrna(
     rrna_fas2 = Path(config.datadir) / "contam/rrna/silva_rRNA_all_sequences_masked_entropy.fasta"  # type: ignore
     try:
         params = config.step_params["decontaminate_rrna"]
-        bbduk(
-            in_file=str(input_file),
+        bb_stdout, bb_stderr  = bbduk(
+            in_file=str(input_file), 
             out=str(output_file),
             ref=f"{rrna_fas1},{rrna_fas2}",
             **params,
@@ -737,7 +703,10 @@ def decontaminate_rrna(
             interleaved="t",
             stats=config.temp_dir
             / f"stats_decontaminate_rrna_{config.file_name}.txt",
+            capture_output=True
         )
+        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+
         output_tracker.add_file(
             str(output_file),
             "decontaminate_rrna",
@@ -845,8 +814,8 @@ def filter_identified_dna(
     )
     try:
         params = config.step_params["filter_identified_dna"]
-        bbduk(
-            in_file=str(input_file),
+        bb_stdout, bb_stderr = bbduk(
+            in_file=str(input_file), capture_output=True,
             out=str(output_file),
             ref=str(host_file),
             **params,
@@ -857,6 +826,8 @@ def filter_identified_dna(
             stats=config.temp_dir
             / f"stats_filter_identified_dna_{config.file_name}.txt",
         )
+        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+
         output_tracker.add_file(
             str(output_file),
             "filter_identified_dna",
@@ -897,8 +868,8 @@ def dedupe(
         is_merged = False
     try:
         params = config.step_params["dedupe"]
-        clumpify(
-            in_file=str(input_file),
+        bb_stdout, bb_stderr = clumpify(
+            in_file=str(input_file), capture_output=True,
             out=str(output_file),
             **params,
             Xmx=config.memory["giga"],
@@ -906,6 +877,8 @@ def dedupe(
             overwrite="t",
             interleaved="t",
         )
+        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+
         output_tracker.add_file(
             str(output_file),
             f"dedupe_{phase}",
@@ -933,8 +906,8 @@ def trim_adapters(
     adapters_bb = Path(config.datadir) / "contam/adapters/bbmap_adapters.fa"
     try:
         params = config.step_params["trim_adapters"]
-        bbduk(
-            in_file=str(input_file),
+        bb_stdout, bb_stderr = bbduk(
+            in_file=str(input_file), capture_output=True,
             out=str(output_file),
             ref=f"{adapters_bb},{adapters_new}",
             **params,
@@ -945,6 +918,8 @@ def trim_adapters(
             stats=config.temp_dir
             / f"stats_trim_adapters_{config.file_name}.txt",
         )
+        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+
         output_tracker.add_file(
             str(output_file),
             "trim_adapters",
@@ -972,8 +947,8 @@ def remove_synthetic_artifacts(
     )
     try:
         params = config.step_params["remove_synthetic_artifacts"]
-        bbduk(
-            in_file=str(input_file),
+        bb_stdout, bb_stderr = bbduk(
+            in_file=str(input_file), capture_output=True,
             out=str(output_file),
             **params,
             Xmx=config.memory["giga"],
@@ -983,6 +958,8 @@ def remove_synthetic_artifacts(
             stats=config.temp_dir
             / f"stats_remove_synthetic_artifacts_{config.file_name}.txt",
         )
+        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+
         output_tracker.add_file(
             str(output_file),
             "remove_synthetic_artifacts",
@@ -1008,8 +985,8 @@ def entropy_filter(
     output_file = config.temp_dir / f"entropy_filter_{config.file_name}.fq.gz"
     try:
         params = config.step_params["entropy_filter"]
-        bbduk(
-            in_file=str(input_file),
+        bb_stdout,bb_stderr = bbduk(
+            in_file=str(input_file), capture_output=True,
             out=str(output_file),
             **params,
             Xmx=config.memory["giga"],
@@ -1017,6 +994,8 @@ def entropy_filter(
             overwrite="t",
             interleaved="t",
         )
+        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+
         output_tracker.add_file(
             str(output_file),
             "entropy_filter",
@@ -1042,8 +1021,8 @@ def error_correct_1(
     output_file = config.temp_dir / f"error_correct_1{config.file_name}.fq.gz"
     try:
         params = config.step_params["error_correct_1"]
-        bbmerge(
-            in_file=str(input_file),
+        bb_stdout, bb_stderr = bbmerge(
+            in_file=str(input_file), capture_output=True,
             out=str(output_file),
             **params,
             Xmx=config.memory["giga"],
@@ -1051,6 +1030,8 @@ def error_correct_1(
             overwrite="t",
             interleaved="t",
         )
+        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+
         output_tracker.add_file(
             str(output_file),
             "error_correct_phase_1",
@@ -1076,8 +1057,8 @@ def error_correct_2(
     output_file = config.temp_dir / f"error_correct_2{config.file_name}.fq.gz"
     try:
         params = config.step_params["error_correct_2"]
-        clumpify(
-            in_file=str(input_file),
+        bb_stdout, bb_stderr = clumpify(
+            in_file=str(input_file), capture_output=True,
             out=str(output_file),
             **params,
             Xmx=config.memory["giga"],
@@ -1085,6 +1066,8 @@ def error_correct_2(
             overwrite="t",
             interleaved="t",
         )
+        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+
         output_tracker.add_file(
             str(output_file),
             "error_correct_phase_2",
@@ -1111,8 +1094,8 @@ def merge_reads(
     unmerged_file = config.temp_dir / f"unmerged_{config.file_name}.fq.gz"
     try:
         params = config.step_params["merge_reads"]
-        bbmerge(
-            in_file=str(input_file),
+        bb_stdout, bb_stderr = bbmerge(
+            in_file=str(input_file), capture_output=True,
             out=str(output_file),
             outu=str(unmerged_file),
             **params,
@@ -1125,6 +1108,8 @@ def merge_reads(
             / f"out_adapter_merged_{config.file_name}.txt",
             strict="true",
         )
+        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+
         output_tracker.add_file(
             str(output_file),
             "merge_reads",
@@ -1160,8 +1145,8 @@ def quality_trim_unmerged(
     output_file = config.temp_dir / f"qtrimmed_{config.file_name}.fq.gz"
     try:
         params = config.step_params["quality_trim_unmerged"]
-        bbduk(
-            in_file=str(input_file),
+        bb_stdout, bb_stderr = bbduk(
+            in_file=str(input_file), capture_output=True,
             out=str(output_file),
             **params,
             Xmx=config.memory["giga"],
@@ -1169,6 +1154,8 @@ def quality_trim_unmerged(
             overwrite="t",
             interleaved="t",
         )
+        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+
         output_tracker.add_file(
             str(output_file),
             "quality_trim_unmerged",

@@ -1,13 +1,19 @@
 import os
 from pathlib import Path
+from re import S
 from typing import List, Union
 
 import requests
 from rich.console import Console
 
 console = Console(width=150)
-
-
+global REMIND_CITATIONS
+REMIND_CITATIONS = os.environ.get("ROLYPOLY_REMIND_CITATIONS", False)
+if REMIND_CITATIONS == "False":
+    REMIND_CITATIONS = False
+elif REMIND_CITATIONS == "True":
+    REMIND_CITATIONS = True
+    
 def load_citations():
     """Load citation information from the configured citation file"""
     import json
@@ -153,7 +159,9 @@ def remind_citations(
             Text("No citations found for the provided tools.", style="red")
         )
         return
-    else:
+
+
+    if REMIND_CITATIONS: # controls printing to console
         console.print(
             Text(
                 f"rolypoly used {tools} in your analysis, please cite the following software or database:",
@@ -161,18 +169,15 @@ def remind_citations(
             )
         )
         display_citations(citations)
-    REMIND_CITATION = os.environ.get("ROLYPOLY_REMIND_CITATION", "False").lower() == "true"
-    if not REMIND_CITATION:
-        return
-    console.print(
-        Text(
-            "\nRemember to also cite any additional databases or tools you used that are not listed here. No one is charging you extra for having a lot of citations, and it is important for reproducibility, yah silly.",
-            style="italic yellow",
+        console.print(
+            Text(
+                "\nRemember to also cite any additional databases or tools you used that are not listed here. No one is charging you extra for having a lot of citations, and it is important for reproducibility, yah silly.",
+                style="italic yellow",
+            )
         )
-    )
 
-    if return_as_text or return_bibtex:
-        text = "RolyPoly used the following software and databases in your analysis, please cite the following software or database:\n"
+    if return_as_text or return_bibtex: # controls function return value
+        text = ""
         for name, doi in citations:
             citation = get_citation_from_doi(doi, return_bibtex=return_bibtex)
             text += f"{name}:\n{citation}\n\n"

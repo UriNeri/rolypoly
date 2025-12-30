@@ -89,9 +89,10 @@ def setup_logging(
     # Create an empty log file if it doesn't exist
     if not log_file.exists():
         # print(f"Creating log file: {log_file}")
-        from os import  devnull
-        # touch(log_file)
-        log_file = devnull
+        # from os import  devnull
+        
+        Path.touch(log_file)
+        # log_file = devnull
         # subprocess.call(f"echo ' ' > {log_file}", shell=True)
 
     # Create logger (root)
@@ -127,9 +128,9 @@ def setup_logging(
     file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(log_level)
     file_formatter = logging.Formatter(
-        "%(asctime)s --- %(levelname)s --- %(message)s",
+        "%(asctime)s --- %(levelname)s --- %(message)s --- %(filename)s:%(lineno)d ",
         datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    )    
     file_handler.setFormatter(file_formatter)
     logger.addHandler(file_handler)
 
@@ -182,8 +183,6 @@ def get_logger(logger: Optional[logging.Logger] = None) -> logging.Logger:
     return logging.getLogger(caller_name)
 
 
-
-
 def _resolve_datadir() -> Path:
     """Resolve ROLYPOLY data directory at runtime.
 
@@ -222,5 +221,5 @@ def _resolve_datadir() -> Path:
     if candidate.exists():
         return candidate
 
-    # final fallback to cwd
-    return Path.cwd()
+    # final fallback to cwd --- Probably in ipython / creating a data release?
+    return Path.cwd() 
