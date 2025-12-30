@@ -45,7 +45,7 @@ global data_dir, taxid_lookup_path
 data_dir = Path(
     os.environ.get("ROLYPOLY_DATA", "")
 )
-taxid_lookup_path = data_dir / "contam/rrna/taxid_to_ftp_lookup.parquet"
+taxid_lookup_path = data_dir / "contam/rrna/rrna_to_genome_mapping.parquet"
 
 def get_ftp_path_for_taxid(
     taxid: int, 
@@ -92,23 +92,22 @@ def download_from_ftp_path(
     prefer_transcript: bool = True,
     overwrite: bool = False,
     logger=None
-) -> Optional[Path]:
+) -> Tuple[Optional[Path], Optional[int]]:
     """Download sequence files from an NCBI FTP path.
     
     Args:
         ftp_path: Base FTP path (e.g., https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/...)
         output_dir: Directory to save downloaded files
-        _cds_from_genomic.fna.gz
         prefer_transcript: If True, try to download *_cds_from_genomic.fna.gz first
         overwrite: If True, re-download even if file exists
         
     Returns:
-        Path to the downloaded file, or None if download failed
+        Tuple of (Path to the downloaded file, file size in bytes) or (None, None) if download failed
     """
     logger = get_logger(logger)
     
     if not ftp_path:
-        return None
+        return None, None
     
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -135,17 +134,16 @@ def download_from_ftp_path(
         
         # Check if file already exists
         if output_file.exists() and not overwrite:
-            logger.info(f"File already exists: {output_file}")
-            return output_file
+            file_size = output_file.stat().st_size
+            return output_file, file_size
         
         try:
-            logger.info(f"Downloading: {url}")
             urlretrieve(url, output_file)
             
             # Verify the download (basic check)
             if output_file.exists() and output_file.stat().st_size > 0:
-                logger.info(f"Successfully downloaded: {output_file}")
-                return output_file
+                file_size = output_file.stat().st_size
+                return output_file, file_size
             else:
                 logger.warning(f"Downloaded file is empty, trying next option")
                 output_file.unlink(missing_ok=True)
@@ -156,7 +154,7 @@ def download_from_ftp_path(
             continue
     
     logger.error(f"No files could be downloaded from: {ftp_path}")
-    return None
+    return None, None
 
 
 def fetch_genomes_by_taxid(
@@ -200,30 +198,31 @@ def fetch_genomes_by_taxid(
     temp_path.mkdir(parents=True, exist_ok=True)
     
     # Load mapping
-    logger.debug(f"Loading mapping from: {taxid_lookup_path}")
+    logger.info(f"Loading mapping from: {taxid_lookup_path}")
     mapping_df = pl.read_parquet(taxid_lookup_path)
     
     subdf = mapping_df.filter(pl.col("query_tax_id").is_in(list(taxids)))
     avail_taxids = subdf.select("query_tax_id").unique().to_series().to_list()
     unmapped_names = list(set(taxids) - set(avail_taxids))
-    logger.warning(f"Rolypoly pre-generated mapping missing for {len(unmapped_names)} taxids")
-    logger.warning(f"Examples: {unmapped_names[:5]}")
+    if unmapped_names:
+        logger.warning(f"Rolypoly pre-generated mapping missing for {len(unmapped_names)} taxids")
+        logger.warning(f"Examples: {unmapped_names[:5]}")
     
     # Track downloaded files
     downloaded_files: List[Path] = []
     unmapped_taxids: List[int] = []
+    download_info: List[Tuple[int, Path, Optional[str], Optional[str], Optional[int]]] = []
     
     # Worker function for parallel processing
-    def process_taxid(taxid: int, progress: Optional[Progress] = None, task: Optional[TaskID] = None) -> Tuple[int, Optional[Path], Optional[str], Optional[str]]:
-        """Process a single taxid and return (taxid, downloaded_path, relationship, reference_name)."""
+    def process_taxid(taxid: int) -> Tuple[int, Optional[Path], Optional[str], Optional[str], Optional[int]]:
+        """Process a single taxid and return (taxid, downloaded_path, relationship, reference_name, file_size)."""
         ftp_path, relationship, reference_name = get_ftp_path_for_taxid(taxid, mapping_df, get_relative_for_missing)
         
         if ftp_path is None:
-            if progress and task is not None:
-                progress.update(task, advance=1)
-            return (taxid, None, None, None)
+            return (taxid, None, None, None, None)
         
-        downloaded = download_from_ftp_path(
+        # logger.debug(f"Downloading from FTP path: {ftp_path}")
+        downloaded, file_size = download_from_ftp_path(
             ftp_path=ftp_path,
             output_dir=temp_path,
             prefer_transcript=prefer_transcript,
@@ -231,17 +230,13 @@ def fetch_genomes_by_taxid(
             logger=logger
         )
         
-        if progress and task is not None:
-            progress.update(task, advance=1)
-        
-        return (taxid, downloaded, relationship, reference_name)
+        return (taxid, downloaded, relationship, reference_name, file_size)
     
-    # Process each taxid
+    # Process all taxids
     logger.info(f"Fetching sequences for {len(taxids)} taxids using {threads} thread(s)...")
     
     # Create progress bar
     with Progress(
-        SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
         TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
@@ -250,44 +245,49 @@ def fetch_genomes_by_taxid(
     ) as progress:
         task = progress.add_task("[cyan]Downloading genomes...", total=len(taxids))
         
-        if threads > 1:
+        if threads > 0:
             # Parallel processing
             with ThreadPoolExecutor(max_workers=threads) as executor:
-                futures = {executor.submit(process_taxid, taxid, progress, task): taxid for taxid in taxids}
+                futures = {executor.submit(process_taxid, taxid): taxid for taxid in taxids}
+                logger.debug(f"Submitted {len(futures)} download tasks")
                 
                 for future in as_completed(futures):
                     taxid = futures[future]
                     try:
-                        result_taxid, downloaded, relationship, reference_name = future.result()
+                        result_taxid, downloaded, relationship, reference_name, file_size = future.result()
+                        progress.update(task, advance=1)
                         
                         if downloaded is None:
                             unmapped_taxids.append(result_taxid)
-                            logger.warning(f"No mapping found for taxid: {result_taxid}")
                         else:
                             downloaded_files.append(downloaded)
-                            if relationship != "self":
-                                logger.info(f"Taxid {result_taxid} - no direct data, using {relationship} reference")
+                            download_info.append((result_taxid, downloaded, relationship, reference_name, file_size))
                             
                     except Exception as e:
                         logger.error(f"Error processing taxid {taxid}: {e}")
                         unmapped_taxids.append(taxid)
                         progress.update(task, advance=1)
-        else:
-            # Sequential processing
-            for taxid in taxids:
-                result_taxid, downloaded, relationship, reference_name = process_taxid(taxid, progress, task)
+            # # Sequential processing
+            # for taxid in taxids:
+            #     result_taxid, downloaded, relationship, reference_name, file_size = process_taxid(taxid)
+            #     progress.update(task, advance=1)
                 
-                if downloaded is None:
-                    unmapped_taxids.append(result_taxid)
-                    logger.warning(f"No mapping found for taxid: {result_taxid}")
-                else:
-                    downloaded_files.append(downloaded)
-                    if relationship != "self":
-                        logger.info(f"Taxid {result_taxid} - no direct data, using {relationship} reference")
+            #     if downloaded is None:
+            #         unmapped_taxids.append(result_taxid)
+            #     else:
+            #         downloaded_files.append(downloaded)
+            #         download_info.append((result_taxid, downloaded, relationship, reference_name, file_size))
+    
     # Report statistics
     logger.info(f"Downloaded {len(downloaded_files)} genome files")
+    for taxid, path, rel, ref, size in download_info:
+        size_mb = size / (1024 * 1024) if size else 0
+        if rel != "self":
+            logger.info(f"Taxid {taxid} - downloaded {path.name} ({size_mb:.1f} MB) using {rel} reference")
+        else:
+            logger.info(f"Taxid {taxid} - downloaded {path.name} ({size_mb:.1f} MB)")
     if unmapped_taxids:
-        logger.warning(f"Could not map {len(unmapped_taxids)} taxids")
+        logger.warning(f"Could not map {len(unmapped_taxids)} taxids: {unmapped_taxids}")
     
     if not downloaded_files:
         logger.error("No genome files were downloaded. Exiting.")
@@ -380,7 +380,7 @@ def fetch_genomes_from_stats_file(
         **kwargs: Additional arguments passed to fetch_genomes_by_taxid
     """
     if logger is None:
-        logger = get_logger(logger)
+        logger = get_logger()
     
     # Parse the stats file to extract taxon IDs
     logger.info(f"Parsing stats file: {stats_file}")
@@ -431,17 +431,19 @@ def fetch_genomes_from_stats_file(
         else:
             # No entry in mapping
             unavailable_taxons.append((taxon, "<unknown>", None))
-    
+    unavailable_taxons = list(set(unavailable_taxons))  # Remove duplicates
+    available_taxons = list(set(available_taxons))  # Remove duplicates
     logger.info(f"Taxons with available data: {len(available_taxons)}")
     logger.info(f"Taxons without available data: {len(unavailable_taxons)}")
     
+    
     if unavailable_taxons:
         logger.warning("Unavailable taxons:")
-        for taxid, name, relationship in unavailable_taxons[:10]:  # Show first 10
+        for taxid, name, relationship in unavailable_taxons[:5]:  # Show first 5
             status = f"using {relationship}" if relationship else "not found"
             logger.warning(f"  - {taxid} ({name}): {status}")
-        if len(unavailable_taxons) > 10:
-            logger.warning(f"  ... and {len(unavailable_taxons) - 10} more")
+        if len(unavailable_taxons) > 5:
+            logger.warning(f"  ... and {len(unavailable_taxons) - 5} more")
     
     # Take up to max_genomes from available taxons
     taxons_to_fetch = available_taxons[:max_genomes]

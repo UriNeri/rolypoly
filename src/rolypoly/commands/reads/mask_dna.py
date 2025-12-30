@@ -26,7 +26,7 @@ datadir = Path(
     help="Attempt to kcompress.sh the masked file",
 )
 @click.option("-i", "--input", required=True, help="Input fasta file")
-@click.option("-a", "--aligner", required=False,default="mmseqs2", help="Which tool to use for identifying shared sequence (minimap2, mmseqs2, diamond, bowtie1, bbmap)")
+@click.option("-a", "--aligner", required=False,default="bbmap", help="Which tool to use for identifying shared sequence (minimap2, mmseqs2, diamond, bowtie1, bbmap)")
 @click.option(
     "-mlc","--mask-low-complexity",
     is_flag=True,
@@ -199,6 +199,7 @@ def mask_dna(
             input_table=f"{tmpdir}/tmp_mapped.tsv",
             output_fasta=f"{tmpdir}/tmp_masked.fasta")
         # TODO: Check if diamond blastx reports qstrand needs to be adjusted based on frame? 
+        # TODO: Maybe drop the entry query contig if qcov > 80%  (would require adding qcov to the output table)
     elif aligner == "bbmap":
         logger.info("Using bbmap.sh")
         from bbmapy import bbmap

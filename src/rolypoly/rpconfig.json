@@ -1,5 +1,5 @@
 {
     "ROLYPOLY_DATA": "<REPO_PATH>/data/",
     "ROLYPOLY_TEST_DIR": "/REDACTED_HPC_PATH/tests/rp_tests/",
-    "ROLYPOLY_REMIND_CITATION": "False"
+    "ROLYPOLY_REMIND_CITATIONS": "False"
 }
