@@ -1271,3 +1271,8 @@ def cleanup_and_move_files(
         )
         shutil.rmtree(run_info_dir)
         # breakpoint()
+
+
+# TODO: Add option to save specific intermediate files, like the host/rRNA mapped fastqs.
+# TODO: Figure out how to handle --skip-existing + --overwrite (on by default) and --keep-tmp together and --tmp-dir no being provided (maybe look for the most recent temp dir looking folder?)
+# TODO: add unit tests

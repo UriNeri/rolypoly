@@ -198,7 +198,7 @@ def fetch_genomes_by_taxid(
     temp_path.mkdir(parents=True, exist_ok=True)
     
     # Load mapping
-    logger.info(f"Loading mapping from: {taxid_lookup_path}")
+    logger.debug(f"Loading mapping from: {taxid_lookup_path}")
     mapping_df = pl.read_parquet(taxid_lookup_path)
     
     subdf = mapping_df.filter(pl.col("query_tax_id").is_in(list(taxids)))

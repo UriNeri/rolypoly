@@ -26,7 +26,7 @@ datadir = Path(
     help="Attempt to kcompress.sh the masked file",
 )
 @click.option("-i", "--input", required=True, help="Input fasta file")
-@click.option("-a", "--aligner", required=False,default="bbmap", help="Which tool to use for identifying shared sequence (minimap2, mmseqs2, diamond, bowtie1, bbmap)")
+@click.option("-a", "--aligner", required=False,default="mmseqs2", help="Which tool to use for identifying shared sequence (minimap2, mmseqs2, diamond, bowtie1, bbmap)")
 @click.option(
     "-mlc","--mask-low-complexity",
     is_flag=True,
