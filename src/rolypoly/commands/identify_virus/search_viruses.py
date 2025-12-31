@@ -133,8 +133,9 @@ def virus_mapping(
         )  # Ensure the path is updated correctly after creation
 
     DB_PATHS = {
-        "NCBI_Ribovirus": datadir / "NCBI_ribovirus/mmdb/refseq_ribovirus",
-        "RVMT": datadir / "RVMT/mmdb/RVMT_mmseqs_db2",
+        "NCBI_Ribovirus": datadir
+        / "reference_seqs/ncbi_ribovirus/mmseqs/ncbi_ribovirus_cleaned",
+        "RVMT": datadir / "reference_seqs/RVMT/mmseqs/RVMT_cleaned",
     }
 
     # Determine the databases to use
@@ -226,6 +227,7 @@ def virus_mapping(
     if logger.log_level != "DEBUG":
         with open(f"{log_file}", "a") as f_out:
             f_out.write(remind_citations(tools, return_bibtex=True) or "")
+
 
 if __name__ == "__main__":
     virus_mapping()

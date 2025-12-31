@@ -137,7 +137,6 @@ def shrink_reads(
             )
             logger.info(f"Written shrinked reads to {output_file}")
 
-
         logger.info("Finished read processing")
         logger.info(f"Output: {output_dir}")
 

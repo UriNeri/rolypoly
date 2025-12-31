@@ -2,6 +2,7 @@ import datetime
 from glob import glob
 import json
 import logging
+from multiprocessing.spawn import prepare
 import os
 import shutil
 import subprocess
@@ -116,10 +117,12 @@ def build_data(data_dir, threads, log_file):
 
     # RVMT profiles
     prepare_RVMT_profiles(data_dir, threads, logger)
-    
 
     # RVMT MMseqs database
     prepare_rvmt_mmseqs(data_dir, threads, logger)
+
+    # neordrp2.1 profiles
+    prepare_neordrp_profiles(data_dir, threads, logger)
 
     # NCBI ribovirus refseq
     prepare_ncbi_ribovirus(data_dir, threads, logger)
@@ -130,6 +133,9 @@ def build_data(data_dir, threads, log_file):
     # RVMT motifs
     prepare_rvmt_motifs(data_dir, threads, logger)
 
+    # UniRef50 viral
+    prepare_uniref50_viral(data_dir, threads, logger)
+    
     # contaminations
     prepare_contamination_seqs(data_dir, threads, logger)
     
@@ -355,7 +361,6 @@ def tar_everything_and_upload_to_NERSC(data_dir, version=""):
         tools.append("mmseqs")
         tools.append("hmmer")
         tools.append("pyhmmer")
-        tools.append("datasets")
         tools.append("eutils")
         tools.append("silva")
         tools.append("Rfam")
@@ -367,15 +372,341 @@ def tar_everything_and_upload_to_NERSC(data_dir, version=""):
         tools.append("refseq")
         f_out.write(remind_citations(tools, return_as_text=True) or "")
 
+    
     tar_command = f"tar --use-compress-program='pigz -p 8 --best' -cf rpdb.tar.gz {data_dir}"  # threads
 
     subprocess.run(tar_command, shell=True)
+    
+    #check which .py files use files/stuff from datadir/data_dir
+    # sp.run(f"find src/rolypoly -name '*.py' -exec grep  data_dir|datadir \;", shell=True)
 
     # # On NERSC
-    # scp uneri@xfer.jgi.lbl.gov:/clusterfs/jgi/scratch/science/metagen/neri/projects/data2/data.tar.gz /global/dna/projectdirs/microbial/prokpubs/www/rolypoly/data/
+    # scp uneri@xfer.jgi.lbl.gov:/clusterfs/jgi/scratch/science/metagen/neri/code/rolypoly/data/rolypoly_data_slim_20251230.tar.gz /global/dna/projectdirs/microbial/prokpubs/www/rolypoly/data/data.tar.gz
     # chmod +777 -R /global/dna/projectdirs/microbial/prokpubs/www/rolypoly/data/
     # upload_command = f"gsutil cp {data_dir}.tar.gz gs://rolypoly-data/"
     # subprocess.run(upload_command, shell=True)
+
+def analyze_data_dependencies(src_dir="src/rolypoly", data_dir=None):
+    """Analyze Python files to determine required data paths for a slim tar.gz.
+
+    Scans all .py files in the source directory for references to data_dir, datadir, or ROLYPOLY_DATA,
+    extracts the data paths they use, and returns a set of required data files/directories.
+
+    Also scans for exact filenames from the data directory that appear in the code.
+
+    Args:
+        src_dir (str): Source directory to scan for Python files
+        data_dir (str): Data directory to scan for existing files
+
+    Returns:
+        set: Set of required data paths relative to data_dir
+    """
+    import re
+    import os
+    from pathlib import Path
+
+    required_paths = set()
+
+    # Get all files in data directory if provided
+    data_files = set()
+    if data_dir and os.path.exists(data_dir):
+        for root, dirs, files in os.walk(data_dir):
+            for file in files:
+                full_path = os.path.join(root, file)
+                rel_path = os.path.relpath(full_path, data_dir)
+                data_files.add(rel_path)
+                data_files.add(file)  # Also add just the filename for direct matches
+
+    # Find all Python files that reference data_dir, datadir, or ROLYPOLY_DATA
+    result = subprocess.run(
+        f"find {src_dir} -name '*.py' -exec grep -l 'data_dir\\|datadir\\|ROLYPOLY_DATA' {{}} \\;",
+        shell=True,
+        capture_output=True,
+        text=True
+    )
+    py_files = result.stdout.strip().split('\n') if result.stdout.strip() else []
+
+    # Also find Python files that contain any of the data filenames
+    if data_files:
+        filename_pattern = '|'.join(re.escape(f) for f in data_files if f)
+        if filename_pattern:
+            result2 = subprocess.run(
+                f"find {src_dir} -name '*.py' -exec grep -l '{filename_pattern}' {{}} \\;",
+                shell=True,
+                capture_output=True,
+                text=True
+            )
+            py_files.extend(result2.stdout.strip().split('\n') if result2.stdout.strip() else [])
+
+    # Remove duplicates and empty strings
+    py_files = list(set(py_files))
+    py_files = [f for f in py_files if f]
+
+    for py_file in py_files:
+        if not py_file or 'build_data.py' in py_file:
+            continue
+        with open(py_file, 'r') as f:
+            content = f.read()
+
+        # Find patterns like data_dir / "path" or Path(data_dir) / "path"
+        # Also os.path.join(data_dir, "path")
+        # And data_dir + "/path"
+        # And similar for ROLYPOLY_DATA environment variables
+
+        # Pattern 1: data_dir / "path" or data_dir / 'path'
+        path_pattern1 = r'data_dir\s*/\s*["\']([^"\']+)["\']'
+        matches1 = re.findall(path_pattern1, content)
+        print(f"Pattern 1 matches in {py_file}: {matches1}")
+        for match in matches1:
+            required_paths.add(match)
+
+        # Pattern 2: os.path.join(data_dir, "path", ...)
+        join_pattern = r'os\.path\.join\(\s*data_dir\s*,\s*["\']([^"\']+)["\'](?:\s*,\s*["\']([^"\']+)["\'])*'
+        matches2 = re.findall(join_pattern, content)
+        print(f"Pattern 2 matches in {py_file}: {matches2}")
+        for match in matches2:
+            # match is a tuple of path components
+            path = os.path.join(*[m for m in match if m])
+            required_paths.add(path)
+
+        # Pattern 3: data_dir + "/path"
+        plus_pattern = r'data_dir\s*\+\s*["\']([^"\']+)["\']'
+        matches3 = re.findall(plus_pattern, content)
+        print(f"Pattern 3 matches in {py_file}: {matches3}")
+        for match in matches3:
+            # Remove leading / if present
+            path = match.lstrip('/')
+            required_paths.add(path)
+
+        # Pattern 4: Path(data_dir) / "path"
+        path_pattern2 = r'Path\(\s*data_dir\s*\)\s*/\s*["\']([^"\']+)["\']'
+        matches4 = re.findall(path_pattern2, content)
+        print(f"Pattern 4 matches in {py_file}: {matches4}")
+        for match in matches4:
+            required_paths.add(match)
+
+        # Pattern 5: datadir / "path" (for cases where datadir is used)
+        datadir_pattern = r'datadir\s*/\s*["\']([^"\']+)["\']'
+        matches5 = re.findall(datadir_pattern, content)
+        print(f"Pattern 5 matches in {py_file}: {matches5}")
+        for match in matches5:
+            required_paths.add(match)
+
+        # Pattern 6: os.path.join(os.environ.get("ROLYPOLY_DATA", ""), "path", ...)
+        rolypoly_join_pattern = r'os\.path\.join\(\s*os\.environ\.get\(\s*["\']ROLYPOLY_DATA["\']\s*,\s*["\'][^"\']*["\']\s*\)\s*,\s*["\']([^"\']+)["\'](?:\s*,\s*["\']([^"\']+)["\'])*'
+        matches6 = re.findall(rolypoly_join_pattern, content)
+        print(f"Pattern 6 matches in {py_file}: {matches6}")
+        for match in matches6:
+            # match is a tuple of path components
+            path = os.path.join(*[m for m in match if m])
+            required_paths.add(path)
+
+        # Pattern 7: Path(os.environ.get("ROLYPOLY_DATA", "")) / "path"
+        rolypoly_path_pattern = r'Path\(\s*os\.environ\.get\(\s*["\']ROLYPOLY_DATA["\']\s*,\s*["\'][^"\']*["\']\s*\)\s*\)\s*/\s*["\']([^"\']+)["\']'
+        matches7 = re.findall(rolypoly_path_pattern, content)
+        print(f"Pattern 7 matches in {py_file}: {matches7}")
+        for match in matches7:
+            required_paths.add(match)
+
+        # Pattern 7b: Path(os.environ.get("ROLYPOLY_DATA", ""), "path") - multiple args to Path
+        rolypoly_path_multi_pattern = r'Path\(os\.environ\.get\(\"ROLYPOLY_DATA\",\s*\"\"\),\s*\"([^\"]+)\"'
+        matches7b = re.findall(rolypoly_path_multi_pattern, content)
+        print(f"Pattern 7b matches in {py_file}: {matches7b}")
+        for match in matches7b:
+            required_paths.add(match)
+
+        # Pattern 7c: os.path.join(Path(os.environ.get("ROLYPOLY_DATA", "")), "path")
+        rolypoly_join_path_pattern = r'os\.path\.join\(\s*Path\(os\.environ\.get\(\"ROLYPOLY_DATA\",\s*\"\"\)\),\s*\"([^\"]+)\"'
+        matches7c = re.findall(rolypoly_join_path_pattern, content)
+        print(f"Pattern 7c matches in {py_file}: {matches7c}")
+        for match in matches7c:
+            required_paths.add(match)
+
+        # Pattern 8: os.path.join(os.environ.get("ROLYPOLY_DATA_DIR", ""), "path", ...)
+        rolypoly_dir_join_pattern = r'os\.path\.join\(\s*os\.environ\.get\(\s*["\']ROLYPOLY_DATA_DIR["\']\s*,\s*["\'][^"\']*["\']\s*\)\s*,\s*["\']([^"\']+)["\'](?:\s*,\s*["\']([^"\']+)["\'])*'
+        matches8 = re.findall(rolypoly_dir_join_pattern, content)
+        print(f"Pattern 8 matches in {py_file}: {matches8}")
+        for match in matches8:
+            # match is a tuple of path components
+            path = os.path.join(*[m for m in match if m])
+            required_paths.add(path)
+
+        # Pattern 9: Path(os.environ["ROLYPOLY_DATA"]) / "path" (when using os.environ["ROLYPOLY_DATA"])
+        rolypoly_env_path_pattern = r'Path\(\s*os\.environ\[\s*["\']ROLYPOLY_DATA["\']\s*\]\s*\)\s*/\s*["\']([^"\']+)["\']'
+        matches9 = re.findall(rolypoly_env_path_pattern, content)
+        print(f"Pattern 9 matches in {py_file}: {matches9}")
+        for match in matches9:
+            required_paths.add(match)
+
+        # Pattern 10: Direct filename matches from data directory
+        if data_files:
+            for data_file in data_files:
+                if data_file in content and '/' in data_file:  # Only add if it's a full path
+                    required_paths.add(data_file)
+
+    # Clean up paths (remove any empty or invalid)
+    required_paths = {p for p in required_paths if p and not p.startswith('/')}
+
+    # Get all existing paths in data_dir
+    all_paths = set()
+    for root, dirs, files in os.walk(data_dir):
+        rel_root = os.path.relpath(root, data_dir)
+        if rel_root != '.':
+            all_paths.add(rel_root)
+        for d in dirs:
+            all_paths.add(os.path.relpath(os.path.join(root, d), data_dir))
+        for f in files:
+            all_paths.add(os.path.relpath(os.path.join(root, f), data_dir))
+
+    # Filter required_paths to actual existing paths that contain the required string
+    filtered_paths = set()
+    for req in required_paths:
+        matching = [p for p in all_paths if req in p]
+        filtered_paths.update(matching)
+
+    return filtered_paths
+
+
+def create_slim_tarball(data_dir, required_paths, version=datetime.datetime.now().strftime("%Y%m%d")):
+    """Create a slim tarball containing only the required data paths.
+
+    Args:
+        data_dir (str): Base data directory
+        required_paths (set): Set of required relative paths
+        version (str): Version string for the archive name
+    """
+    import tempfile
+    import subprocess
+
+    # Deduplicate paths: remove subpaths if parent directory is included
+    def deduplicate_paths(paths):
+        sorted_paths = sorted(paths)
+        deduped = []
+        for path in sorted_paths:
+            # Check if this path is a subpath of any already added path
+            is_subpath = False
+            for added in deduped:
+                if path.startswith(added + os.sep) or path == added:
+                    is_subpath = True
+                    break
+            if not is_subpath:
+                deduped.append(path)
+        return deduped
+
+    required_paths.append('README.md')  # always include README
+    required_paths = [
+        'README.md',
+        'contam/adapters/AFire_illuminatetritis1223.fa',
+        'contam/adapters/bbmap_adapters.fa',
+        'contam/masking/combined_deduplicated_orfs.faa',
+        'contam/masking/combined_entropy_masked.fasta',
+        'contam/rrna/ncbi_rRNA_all_sequences_masked_entropy.fasta',
+        'contam/rrna/rrna_to_genome_mapping.parquet',
+        'contam/rrna/silva_rRNA_all_sequences_masked_entropy.fasta',
+        'profiles/genomad_rna_viral_markers_with_annotation.csv',
+        'profiles/motif_metadata.json',
+        'profiles/NVPC_descriptions.csv',
+        'profiles/vfam.annotations.tsv',
+        'profiles/cm/Rfam.cm',
+        'profiles/hmmdbs/genomad_rna_viral_markers.hmm',
+        'profiles/hmmdbs/neordrp2.1.hmm',
+        'profiles/hmmdbs/nvpc.hmm',
+        'profiles/hmmdbs/pfam_rdrps_and_rts.hmm',
+        'profiles/hmmdbs/Pfam-A.hmm',
+        'profiles/hmmdbs/rdrp_scan.hmm',
+        'profiles/hmmdbs/rvmt_motifs.hmm',
+        'profiles/hmmdbs/rvmt.hmm',
+        'profiles/hmmdbs/vfam.hmm',
+        'profiles/mmseqs_dbs/genomad',
+        'profiles/mmseqs_dbs/nvpc',
+        'profiles/mmseqs_dbs/rdrp_scan',
+        'profiles/mmseqs_dbs/RVMT',
+        'profiles/mmseqs_dbs/rvmt_motifs',
+        'profiles/mmseqs_dbs/vfam',
+        'reference_seqs/mito_refseq/combined_mito_refseq.fasta',
+        'reference_seqs/ncbi_ribovirus/mmseqs',
+        'reference_seqs/ncbi_ribovirus/refseq_ribovirus_genomes_orfs.faa',
+        'reference_seqs/ncbi_ribovirus/refseq_ribovirus_genomes.fasta',
+        'reference_seqs/plastid_refseq/combined_plastid_refseq.fasta',
+        'reference_seqs/RVMT/mmseqs',
+        'reference_seqs/RVMT/RVMT_cleaned_contigs.fasta',
+        'reference_seqs/RVMT/RVMT_cleaned_orfs.faa',
+        'reference_seqs/uniref/uniref50_viral.tsv',
+        'reference_seqs/uniref/uniref50_viral.fasta'
+    ]
+    required_paths = deduplicate_paths(required_paths)
+
+    tarball_name = f"rolypoly_data_slim_{version}.tar.gz"
+    
+    print(f"Creating slim tarball: {tarball_name}")
+    print(f"Required paths: {sorted(required_paths)}")
+
+    # Create a temporary file with the list of paths
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+        for rel_path in required_paths:
+            full_path = os.path.join(data_dir, rel_path)
+            if os.path.exists(full_path):
+                f.write(rel_path + '\n')
+            else:
+                print(f"Warning: {rel_path} does not exist, skipping")
+        listfile = f.name
+
+    try:
+        # Use tar with pigz for faster compression
+        tar_command = f"tar --use-compress-program='pigz -p 18 --best' -cf {tarball_name} -C {data_dir} -T {listfile}"
+        subprocess.run(tar_command, shell=True, check=True)
+        print(f"Slim tarball created: {tarball_name}")
+    except subprocess.CalledProcessError as e:
+        print(f"Error creating tarball: {e}")
+    finally:
+        # Clean up temporary file
+        os.unlink(listfile)
+
+    return tarball_name
+
+
+def prepare_uniref50_viral(data_dir, threads, logger):
+    """Download and prepare UniRef50 viral protein sequences."""
+    logger.info("Downloading UniRef50 viral protein sequences")
+    os.makedirs(os.path.join(
+        data_dir, "reference_seqs/uniref"), exist_ok=True)
+    uniref50_viral_fasta = os.path.join(
+        data_dir, "reference_seqs/uniref/uniref50_viral.fasta")
+    fetch_and_extract(
+        "https://rest.uniprot.org/uniref/stream?compressed=true&format=fasta&query=%28%28identity%3A0.5%29+AND+%28taxonomy_id%3A10239%29+AND+%28count%3A%5B1+TO+192133%5D%29%29",
+        fetched_to=uniref50_viral_fasta + ".gz",
+        extract_to=os.path.dirname(uniref50_viral_fasta),
+        expected_file=os.path.basename(uniref50_viral_fasta),
+        logger=logger,
+        debug=True,
+    )
+    uniref50_viral_data = os.path.join(
+        data_dir, "reference_seqs/uniref/uniref50_viral.tsv")
+    fetch_and_extract(
+        "https://rest.uniprot.org/uniref/stream?compressed=true&fields=id%2Cname%2Ctypes%2Ccount%2Corganism%2Clength%2Cidentity%2Cmembers&format=tsv&query=%28%28identity%3A0.5%29+AND+%28taxonomy_id%3A10239%29+AND+%28count%3A%5B1+TO+192133%5D%29%29",
+        fetched_to=uniref50_viral_data+ ".gz",
+        extract_to=os.path.dirname(uniref50_viral_fasta),
+        extract=True,
+        logger=logger,
+        debug=True,
+    )
+    # why the hell is it still compressed??? 2 times gzipped???
+    from rolypoly.utils.various import extract
+    extract(uniref50_viral_data+".gz", uniref50_viral_data)
+
+    # clean up temporary gz files
+    try:    
+        os.remove(uniref50_viral_fasta + ".gz")
+        os.remove(uniref50_viral_data + ".gz")
+    except FileNotFoundError:
+        logger.warning(
+            "some temporary files for UniRef50 viral preparation might not have been cleaned."
+        )
+
+    # https://rest.uniprot.org/uniref/stream?compressed=true&fields=id%2Cname%2Ctypes%2Ccount%2Corganism%2Clength%2Cidentity%2Cmembers&format=tsv&query=%28%28identity%3A0.5%29+AND+%28taxonomy_id%3A10239%29+AND+%28count%3A%5B1+TO+192133%5D%29%29
+
+    # https://rest.uniprot.org/uniref/stream?compressed=true&format=fasta&query=%28%28identity%3A0.5%29+AND+%28taxonomy_id%3A10239%29+AND+%28count%3A%5B1+TO+192133%5D%29%29
+
 
 
 def prepare_genomad_rna_viral_markers(
@@ -398,7 +729,6 @@ def prepare_genomad_rna_viral_markers(
     genomad_db_dir = os.path.join(genomad_dir, "genomad_db")
     genomad_markers_dir = os.path.join(genomad_db_dir, "markers")
     genomad_alignments_dir = os.path.join(genomad_markers_dir, "alignments")
-    genomad_mmseqs_dir = os.path.join(genomad_markers_dir, "mmseqs_dbs")  # noqa (F841)
     os.makedirs(genomad_dir, exist_ok=True)
     os.makedirs(genomad_db_dir, exist_ok=True)
     os.makedirs(genomad_markers_dir, exist_ok=True)
@@ -731,6 +1061,23 @@ def prepare_pfam_rdrps_rt(data_dir, threads, logger: logging.Logger):
         pass
 
     logger.debug("Finished preparing rdrp-scan databases")
+
+
+def prepare_neordrp_profiles (data_dir, threads, logger: logging.Logger):
+    """Prepare NeoRdRp v2.1 RdRp profile HMM database 
+    NOTE: this is a USING A PRECOMPUTED HMM, not building from MSA! MIGHT NOT BE COMPATIBLE WITH FUTURE VERSIONS OF HMMER!
+    """
+    logger.info("Preparing NeoRdRp v2.1 HMM database")
+    neordrp_url = "https://zenodo.org/records/10851672/files/NeoRdRp.2.1.hmm.xz?download=1"
+    neordrp_path = os.path.join(hmmdb_dir, "NeoRdRp.2.1.hmm.xz")
+    fetch_and_extract(
+        url=neordrp_url,
+        fetched_to=neordrp_path,
+        extract_to=hmmdb_dir,
+    )
+    shutil.move(os.path.join(hmmdb_dir, "NeoRdRp.2.1.hmm"), os.path.join(hmmdb_dir, "neordrp2.1.hmm"))
+    os.unlink(neordrp_path)
+
 
 
 def prepare_RVMT_profiles(data_dir, threads, logger: logging.Logger):
@@ -1767,7 +2114,6 @@ def prepare_contamination_seqs(data_dir, threads, logger):
         logger.warning(f"Could not remove intermediate files: {e}")
 
     logger.info(f"Masking sequences prepared in {masking_dir}")
-
 
 
 def prepare_trna_data(data_dir, logger):

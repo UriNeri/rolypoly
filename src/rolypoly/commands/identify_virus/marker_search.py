@@ -111,7 +111,7 @@ console = Console(width=150)
     type=str,
     default="NeoRdRp_v2.1,genomad",
     help="""comma separated list of databases to search against (or `all`), or path to a custom database. \n
-        options: NeoRdRp_v2.1, RdRp-scan, RVMT, TSA_2018, Pfam_A_37, genomad, all, \n
+        options: NeoRdRp_v2.1, RdRp-scan, RVMT, TSA_2018, Pfam_RTs_RdRp, genomad, all, \n
         For custom path, either an .hmm file, a directory with .hmm files, or a folder with MSA files (which would be used to build an HMM DB)""",
 )
 @option(
@@ -204,10 +204,10 @@ def marker_search(
     • RdRp-Scan \n
         GitHub: https://github.com/JustineCharon/RdRp-scan  |  Paper: https://doi.org/10.1093/ve/veac082 \n
             ⤷ (which IIRC incorporated PALMdb, GitHub: https://github.com/rcedgar/palmdb, Paper: https://doi.org/10.7717/peerj.14055 \n
-    • TSA_Olendraite (TSA_2018) \n
-        Data: https://drive.google.com/drive/folders/1liPyP9Qt_qh0Y2MBvBPZQS6Jrh9X0gyZ?usp=drive_link  |  Paper: https://doi.org/10.1093/molbev/msad060 \n
-        Thesis: https://www.repository.cam.ac.uk/items/1fabebd2-429b-45c9-b6eb-41d27d0a90c2
-    • Pfam_A_37 \n
+    # • TSA_Olendraite (TSA_2018) \n
+    #     Data: https://drive.google.com/drive/folders/1liPyP9Qt_qh0Y2MBvBPZQS6Jrh9X0gyZ?usp=drive_link  |  Paper: https://doi.org/10.1093/molbev/msad060 \n
+    #     Thesis: https://www.repository.cam.ac.uk/items/1fabebd2-429b-45c9-b6eb-41d27d0a90c2
+    • Pfam_RTs_RdRp \n
         RdRps and RT profiles from PFAM_A v.37 --- PF04197.17,PF04196.17,PF22212.1,PF22152.1,PF22260.1,PF05183.17,PF00680.25,PF00978.26,PF00998.28,PF02123.21,PF07925.16,PF00078.32,PF07727.19,PF13456.11
         Data: https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam37.0/Pfam-A.hmm.gz | Paper https://doi.org/10.1093/nar/gkaa913
     • geNomad \n
@@ -280,12 +280,12 @@ def marker_search(
     hmmdbdir = Path(os.environ["ROLYPOLY_DATA"]) / "hmmdbs"
 
     DB_PATHS = {
-        "NeoRdRp_v2.1".lower(): hmmdbdir / "neordrp/zenodo/NeoRdRp.2.1.hmm",
-        "RdRp-scan".lower(): hmmdbdir / "RdRp-scan.hmm",
-        "RVMT".lower(): hmmdbdir / "RVMT.hmm",
-        "TSA_2018".lower(): hmmdbdir / "TSA_Olendraite.hmm",
-        "Pfam_A_37".lower(): hmmdbdir / "rt_rdrp_pfamA37.hmm",
-        "genomad".lower(): hmmdbdir / "genomad.hmm",
+        "NeoRdRp_v2.1".lower(): hmmdbdir / "neordrp2.1.hmm",
+        "RdRp-scan".lower(): hmmdbdir / "rdrp_scan.hmm",
+        "RVMT".lower(): hmmdbdir / "rvmt.hmm",
+        # "TSA_2018".lower(): hmmdbdir / "TSA_Olendraite.hmm",
+        "Pfam_RTs_RdRp".lower(): hmmdbdir / "pfam_rdrps_and_rts.hmm",
+        "genomad".lower(): hmmdbdir / "genomad_rna_viral_markers.hmm",
     }
 
     if database == "all":
@@ -434,8 +434,10 @@ def marker_search(
     results_file = Path(output) / "marker_search_results.tsv"
 
     if config.resolve_mode == "simple":
-        config.logger.info("Using adaptive 'simple' mode for overlap resolution with polyprotein detection")
-        
+        config.logger.info(
+            "Using adaptive 'simple' mode for overlap resolution with polyprotein detection"
+        )
+
         # Use consolidate_hits with adaptive overlap enabled
         testdf = consolidate_hits(
             input=stack_df,

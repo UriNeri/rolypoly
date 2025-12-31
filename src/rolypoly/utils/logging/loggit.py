@@ -1,7 +1,7 @@
+import inspect
 import logging
 from pathlib import Path
 from typing import Dict, Optional, Union
-import inspect
 
 from rich.console import Console
 from rich.logging import RichHandler
@@ -81,7 +81,6 @@ def setup_logging(
         log_file = Path.cwd() / "rolypoly.log"
         # from sys import stdout
 
-        
     # Convert log_file to Path if it's a string
     if isinstance(log_file, str):
         log_file = Path(log_file)
@@ -90,7 +89,7 @@ def setup_logging(
     if not log_file.exists():
         # print(f"Creating log file: {log_file}")
         # from os import  devnull
-        
+
         Path.touch(log_file)
         # log_file = devnull
         # subprocess.call(f"echo ' ' > {log_file}", shell=True)
@@ -130,7 +129,7 @@ def setup_logging(
     file_formatter = logging.Formatter(
         "%(asctime)s --- %(levelname)s --- %(message)s --- %(filename)s:%(lineno)d ",
         datefmt="%Y-%m-%d %H:%M:%S",
-    )    
+    )
     file_handler.setFormatter(file_formatter)
     logger.addHandler(file_handler)
 
@@ -192,6 +191,7 @@ def _resolve_datadir() -> Path:
     3. Fallback to a `data` directory at repo/package root or current working dir
     """
     import os
+
     # 1. environment
     env = os.environ.get("ROLYPOLY_DATA_DIR")
     if env:
@@ -201,8 +201,8 @@ def _resolve_datadir() -> Path:
 
     # 2. package config
     try:
-        from importlib import resources
         import json
+        from importlib import resources
 
         cfg_path = Path(str(resources.files("rolypoly") / "rpconfig.json"))
         if cfg_path.exists():
@@ -222,4 +222,4 @@ def _resolve_datadir() -> Path:
         return candidate
 
     # final fallback to cwd --- Probably in ipython / creating a data release?
-    return Path.cwd() 
+    return Path.cwd()

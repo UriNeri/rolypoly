@@ -47,6 +47,7 @@ def create_sample_file(
     # Helper to get total reads in a FASTQ file
     def _get_total_reads(fpath, gzipped):
         import subprocess as sp
+
         if gzipped:
             cmd = f"zgrep -c '^@' {fpath}"
         else:
@@ -54,10 +55,7 @@ def create_sample_file(
         try:
             return int(
                 sp.run(
-                    cmd,
-                    shell=True,
-                    capture_output=True,
-                    text=True,
+                    cmd, shell=True, capture_output=True, text=True
                 ).stdout.strip()
             )
         except Exception as e:
@@ -68,7 +66,11 @@ def create_sample_file(
     need_total_reads = False
     if subset_type == "random":
         need_total_reads = True
-    elif subset_type == "top_reads" and isinstance(sample_size, float) and sample_size < 1.0:
+    elif (
+        subset_type == "top_reads"
+        and isinstance(sample_size, float)
+        and sample_size < 1.0
+    ):
         need_total_reads = True
     logger.debug(f"need_total_reads: {need_total_reads}")
 
@@ -84,7 +86,9 @@ def create_sample_file(
         try:
             if subset_type == "top_reads":
                 sample_size_int = int(sample_size)
-                sample_size_int = sample_size_int - (sample_size_int % 2)  # ensure even for pairs
+                sample_size_int = sample_size_int - (
+                    sample_size_int % 2
+                )  # ensure even for pairs
                 n_lines = sample_size_int * 4  # 4 lines per read
                 # Stream first n lines without loading entire file
                 if is_gz:
@@ -106,21 +110,34 @@ def create_sample_file(
                 f_out.close()
                 f_in.close()
             elif subset_type == "random":
-                from random import sample
                 import itertools
+                from random import sample
+
                 import numpy as np
+
                 sample_size_int = int(sample_size)
                 sample_size_int = sample_size_int - (sample_size_int % 2)
                 if total_reads is None:
                     total_reads = _get_total_reads(file_path, is_gz)
                 if sample_size_int > total_reads:
-                    logger.warning(f"Requested sample_size {sample_size_int} > total_reads {total_reads}, using all reads.")
+                    logger.warning(
+                        f"Requested sample_size {sample_size_int} > total_reads {total_reads}, using all reads."
+                    )
                     sample_size_int = total_reads - (total_reads % 2)
                 # Each read = 4 lines, so sample indices of reads
                 read_indices = sample(range(total_reads), sample_size_int)
                 read_indices = np.sort(read_indices)
                 # Convert to line numbers
-                lines_2_get = np.sort(list(itertools.chain.from_iterable([[i*4 + j for j in range(4)] for i in read_indices])))
+                lines_2_get = np.sort(
+                    list(
+                        itertools.chain.from_iterable(
+                            [
+                                [i * 4 + j for j in range(4)]
+                                for i in read_indices
+                            ]
+                        )
+                    )
+                )
                 target_set = set(lines_2_get)
                 target_iter = iter(lines_2_get)
                 try:
@@ -172,19 +189,32 @@ def create_sample_file(
                 sample_size_int = sample_size_int - (sample_size_int % 2)
                 lines_2_get = [i for i in range(0, sample_size_int * 2, 4)]
             else:
-                from random import sample
                 import itertools
+                from random import sample
+
                 import numpy as np
+
                 sample_size_int = int(sample_size)
                 sample_size_int = sample_size_int - (sample_size_int % 2)
                 if total_reads is None:
                     total_reads = _get_total_reads(r1_path, is_gz)
                 if sample_size_int > total_reads:
-                    logger.warning(f"Requested sample_size {sample_size_int} > total_reads {total_reads}, using all reads.")
+                    logger.warning(
+                        f"Requested sample_size {sample_size_int} > total_reads {total_reads}, using all reads."
+                    )
                     sample_size_int = total_reads - (total_reads % 2)
                 read_indices = sample(range(total_reads), sample_size_int)
                 read_indices = np.sort(read_indices)
-                lines_2_get = np.sort(list(itertools.chain.from_iterable([[i*4 + j for j in range(4)] for i in read_indices])))
+                lines_2_get = np.sort(
+                    list(
+                        itertools.chain.from_iterable(
+                            [
+                                [i * 4 + j for j in range(4)]
+                                for i in read_indices
+                            ]
+                        )
+                    )
+                )
             target_set = set(lines_2_get)
             target_iter = iter(lines_2_get)
             try:
@@ -295,7 +325,9 @@ def determine_fastq_type(
         header_count = fastq_df.select(
             pl.col("header").str.tail(2).value_counts()
         ).unnest("header")
-        logger.debug(f"example read headers: {fastq_df.select(pl.col('header')).head(5).to_series().to_list()}")
+        logger.debug(
+            f"example read headers: {fastq_df.select(pl.col('header')).head(5).to_series().to_list()}"
+        )
         # Check suffix patterns for paired-end indicators
         # logger.debug(f"header_count: {header_count}")
         pair_1_count = header_count.filter(
@@ -313,24 +345,26 @@ def determine_fastq_type(
             ).select(
                 pl.col("header").str.split(" ").list.get(0).alias("base_header")
             )
-            
+
             headers_with_2 = fastq_df.filter(
                 pl.col("header").str.contains(r" 2:")
             ).select(
                 pl.col("header").str.split(" ").list.get(0).alias("base_header")
             )
-            
+
             # Check if there are overlapping base headers (indicating paired reads)
             if headers_with_1.height > 0 and headers_with_2.height > 0:
                 set_1 = set(headers_with_1["base_header"].to_list())
                 set_2 = set(headers_with_2["base_header"].to_list())
                 overlap = set_1.intersection(set_2)
-                
+
                 if len(overlap) == len(set_1) and len(overlap) == len(set_2):
                     # Found matching pairs in Casava format
                     pair_1_count = headers_with_1.height
                     pair_2_count = headers_with_2.height
-                    logger.warning(f"Detected Casava paired-end format in headers - treating as interleaved paired-end reads... this could be wrong...")
+                    logger.warning(
+                        f"Detected Casava paired-end format in headers - treating as interleaved paired-end reads... this could be wrong..."
+                    )
 
         # total_length = fastq_df.select(pl.col("sequence").str.len_chars()).sum().item() # could have just
         average_read_length = (

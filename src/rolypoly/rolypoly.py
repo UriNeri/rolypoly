@@ -30,7 +30,6 @@ os.environ["citation_file"] = str(
 )
 
 
-
 @click.group(
     cls=LazyGroup,
     context_settings={"help_option_names": ["-h", "--help", "-help", "--hepl"]},

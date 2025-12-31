@@ -113,9 +113,7 @@ diamond = ">=2.1.12,<3"
 
 [tool.pixi.feature.misc.dependencies]
 # For miscellaneous commands (fetch-sra, quick-taxonomy, etc.)
-ncbi-datasets-cli = ">=18.3.1,<19"
 aria2 = ">=1.37.0,<2"
-taxonkit = ">=0.20.0,<0.21"
 freebayes = ">=1.3.10,<2"
 
 [tool.pixi.feature.dev.dependencies]
@@ -127,7 +125,6 @@ jupyter = "*"
 ipykernel = ">=6.30.1,<7"
 blast = ">=2.17.0,<3"
 aria2 = ">=1.37.0,<2"
-
 
 [tool.pixi.tasks]
 gh-push = "src/setup/on_gh.sh push"

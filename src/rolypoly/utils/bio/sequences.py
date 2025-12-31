@@ -72,7 +72,9 @@ def write_fasta_file(
     elif seqs is not None and headers is not None:
         for i, seq in enumerate(seqs):
             if i == 0:
-                output_file.write(f">{headers[i]}{seq_delim}{seq}") # no leading newline for first record
+                output_file.write(
+                    f">{headers[i]}{seq_delim}{seq}"
+                )  # no leading newline for first record
             else:
                 output_file.write(f"{header_delim}{headers[i]}{seq_delim}{seq}")
     else:
@@ -82,33 +84,37 @@ def write_fasta_file(
 def clean_fasta_headers(
     fasta_file: str,
     output_file: str,
-    strip_suffix = "",
-    strip_prefix = "bla bla lba",
-    drop_from_space = False
+    strip_suffix="",
+    strip_prefix="bla bla lba",
+    drop_from_space=False,
 ) -> None:
     """remove annoying stuff from the headers of a FASTA file.
 
     Args:
         fasta_file (str): Path to input FASTA file
         output_file (str): Path to write filtered sequences
-        strip_prefix (str, optional): if provided, a prefix to remove from fasta headers (if present) 
-        strip_suffix (str, optional): if provided, a suffix to remove from fasta headers (if present) 
+        strip_prefix (str, optional): if provided, a prefix to remove from fasta headers (if present)
+        strip_suffix (str, optional): if provided, a suffix to remove from fasta headers (if present)
         drop_from_space (bool): if true, discard everything after the first space (not every white space, just space)
-    
+
     Example:
         clean a NCBI protein header:
         clean_fasta_headers(fasta_file = some_fasta, output_file = cleaner_fasta, strip_prefix = "lcl|", drop_from_space = True, strip_suffix = ")
-    
+
     Note:
         No gaurentee that all output header will be unique. # TODO add a hash +seen + logger.warning for this.
 
     """
     import gzip
+
     from rolypoly.utils.various import is_gzipped
+
     strip_prefix_len = 0 if not strip_prefix else len(strip_prefix)
     strip_suffix_len = 0 if not strip_suffix else len(strip_suffix)
     # Determine if files are gzipped
-    is_gz_input = is_gzipped(fasta_file) # not really needed, handled in the needletail parser
+    is_gz_input = is_gzipped(
+        fasta_file
+    )  # not really needed, handled in the needletail parser
     is_gz_output = output_file.endswith(".gz")
 
     try:
@@ -127,21 +133,24 @@ def clean_fasta_headers(
             records_processed += 1
             record_id = str(getattr(record, "id", ""))
             record_seq = str(getattr(record, "seq", ""))
-            if (record_id.startswith(strip_prefix)):
+            if record_id.startswith(strip_prefix):
                 record_id = record_id[strip_prefix_len:]
-            if (record_id.endswith(strip_suffix)):
+            if record_id.endswith(strip_suffix):
                 record_id = record_id[:strip_suffix_len]
-            if (drop_from_space):
+            if drop_from_space:
                 record_id = record_id.split(sep=" ")[0]
             out_f.write(f">{record_id}\n{record_seq}\n")
             records_written += 1
             if records_processed % 100000 == 0:
-                print(f"Processed {records_processed} records, written {records_written}")
+                print(
+                    f"Processed {records_processed} records, written {records_written}"
+                )
         out_f.close()
     except Exception as e:
         if "out_f" in locals():
             out_f.close()
         raise Exception(f"Error filtering FASTA file {fasta_file}: {e}") from e
+
 
 def filter_fasta_by_headers(
     fasta_file: str,
@@ -166,6 +175,7 @@ def filter_fasta_by_headers(
         return_counts (bool, optional): If True, return counts of filtered, and written records.
     """
     import gzip
+
     from rolypoly.utils.various import is_gzipped
 
     # Load headers and optimize for lookup pattern
@@ -186,9 +196,10 @@ def filter_fasta_by_headers(
             headers_exact.update(headers)
 
     # Determine if files are gzipped
-    is_gz_input = is_gzipped(fasta_file) # not really needed, handled in the needletail parser
+    is_gz_input = is_gzipped(
+        fasta_file
+    )  # not really needed, handled in the needletail parser
     is_gz_output = output_file.endswith(".gz")
-
 
     try:
         # Open output file with appropriate method
@@ -217,18 +228,24 @@ def filter_fasta_by_headers(
                         if not target_headers:
                             break
                     if records_processed % 100000 == 0:
-                        print(f"Processed {records_processed} records, written {records_written}")
+                        print(
+                            f"Processed {records_processed} records, written {records_written}"
+                        )
             else:
                 # Substring match (wrap=True)
                 for record in parse_fastx_file(fasta_file):
                     records_processed += 1
                     record_id = str(getattr(record, "id", ""))
-                    if any(pattern in record_id for pattern in headers_patterns):
+                    if any(
+                        pattern in record_id for pattern in headers_patterns
+                    ):
                         record_seq = str(getattr(record, "seq", ""))
                         out_f.write(f">{record_id}\n{record_seq}\n")
                         records_written += 1
                     if records_processed % 100000 == 0:
-                        print(f"Processed {records_processed} records, written {records_written}")
+                        print(
+                            f"Processed {records_processed} records, written {records_written}"
+                        )
         else:
             # Inverted case
             if not wrap:
@@ -240,17 +257,23 @@ def filter_fasta_by_headers(
                         out_f.write(f">{record_id}\n{record_seq}\n")
                         records_written += 1
                     if records_processed % 100000 == 0:
-                        print(f"Processed {records_processed} records, written {records_written}")
+                        print(
+                            f"Processed {records_processed} records, written {records_written}"
+                        )
             else:
                 for record in parse_fastx_file(fasta_file):
                     records_processed += 1
                     record_id = str(getattr(record, "id", ""))
-                    if not any(pattern in record_id for pattern in headers_patterns):
+                    if not any(
+                        pattern in record_id for pattern in headers_patterns
+                    ):
                         record_seq = str(getattr(record, "seq", ""))
                         out_f.write(f">{record_id}\n{record_seq}\n")
                         records_written += 1
                     if records_processed % 100000 == 0:
-                        print(f"Processed {records_processed} records, written {records_written}")
+                        print(
+                            f"Processed {records_processed} records, written {records_written}"
+                        )
 
         out_f.close()
         if return_counts:

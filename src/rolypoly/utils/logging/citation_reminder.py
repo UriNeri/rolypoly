@@ -13,7 +13,8 @@ if REMIND_CITATIONS == "False":
     REMIND_CITATIONS = False
 elif REMIND_CITATIONS == "True":
     REMIND_CITATIONS = True
-    
+
+
 def load_citations():
     """Load citation information from the configured citation file"""
     import json
@@ -160,8 +161,7 @@ def remind_citations(
         )
         return
 
-
-    if REMIND_CITATIONS: # controls printing to console
+    if REMIND_CITATIONS:  # controls printing to console
         console.print(
             Text(
                 f"rolypoly used {tools} in your analysis, please cite the following software or database:",
@@ -176,7 +176,7 @@ def remind_citations(
             )
         )
 
-    if return_as_text or return_bibtex: # controls function return value
+    if return_as_text or return_bibtex:  # controls function return value
         text = ""
         for name, doi in citations:
             citation = get_citation_from_doi(doi, return_bibtex=return_bibtex)

@@ -20,11 +20,11 @@ def calculate_adaptive_overlap_threshold(
     ali_len: int, is_polyprotein_like: bool = False
 ) -> int:
     """Calculate adaptive overlap threshold based on alignment length.
-    
+
     Args:
         ali_len: Alignment length in amino acids
         is_polyprotein_like: Whether the sequence appears to be a polyprotein
-        
+
     Returns:
         Overlap threshold in amino acids
     """
@@ -51,19 +51,19 @@ def calculate_adaptive_overlap_threshold(
 
 
 def detect_polyprotein_pattern(
-    hit_df: pl.DataFrame, 
+    hit_df: pl.DataFrame,
     query_id: str,
     query_id_col: str = "query_full_name",
     target_id_col: str = "hmm_full_name",
     q1_col: str = "ali_from",
     q2_col: str = "ali_to",
-    bin_size: int = 50
+    bin_size: int = 50,
 ) -> bool:
     """Detect if a query sequence has a polyprotein-like pattern.
-    
+
     Looks for multiple distinct regions with many different profile hits,
     suggesting a polyprotein with multiple domains.
-    
+
     Args:
         hit_df: DataFrame with hits for a single query
         query_id: The query sequence ID
@@ -72,24 +72,24 @@ def detect_polyprotein_pattern(
         q1_col: Column name for alignment start
         q2_col: Column name for alignment end
         bin_size: Size of bins in amino acids
-        
+
     Returns:
         True if polyprotein pattern detected
     """
     query_hits = hit_df.filter(pl.col(query_id_col) == query_id)
-    
+
     if len(query_hits) < 10:  # Need sufficient hits to detect pattern
         return False
-    
+
     # Get query length
     qlen = query_hits.select(pl.col("qlen").max()).item()
     if qlen < 200:  # Short sequences unlikely to be polyproteins
         return False
-    
+
     # Create bins
     n_bins = (qlen // bin_size) + 1
     bin_profile_counts = [set() for _ in range(n_bins)]
-    
+
     # Assign hits to bins based on their midpoint
     for row in query_hits.iter_rows(named=True):
         start = row[q1_col]
@@ -97,16 +97,18 @@ def detect_polyprotein_pattern(
         midpoint = (start + end) // 2
         bin_idx = min(midpoint // bin_size, n_bins - 1)
         bin_profile_counts[bin_idx].add(row[target_id_col])
-    
+
     # Count bins with significant profile diversity
-    bins_with_hits = [len(profiles) for profiles in bin_profile_counts if len(profiles) > 0]
-    
+    bins_with_hits = [
+        len(profiles) for profiles in bin_profile_counts if len(profiles) > 0
+    ]
+
     if len(bins_with_hits) < 2:
         return False
-    
+
     # Check if there are at least 2 bins with multiple unique profiles
     diverse_bins = sum(1 for count in bins_with_hits if count >= 3)
-    
+
     # Polyprotein pattern: multiple regions with diverse hits
     return diverse_bins >= 2
 
@@ -125,7 +127,7 @@ def consolidate_hits(
     adaptive_overlap: bool = False,
 ) -> pl.DataFrame:
     """Resolves overlaps in a tabular hit table file or polars dataframe.
-    
+
     Args:
         input: Input hit table (file path or DataFrame)
         rank_columns: Columns to rank by (prefix with - for descending, + for ascending)
@@ -138,11 +140,11 @@ def consolidate_hits(
         split: Split overlapping ranges
         alphabet: Sequence alphabet ('aa' for amino acid, 'nucl' for nucleotide)
         adaptive_overlap: Use adaptive overlap thresholds based on alignment length and polyprotein detection
-        
+
     Returns:
         DataFrame with resolved overlaps
-        
-    Notes: 
+
+    Notes:
         Some flags are mutually exclusive, e.g. you cannot set both split and merge.
         Adaptive overlap is only applied for amino acid sequences (alphabet='aa').
     """
@@ -154,19 +156,21 @@ def consolidate_hits(
     og_cols = hit_table.columns
 
     work_table = hit_table.clone().unique()
-    
+
     # Apply adaptive overlap thresholds if requested (only for amino acid sequences)
     if adaptive_overlap and alphabet == "aa":
         # Parse column specs to get query and target ID columns
         query_id_col, target_id_col = column_specs.split(",")
-        
+
         # Detect column names for positions
         q1_col, q2_col = get_column_names(work_table)
-        
+
         # Detect polyprotein patterns for each query
-        unique_queries = work_table.select(query_id_col).unique().to_series().to_list()
+        unique_queries = (
+            work_table.select(query_id_col).unique().to_series().to_list()
+        )
         polyprotein_queries = set()
-        
+
         for query_id in unique_queries:
             if detect_polyprotein_pattern(
                 work_table,
@@ -174,26 +178,28 @@ def consolidate_hits(
                 query_id_col=query_id_col,
                 target_id_col=target_id_col,
                 q1_col=q1_col,
-                q2_col=q2_col
+                q2_col=q2_col,
             ):
                 polyprotein_queries.add(query_id)
-        
+
         # Calculate adaptive thresholds for each hit
         def calc_overlap_threshold(row):
             ali_len = row[q2_col] - row[q1_col]
             is_polyprotein = row[query_id_col] in polyprotein_queries
             return calculate_adaptive_overlap_threshold(ali_len, is_polyprotein)
-        
+
         # Add adaptive threshold column
         work_table = work_table.with_columns(
             pl.struct([query_id_col, q1_col, q2_col])
             .map_elements(calc_overlap_threshold, return_dtype=pl.Int64)
             .alias("adaptive_threshold")
         )
-        
+
         # Use minimum threshold as conservative baseline for this batch
-        min_overlap_positions = work_table.select(pl.col("adaptive_threshold").min()).item()
-        
+        min_overlap_positions = work_table.select(
+            pl.col("adaptive_threshold").min()
+        ).item()
+
         # Drop the adaptive threshold column before processing
         work_table = work_table.drop("adaptive_threshold")
 
@@ -280,49 +286,51 @@ def consolidate_hits(
     # one-per-range
     if one_per_range:
         print("Dropping to best hit per range")
-        
+
         # Group by query and use interval tree to find non-overlapping hits
         grouped_by_query = work_table.group_by(query_id_col)
         subdfs = []
-        
+
         for _, subdf in grouped_by_query:
             if len(subdf) == 0:
                 continue
-            
+
             # Create interval tree for this query
             tree = itree.IntervalTree()
             kept_uids = []
-            
+
             # Sort by rank (already sorted in work_table)
             for row in subdf.iter_rows(named=True):
                 start = row[q1_col]
                 end = row[q2_col]
-                uid = row['uid']
-                
+                uid = row["uid"]
+
                 # Check if this interval significantly overlaps with any kept interval
                 overlaps = tree.overlap(start, end)
                 has_significant_overlap = False
-                
+
                 for ovl in overlaps:
                     overlap_size = min(end, ovl.end) - max(start, ovl.begin)
                     if overlap_size >= min_overlap_positions:
                         has_significant_overlap = True
                         break
-                
+
                 # If no significant overlap, keep this hit
                 if not has_significant_overlap:
                     tree.addi(start, end, uid)
                     kept_uids.append(uid)
-            
+
             # Filter to kept UIDs
             if kept_uids:
-                subdfs.append(subdf.filter(pl.col('uid').is_in(kept_uids)))
-        
+                subdfs.append(subdf.filter(pl.col("uid").is_in(kept_uids)))
+
         if subdfs:
             work_table_culled = pl.concat(subdfs)
         else:
-            work_table_culled = work_table.head(0)  # Empty dataframe with same schema
-        
+            work_table_culled = work_table.head(
+                0
+            )  # Empty dataframe with same schema
+
         work_table_culled = work_table_culled.rename(
             {rank_list_renamed[i]: rank_list[i] for i in range(len(rank_list))}
         )
@@ -810,7 +818,7 @@ def mask_nuc_range(
 def mask_nuc_range_from_sam(
     input_fasta: str, input_sam: str, output_fasta: str
 ) -> None:
-    """Mask nucleotide sequences in a FASTA file based on provided SAM. 
+    """Mask nucleotide sequences in a FASTA file based on provided SAM.
         All sequences in ranges from the input fasta that are aligned in the SAM will be replaced by N's.
 
     Args:
@@ -821,11 +829,17 @@ def mask_nuc_range_from_sam(
     Note:
         Handles both forward and reverse strand masking.
     """
-    from .sequences import revcomp
     import re
-    from intervaltree import IntervalTree as itree  # assumed available as in other functions
+
+    from intervaltree import (
+        IntervalTree as itree,  # assumed available as in other functions
+    )
     from rich.progress import track
+
     from rolypoly.utils.logging.loggit import get_logger
+
+    from .sequences import revcomp
+
     logger = get_logger()
 
     # Parse SAM and collect reference intervals (1-based inclusive, with strand)
@@ -887,7 +901,9 @@ def mask_nuc_range_from_sam(
             merged[rname][strand] = merged_intervals
 
     # Count total records with ranges for progress
-    records_with_ranges = [rid for rid in merged if merged[rid].get("+") or merged[rid].get("-")]
+    records_with_ranges = [
+        rid for rid in merged if merged[rid].get("+") or merged[rid].get("-")
+    ]
     total_records = len(records_with_ranges)
 
     # Read input FASTA and write masked sequences
@@ -909,7 +925,11 @@ def mask_nuc_range_from_sam(
                                 for s, e in intervals:
                                     if s > e:
                                         s, e = e, s
-                                    seq_str = seq_str[: s - 1] + "N" * (e - s + 1) + seq_str[e:]
+                                    seq_str = (
+                                        seq_str[: s - 1]
+                                        + "N" * (e - s + 1)
+                                        + seq_str[e:]
+                                    )
                             else:
                                 # Mask on revcomp
                                 rc_seq = revcomp(seq_str)
@@ -922,11 +942,24 @@ def mask_nuc_range_from_sam(
                                     rc_e = seqlen - s + 1
                                     if rc_s > rc_e:
                                         rc_s, rc_e = rc_e, rc_s
-                                    rc_seq = rc_seq[: rc_s - 1] + "N" * (rc_e - rc_s + 1) + rc_seq[rc_e:]
+                                    rc_seq = (
+                                        rc_seq[: rc_s - 1]
+                                        + "N" * (rc_e - rc_s + 1)
+                                        + rc_seq[rc_e:]
+                                    )
                                 seq_str = revcomp(rc_seq)
-                        processed += 1 if (merged[current_id].get("+") or merged[current_id].get("-")) else 0
+                        processed += (
+                            1
+                            if (
+                                merged[current_id].get("+")
+                                or merged[current_id].get("-")
+                            )
+                            else 0
+                        )
                         if processed % 10 == 0 or processed == total_records:
-                            logger.info(f"[mask_nuc_range_from_sam] Processed {processed}/{total_records} records with ranges.")
+                            logger.info(
+                                f"[mask_nuc_range_from_sam] Processed {processed}/{total_records} records with ranges."
+                            )
                     out_f.write(f">{current_id}\n{seq_str}\n")
                 current_id = line[1:].strip()
                 current_seq_parts = []
@@ -945,7 +978,11 @@ def mask_nuc_range_from_sam(
                         for s, e in intervals:
                             if s > e:
                                 s, e = e, s
-                            seq_str = seq_str[: s - 1] + "N" * (e - s + 1) + seq_str[e:]
+                            seq_str = (
+                                seq_str[: s - 1]
+                                + "N" * (e - s + 1)
+                                + seq_str[e:]
+                            )
                     else:
                         rc_seq = revcomp(seq_str)
                         seqlen = len(seq_str)
@@ -956,10 +993,23 @@ def mask_nuc_range_from_sam(
                             rc_e = seqlen - s + 1
                             if rc_s > rc_e:
                                 rc_s, rc_e = rc_e, rc_s
-                            rc_seq = rc_seq[: rc_s - 1] + "N" * (rc_e - rc_s + 1) + rc_seq[rc_e:]
+                            rc_seq = (
+                                rc_seq[: rc_s - 1]
+                                + "N" * (rc_e - rc_s + 1)
+                                + rc_seq[rc_e:]
+                            )
                         seq_str = revcomp(rc_seq)
-                processed += 1 if (merged[current_id].get("+") or merged[current_id].get("-")) else 0
-                logger.info(f"[mask_nuc_range_from_sam] Processed {processed}/{total_records} records with ranges.")
+                processed += (
+                    1
+                    if (
+                        merged[current_id].get("+")
+                        or merged[current_id].get("-")
+                    )
+                    else 0
+                )
+                logger.info(
+                    f"[mask_nuc_range_from_sam] Processed {processed}/{total_records} records with ranges."
+                )
             out_f.write(f">{current_id}\n{seq_str}\n")
 
 

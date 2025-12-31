@@ -20,6 +20,7 @@ output_tracker = OutputTracker()
 console = Console()
 config = None
 
+
 class ReadFilterConfig(BaseConfig):
     def __init__(self, **kwargs):
         # in this case output_dir and output are the same, so need to explicitly make sure it exists.
@@ -67,7 +68,9 @@ class ReadFilterConfig(BaseConfig):
             else {}
         )
         # self.skip_steps = skip_steps if isinstance(skip_steps, list) else skip_steps.split(",")
-        self.step_timeout = kwargs.get("step_timeout") or 3600  # 3600 seconds
+        self.step_timeout = (
+            kwargs.get("step_timeout") or 3600
+        )  # 3600 seconds/ 1 hour default  # TODO: consider changing this to per step timeouts in the future?
         self.file_name = (
             kwargs.get("file_name") or "rp_filtered_reads"
         )  # this is the base name of the output files, if not provided, it will be "rp_filtered_reads"
@@ -100,7 +103,12 @@ class ReadFilterConfig(BaseConfig):
                 "nullifybrokenquality": True,
                 "passes": 1,
             },
-            "merge_reads": {"k": 93, "extend2": 80, "rem": True, "mix": "f"},
+            "merge_reads": {
+                "k": 93,
+                "extend2": 80,
+                "rem": True,
+                "mix": "f",
+            },  # TODO: add explanation somewhere about the (high) memory usage and the potential gains/tradeoffs of merging reads https://bbmap.org/tools/bbmerge#:~:text=When%20NOT%20to%20Use%20BBMerge
             "quality_trim_unmerged": {"qtrim": "rl", "trimq": 5, "minlen": 45},
         }
         self.max_genomes = (
@@ -176,11 +184,13 @@ def process_reads(
 
     current_input = fastq_file
 
-
-
     from rich.spinner import SPINNERS  # type: ignore
+
     config.logger.info("Starting read processing    ")
-    SPINNERS["myspinner"] = {"interval": 2500 if config.log_level != 10 else 122500, "frames": ["🦠 ", "🧬 ", "🔬 "]}  # type: ignore
+    SPINNERS["myspinner"] = {
+        "interval": 2500 if config.log_level != 10 else 122500,
+        "frames": ["🦠 ", "🧬 ", "🔬 "],
+    }  # type: ignore
     # SPINNERS["myspinner"] = {"interval": 150 if config.log_level != 10 else 150, "frames":
     # [
     #     "🛸\u3000\u3000\u3000 ",
@@ -195,7 +205,8 @@ def process_reads(
     # }
 
     with console.status(
-        "[bold green] Working on     ", spinner="myspinner" #
+        "[bold green] Working on     ",
+        spinner="myspinner",  #
     ) as status:
         for step in steps:
             step_name = (
@@ -248,9 +259,9 @@ def process_reads(
     # Final deduplication step
     merged_file = output_tracker.get_latest_merged_file()
     if not (
-        config.skip_existing and
-        check_existing_file(Path(f"dedup_merged_{config.file_name}.fq.gz")) and
-        merged_file == None
+        config.skip_existing
+        and check_existing_file(Path(f"dedup_merged_{config.file_name}.fq.gz"))
+        and merged_file == None
     ):
         dedup_merged = dedupe(
             Path(merged_file), config, output_tracker, "final_merged"
@@ -486,7 +497,9 @@ def filter_reads(
 
     config.logger.info("Read processing completed, probably successfully.")
     if config.log_level != "DEBUG":
-        config.logger.info(f"remind citation is {os.environ.get('ROLYPOLY_REMIND_CITATIONS', 'not_set')}    ")
+        config.logger.info(
+            f"remind citation is {os.environ.get('ROLYPOLY_REMIND_CITATIONS', 'not_set')}    "
+        )
         with open(f"{config.log_file}", "a") as f_out:
             f_out.write(remind_citations(tools, return_bibtex=True) or "")
 
@@ -544,8 +557,9 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
         for i, pair in enumerate(file_info["R1_R2_pairs"]):
             out_file = temp_interleaved if i == 0 else final_interleaved
             config.logger.info(f"Concatenating {pair[0]} and {pair[1]}")
-            bb_stdout,bb_stderr= reformat(
-                in1=str(pair[0]),capture_output=True,
+            bb_stdout, bb_stderr = reformat(
+                in1=str(pair[0]),
+                capture_output=True,
                 in2=str(pair[1]),
                 out=str(out_file),
                 threads=config.threads,
@@ -562,8 +576,9 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
         )
         for i, intfile in enumerate(file_info["interleaved_files"]):
             out_file = temp_interleaved if i == 0 else final_interleaved
-            bb_stdout,bb_stderr= reformat(
-                in_file=str(intfile), capture_output=True,
+            bb_stdout, bb_stderr = reformat(
+                in_file=str(intfile),
+                capture_output=True,
                 out=str(out_file),
                 threads=config.threads,
                 overwrite="t" if i == 0 else "f",
@@ -572,7 +587,6 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
                 int=True,
             )
             config.logger.info(" ".join((bb_stderr, bb_stdout)))
-
 
     # Process single-end files
     if (
@@ -587,8 +601,9 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
                 else final_interleaved
             )
 
-            bb_stdout,bb_stderr= reformat(
-                in_file=str(sefile),capture_output=True,
+            bb_stdout, bb_stderr = reformat(
+                in_file=str(sefile),
+                capture_output=True,
                 out=str(out_file),
                 threads=config.threads,
                 overwrite="t"
@@ -598,7 +613,6 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
                 Xmx=str(config.memory["giga"]),
             )
             config.logger.info(" ".join((bb_stderr, bb_stdout)))
-
 
     # Clean up temporary file if it exists
     if temp_interleaved.exists():
@@ -642,7 +656,6 @@ def filter_known_dna(
             "output": ref_file,
             "flatten": False,
             "input": config.known_dna,
-
         }
         context = click.Context(mask_dna, ignore_unknown_options=True)
         context.invoke(mask_dna, **mask_args)
@@ -651,7 +664,8 @@ def filter_known_dna(
     try:
         params = config.step_params["filter_known_dna"]
         bb_stdout, bb_stderr = bbduk(
-            in_file=str(input_file), capture_output=True,
+            in_file=str(input_file),
+            capture_output=True,
             out=str(output_file),
             ref=str(ref_file),
             **params,
@@ -688,12 +702,18 @@ def decontaminate_rrna(
     output_file = (
         config.temp_dir / f"decontaminate_rrna_{config.file_name}.fq.gz"
     )
-    rrna_fas1 = Path(config.datadir) / "contam/rrna/ncbi_rRNA_all_sequences_masked_entropy.fasta"  # type: ignore
-    rrna_fas2 = Path(config.datadir) / "contam/rrna/silva_rRNA_all_sequences_masked_entropy.fasta"  # type: ignore
+    rrna_fas1 = (
+        Path(config.datadir)
+        / "contam/rrna/ncbi_rRNA_all_sequences_masked_entropy.fasta"
+    )  # type: ignore
+    rrna_fas2 = (
+        Path(config.datadir)
+        / "contam/rrna/silva_rRNA_all_sequences_masked_entropy.fasta"
+    )  # type: ignore
     try:
         params = config.step_params["decontaminate_rrna"]
-        bb_stdout, bb_stderr  = bbduk(
-            in_file=str(input_file), 
+        bb_stdout, bb_stderr = bbduk(
+            in_file=str(input_file),
             out=str(output_file),
             ref=f"{rrna_fas1},{rrna_fas2}",
             **params,
@@ -703,7 +723,7 @@ def decontaminate_rrna(
             interleaved="t",
             stats=config.temp_dir
             / f"stats_decontaminate_rrna_{config.file_name}.txt",
-            capture_output=True
+            capture_output=True,
         )
         config.logger.info(" ".join((bb_stderr, bb_stdout)))
 
@@ -757,7 +777,9 @@ def fetch_and_mask_genomes(config: ReadFilterConfig) -> Union[str, Path]:
         shutil.copy2(str(stats_file), str(abs_tmp_stats))
 
         # Get the mapping file path
-        mapping_path = Path(config.datadir) / "contam/rrna/rrna_to_genome_mapping.parquet"
+        mapping_path = (
+            Path(config.datadir) / "contam/rrna/rrna_to_genome_mapping.parquet"
+        )
 
         # Run fetch_genomes_from_stats_file directly in the genomes directory with absolute paths
         fetch_genomes_from_stats_file(
@@ -815,7 +837,8 @@ def filter_identified_dna(
     try:
         params = config.step_params["filter_identified_dna"]
         bb_stdout, bb_stderr = bbduk(
-            in_file=str(input_file), capture_output=True,
+            in_file=str(input_file),
+            capture_output=True,
             out=str(output_file),
             ref=str(host_file),
             **params,
@@ -869,7 +892,8 @@ def dedupe(
     try:
         params = config.step_params["dedupe"]
         bb_stdout, bb_stderr = clumpify(
-            in_file=str(input_file), capture_output=True,
+            in_file=str(input_file),
+            capture_output=True,
             out=str(output_file),
             **params,
             Xmx=config.memory["giga"],
@@ -902,12 +926,15 @@ def trim_adapters(
     from bbmapy import bbduk
 
     output_file = config.temp_dir / f"trim_adapters_{config.file_name}.fq.gz"
-    adapters_new = Path(config.datadir) / "contam/adapters/AFire_illuminatetritis1223.fa"
+    adapters_new = (
+        Path(config.datadir) / "contam/adapters/AFire_illuminatetritis1223.fa"
+    )
     adapters_bb = Path(config.datadir) / "contam/adapters/bbmap_adapters.fa"
     try:
         params = config.step_params["trim_adapters"]
         bb_stdout, bb_stderr = bbduk(
-            in_file=str(input_file), capture_output=True,
+            in_file=str(input_file),
+            capture_output=True,
             out=str(output_file),
             ref=f"{adapters_bb},{adapters_new}",
             **params,
@@ -948,7 +975,8 @@ def remove_synthetic_artifacts(
     try:
         params = config.step_params["remove_synthetic_artifacts"]
         bb_stdout, bb_stderr = bbduk(
-            in_file=str(input_file), capture_output=True,
+            in_file=str(input_file),
+            capture_output=True,
             out=str(output_file),
             **params,
             Xmx=config.memory["giga"],
@@ -985,8 +1013,9 @@ def entropy_filter(
     output_file = config.temp_dir / f"entropy_filter_{config.file_name}.fq.gz"
     try:
         params = config.step_params["entropy_filter"]
-        bb_stdout,bb_stderr = bbduk(
-            in_file=str(input_file), capture_output=True,
+        bb_stdout, bb_stderr = bbduk(
+            in_file=str(input_file),
+            capture_output=True,
             out=str(output_file),
             **params,
             Xmx=config.memory["giga"],
@@ -1022,7 +1051,8 @@ def error_correct_1(
     try:
         params = config.step_params["error_correct_1"]
         bb_stdout, bb_stderr = bbmerge(
-            in_file=str(input_file), capture_output=True,
+            in_file=str(input_file),
+            capture_output=True,
             out=str(output_file),
             **params,
             Xmx=config.memory["giga"],
@@ -1058,7 +1088,8 @@ def error_correct_2(
     try:
         params = config.step_params["error_correct_2"]
         bb_stdout, bb_stderr = clumpify(
-            in_file=str(input_file), capture_output=True,
+            in_file=str(input_file),
+            capture_output=True,
             out=str(output_file),
             **params,
             Xmx=config.memory["giga"],
@@ -1095,7 +1126,8 @@ def merge_reads(
     try:
         params = config.step_params["merge_reads"]
         bb_stdout, bb_stderr = bbmerge(
-            in_file=str(input_file), capture_output=True,
+            in_file=str(input_file),
+            capture_output=True,
             out=str(output_file),
             outu=str(unmerged_file),
             **params,
@@ -1146,7 +1178,8 @@ def quality_trim_unmerged(
     try:
         params = config.step_params["quality_trim_unmerged"]
         bb_stdout, bb_stderr = bbduk(
-            in_file=str(input_file), capture_output=True,
+            in_file=str(input_file),
+            capture_output=True,
             out=str(output_file),
             **params,
             Xmx=config.memory["giga"],

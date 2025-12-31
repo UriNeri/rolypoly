@@ -105,6 +105,7 @@ def fetch_and_extract(
     overwrite: bool = True,
     extract: bool = True,
     rename_extracted: Optional[str] = None,
+    debug: bool = False,
 ) -> Path:
     """Fetch a file from a URL and optionally extract it with robust file handling.
 
@@ -117,6 +118,7 @@ def fetch_and_extract(
         overwrite: Whether to overwrite existing files/directories. - NOTE NOTE NOTE NOT IMPLEMENTED YET.
         extract: Whether to extract the downloaded file if it's compressed/archived
         rename_extracted: If provided, rename the final extracted file/directory to this name
+        debug: Enable debug prints for troubleshooting
 
     Returns:
         Path to the final extracted file or downloaded file if extract=False
@@ -132,6 +134,11 @@ def fetch_and_extract(
     if logger is None:
         logger = get_logger()
 
+    if debug:
+        print(
+            f"DEBUG: fetch_and_extract called with url={url}, fetched_to={fetched_to}, extract_to={extract_to}, expected_file={expected_file}, extract={extract}"
+        )
+
     # Determine download path
     if fetched_to is None:
         parsed_url = urlparse(url)
@@ -141,11 +148,21 @@ def fetch_and_extract(
         ):  # Handle cases where URL doesn't have a clear filename
             fetched_to = "downloaded_file"
 
+    if debug:
+        print(f"DEBUG: Determined fetched_to={fetched_to}")
+
     # Download the file using simple_fetch
     fetched_path = simple_fetch(url, fetched_to, logger, overwrite)
 
+    if debug:
+        print(
+            f"DEBUG: Downloaded to {fetched_path}, exists: {fetched_path.exists()}, size: {fetched_path.stat().st_size if fetched_path.exists() else 'N/A'}"
+        )
+
     # If extraction is disabled, handle renaming and return
     if not extract:
+        if debug:
+            print("DEBUG: Extraction disabled")
         if rename_extracted:
             final_path = Path(rename_extracted)
             final_path.parent.mkdir(parents=True, exist_ok=True)
@@ -160,10 +177,31 @@ def fetch_and_extract(
         extract_dir = Path(extract_to)
     extract_dir.mkdir(parents=True, exist_ok=True)
 
+    if debug:
+        print(
+            f"DEBUG: Extract dir: {extract_dir}, exists: {extract_dir.exists()}"
+        )
+
     # Check if extraction is needed using file signatures
     extracted_path = _extract_with_signature_detection(
-        fetched_path, extract_dir, expected_file, logger
+        fetched_path, extract_dir, expected_file, logger, debug
     )
+
+    if debug:
+        print(
+            f"DEBUG: Extracted path: {extracted_path}, exists: {extracted_path.exists()}"
+        )
+        if extracted_path.exists():
+            print(
+                f"DEBUG: Extracted file size: {extracted_path.stat().st_size}"
+            )
+            # Check if it's still compressed
+            with open(extracted_path, "rb") as f:
+                sig = f.read(16)
+            is_compressed = _is_archive_by_signature(sig)
+            print(
+                f"DEBUG: Extracted file signature: {sig[:4]}, is still compressed: {is_compressed}"
+            )
 
     # Handle renaming of final result if requested
     if rename_extracted and extracted_path != fetched_path:
@@ -178,6 +216,9 @@ def fetch_and_extract(
             shutil.move(str(extracted_path), str(final_path))
         else:
             shutil.move(str(extracted_path), str(final_path))
+
+        if debug:
+            print(f"DEBUG: Renamed to {final_path}")
 
         return final_path
 
@@ -231,11 +272,17 @@ def _extract_with_signature_detection(
     extract_dir: Path,
     expected_file: Optional[str] = None,
     logger: Optional[Logger] = None,
+    debug: bool = False,
 ) -> Path:
     """Extract archive using magic number detection for robust format identification."""
 
     if logger is None:
         logger = get_logger()
+
+    if debug:
+        print(
+            f"DEBUG: _extract_with_signature_detection called for {archive_path}"
+        )
 
     # Read file signature to determine format
     try:
@@ -245,11 +292,18 @@ def _extract_with_signature_detection(
         logger.error(f"Could not read file signature from {archive_path}: {e}")
         return archive_path
 
+    if debug:
+        print(
+            f"DEBUG: File signature: {signature}, is_archive: {_is_archive_by_signature(signature)}"
+        )
+
     # No extraction needed for regular files
     if not _is_archive_by_signature(signature):
         logger.info(
             f"File {archive_path} is not compressed/archived - no extraction needed"
         )
+        if debug:
+            print("DEBUG: No extraction needed")
         return archive_path
 
     logger.info(f"Extracting {archive_path} to {extract_dir}")
@@ -257,40 +311,56 @@ def _extract_with_signature_detection(
     try:
         # Handle different formats based on signature
         if signature.startswith(b"\x1f\x8b"):  # gzip
+            if debug:
+                print("DEBUG: Detected gzip, calling _extract_gzip")
             extracted_path = _extract_gzip(
-                archive_path, extract_dir, expected_file, logger
+                archive_path, extract_dir, expected_file, logger, debug
             )
         elif signature.startswith(b"BZ"):  # bzip2
+            if debug:
+                print("DEBUG: Detected bzip2")
             extracted_path = _extract_bzip2(
                 archive_path, extract_dir, expected_file, logger
             )
         elif signature.startswith(
             (b"\xfd7zXZ", b"\xff\x06\x00\x00sNaPpY")
         ):  # xz/lzma
+            if debug:
+                print("DEBUG: Detected xz/lzma")
             extracted_path = _extract_xz(
                 archive_path, extract_dir, expected_file, logger
             )
         elif signature.startswith(b"PK"):  # zip
+            if debug:
+                print("DEBUG: Detected zip")
             extracted_path = _extract_zip(archive_path, extract_dir, logger)
         elif (
             b"ustar" in signature
             or signature.startswith((b"\x1f\x8b", b"BZ"))
             and _is_tar_content(archive_path)
         ):
+            if debug:
+                print("DEBUG: Detected tar")
             extracted_path = _extract_tar(archive_path, extract_dir, logger)
         else:
             logger.warning(
                 f"Unknown archive format for {archive_path}, copying as-is"
             )
+            if debug:
+                print("DEBUG: Unknown format, copying as-is")
             extracted_path = extract_dir / archive_path.name
             shutil.copy2(archive_path, extracted_path)
 
         logger.info(f"Successfully extracted to {extracted_path}")
+        if debug:
+            print(f"DEBUG: Extraction successful, path: {extracted_path}")
         return extracted_path
 
     except Exception as e:
         logger.error(f"Extraction failed for {archive_path}: {e}")
         # Return original file if extraction fails
+        if debug:
+            print(f"DEBUG: Extraction failed: {e}")
         return archive_path
 
 
@@ -320,13 +390,27 @@ def _is_tar_content(file_path: Path) -> bool:
 
 
 def _extract_gzip(
-    archive_path: Path, extract_dir: Path, expected_file: Optional[str], logger
+    archive_path: Path,
+    extract_dir: Path,
+    expected_file: Optional[str],
+    logger,
+    debug: bool = False,
 ) -> Path:
     """Extract gzip files, handling both standalone .gz and .tar.gz files."""
     import gzip
 
+    if debug:
+        print(
+            f"DEBUG: _extract_gzip called for {archive_path}, expected_file={expected_file}"
+        )
+
     # First check if it's a tar.gz
-    if _is_tar_content(archive_path):
+    is_tar = _is_tar_content(archive_path)
+    if debug:
+        print(f"DEBUG: Is tar content: {is_tar}")
+    if is_tar:
+        if debug:
+            print("DEBUG: Treating as tar.gz")
         return _extract_tar(archive_path, extract_dir, logger)
 
     # Handle standalone gzip
@@ -337,11 +421,38 @@ def _extract_gzip(
         output_name = archive_path.stem
         output_path = extract_dir / output_name
 
+    if debug:
+        print(f"DEBUG: Output path: {output_path}")
+
     with (
         gzip.open(archive_path, "rb") as gz_file,
         open(output_path, "wb") as out_file,
     ):
         shutil.copyfileobj(gz_file, out_file)
+
+    if debug:
+        print(
+            f"DEBUG: Gzip extraction complete, output exists: {output_path.exists()}"
+        )
+
+    # Check if the output is still compressed (double gzip???)
+    if output_path.exists():
+        with open(output_path, "rb") as f:
+            sig = f.read(4)
+        if sig.startswith(b"\x1f\x8b"):
+            if debug:
+                print("DEBUG: Output is still gzipped, extracting again")
+            # Extract again
+            temp_path = output_path.with_suffix(output_path.suffix + ".temp")
+            with (
+                gzip.open(output_path, "rb") as gz_file,
+                open(temp_path, "wb") as out_file,
+            ):
+                shutil.copyfileobj(gz_file, out_file)
+            # Replace the output
+            temp_path.replace(output_path)
+            if debug:
+                print(f"DEBUG: Second extraction complete")
 
     return output_path
 

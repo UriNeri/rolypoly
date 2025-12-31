@@ -451,7 +451,7 @@ def filter_contigs_aa(config: FilterContigsConfig):
             masked_fasta = config.temp_dir / "masked_host.fasta"
             rna_virus_prots = (
                 Path(os.environ.get("ROLYPOLY_DATA", ""))
-                / "prots_for_masking.faa"
+                / "contam/masking/combined_deduplicated_orfs.faa"
             )
             diamond_mask_cmd = [
                 "diamond",

@@ -22,6 +22,7 @@ output_files = pl.DataFrame(
     }
 )
 
+
 class ProteinAnnotationConfig(BaseConfig):
     """Configuration for protein annotation pipeline"""
 
@@ -167,9 +168,10 @@ console = Console(width=150)
     help="""comma-separated list of database(s) for domain detection. \n
     * Pfam: Pfam-A \n
     * RVMT: RVMT RdRp profiles \n
-    * NVPC: RVMT's New Viral Profile Clusters \n
-    * genomad: genomad \n
-    # * RefSeq_virus: RefSeq_virus \n
+    * NVPC: RVMT's New Viral Profile Clusters, filtered to remove "hypothetical" proteins \n
+    * genomad: genomad virus-specific markers - note these can be good for identification but not ideal for annotation. \n
+    * vfam: VFam profiles fetched on December 2025, filtered to remove "hypothetical" proteins \n
+    * uniref50: UniRef50 viral subset (for diamond only) \n
     * custom: custom (path to a custom database in HMM format or a directory of MSA/hmms files) \n
     * all: all (all databases) \n
     """,
@@ -260,7 +262,7 @@ def annotate_prot(
     * Search engines: \n
     - (py)hmmsearch: Pfam, RVMT, genomad, vfam \n
     - mmseqs2: Pfam, RVMT, genomad, vfam \n
-    - diamond: Uniref50, RefSeq (both are subseted to viral sequences) NOT YET IMPLEMENTED \n
+    - diamond: Uniref50 (viral subset) \n
     * custom: user supplied database. Needs to be in tool appropriate format, or a directory of aligned fasta files (for hmmsearch)
     """
     # - nail: Pfam, RVMT, genomad, custom (via nail) # TODO: add support for nail. https://github.com/TravisWheelerLab/nail
@@ -400,8 +402,11 @@ def get_database_paths(config, tool_name):
     import os
 
     hmmdbdir = Path(os.environ["ROLYPOLY_DATA"]) / "profiles" / "hmmdbs"
-    mmseqs2_dbdir = Path(os.environ["ROLYPOLY_DATA"]) /  "profiles" / "mmseqs_dbs"
-    diamond_dbdir = Path(os.environ["ROLYPOLY_DATA"]) / "profiles" / "diamond"
+    mmseqs2_dbdir = (
+        Path(os.environ["ROLYPOLY_DATA"]) / "profiles" / "mmseqs_dbs"
+    )
+    reference_seqs_dir = Path(os.environ["ROLYPOLY_DATA"]) / "reference_seqs"
+    # diamond_dbdir = Path(os.environ["ROLYPOLY_DATA"]) / "profiles" / "diamond" # not needed really , will just use the fasta as input cause diamond accepts fasta directly
 
     # Database paths for different tools
     DB_PATHS = {
@@ -409,19 +414,20 @@ def get_database_paths(config, tool_name):
             "NVPC".lower(): hmmdbdir / "nvpc.hmm",
             "RVMT".lower(): hmmdbdir / "rvmt.hmm",
             "Pfam".lower(): hmmdbdir / "Pfam-A.hmm",
-            "genomad".lower(): hmmdbdir / "genomad.hmm",
+            "genomad".lower(): hmmdbdir / "genomad_rna_viral_marker.hmm",
             "vfam".lower(): hmmdbdir / "vfam.hmm",
         },
         "mmseqs2": {
             "NVPC".lower(): mmseqs2_dbdir / "nvpc/nvpc",
             "RVMT".lower(): mmseqs2_dbdir / "RVMT/RVMT",
-            "Pfam".lower(): mmseqs2_dbdir / "pfam/pfamA37",
-            "genomad".lower(): mmseqs2_dbdir / "genomad/genomad_vv",
+            "vfam".lower(): mmseqs2_dbdir / "vfam/vfam",
+            # "Pfam".lower(): mmseqs2_dbdir / "pfam/pfamA37",
+            "genomad".lower(): mmseqs2_dbdir / "genomad/rna_viral_markers",
         },
         "diamond": {
-            "RefSeq_virus".lower(): diamond_dbdir / "RefSeq_virus.dmnd",
-            "Uniref50".lower(): diamond_dbdir
-            / "uniref50_viral.dmnd",  # TODO: create these DBs, add them to data, and push new data version.
+            "uniref50".lower(): reference_seqs_dir
+            / "uniref/uniref50_viral.fasta",
+            "RVMT".lower(): reference_seqs_dir / "RVMT/RVMT_cleaned_orfs.faa",
         },
     }
 
@@ -465,26 +471,25 @@ def get_database_paths(config, tool_name):
                 )
                 if ".hmm" in unique_extensions:
                     db_type = "hmm_directory"
-                elif unique_extensions.intersection({".faa", ".msa", ".afa",".fasta"}):
+                elif unique_extensions.intersection(
+                    {".faa", ".msa", ".afa", ".fasta"}
+                ):
                     db_type = "msa_directory"
                 config.logger.info(
                     f"Database directory analysis: {db_type} detected based on file extensions"
                 )
                 # concatenate into the same path as the input directory, but with .hmm suffix
-                db_info = {"type": db_type, "path": custom_database.rstrip("/") + ".hmm"}
+                db_info = {
+                    "type": db_type,
+                    "path": custom_database.rstrip("/") + ".hmm",
+                }
                 if db_type == "hmm_directory":
                     # concatenate all hmms into one file
-                    with open(
-                        Path(db_info["path"]), "w"
-                    ) as f_out:
+                    with open(Path(db_info["path"]), "w") as f_out:
                         for hmm_file in list_of_files:
                             with open(hmm_file, "r") as f_in:
                                 f_out.write(f_in.read())
-                    database_paths = {
-                        "Custom": str(
-                            Path(db_info["path"])
-                        )
-                    }
+                    database_paths = {"Custom": str(Path(db_info["path"]))}
                 elif db_info["type"] == "msa_directory":
                     from rolypoly.utils.bio.alignments import (
                         hmmdb_from_directory,
@@ -495,11 +500,7 @@ def get_database_paths(config, tool_name):
                         output=Path(db_info["path"]),
                         # alphabet="aa",
                     )
-                    database_paths = {
-                        "Custom": str(
-                            Path(db_info["path"])
-                        )
-                    }
+                    database_paths = {"Custom": str(Path(db_info["path"]))}
                 else:
                     config.logger.error(
                         f"Unsupported database directory type: {db_info['type']}"
@@ -570,7 +571,7 @@ def get_database_paths(config, tool_name):
         requested_dbs = config.domain_db.split(",")
         database_paths = {}
         for db in requested_dbs:
-            db_key = db.lower()
+            db_key = db.lower()  # remember to lower case for matching!!!
             if db_key in tool_db_paths:
                 database_paths[db] = tool_db_paths[db_key]
             else:
@@ -817,38 +818,41 @@ def search_protein_domains_diamond(config):
 def resolve_domain_overlaps(config):
     """Resolve overlapping domain hits using consolidate_hits."""
     import polars as pl
+
     from rolypoly.utils.bio.interval_ops import consolidate_hits
-    
+
     global output_files  # Declare at the start of function
-    
+
     config.logger.info("Resolving overlapping domain hits")
-    
+
     # Get domain search output files
     domain_files = output_files.filter(
         pl.col("description").str.contains("protein domains")
     )
-    
+
     if domain_files.height == 0:
         config.logger.info("No domain files to process for overlap resolution")
         return
-    
+
     # Process each domain file
     for row in domain_files.iter_rows(named=True):
         domain_file = Path(row["file"])
         if not domain_file.exists() or domain_file.stat().st_size == 0:
-            config.logger.warning(f"Domain file {domain_file} is empty or doesn't exist, skipping")
+            config.logger.warning(
+                f"Domain file {domain_file} is empty or doesn't exist, skipping"
+            )
             continue
-            
+
         config.logger.info(f"Resolving overlaps in {domain_file.name}")
-        
+
         try:
             # Read domain hits
             domain_df = pl.read_csv(domain_file, separator="\t")
-            
+
             if domain_df.height == 0:
                 config.logger.info(f"No hits in {domain_file.name}, skipping")
                 continue
-            
+
             # Resolve overlaps based on user-specified mode
             if config.resolve_mode == "simple":
                 # Use adaptive 'simple' mode for overlap resolution with polyprotein detection
@@ -886,39 +890,48 @@ def resolve_domain_overlaps(config):
             else:
                 # No resolution
                 resolved_df = domain_df
-            
+
             # Write resolved results
-            resolved_file = domain_file.parent / f"{domain_file.stem}_resolved.tsv"
+            resolved_file = (
+                domain_file.parent / f"{domain_file.stem}_resolved.tsv"
+            )
             resolved_df.write_csv(resolved_file, separator="\t")
-            
+
             config.logger.info(
                 f"Resolved {domain_df.height} hits to {resolved_df.height} non-overlapping hits. "
                 f"Output: {resolved_file}"
             )
-            
+
             # Update output_files to include resolved file
             output_files = output_files.vstack(
-                pl.DataFrame({
-                    "file": [str(resolved_file)],
-                    "description": [f"resolved {row['description']}"],
-                    "db": [row["db"]],
-                    "tool": [f"{row['tool']}_resolved"],
-                    "params": [row["params"]],
-                    "command": [f"{row['command']} | consolidate_hits(adaptive_overlap=True)"],
-                })
+                pl.DataFrame(
+                    {
+                        "file": [str(resolved_file)],
+                        "description": [f"resolved {row['description']}"],
+                        "db": [row["db"]],
+                        "tool": [f"{row['tool']}_resolved"],
+                        "params": [row["params"]],
+                        "command": [
+                            f"{row['command']} | consolidate_hits(adaptive_overlap=True)"
+                        ],
+                    }
+                )
             )
-            
+
         except Exception as e:
-            config.logger.error(f"Error resolving overlaps in {domain_file}: {e}")
+            config.logger.error(
+                f"Error resolving overlaps in {domain_file}: {e}"
+            )
             continue
-    
+
     config.logger.info("Domain overlap resolution completed")
 
 
 def combine_results(config):
     """Combine annotation results and write in requested format."""
-    import polars as pl
     import shutil
+
+    import polars as pl
 
     config.logger.info("Combining annotation results")
 
@@ -926,17 +939,21 @@ def combine_results(config):
     resolved_files = output_files.filter(
         pl.col("description").str.contains("resolved")
     )
-    
+
     if resolved_files.height > 0:
         # Use resolved files if available
         domain_files = resolved_files
-        config.logger.info(f"Using {resolved_files.height} resolved domain files")
+        config.logger.info(
+            f"Using {resolved_files.height} resolved domain files"
+        )
     else:
         # Fall back to unresolved domain files
         domain_files = output_files.filter(
             pl.col("description").str.contains("protein domains")
         )
-        config.logger.info(f"Using {domain_files.height} unresolved domain files")
+        config.logger.info(
+            f"Using {domain_files.height} unresolved domain files"
+        )
 
     if domain_files.height == 0:
         config.logger.warning(
@@ -950,10 +967,12 @@ def combine_results(config):
         try:
             df = pl.read_csv(row["file"], separator="\t")
             # Add metadata columns
-            df = df.with_columns([
-                pl.lit(row["db"]).alias("database"),
-                pl.lit(row["tool"]).alias("search_tool"),
-            ])
+            df = df.with_columns(
+                [
+                    pl.lit(row["db"]).alias("database"),
+                    pl.lit(row["tool"]).alias("search_tool"),
+                ]
+            )
             all_domain_data.append(df)
         except Exception as e:
             config.logger.warning(f"Could not read {row['file']}: {e}")
@@ -965,9 +984,10 @@ def combine_results(config):
 
     # Combine all domain data
     combined_data = pl.concat(all_domain_data, how="diagonal")
-    
+
     # Normalize column names for GFF3 compatibility
     from rolypoly.utils.bio.polars_fastx import normalize_column_names
+
     combined_data = normalize_column_names(combined_data)
 
     # Write output in requested format
@@ -990,10 +1010,14 @@ def combine_results(config):
     # Log summary statistics
     config.logger.info(f"Total annotations: {combined_data.height}")
     if "database" in combined_data.columns:
-        dbs_used = combined_data.select("database").unique().to_series().to_list()
+        dbs_used = (
+            combined_data.select("database").unique().to_series().to_list()
+        )
         config.logger.info(f"Databases used: {', '.join(dbs_used)}")
     if "search_tool" in combined_data.columns:
-        tools_used = combined_data.select("search_tool").unique().to_series().to_list()
+        tools_used = (
+            combined_data.select("search_tool").unique().to_series().to_list()
+        )
         config.logger.info(f"Search tools used: {', '.join(tools_used)}")
 
     # Cleanup temporary directories
@@ -1002,18 +1026,22 @@ def combine_results(config):
     if tmp_dir.exists():
         try:
             shutil.rmtree(tmp_dir)
-            config.logger.info(f"Cleaned up mmseqs2 temporary directory: {tmp_dir}")
+            config.logger.info(
+                f"Cleaned up mmseqs2 temporary directory: {tmp_dir}"
+            )
         except Exception as e:
             config.logger.warning(f"Could not remove tmp directory: {e}")
-    
+
     # Clean up rolypoly temp_dir (created by BaseConfig)
-    if hasattr(config, 'temp_dir') and config.temp_dir.exists():
+    if hasattr(config, "temp_dir") and config.temp_dir.exists():
         try:
             shutil.rmtree(config.temp_dir)
-            config.logger.info(f"Cleaned up rolypoly temporary directory: {config.temp_dir}")
+            config.logger.info(
+                f"Cleaned up rolypoly temporary directory: {config.temp_dir}"
+            )
         except Exception as e:
             config.logger.warning(f"Could not remove temp_dir: {e}")
-    
+
     raw_out_dir = config.output_dir / "raw_out"
     if raw_out_dir.exists() and not any(raw_out_dir.iterdir()):
         try:
@@ -1026,18 +1054,20 @@ def combine_results(config):
 def add_missing_gff_columns(dataframe):
     """Add missing GFF3 columns with defaults."""
     import polars as pl
-    
+
     if "source" not in dataframe.columns:
         dataframe = dataframe.with_columns(pl.lit("rp").alias("source"))
     if "type" not in dataframe.columns:
-        dataframe = dataframe.with_columns(pl.lit("protein_domain").alias("type"))
+        dataframe = dataframe.with_columns(
+            pl.lit("protein_domain").alias("type")
+        )
     if "score" not in dataframe.columns:
         dataframe = dataframe.with_columns(pl.lit(0.0).alias("score"))
     if "strand" not in dataframe.columns:
         dataframe = dataframe.with_columns(pl.lit("+").alias("strand"))
     if "phase" not in dataframe.columns:
         dataframe = dataframe.with_columns(pl.lit(".").alias("phase"))
-    
+
     return dataframe
 
 
@@ -1061,7 +1091,13 @@ def convert_record_to_gff3_record(row):
     """Convert a row dict to GFF3 format string."""
     # Try to identify sequence_id column
     sequence_id_columns = [
-        "sequence_id", "query", "qseqid", "contig_id", "contig", "id", "name"
+        "sequence_id",
+        "query",
+        "qseqid",
+        "contig_id",
+        "contig",
+        "id",
+        "name",
     ]
     sequence_id_col = next(
         (col for col in sequence_id_columns if col in row.keys()), None
@@ -1073,30 +1109,49 @@ def convert_record_to_gff3_record(row):
 
     # Try to identify other columns
     score_columns = ["score", "Score", "bitscore", "qscore", "bit", "bits"]
-    score_col = next((col for col in score_columns if col in row.keys()), "score")
+    score_col = next(
+        (col for col in score_columns if col in row.keys()), "score"
+    )
 
     source_columns = ["source", "Source", "db", "DB", "database"]
-    source_col = next((col for col in source_columns if col in row.keys()), "source")
+    source_col = next(
+        (col for col in source_columns if col in row.keys()), "source"
+    )
 
     type_columns = ["type", "Type", "feature", "Feature"]
     type_col = next((col for col in type_columns if col in row.keys()), "type")
 
     strand_columns = ["strand", "Strand", "sense", "Sense"]
-    strand_col = next((col for col in strand_columns if col in row.keys()), "strand")
+    strand_col = next(
+        (col for col in strand_columns if col in row.keys()), "strand"
+    )
 
     phase_columns = ["phase", "Phase"]
-    phase_col = next((col for col in phase_columns if col in row.keys()), "phase")
+    phase_col = next(
+        (col for col in phase_columns if col in row.keys()), "phase"
+    )
 
     # Build GFF3 attributes string
     attrs = []
     excluded_cols = [
-        sequence_id_col, source_col, score_col, type_col, strand_col, phase_col,
-        "start", "end"
+        sequence_id_col,
+        source_col,
+        score_col,
+        type_col,
+        strand_col,
+        phase_col,
+        "start",
+        "end",
     ]
 
     for key, value in row.items():
         if key not in excluded_cols:
-            if value and str(value).strip() and str(value) != "." and str(value) != "":
+            if (
+                value
+                and str(value).strip()
+                and str(value) != "."
+                and str(value) != ""
+            ):
                 attrs.append(f"{key}={value}")
 
     # Get values with defaults

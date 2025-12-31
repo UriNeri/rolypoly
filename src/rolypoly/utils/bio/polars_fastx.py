@@ -376,7 +376,7 @@ def fasta_stats(
         stats_expr.append(pl.col("sequence").seq.n_count().alias("n_count"))
     if "hash" in selected_fields:
         stats_expr.append(pl.col("sequence").seq.generate_hash().alias("hash"))
-        
+
     if "avg_quality" in selected_fields:
         if "quality" not in df.columns:
             selected_fields.remove("avg_quality")
@@ -384,8 +384,8 @@ def fasta_stats(
                 "Quality scores not found in input file for avg_quality calculation."
             )
         else:
-        # Calculate mean quality score per read from PHRED+33 encoded quality string
-        # Use hex encoding to convert characters to their byte values
+            # Calculate mean quality score per read from PHRED+33 encoded quality string
+            # Use hex encoding to convert characters to their byte values
             stats_expr.append(
                 pl.col("quality")
                 .str.encode("hex")

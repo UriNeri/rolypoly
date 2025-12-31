@@ -421,9 +421,9 @@ def hmm_from_msa(
 
     # Transfer metadata from MSA to HMM
     hmm.name = msa.name
-    if hasattr(msa, 'accession') and msa.accession is not None:
+    if hasattr(msa, "accession") and msa.accession is not None:
         hmm.accession = msa.accession
-    if hasattr(msa, 'description') and msa.description is not None:
+    if hasattr(msa, "description") and msa.description is not None:
         hmm.description = msa.description
 
     # Set gathering threshold if provided
@@ -467,7 +467,7 @@ def hmmdb_from_directory(
         logger: logging.Logger, optional logger for debug output
 
     """
-    
+
     logger = get_logger(logger)
     if debug:
         logger.setLevel(logging.DEBUG)
@@ -485,7 +485,7 @@ def hmmdb_from_directory(
         if name_col not in info_table.columns:
             raise ValueError(f"info_table must contain a '{name_col}' column")
         some_bool = True
-        cols_map = {accs_col: "accession", desc_col: "description"} # not used?
+        cols_map = {accs_col: "accession", desc_col: "description"}  # not used?
     else:
         some_bool = False
 
@@ -496,11 +496,8 @@ def hmmdb_from_directory(
         files = list(msa_dir.glob(msa_pattern))
         # Process each MSA file and collect HMMs
         for msa_file in track(
-            files,
-            description="Processing MSA files",
-            total=len(files),
+            files, description="Processing MSA files", total=len(files)
         ):
-            
             this_gath = default_gath
             with pyhmmer.easel.MSAFile(msa_file, digital=True) as msa_file_obj:
                 msa = msa_file_obj.read()
@@ -519,7 +516,9 @@ def hmmdb_from_directory(
                     info = info_table.filter(pl.col(accs_col) == base_id)
                 # Strategy 2: if no exact accession match, allow contains on accession
                 if info.height == 0 and accs_col in info_table.columns:
-                    info = info_table.filter(pl.col(accs_col).str.contains(base_id))
+                    info = info_table.filter(
+                        pl.col(accs_col).str.contains(base_id)
+                    )
                 # Strategy 3: contains match on name column with the base id or full stem
                 if info.height == 0:
                     info = info_table.filter(
@@ -534,12 +533,25 @@ def hmmdb_from_directory(
                     # If multiple rows match (names can duplicate), take the first but ensure accession uniqueness
                     info_row = info.row(0, named=True)
                     # Set MSA labels from metadata
-                    if name_col in info.columns and info_row.get(name_col) is not None:
+                    if (
+                        name_col in info.columns
+                        and info_row.get(name_col) is not None
+                    ):
                         msa.name = str(info_row.get(name_col)).encode("utf-8")
-                    if accs_col in info.columns and info_row.get(accs_col) is not None:
-                        msa.accession = str(info_row.get(accs_col)).encode("utf-8")
-                    if desc_col in info.columns and info_row.get(desc_col) is not None:
-                        msa.description = str(info_row.get(desc_col)).encode("utf-8")
+                    if (
+                        accs_col in info.columns
+                        and info_row.get(accs_col) is not None
+                    ):
+                        msa.accession = str(info_row.get(accs_col)).encode(
+                            "utf-8"
+                        )
+                    if (
+                        desc_col in info.columns
+                        and info_row.get(desc_col) is not None
+                    ):
+                        msa.description = str(info_row.get(desc_col)).encode(
+                            "utf-8"
+                        )
 
                     if gath_col in info.columns:
                         this_gath = (
@@ -580,9 +592,9 @@ def hmmdb_from_directory(
 
             # Transfer metadata from MSA to HMM
             hmm.name = msa.name
-            if hasattr(msa, 'accession') and msa.accession is not None:
+            if hasattr(msa, "accession") and msa.accession is not None:
                 hmm.accession = msa.accession
-            if hasattr(msa, 'description') and msa.description is not None:
+            if hasattr(msa, "description") and msa.description is not None:
                 hmm.description = msa.description
 
             # Set gathering threshold if provided (or default to 1)
