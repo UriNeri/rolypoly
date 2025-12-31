@@ -32,7 +32,7 @@ dependencies = [
     "viennarna>=2.7.0,<3",
     "intervaltree>=3.1.0,<4",
     "polars>=1.29.0,<2",
-    "bbmapy>=0.0.53,<0.0.58",
+    "bbmapy>=0.0.56,<0.0.58",
     "xxhash>=3.6.0,<4",
     "pyrodigal-rv>=0.1.0,<0.2",
 ]
