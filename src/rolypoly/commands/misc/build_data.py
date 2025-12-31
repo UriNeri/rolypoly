@@ -51,7 +51,7 @@ data_dir = "<REPO_PATH>/data"
 def build_data(data_dir, threads, log_file):
     """Build external data required for RolyPoly. This is an internal scratch script, wrapped in a click command for convenience (and logging), but exposed to users.
     1. Build geNomad RNA viral HMMs
-    2. Build protein HMMs RdRp-scan, RVMT, Neordrp_v2.1, tsa_2018 and PFAM_A_37
+    2. Build protein HMMs RdRp-scan, RVMT, Neordrp_v2.1, tsa_2018 and pfam_A_38
     3. Download and prepare rRNA databases SILVA_138.1_SSURef_NR99_tax_silva.fasta and SILVA_138.1_LSURef_NR99_tax_silva.fasta
     4. Download Rfam data.
     """
@@ -368,7 +368,7 @@ def tar_everything_and_upload_to_NERSC(data_dir, version=""):
         tools.append("rdrp-scan")
         tools.append("neordrp_v2.1")
         tools.append("tsa_2018")
-        tools.append("pfam_a_37")
+        tools.append("pfam_A_38")
         tools.append("refseq")
         f_out.write(remind_citations(tools, return_as_text=True) or "")
 

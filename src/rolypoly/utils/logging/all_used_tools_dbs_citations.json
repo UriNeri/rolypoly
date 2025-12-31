@@ -168,8 +168,8 @@
     "name": "PALMdb_v2",
     "citation": "https://github.com/ababaian/palmdb2"
   },
-  "pfam_a_37": {
-    "name": "Pfam_A_37",
+  "pfam_A_38": {
+    "name": "pfam_A_38",
     "citation": "https://doi.org/10.1093/nar/gkaa913",
     "data": "https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam37.0/Pfam-A.hmm.gz",
     "note": "RdRps and RT profiles from PFAM_A v.37: PF04197.17, PF04196.17, PF22212.1, PF22152.1, PF22260.1, PF05183.17, PF00680.25, PF00978.26, PF00998.28, PF02123.21, PF07925.16, PF00078.32, PF07727.19, PF13456.11"
