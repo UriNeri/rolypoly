@@ -128,3 +128,4 @@ reference.fasta
 package.json
 .gitignore
 **taxdump**
+.nfs*
