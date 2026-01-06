@@ -1053,6 +1053,7 @@ def convert_record_to_gff3_record(row):
         "contig",
         "id",
         "name",
+        "query_full_name",
     ]
     sequence_id_col = next(
         (col for col in sequence_id_columns if col in row.keys()), None

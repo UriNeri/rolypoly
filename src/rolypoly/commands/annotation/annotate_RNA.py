@@ -118,9 +118,7 @@ class RNAAnnotationConfig(BaseConfig):
     help="Log level",
     type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]),
 )
-@click.option(
-    "-M", "--memory", default="4gb", help="Memory in GB. Example: -M 8gb"
-)
+@click.option("-M", "--memory", default="4gb", help="Memory in GB. Example: -M 8gb")
 @click.option(
     "-op",
     "--override_parameters",
@@ -243,9 +241,9 @@ def annotate_RNA(
         log_file=log_file,
         log_level=log_level,
         memory=ensure_memory(memory)["giga"],
-        override_parameters=json.loads(override_parameters)
-        if override_parameters
-        else {},
+        override_parameters=(
+            json.loads(override_parameters) if override_parameters else {}
+        ),
         skip_steps=skip_steps.split(",") if skip_steps else [],
         secondary_structure_tool=secondary_structure_tool,
         ires_tool=ires_tool,
@@ -320,18 +318,14 @@ def predict_secondary_structure(config):
             raise ValueError(f"No FASTA files found in directory {input_path}")
         input_fasta = fasta_files[0]
     else:
-        raise ValueError(
-            f"Input path {input_path} is neither a file nor a directory"
-        )
+        raise ValueError(f"Input path {input_path} is neither a file nor a directory")
 
     output_file = config.output_dir / "secondary_structure.fold"
 
     if config.secondary_structure_tool == "RNAfold":
         predict_secondary_structure_rnafold(config, input_fasta, output_file)
     elif config.secondary_structure_tool == "RNAstructure":
-        predict_secondary_structure_rnastructure(
-            config, input_fasta, output_file
-        )
+        predict_secondary_structure_rnastructure(config, input_fasta, output_file)
     elif config.secondary_structure_tool == "LinearFold":
         predict_secondary_structure_linearfold(config, input_fasta, output_file)
 
@@ -340,6 +334,7 @@ def predict_secondary_structure_rnafold(config, input_fasta, output_file):
     """Predict RNA secondary structure using RNAfold."""
     import RNA
     from needletail import parse_fastx_file
+
     # from needletail import Record as record
 
     with open(output_file, "w") as out_f:
@@ -392,7 +387,9 @@ def predict_secondary_structure_rnastructure(config, input_fasta, output_file):
             sequence = str(record.seq).replace("T", "U")  # pyright: ignore
 
             # Write sequence to temporary file
-            temp_seq_file = config.output_dir / f"{record.id}_temp.seq"  # pyright: ignore
+            temp_seq_file = (
+                config.output_dir / f"{record.id}_temp.seq"
+            )  # pyright: ignore
             with open(temp_seq_file, "w") as temp_f:
                 temp_f.write(sequence)
 
@@ -413,11 +410,11 @@ def predict_secondary_structure_rnastructure(config, input_fasta, output_file):
                 lines = ct_f.readlines()
                 structure = "".join(
                     [
-                        "("
-                        if int(line.split()[4]) > int(line.split()[0])
-                        else ")"
-                        if int(line.split()[4]) != 0
-                        else "."
+                        (
+                            "("
+                            if int(line.split()[4]) > int(line.split()[0])
+                            else ")" if int(line.split()[4]) != 0 else "."
+                        )
                         for line in lines[1:]
                     ]
                 )
@@ -494,14 +491,10 @@ def predict_secondary_structure_linearfold(config, input_fasta, output_file):
                 return (record.id, sequence, "Error", 0.0)
 
         except subprocess.TimeoutExpired:
-            config.logger.error(
-                f"LinearFold timed out for sequence {record.id}"
-            )
+            config.logger.error(f"LinearFold timed out for sequence {record.id}")
             return (record.id, sequence, "Error", 0.0)
         except Exception as e:
-            config.logger.error(
-                f"Error processing sequence {record.id}: {str(e)}"
-            )
+            config.logger.error(f"Error processing sequence {record.id}: {str(e)}")
             return (record.id, sequence, "Error", 0.0)
 
     # Process sequences in parallel
@@ -935,10 +928,7 @@ def process_ribozymes_data(config, ribozymes_file):
 
     from rolypoly.utils.various import read_fwf
 
-    if (
-        not os.path.exists(ribozymes_file)
-        or os.path.getsize(ribozymes_file) == 0
-    ):
+    if not os.path.exists(ribozymes_file) or os.path.getsize(ribozymes_file) == 0:
         config.logger.warning(
             f"Ribozymes file {ribozymes_file} is empty or does not exist"
         )
@@ -947,9 +937,7 @@ def process_ribozymes_data(config, ribozymes_file):
     try:
         # First check if file has any non-comment lines
         with open(ribozymes_file, "r") as f:
-            has_data = any(
-                not line.startswith("#") and line.strip() for line in f
-            )
+            has_data = any(not line.startswith("#") and line.strip() for line in f)
 
         if not has_data:
             config.logger.warning(
@@ -1020,14 +1008,10 @@ def process_ribozymes_data(config, ribozymes_file):
             )
             return pl.DataFrame()
 
-        config.logger.debug(
-            f"Raw ribozymes data from {ribozymes_file}: {raw_data}"
-        )
+        config.logger.debug(f"Raw ribozymes data from {ribozymes_file}: {raw_data}")
 
         # Normalize to minimal schema, keeping important ribozyme-specific columns
-        from rolypoly.utils.bio.polars_fastx import (
-            create_minimal_annotation_schema,
-        )
+        from rolypoly.utils.bio.polars_fastx import create_minimal_annotation_schema
 
         data = create_minimal_annotation_schema(
             raw_data,
@@ -1050,9 +1034,7 @@ def process_ires_iresfinder(ires_file):
 
     if ires_file.is_file():
         raw_data = pl.read_csv(ires_file, separator="\t")
-        from rolypoly.utils.bio.polars_fastx import (
-            create_minimal_annotation_schema,
-        )
+        from rolypoly.utils.bio.polars_fastx import create_minimal_annotation_schema
 
         # Rename columns for normalization
         if "Sequence Name" in raw_data.columns:
@@ -1075,9 +1057,7 @@ def process_ires_irespy(ires_file):
 
     if ires_file.is_file():
         raw_data = pl.read_csv(ires_file, separator="\t")
-        from rolypoly.utils.bio.polars_fastx import (
-            create_minimal_annotation_schema,
-        )
+        from rolypoly.utils.bio.polars_fastx import create_minimal_annotation_schema
 
         # Rename columns for normalization
         if "Sequence Name" in raw_data.columns:
@@ -1317,9 +1297,7 @@ def resolve_rna_element_overlaps(config):
 
         try:
             # Read element hits
-            element_df = pl.read_csv(
-                element_file, separator="\t", comment_prefix="#"
-            )
+            element_df = pl.read_csv(element_file, separator="\t", comment_prefix="#")
 
             if element_df.height == 0:
                 config.logger.info(f"No hits in {element_file.name}, skipping")
@@ -1364,9 +1342,7 @@ def resolve_rna_element_overlaps(config):
                 resolved_df = element_df
 
             # Write resolved results
-            resolved_file = (
-                element_file.parent / f"{element_file.stem}_resolved.out"
-            )
+            resolved_file = element_file.parent / f"{element_file.stem}_resolved.out"
             resolved_df.write_csv(resolved_file, separator="\t")
 
             config.logger.info(
@@ -1375,9 +1351,7 @@ def resolve_rna_element_overlaps(config):
             )
 
         except Exception as e:
-            config.logger.warning(
-                f"Could not resolve overlaps in {element_file}: {e}"
-            )
+            config.logger.warning(f"Could not resolve overlaps in {element_file}: {e}")
             # Non-critical error, continue processing
             continue
 
@@ -1396,10 +1370,7 @@ def combine_results(config):
         # Process ribozymes
         if "search_ribozymes" not in config.skip_steps:
             ribozymes_file = config.output_dir / "ribozymes.out"
-            if (
-                os.path.exists(ribozymes_file)
-                and os.path.getsize(ribozymes_file) > 0
-            ):
+            if os.path.exists(ribozymes_file) and os.path.getsize(ribozymes_file) > 0:
                 ribozymes_data = process_ribozymes_data(config, ribozymes_file)
                 if not ribozymes_data.is_empty():
                     all_results.append(("ribozyme", ribozymes_data))
@@ -1434,9 +1405,7 @@ def combine_results(config):
                     )
                 if not trnas_data.is_empty():
                     all_results.append(("trna", trnas_data))
-                    config.logger.debug(
-                        f"Added tRNA data:\n{trnas_data.head()}"
-                    )
+                    config.logger.debug(f"Added tRNA data:\n{trnas_data.head()}")
 
         # Process RNA elements
         if "search_rna_elements" not in config.skip_steps:
@@ -1453,9 +1422,7 @@ def combine_results(config):
         if "search_rna_motifs" not in config.skip_steps:
             rna_motifs_file = config.output_dir / "rna_motifs.out"
             if rna_motifs_file.is_file():
-                rna_motifs_data = process_rna_motifs_data(
-                    config, rna_motifs_file
-                )
+                rna_motifs_data = process_rna_motifs_data(config, rna_motifs_file)
                 if not rna_motifs_data.is_empty():
                     all_results.append(("rna_motif", rna_motifs_data))
                     config.logger.debug(
@@ -1500,9 +1467,7 @@ def combine_results(config):
                         f"Combined annotation results written to {output_file}"
                     )
             else:
-                config.logger.warning(
-                    "Failed to create unified schema for results"
-                )
+                config.logger.warning("Failed to create unified schema for results")
         else:
             config.logger.warning(
                 "No results to combine - no valid data found in any output files"
@@ -1541,6 +1506,7 @@ def convert_record_to_gff3_record(
         "contig",
         "id",
         "name",
+        "query_full_name",
     ]
     sequence_id_col = next(
         (col for col in sequence_id_columns if col in row.keys()), None
@@ -1552,15 +1518,11 @@ def convert_record_to_gff3_record(
 
     # try to identify a score column (score, Score, bitscore, qscore, bit)
     score_columns = ["score", "Score", "bitscore", "qscore", "bit", "bits"]
-    score_col = next(
-        (col for col in score_columns if col in row.keys()), "score"
-    )
+    score_col = next((col for col in score_columns if col in row.keys()), "score")
 
     # try to identify a source column (source, Source, db, DB)
     source_columns = ["source", "Source", "db", "DB"]
-    source_col = next(
-        (col for col in source_columns if col in row.keys()), "source"
-    )
+    source_col = next((col for col in source_columns if col in row.keys()), "source")
 
     # try to identify a type column (type, Type, feature, Feature)
     type_columns = ["type", "Type", "feature", "Feature"]
@@ -1568,15 +1530,11 @@ def convert_record_to_gff3_record(
 
     # try to identify a strand column (strand, Strand, sense, Sense)
     strand_columns = ["strand", "Strand", "sense", "Sense"]
-    strand_col = next(
-        (col for col in strand_columns if col in row.keys()), "strand"
-    )
+    strand_col = next((col for col in strand_columns if col in row.keys()), "strand")
 
     # try to identify a phase column (phase, Phase)
     phase_columns = ["phase", "Phase"]
-    phase_col = next(
-        (col for col in phase_columns if col in row.keys()), "phase"
-    )
+    phase_col = next((col for col in phase_columns if col in row.keys()), "phase")
 
     # Build GFF3 attributes string
     attrs = []
@@ -1595,12 +1553,7 @@ def convert_record_to_gff3_record(
     for key, value in row.items():
         if key not in excluded_cols:
             # Skip empty values (empty strings, None, ".", etc.)
-            if (
-                value
-                and str(value).strip()
-                and str(value) != "."
-                and str(value) != ""
-            ):
+            if value and str(value).strip() and str(value) != "." and str(value) != "":
                 attrs.append(f"{key}={value}")
 
     # Get values, using defaults for missing columns
