@@ -6,8 +6,9 @@ RolyPoly is an RNA virus analysis toolkit, meant to be a "swiss-army knife" for 
 - Help non-computational researchers take a deep dive into their data without compromising on using tools that are non-techie friendly.  
 - Help (software) developers of virus analysis pipeline "plug" holes missing from their framework, by using specific RolyPoly commands to add features to their existing code base.
 
-## WIP - NOTE
-RolyPoly is an open, still in progress project - I aim to summrise the main functionality into a manuscript ~early 2026. Pull requests and contributions are welcome and will be considered (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+## Note - Rolypoly is still under development (contributions welcome!)
+RolyPoly is an open, still in progress project - I aim to summrise the main functionality into a manuscript ~early 2026. Pull requests and contributions are welcome and will be considered (see [CONTRIBUTING.md](CONTRIBUTING.md)).  
+This also means that there are bugs, verbose logging even for non debug mode, and some place holders and TODOs here and there.
 
 ## Docs
 For more detailed information, please refer to the [docs](https://pages.jgi.doe.gov/rolypoly/docs/). While it isn't updated often, it should still be helpful. Most commands support a `--help` flag and that tends to be the most up date.
@@ -115,12 +116,12 @@ Active development. Currently implemented features:
 - ✅ Contig filtering and clustering ([`filter-contigs`](https://pages.jgi.doe.gov/rolypoly/docs/commands/filter_assembly))
 - ✅ Marker gene search with pyhmmer (mainly RdRps, genomad VV's or user-provided) ([`identify marker-search`](https://pages.jgi.doe.gov/rolypoly/docs/commands/marker_search))
 - ✅ RNA secondary structure prediction, annotation and ribozyme identification ([`annotation annotate-rna`](https://pages.jgi.doe.gov/rolypoly/docs/commands/annotate_rna))
+- 🚧 Protein annotation (`annotate-prot`) (mostly done, but need to check other DBs or tools)
 - ✅ Nucleotide search vs known viruses ([`identify search-viruses`](https://pages.jgi.doe.gov/rolypoly/docs/commands/search_viruses))
 - ✅ Prepare external data ([`data get-data`](https://pages.jgi.doe.gov/rolypoly/docs/commands/prepare_external_data))
 
 
 Under development:
-- 🚧 Protein annotation (`annotate-prot`) (mostly done, but need to check other DBs or tools - Currently no structural prediction support)
 
 Planned/under consideration features (but not yet started):
 - 🚧 Genome binning and refinement (`TBD`)
@@ -128,6 +129,8 @@ Planned/under consideration features (but not yet started):
 - 🚧 Virus feature prediction (+/-ssRNA/dsRNA, circular/linear, mono/poly-segmented, capsid type, etc.) (`TBD`)
 - 🚧 Cross-sample analysis (`TBD`)
 - 🚧 Host prediction (`TBD`)
+- 🚧 protein structural prediction support (and reseek search xyz dbs)
+- 🚧 support for [genotate](https://github.com/deprekate/genotate) for gene prediction.
 
 For more details about the implementation status and roadmap please contact us directly or open an issue.
 

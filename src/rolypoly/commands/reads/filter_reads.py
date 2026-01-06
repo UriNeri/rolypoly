@@ -104,9 +104,9 @@ class ReadFilterConfig(BaseConfig):
                 "passes": 1,
             },
             "merge_reads": {
-                "k": 93,
-                "extend2": 80,
-                "rem": True,
+                # "k": 93,
+                # "extend2": 80,
+                # "rem": True,
                 "mix": "f",
             },  # TODO: add explanation somewhere about the (high) memory usage and the potential gains/tradeoffs of merging reads https://bbmap.org/tools/bbmerge#:~:text=When%20NOT%20to%20Use%20BBMerge
             "quality_trim_unmerged": {"qtrim": "rl", "trimq": 5, "minlen": 45},
@@ -168,6 +168,8 @@ def process_reads(
     steps = [
         # handle_input_fastq, # moved to outside of the steps to avoid ensures the input is interleaved by moving it through rename or reformat
         # filter_by_tile, # filters out reads by tile # dropped - breaks when the fastq headers are not pristine, and should not be used if multiple libraries are merged/concated
+        # TODO: add a subsample read and seal.sh against rrnas for better host composition than the rrna filtering with bbduk.
+        # TODO: THE TODO ABOVE THIS, PUTTING THIS SECOND TODO CAUSE IS KINDA HIGH PRIORITY.
         filter_known_dna,  # filters out known DNA sequences
         decontaminate_rrna,  # decontaminates rRNA sequences
         filter_identified_dna,  # filters out reads that are likely host (based on the stats file of the previous step)
