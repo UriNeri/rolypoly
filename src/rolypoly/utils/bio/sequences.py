@@ -59,26 +59,32 @@ def write_fasta_file(
     else:
         raise ValueError(f"Invalid format: {format}")
 
+    should_close = False
     if output_file is None:
-        output_file = sys.stdout
+        output_handle = sys.stdout
+    elif hasattr(output_file, "write"):
+        output_handle = output_file
     else:
-        output_file = open(output_file, "w")
+        output_handle = open(output_file, "w")
+        should_close = True
 
-    if records:
-        for record in records:
-            output_file.write(
-                f"{header_delim}{record.id}{seq_delim}{str(record.seq)}"
-            )
-    elif seqs is not None and headers is not None:
-        for i, seq in enumerate(seqs):
-            if i == 0:
-                output_file.write(
-                    f">{headers[i]}{seq_delim}{seq}"
-                )  # no leading newline for first record
-            else:
-                output_file.write(f"{header_delim}{headers[i]}{seq_delim}{seq}")
-    else:
-        raise ValueError("No records, seqs, or headers provided")
+    try:
+        if records:
+            for record in records:
+                output_handle.write(
+                    f"{header_delim}{record.id}{seq_delim}{str(record.seq)}"
+                )
+        elif seqs is not None and headers is not None:
+            for i, seq in enumerate(seqs):
+                if i == 0:
+                    output_handle.write(f">{headers[i]}{seq_delim}{seq}")
+                else:
+                    output_handle.write(f"{header_delim}{headers[i]}{seq_delim}{seq}")
+        else:
+            raise ValueError("No records, seqs, or headers provided")
+    finally:
+        if should_close:
+            output_handle.close()
 
 
 def clean_fasta_headers(
@@ -180,7 +186,9 @@ def filter_fasta_by_headers(
 
     # Load headers and optimize for lookup pattern
     headers_exact = set()  # For exact matches
-    headers_patterns = []  # For substring patterns only if needed - # TODO: is this needed?
+    headers_patterns = (
+        []
+    )  # For substring patterns only if needed - # TODO: is this needed?
     if not isinstance(headers, list):
         with open(headers, "r") as f:
             for line in f:
@@ -236,9 +244,7 @@ def filter_fasta_by_headers(
                 for record in parse_fastx_file(fasta_file):
                     records_processed += 1
                     record_id = str(getattr(record, "id", ""))
-                    if any(
-                        pattern in record_id for pattern in headers_patterns
-                    ):
+                    if any(pattern in record_id for pattern in headers_patterns):
                         record_seq = str(getattr(record, "seq", ""))
                         out_f.write(f">{record_id}\n{record_seq}\n")
                         records_written += 1
@@ -264,9 +270,7 @@ def filter_fasta_by_headers(
                 for record in parse_fastx_file(fasta_file):
                     records_processed += 1
                     record_id = str(getattr(record, "id", ""))
-                    if not any(
-                        pattern in record_id for pattern in headers_patterns
-                    ):
+                    if not any(pattern in record_id for pattern in headers_patterns):
                         record_seq = str(getattr(record, "seq", ""))
                         out_f.write(f">{record_id}\n{record_seq}\n")
                         records_written += 1
@@ -366,13 +370,13 @@ def populate_pldf_withseqs_needletail(
             if trim_to_region:
                 print("Trimming sequences")
                 chunk_seqs = chunk_seqs.with_columns(
-                    pl.struct(
-                        pl.col(seqcol), pl.col(start_col), pl.col(end_col)
-                    )
+                    pl.struct(pl.col(seqcol), pl.col(start_col), pl.col(end_col))
                     .map_elements(
-                        lambda x: str(x[seqcol][x[start_col] : x[end_col]])
-                        if x[seqcol] is not None
-                        else None,
+                        lambda x: (
+                            str(x[seqcol][x[start_col] : x[end_col]])
+                            if x[seqcol] is not None
+                            else None
+                        ),
                         return_dtype=pl.Utf8,
                     )
                     .alias(seqcol)
@@ -395,14 +399,10 @@ def populate_pldf_withseqs_needletail(
             print("Joining with nascent df")
             minipldf = minipldf.join(chunk_seqs, on=merge_cols, how="left")
             minipldf = minipldf.with_columns(
-                pl.coalesce([pl.col(seqcol), pl.col(f"{seqcol}_right")]).alias(
-                    seqcol
-                )
+                pl.coalesce([pl.col(seqcol), pl.col(f"{seqcol}_right")]).alias(seqcol)
             ).drop(f"{seqcol}_right")
 
-            print(
-                f"Null count in seqcol after chunk: {minipldf[seqcol].null_count()}"
-            )
+            print(f"Null count in seqcol after chunk: {minipldf[seqcol].null_count()}")
 
             seqs = []
             seq_ids = []
@@ -421,9 +421,7 @@ def is_nucl_string(sequence, extended=False):
     """Check if a string is a valid nucleotide sequence."""
     valid_characters = set({"A", "T", "G", "C", "U", "N"})
     if extended:
-        valid_characters.update(
-            {"M", "R", "W", "S", "Y", "K", "V", "H", "D", "B"}
-        )
+        valid_characters.update({"M", "R", "W", "S", "Y", "K", "V", "H", "D", "B"})
     return all(char in valid_characters for char in sequence.upper())
 
 
@@ -597,9 +595,7 @@ def remove_duplicates(
         )
 
     if not revcomp_as_distinct and by != "seq":
-        logger.warning(
-            "revcomp_as_distinct only applies when by='seq', ignoring"
-        )
+        logger.warning("revcomp_as_distinct only applies when by='seq', ignoring")
 
     if not streaming and not return_sequences:
         logger.warning(
@@ -787,9 +783,7 @@ def remove_duplicates(
                 dup_data = []
                 for hash_val, ids in duplicate_groups.items():
                     if len(ids) > 1:
-                        dup_data.append(
-                            {"count": len(ids), "ids": ", ".join(ids)}
-                        )
+                        dup_data.append({"count": len(ids), "ids": ", ".join(ids)})
 
                 if dup_data:
                     result["duplicate_groups"] = pl.DataFrame(dup_data).sort(
@@ -858,9 +852,7 @@ def rename_sequences(
     else:
         # Calculate padding based on total number of sequences
         padding = len(str(len(df)))
-        new_headers = [
-            f"{prefix}_{str(i + 1).zfill(padding)}" for i in range(len(df))
-        ]
+        new_headers = [f"{prefix}_{str(i + 1).zfill(padding)}" for i in range(len(df))]
 
     # Create mapping dictionary
     id_map = dict(zip(df["header"], new_headers))
@@ -893,14 +885,10 @@ def find_fasta_files(
             "*.fna.gz",
         ]
 
-    return find_files_by_extension(
-        input_path, extensions, "FASTA files", logger
-    )
+    return find_files_by_extension(input_path, extensions, "FASTA files", logger)
 
 
-def ensure_faidx(
-    input_file: str, logger: Optional[logging.Logger] = None
-) -> None:
+def ensure_faidx(input_file: str, logger: Optional[logging.Logger] = None) -> None:
     """Ensure a FASTA file has a pyfastx index.
 
     Creates a pyfastx index for the input FASTA file if it doesn't exist.
@@ -923,9 +911,7 @@ def ensure_faidx(
 
         if not os.path.exists(f"{input_file}.fxi"):
             logger.info(f"Indexing {input_file} with pyfastx")
-            console.print(
-                f"[yellow]Indexing {input_file} with pyfastx[/yellow]"
-            )
+            console.print(f"[yellow]Indexing {input_file} with pyfastx[/yellow]")
             pyfastx.Fasta(str(input_file))
             console.print("[green]Indexing complete.[/green]")
             logger.info("FASTA indexing completed")
