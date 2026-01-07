@@ -315,6 +315,9 @@ def process_protein_annotations(config):
         combine_results,
     ]
 
+    if config.search_tool in ["diamond"]:
+        config.skip_steps.append("resolve_domain_overlaps")
+
     for step in steps:
         step_name = step.__name__
         if step_name not in config.skip_steps:
@@ -405,7 +408,7 @@ def get_database_paths(config, tool_name):
     mmseqs2_dbdir = (
         Path(os.environ["ROLYPOLY_DATA"]) / "profiles" / "mmseqs_dbs"
     )
-    reference_seqs_dir = Path(os.environ["ROLYPOLY_DATA"]) / "reference_seqs"
+    reference_seqs_dir = Path(os.environ["ROLYPOLY_DATA"])
     # diamond_dbdir = Path(os.environ["ROLYPOLY_DATA"]) / "profiles" / "diamond" # not needed really , will just use the fasta as input cause diamond accepts fasta directly
 
     # Database paths for different tools
@@ -788,6 +791,7 @@ def search_protein_domains_diamond(config):
         run_command_comp(
             "diamond",
             positional_args=["blastp"],
+            positional_args_location="start",
             params={
                 "query": str(translation_output),
                 "db": str(db_path),
@@ -966,6 +970,25 @@ def combine_results(config):
     for row in domain_files.iter_rows(named=True):
         try:
             df = pl.read_csv(row["file"], separator="\t")
+
+            if config.search_tool == "diamond":
+                # Add headers to diamond output
+                # header: qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore
+                df.columns = [
+                    "qseqid",
+                    "sseqid",
+                    "pident",
+                    "length",
+                    "mismatch",
+                    "gapopen",
+                    "qstart",
+                    "qend",
+                    "sstart",
+                    "send",
+                    "evalue",
+                    "bitscore",
+                ]
+
             # Add metadata columns
             df = df.with_columns(
                 [
