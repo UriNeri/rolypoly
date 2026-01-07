@@ -77,7 +77,7 @@ class ProteinAnnotationConfig(BaseConfig):
                 "ignore_nested": False,
             },
             "pyrodigal": {"minimum_length": min_orf_length},
-            "six-frame": {"threads": 1, "min_orf_length": min_orf_length},
+            "six-frame": {"threads": 1, "minimum_length": min_orf_length},
             "hmmsearch": {"inc_e": evalue, "mscore": 5},
             "diamond": {"evalue": evalue},
             "mmseqs2": {"evalue": evalue, "cov": 0.5},
@@ -101,7 +101,7 @@ console = Console(width=150)
     "-i",
     "--input",
     required=True,
-    help="Input directory containing rolypoly's virus identification results",
+    help="Fasta file or input directory containing rolypoly's virus identification results",
 )
 @click.option(
     "-o",
@@ -276,9 +276,9 @@ def annotate_prot(
         threads=threads,
         log_file=log_file,
         memory=ensure_memory(memory)["giga"],
-        override_parameters=json.loads(override_parameters)
-        if override_parameters
-        else {},
+        override_parameters=(
+            json.loads(override_parameters) if override_parameters else {}
+        ),
         skip_steps=skip_steps.split(",") if skip_steps else [],
         search_tool=search_tool,
         domain_db=domain_db,
@@ -345,7 +345,7 @@ def predict_orfs(config):
 
 def predict_orfs_with_pyrodigal(config):
     """Predict ORFs using pyrodigal"""
-    from rolypoly.utils.bio import pyro_predict_orfs
+    from rolypoly.utils.bio.translation import pyro_predict_orfs
 
     output_file = config.output_dir / "predicted_orfs.faa"
     pyro_predict_orfs(
@@ -353,7 +353,7 @@ def predict_orfs_with_pyrodigal(config):
         output_file=output_file,
         threads=config.threads,
         # genetic_code=config.step_params["pyrodigal"]["genetic_code"],
-        min_gene_length=config.step_params["pyrodigal"]["min_orf_length"],
+        min_gene_length=config.step_params["pyrodigal"]["minimum_length"],
     )
     global output_files
     output_files = output_files.vstack(
@@ -365,7 +365,7 @@ def predict_orfs_with_pyrodigal(config):
                 "tool": ["pyrodigal"],
                 "params": [str(config.step_params["pyrodigal"])],
                 "command": [
-                    f"pyrodigal via pyrodigal module: genetic_code={config.step_params['pyrodigal']['genetic_code']}, threads={config.threads}"
+                    f"pyrodigal via pyrodigal module: threads={config.threads}"
                 ],
             }
         )
@@ -1098,6 +1098,7 @@ def convert_record_to_gff3_record(row):
         "contig",
         "id",
         "name",
+        "query_full_name",
     ]
     sequence_id_col = next(
         (col for col in sequence_id_columns if col in row.keys()), None

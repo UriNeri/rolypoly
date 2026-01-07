@@ -59,26 +59,34 @@ def write_fasta_file(
     else:
         raise ValueError(f"Invalid format: {format}")
 
+    should_close = False
     if output_file is None:
-        output_file = sys.stdout
+        output_handle = sys.stdout
+    elif hasattr(output_file, "write"):
+        output_handle = output_file
     else:
-        output_file = open(output_file, "w")
+        output_handle = open(output_file, "w")
+        should_close = True
 
-    if records:
-        for record in records:
-            output_file.write(
-                f"{header_delim}{record.id}{seq_delim}{str(record.seq)}"
-            )
-    elif seqs is not None and headers is not None:
-        for i, seq in enumerate(seqs):
-            if i == 0:
-                output_file.write(
-                    f">{headers[i]}{seq_delim}{seq}"
-                )  # no leading newline for first record
-            else:
-                output_file.write(f"{header_delim}{headers[i]}{seq_delim}{seq}")
-    else:
-        raise ValueError("No records, seqs, or headers provided")
+    try:
+        if records:
+            for record in records:
+                output_handle.write(
+                    f"{header_delim}{record.id}{seq_delim}{str(record.seq)}"
+                )
+        elif seqs is not None and headers is not None:
+            for i, seq in enumerate(seqs):
+                if i == 0:
+                    output_handle.write(f">{headers[i]}{seq_delim}{seq}")
+                else:
+                    output_handle.write(
+                        f"{header_delim}{headers[i]}{seq_delim}{seq}"
+                    )
+        else:
+            raise ValueError("No records, seqs, or headers provided")
+    finally:
+        if should_close:
+            output_handle.close()
 
 
 def clean_fasta_headers(
@@ -370,9 +378,11 @@ def populate_pldf_withseqs_needletail(
                         pl.col(seqcol), pl.col(start_col), pl.col(end_col)
                     )
                     .map_elements(
-                        lambda x: str(x[seqcol][x[start_col] : x[end_col]])
-                        if x[seqcol] is not None
-                        else None,
+                        lambda x: (
+                            str(x[seqcol][x[start_col] : x[end_col]])
+                            if x[seqcol] is not None
+                            else None
+                        ),
                         return_dtype=pl.Utf8,
                     )
                     .alias(seqcol)
