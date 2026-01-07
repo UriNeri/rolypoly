@@ -11,7 +11,11 @@ import intervaltree as itree
 from genomicranges import GenomicRanges
 from iranges import IRanges
 
+from rolypoly.utils.logging.loggit import get_logger
 from rolypoly.utils.various import vstack_easy
+
+logger = get_logger()
+
 
 # TODO: make this more robust and less dependent on external libraries. Candidate destination library is polars-bio.
 
@@ -150,9 +154,7 @@ def consolidate_hits(
     """
 
     # Read the input hit table
-    hit_table = (
-        pl.read_csv(input, separator="\t") if isinstance(input, str) else input
-    )
+    hit_table = pl.read_csv(input, separator="\t") if isinstance(input, str) else input
     og_cols = hit_table.columns
 
     work_table = hit_table.clone().unique()
@@ -166,9 +168,7 @@ def consolidate_hits(
         q1_col, q2_col = get_column_names(work_table)
 
         # Detect polyprotein patterns for each query
-        unique_queries = (
-            work_table.select(query_id_col).unique().to_series().to_list()
-        )
+        unique_queries = work_table.select(query_id_col).unique().to_series().to_list()
         polyprotein_queries = set()
 
         for query_id in unique_queries:
@@ -210,7 +210,7 @@ def consolidate_hits(
     # Rename rank columns for internal use
     settetet = set(rank_list).difference(set(work_table.columns))
     if len(settetet) > 0:
-        print(
+        logger.info(
             f"Warning: the following rank columns were not found in the input dataframe and will be ignored: {settetet}"
         )
         # breakpoint()
@@ -222,9 +222,7 @@ def consolidate_hits(
     )  # p1_col, p2_col, qlen_col, tlen_col etc are not needed for overlap resolution
 
     # Sort the dataframe
-    work_table = sort_hit_table(
-        work_table, query_id_col, rank_list_renamed, rank_order
-    )
+    work_table = sort_hit_table(work_table, query_id_col, rank_list_renamed, rank_order)
 
     # First is the easiest implementation, culling by one per query - doing this here as it relies on the sort.
     if one_per_query:
@@ -241,9 +239,7 @@ def consolidate_hits(
 
     # Add width
     work_table = work_table.with_columns(
-        (pl.col(q2_col).cast(pl.Int64) - pl.col(q1_col).cast(pl.Int64)).alias(
-            "width"
-        )
+        (pl.col(q2_col).cast(pl.Int64) - pl.col(q1_col).cast(pl.Int64)).alias("width")
     )
 
     # Add unique identifier for each range
@@ -253,7 +249,7 @@ def consolidate_hits(
         work_table = work_table.with_columns(
             pl.col(q1_col).alias("start"), pl.col(q2_col).alias("end")
         )
-        print("Splitting overlapping hits")
+        logger.info("Splitting overlapping hits")
         work_table = clip_overlapping_ranges_pl(
             input_df=work_table, min_overlap=min_overlap_positions, id_col="uid"
         )
@@ -265,7 +261,7 @@ def consolidate_hits(
 
     # drop contained hits
     if drop_contained:
-        print("Dropping contained hits")
+        logger.info("Dropping contained hits")
         grouped_by_query = work_table.group_by(query_id_col)
         subdfs = []
         for _, subdf in grouped_by_query:
@@ -285,7 +281,7 @@ def consolidate_hits(
 
     # one-per-range
     if one_per_range:
-        print("Dropping to best hit per range")
+        logger.info("Dropping to best hit per range")
 
         # Group by query and use interval tree to find non-overlapping hits
         grouped_by_query = work_table.group_by(query_id_col)
@@ -327,9 +323,7 @@ def consolidate_hits(
         if subdfs:
             work_table_culled = pl.concat(subdfs)
         else:
-            work_table_culled = work_table.head(
-                0
-            )  # Empty dataframe with same schema
+            work_table_culled = work_table.head(0)  # Empty dataframe with same schema
 
         work_table_culled = work_table_culled.rename(
             {rank_list_renamed[i]: rank_list[i] for i in range(len(rank_list))}
@@ -368,9 +362,7 @@ def consolidate_hits(
             ranges=IRanges(
                 start=work_table.get_column("start").to_list(),
                 width=(
-                    work_table.get_column("end")
-                    - work_table.get_column("start")
-                    + 1
+                    work_table.get_column("end") - work_table.get_column("start") + 1
                 ).to_list(),
             ),
         )
@@ -394,9 +386,7 @@ def consolidate_hits(
                 pl.col("end").cast(pl.Int64).max().alias("end"),
                 *[pl.col(rank_col).first() for rank_col in rank_list_renamed],
             )
-            merged_hit = merged_hit.select(
-                pl.col(col) for col in merged_hit.columns
-            )
+            merged_hit = merged_hit.select(pl.col(col) for col in merged_hit.columns)
             results.append(merged_hit)
 
         resolved_hits = pl.concat(results)
@@ -420,9 +410,7 @@ def consolidate_hits(
 # TODO: finish implementing functionaliy, write tests and examples.
 
 
-def interval_tree_from_df(
-    df: pl.DataFrame, data_col: str = "id"
-) -> itree.IntervalTree:
+def interval_tree_from_df(df: pl.DataFrame, data_col: str = "id") -> itree.IntervalTree:
     """Create an interval tree from a Polars DataFrame.
 
     Args:
@@ -520,9 +508,7 @@ def get_all_envelopes_pl(
         id_col = "intops_id"
         b = True
 
-    typeof_id_col = type(
-        input_df.select(pl.col(id_col)).to_series().to_list()[0]
-    )
+    typeof_id_col = type(input_df.select(pl.col(id_col)).to_series().to_list()[0])
 
     df = input_df.select(
         [
@@ -530,8 +516,7 @@ def get_all_envelopes_pl(
             pl.struct(["start", "end"])
             .map_elements(
                 lambda x: input_df.filter(
-                    (pl.col("start") <= x["start"])
-                    & (pl.col("end") >= x["end"])
+                    (pl.col("start") <= x["start"]) & (pl.col("end") >= x["end"])
                 )
                 .select(pl.col(id_col))
                 .to_series()
@@ -541,9 +526,7 @@ def get_all_envelopes_pl(
             .alias("enveloping_intervals"),
         ]
     )
-    out_df = input_df.join(
-        df[[id_col, "enveloping_intervals"]], on=id_col, how="left"
-    )
+    out_df = input_df.join(df[[id_col, "enveloping_intervals"]], on=id_col, how="left")
     if b:
         out_df = out_df.drop(id_col)
     return out_df
@@ -560,14 +543,10 @@ def drop_all_contained_intervals_pl(input_df: pl.DataFrame) -> pl.DataFrame:
     """
     id_col = "daci_pl"
     input_df = input_df.with_row_index(name=id_col)
-    df = input_df.filter(
-        pl.col("start") != pl.col("end")
-    )  # points throw errors
+    df = input_df.filter(pl.col("start") != pl.col("end"))  # points throw errors
     tree = interval_tree_from_df(df, data_col=id_col)
     bla = tree.find_nested()
-    containedd = [
-        interval.data for intervals in bla.values() for interval in intervals
-    ]
+    containedd = [interval.data for intervals in bla.values() for interval in intervals]
     df = input_df.filter(~pl.col(id_col).is_in(containedd)).drop(id_col)
     return df
 
@@ -606,16 +585,11 @@ def get_all_overlaps_pl(
     for indx, row in enumerate(input_df.iter_rows(named=True)):
         overlapping = tree.overlap(begin=row["start"], end=row["end"])
         for ovl in overlapping:
-            if (
-                ovl.overlap_size(begin=row["start"], end=row["end"])
-                >= min_overlap
-            ):
+            if ovl.overlap_size(begin=row["start"], end=row["end"]) >= min_overlap:
                 ovl_intervals[indx].append(ovl.data)
 
     return input_df.with_columns(
-        pl.Series(
-            name="overlapping_intervals", values=ovl_intervals, strict=False
-        )
+        pl.Series(name="overlapping_intervals", values=ovl_intervals, strict=False)
     )
 
 
@@ -631,9 +605,7 @@ def return_or_write(df: pl.DataFrame, output: Optional[str]):
 def parse_rank_columns(rank_columns: str) -> Tuple[List[str], List[bool]]:
     """Parse rank columns string into list of column names and sort orders."""
     rank_list = [col.strip()[1:] for col in rank_columns.split(",")]
-    rank_order = [
-        False if col[0] == "+" else True for col in rank_columns.split(",")
-    ]
+    rank_order = [False if col[0] == "+" else True for col in rank_columns.split(",")]
     return rank_list, rank_order
 
 
@@ -746,9 +718,7 @@ def mask_sequence_mp(seq: str, start: int, end: int, is_reverse: bool) -> str:
     return str(mp.revcomp(masked_seq)) if is_reverse else masked_seq
 
 
-def mask_nuc_range(
-    input_fasta: str, input_table: str, output_fasta: str
-) -> None:
+def mask_nuc_range(input_fasta: str, input_table: str, output_fasta: str) -> None:
     """Mask nucleotide sequences in a FASTA file based on provided range table.
 
     Args:
@@ -832,8 +802,8 @@ def mask_nuc_range_from_sam(
     import re
 
     from intervaltree import (
-        IntervalTree as itree,  # assumed available as in other functions
-    )
+        IntervalTree as itree,
+    )  # assumed available as in other functions
     from rich.progress import track
 
     from rolypoly.utils.logging.loggit import get_logger
@@ -978,11 +948,7 @@ def mask_nuc_range_from_sam(
                         for s, e in intervals:
                             if s > e:
                                 s, e = e, s
-                            seq_str = (
-                                seq_str[: s - 1]
-                                + "N" * (e - s + 1)
-                                + seq_str[e:]
-                            )
+                            seq_str = seq_str[: s - 1] + "N" * (e - s + 1) + seq_str[e:]
                     else:
                         rc_seq = revcomp(seq_str)
                         seqlen = len(seq_str)
@@ -1001,10 +967,7 @@ def mask_nuc_range_from_sam(
                         seq_str = revcomp(rc_seq)
                 processed += (
                     1
-                    if (
-                        merged[current_id].get("+")
-                        or merged[current_id].get("-")
-                    )
+                    if (merged[current_id].get("+") or merged[current_id].get("-"))
                     else 0
                 )
                 logger.info(
