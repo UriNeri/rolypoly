@@ -102,9 +102,9 @@ def pyro_predict_orfs(
     gene_finder = pyro_rv.ViralGeneFinder(
         meta=True,
         min_gene=min_gene_length,
-        max_overlap=min(30, min_gene_length - 1)
-        if min_gene_length > 30
-        else 20,  # Ensure max_overlap < min_gene
+        max_overlap=(
+            min(30, min_gene_length - 1) if min_gene_length > 30 else 20
+        ),  # Ensure max_overlap < min_gene
     )  # a single gv gene finder object
 
     with multiprocessing.pool.Pool(processes=threads) as pool:
@@ -114,7 +114,8 @@ def pyro_predict_orfs(
         for i, orf in enumerate(orfs):
             orf.write_translations(dst, sequence_id=ids[i], width=111110)
 
-    with open(output_file.replace(".faa", ".gff"), "w") as dst:
+    gff_path = output_file.with_suffix(".gff")
+    with open(gff_path, "w") as dst:
         for i, orf in enumerate(orfs):
             orf.write_gff(dst, sequence_id=ids[i], full_id=True)
 

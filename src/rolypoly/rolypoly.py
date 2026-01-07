@@ -29,10 +29,14 @@ os.environ["citation_file"] = str(
     )
 )
 
+CONTEXT_SETTINGS = dict(
+    help_option_names=["-h", "--help", "-help", "--hepl"], show_default=True
+)
+
 
 @click.group(
     cls=LazyGroup,
-    context_settings={"help_option_names": ["-h", "--help", "-help", "--hepl"]},
+    context_settings=CONTEXT_SETTINGS,
     lazy_subcommands={
         "data": {
             "name": "Setup and Data",

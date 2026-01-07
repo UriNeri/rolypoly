@@ -15,7 +15,7 @@ global tools
 tools = []
 
 
-@command(name="get_data")
+@command(name="get-data")
 @option(
     "--info",
     is_flag=True,

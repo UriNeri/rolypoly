@@ -11,7 +11,11 @@ import intervaltree as itree
 from genomicranges import GenomicRanges
 from iranges import IRanges
 
+from rolypoly.utils.logging.loggit import get_logger
 from rolypoly.utils.various import vstack_easy
+
+logger = get_logger()
+
 
 # TODO: make this more robust and less dependent on external libraries. Candidate destination library is polars-bio.
 
@@ -210,7 +214,7 @@ def consolidate_hits(
     # Rename rank columns for internal use
     settetet = set(rank_list).difference(set(work_table.columns))
     if len(settetet) > 0:
-        print(
+        logger.info(
             f"Warning: the following rank columns were not found in the input dataframe and will be ignored: {settetet}"
         )
         # breakpoint()
@@ -253,7 +257,7 @@ def consolidate_hits(
         work_table = work_table.with_columns(
             pl.col(q1_col).alias("start"), pl.col(q2_col).alias("end")
         )
-        print("Splitting overlapping hits")
+        logger.info("Splitting overlapping hits")
         work_table = clip_overlapping_ranges_pl(
             input_df=work_table, min_overlap=min_overlap_positions, id_col="uid"
         )
@@ -265,7 +269,7 @@ def consolidate_hits(
 
     # drop contained hits
     if drop_contained:
-        print("Dropping contained hits")
+        logger.info("Dropping contained hits")
         grouped_by_query = work_table.group_by(query_id_col)
         subdfs = []
         for _, subdf in grouped_by_query:
@@ -285,7 +289,7 @@ def consolidate_hits(
 
     # one-per-range
     if one_per_range:
-        print("Dropping to best hit per range")
+        logger.info("Dropping to best hit per range")
 
         # Group by query and use interval tree to find non-overlapping hits
         grouped_by_query = work_table.group_by(query_id_col)
@@ -832,8 +836,8 @@ def mask_nuc_range_from_sam(
     import re
 
     from intervaltree import (
-        IntervalTree as itree,  # assumed available as in other functions
-    )
+        IntervalTree as itree,
+    )  # assumed available as in other functions
     from rich.progress import track
 
     from rolypoly.utils.logging.loggit import get_logger

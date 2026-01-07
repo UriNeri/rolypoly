@@ -243,9 +243,9 @@ def annotate_RNA(
         log_file=log_file,
         log_level=log_level,
         memory=ensure_memory(memory)["giga"],
-        override_parameters=json.loads(override_parameters)
-        if override_parameters
-        else {},
+        override_parameters=(
+            json.loads(override_parameters) if override_parameters else {}
+        ),
         skip_steps=skip_steps.split(",") if skip_steps else [],
         secondary_structure_tool=secondary_structure_tool,
         ires_tool=ires_tool,
@@ -340,6 +340,7 @@ def predict_secondary_structure_rnafold(config, input_fasta, output_file):
     """Predict RNA secondary structure using RNAfold."""
     import RNA
     from needletail import parse_fastx_file
+
     # from needletail import Record as record
 
     with open(output_file, "w") as out_f:
@@ -413,11 +414,13 @@ def predict_secondary_structure_rnastructure(config, input_fasta, output_file):
                 lines = ct_f.readlines()
                 structure = "".join(
                     [
-                        "("
-                        if int(line.split()[4]) > int(line.split()[0])
-                        else ")"
-                        if int(line.split()[4]) != 0
-                        else "."
+                        (
+                            "("
+                            if int(line.split()[4]) > int(line.split()[0])
+                            else ")"
+                            if int(line.split()[4]) != 0
+                            else "."
+                        )
                         for line in lines[1:]
                     ]
                 )
@@ -1541,6 +1544,7 @@ def convert_record_to_gff3_record(
         "contig",
         "id",
         "name",
+        "query_full_name",
     ]
     sequence_id_col = next(
         (col for col in sequence_id_columns if col in row.keys()), None
