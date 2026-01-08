@@ -166,7 +166,7 @@ console = Console(width=150)
     default="Pfam,NVPC",
     type=str,
     help="""comma-separated list of database(s) for domain detection. \n
-    * Pfam: Pfam-A \n
+    * Pfam: Pfam-A (only hmmsearch) \n
     * RVMT: RVMT RdRp profiles \n
     * NVPC: RVMT's New Viral Profile Clusters, filtered to remove "hypothetical" proteins \n
     * genomad: genomad virus-specific markers - note these can be good for identification but not ideal for annotation. \n
@@ -261,7 +261,7 @@ def annotate_prot(
     * Translations: ORFfinder, pyrodigal, six-frame \n
     * Search engines: \n
     - (py)hmmsearch: Pfam, RVMT, genomad, vfam \n
-    - mmseqs2: Pfam, RVMT, genomad, vfam \n
+    - mmseqs2: NVPC, RVMT, genomad, vfam \n
     - diamond: Uniref50 (viral subset) \n
     * custom: user supplied database. Needs to be in tool appropriate format, or a directory of aligned fasta files (for hmmsearch)
     """
