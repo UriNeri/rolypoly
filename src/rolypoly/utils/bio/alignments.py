@@ -378,6 +378,241 @@ def search_hmmdb(
     return output
 
 
+def hmm_fetch(
+    hmm_db: Union[str, Path],
+    accessions: List[str],
+    output: Union[str, Path],
+    binary: bool = False,
+    strip_after_char: str = "",
+    invert: bool = False,
+    wrap: bool = False,
+    logger: Optional[logging.Logger] = None,
+):
+    """Fetch specific HMMs from an HMM database by accession. sort of like hmmfetch.
+    
+    Args:
+        hmm_db: str or Path, path to the HMM database
+        accessions: List of str, list of HMM accessions to fetch
+        output: str or Path, path to save the fetched HMMs
+        binary: bool, whether to write the output in binary format (Default value = False)
+        strip_after_char: str, character after which to strip accession for matching (Default value = "")
+        invert: bool, if True, fetch HMMs NOT in accessions list (Default value = False)
+        wrap: bool, if True, use substring matching instead of exact matching (Default value = False)
+        logger: logging.Logger, optional logger for debug output
+    
+    Returns:
+        dict: Statistics containing 'hmms_processed' and 'hmms_written'
+    """
+    logger = get_logger(logger)
+    hmm_db = Path(hmm_db)
+    output = Path(output)
+    
+    # Optimize for lookup pattern
+    accessions_exact = set()  # For exact matches
+    accessions_patterns = []  # For substring patterns
+    
+    if wrap:
+        # Use list for substring matching
+        accessions_patterns = [
+            t.split(strip_after_char)[0] if strip_after_char else t 
+            for t in accessions
+        ]
+    else:
+        # Use set for fast O(1) lookup
+        accessions_exact = {
+            t.split(strip_after_char)[0] if strip_after_char else t 
+            for t in accessions
+        }
+    
+    if not hmm_db.exists():
+        raise FileNotFoundError(f"HMM database {hmm_db} not found")
+    
+    if logger:
+        mode_str = "excluding" if invert else "fetching"
+        match_str = "substring" if wrap else "exact"
+        logger.info(
+            f"{mode_str.capitalize()} HMMs ({match_str} match) from database {hmm_db} to {output}"
+        )
+    
+    hmms_processed = 0
+    hmms_written = 0
+    
+    with pyhmmer.plan7.HMMFile(hmm_db) as hmms:
+        with open(output, "wb") as outfh:
+            if not invert:
+                # Normal mode: include matching HMMs
+                if not wrap:
+                    # Fast exact match (default, most common case)
+                    target_accessions = accessions_exact.copy()
+                    for hmm in hmms:
+                        hmms_processed += 1
+                        hmm_acc = hmm.accession.decode().strip()
+                        if strip_after_char:
+                            hmm_acc = hmm_acc.split(strip_after_char)[0]
+                        
+                        if hmm_acc in target_accessions:
+                            hmm.write(outfh, binary=binary)
+                            hmms_written += 1
+                            target_accessions.remove(hmm_acc)
+                            if logger:
+                                logger.debug(f"Fetched HMM {hmm_acc}")
+                            # Early exit if all found
+                            if not target_accessions:
+                                break
+                else:
+                    # Substring match
+                    for hmm in hmms:
+                        hmms_processed += 1
+                        hmm_acc = hmm.accession.decode().strip()
+                        if strip_after_char:
+                            hmm_acc = hmm_acc.split(strip_after_char)[0]
+                        
+                        if any(pattern in hmm_acc for pattern in accessions_patterns):
+                            hmm.write(outfh, binary=binary)
+                            hmms_written += 1
+                            if logger:
+                                logger.debug(f"Fetched HMM {hmm_acc}")
+            else:
+                # Inverted mode: exclude matching HMMs
+                if not wrap:    
+                    # Exact match exclusion
+                    for hmm in hmms:
+                        hmms_processed += 1
+                        hmm_acc = hmm.accession.decode().strip()
+                        if strip_after_char:
+                            hmm_acc = hmm_acc.split(strip_after_char)[0]
+                        
+                        if hmm_acc not in accessions_exact:
+                            hmm.write(outfh, binary=binary)
+                            hmms_written += 1
+                            if logger:
+                                logger.debug(f"Fetched HMM {hmm_acc}")
+                else:
+                    # Substring match exclusion
+                    for hmm in hmms:
+                        hmms_processed += 1
+                        hmm_acc = hmm.accession.decode().strip()
+                        if strip_after_char:
+                            hmm_acc = hmm_acc.split(strip_after_char)[0]
+                        
+                        if not any(pattern in hmm_acc for pattern in accessions_patterns):
+                            hmm.write(outfh, binary=binary)
+                            hmms_written += 1
+                            if logger:
+                                logger.debug(f"Fetched HMM {hmm_acc}")
+    
+    if logger:
+        logger.info(
+            f"Processed {hmms_processed} HMMs, written {hmms_written} to {output}"
+        )
+    
+    return {
+        "hmms_processed": hmms_processed,
+        "hmms_written": hmms_written,
+    }
+
+
+def hmm_filter(
+    hmm_db: Union[str, Path],
+    keywords: List[str],
+    output: Union[str, Path],
+    binary: bool = False,
+    invert: bool = False,
+    case_sensitive: bool = False,
+    logger: Optional[logging.Logger] = None,
+):
+    """Filter HMMs from a database based on description keywords.
+    
+    Useful for removing HMMs with uninformative descriptions like "hypothetical protein",
+    "domain of unknown function", etc.
+    
+    Args:
+        hmm_db: str or Path, path to the HMM database
+        keywords: List of str, list of keywords/phrases to search for in descriptions
+        output: str or Path, path to save the filtered HMMs
+        binary: bool, whether to write the output in binary format (Default value = False)
+        invert: bool, if True, exclude HMMs matching keywords; if False, include only matching (Default value = False)
+        case_sensitive: bool, if True, perform case-sensitive matching (Default value = False)
+        logger: logging.Logger, optional logger for debug output
+    
+    Returns:
+        dict: Statistics containing 'hmms_processed', 'hmms_written', and 'hmms_filtered'
+    
+    Example:
+        # Remove HMMs with uninformative descriptions
+        hmm_filter(
+            "pfam.hmm",
+            ["hypothetical", "domain of unknown function", "uncharacterized"],
+            "pfam_filtered.hmm",
+            invert=True  # Exclude matches
+        )
+    """
+    logger = get_logger(logger)
+    hmm_db = Path(hmm_db)
+    output = Path(output)
+    
+    # Prepare keywords for matching
+    if not case_sensitive:
+        keywords = [kw.lower() for kw in keywords]
+    
+    if not hmm_db.exists():
+        raise FileNotFoundError(f"HMM database {hmm_db} not found")
+    
+    if logger:
+        mode_str = "excluding" if invert else "including"
+        case_str = "case-sensitive" if case_sensitive else "case-insensitive"
+        logger.info(
+            f"Filtering HMMs ({mode_str} keywords, {case_str}) from {hmm_db} to {output}"
+        )
+        logger.info(f"Keywords: {', '.join(keywords)}")
+    
+    hmms_processed = 0
+    hmms_written = 0
+    hmms_filtered = 0
+    
+    with pyhmmer.plan7.HMMFile(hmm_db) as hmms:
+        with open(output, "wb") as outfh:
+            for hmm in hmms:
+                hmms_processed += 1
+                
+                # Get HMM description, handle None case
+                hmm_desc = ""
+                if hmm.description is not None:
+                    hmm_desc = hmm.description.decode().strip()
+                
+                # Prepare for matching
+                search_text = hmm_desc if case_sensitive else hmm_desc.lower()
+                
+                # Check if any keyword matches
+                has_match = any(keyword in search_text for keyword in keywords)
+                
+                # Determine whether to write based on invert flag
+                should_write = has_match if not invert else not has_match
+                
+                if should_write:
+                    hmm.write(outfh, binary=binary)
+                    hmms_written += 1
+                    if logger:
+                        hmm_acc = hmm.accession.decode().strip() if hmm.accession else "N/A"
+                        logger.debug(f"Kept HMM {hmm_acc}: {hmm_desc}")
+                else:
+                    hmms_filtered += 1
+                    if logger:
+                        hmm_acc = hmm.accession.decode().strip() if hmm.accession else "N/A"
+                        logger.debug(f"Filtered HMM {hmm_acc}: {hmm_desc}")
+    
+    if logger:
+        logger.info(
+            f"Processed {hmms_processed} HMMs: {hmms_written} written, {hmms_filtered} filtered"
+        )
+    
+    return {
+        "hmms_processed": hmms_processed,
+        "hmms_written": hmms_written,
+        "hmms_filtered": hmms_filtered,
+    }
+
+
 def hmm_from_msa(
     msa_file, output, alphabet="amino", set_ga=None, name=None, accession=None
 ):
@@ -584,7 +819,8 @@ def hmmdb_from_directory(
                         )
                         continue
             else:
-                msa.description = "None".encode("utf-8")
+                # Use empty string instead of "None" when no info table
+                msa.description = b""
             # Build the HMM
             builder = pyhmmer.plan7.Builder(msa.alphabet)
             background = pyhmmer.plan7.Background(msa.alphabet)
@@ -668,8 +904,8 @@ def mmseqs_profile_db_from_directory(
 
         # Build a combined display label to force into the profile header
         marker = msa_file.stem
-        accs_val = "None"
-        desc_val = "None"
+        accs_val = marker  # Use marker as default instead of "None"
+        desc_val = ""  # Empty string instead of "None"
         if some_bool:
             info = info_table.filter(pl.col(name_col).str.contains(marker))
             if info.height == 1:
@@ -678,13 +914,13 @@ def mmseqs_profile_db_from_directory(
                     accs_val = (
                         info[accs_col].item()
                         if info[accs_col].item() is not None
-                        else "None"
+                        else marker  # Use marker as fallback
                     )
                 if desc_col in info.columns:
                     desc_val = (
                         info[desc_col].item()
                         if info[desc_col].item() is not None
-                        else "None"
+                        else ""  # Empty string as fallback
                     )
 
         # Normalize to strings and build display label
@@ -916,15 +1152,15 @@ def msas_to_stockholm(
             msa = msa_file_obj.read()
 
         marker = msa_file.stem
-        accs_val = "None"
-        desc_val = "None"
+        accs_val = marker  # Use marker as default instead of "None"
+        desc_val = ""  # Empty string instead of "None"
         if some_bool:
             info = info_table.filter(pl.col(name_col).str.contains(marker))
             if info.height == 1:
                 if accs_col in info.columns:
-                    accs_val = info[accs_col].item() or "None"
+                    accs_val = info[accs_col].item() or marker  # Use marker as fallback
                 if desc_col in info.columns:
-                    desc_val = info[desc_col].item() or "None"
+                    desc_val = info[desc_col].item() or ""  # Empty string as fallback
 
         accs_str = str(accs_val)
         desc_str = str(desc_val)
