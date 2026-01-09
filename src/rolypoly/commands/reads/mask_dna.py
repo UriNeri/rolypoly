@@ -222,7 +222,7 @@ def mask_dna(
                 "outfmt": "6",
             },
         )
-        logger.info(f"Finished diamond blastx step")
+        logger.info("Finished diamond blastx step")
         mask_nuc_range(
             input_fasta=str(input_file),
             input_table=f"{tmpdir}/tmp_mapped.tsv",
@@ -246,7 +246,7 @@ def mask_dna(
         )
 
     logger.info(f"Finished running aligner {aligner}")
-    logger.info(f"beginning bbmask (masking + entropy) step")
+    logger.info("beginning bbmask (masking + entropy) step")
 
     if needs_bbmask_only:
         # Mask using the sam files, for aligners that need it...
@@ -264,12 +264,12 @@ def mask_dna(
             threads=threads,
             Xmx=memory,
         )
-        logger.info(f"Finished bbmask step")
+        logger.info("Finished bbmask step")
 
     last_file = f"{tmpdir}/tmp_masked.fasta"
 
     if mask_low_complexity:
-        logger.info(f"Proceeding to entropy masking step")
+        logger.info("Proceeding to entropy masking step")
         from bbmapy import bbduk
 
         # # Apply entropy masking
@@ -283,7 +283,7 @@ def mask_dna(
             ziplevel=9,
         )
         last_file = f"{tmpdir}/tmp_masked_mle.fasta"
-        logger.info(f"Finished entropy masking step")
+        logger.info("Finished entropy masking step")
 
     if flatten:
         from bbmapy import kcompress

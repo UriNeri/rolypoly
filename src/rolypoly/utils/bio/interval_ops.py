@@ -838,7 +838,6 @@ def mask_nuc_range_from_sam(
     from intervaltree import (
         IntervalTree as itree,
     )  # assumed available as in other functions
-    from rich.progress import track
 
     from rolypoly.utils.logging.loggit import get_logger
 

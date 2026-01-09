@@ -363,7 +363,7 @@ def determine_fastq_type(
                     pair_1_count = headers_with_1.height
                     pair_2_count = headers_with_2.height
                     logger.warning(
-                        f"Detected Casava paired-end format in headers - treating as interleaved paired-end reads... this could be wrong..."
+                        "Detected Casava paired-end format in headers - treating as interleaved paired-end reads... this could be wrong..."
                     )
 
         # total_length = fastq_df.select(pl.col("sequence").str.len_chars()).sum().item() # could have just

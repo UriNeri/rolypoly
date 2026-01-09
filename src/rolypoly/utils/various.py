@@ -452,7 +452,7 @@ def _extract_gzip(
             # Replace the output
             temp_path.replace(output_path)
             if debug:
-                print(f"DEBUG: Second extraction complete")
+                print("DEBUG: Second extraction complete")
 
     return output_path
 
