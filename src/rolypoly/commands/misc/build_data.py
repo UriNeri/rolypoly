@@ -10,6 +10,7 @@ import tarfile
 from pathlib import Path as pt
 
 import polars as pl
+import pyhmmer
 import requests
 from bbmapy import bbduk, bbmask, kcompress
 from rich.console import Console
@@ -22,6 +23,7 @@ from rolypoly.utils.bio.alignments import (
 from rolypoly.utils.bio.sequences import (
     filter_fasta_by_headers,
     remove_duplicates,
+    write_fasta_file,
 )
 
 from rolypoly.utils.bio.polars_fastx import from_fastx_eager
@@ -623,11 +625,11 @@ def create_slim_tarball(data_dir, required_paths, version=datetime.datetime.now(
         'profiles/mmseqs_dbs/RVMT',
         'profiles/mmseqs_dbs/rvmt_motifs',
         'profiles/mmseqs_dbs/vfam',
-        'reference_seqs/mito_refseq/combined_mito_refseq.fasta',
+        # 'reference_seqs/mito_refseq/combined_mito_refseq.fasta',
+        # 'reference_seqs/plastid_refseq/combined_plastid_refseq.fasta',
         'reference_seqs/ncbi_ribovirus/mmseqs',
         'reference_seqs/ncbi_ribovirus/refseq_ribovirus_genomes_orfs.faa',
         'reference_seqs/ncbi_ribovirus/refseq_ribovirus_genomes.fasta',
-        'reference_seqs/plastid_refseq/combined_plastid_refseq.fasta',
         'reference_seqs/RVMT/mmseqs',
         'reference_seqs/RVMT/RVMT_cleaned_contigs.fasta',
         'reference_seqs/RVMT/RVMT_cleaned_orfs.faa',
@@ -635,6 +637,19 @@ def create_slim_tarball(data_dir, required_paths, version=datetime.datetime.now(
         'reference_seqs/uniref/uniref50_viral.fasta'
     ]
     required_paths = deduplicate_paths(required_paths)
+    # get size info
+    total_size = 0
+    for rel_path in required_paths:
+        full_path = os.path.join(data_dir, rel_path)
+        if os.path.exists(full_path):
+            if os.path.isfile(full_path):
+                total_size += os.path.getsize(full_path)
+            elif os.path.isdir(full_path):
+                for dirpath, dirnames, filenames in os.walk(full_path):
+                    for f in filenames:
+                        fp = os.path.join(dirpath, f)
+                        total_size += os.path.getsize(fp)
+    print(f"Total size of selected data for slim tarball: {total_size / (1024*1024):.2f} MB")
 
     tarball_name = f"rolypoly_data_slim_{version}.tar.gz"
     
@@ -693,6 +708,39 @@ def prepare_uniref50_viral(data_dir, threads, logger):
     # why the hell is it still compressed??? 2 times gzipped???
     from rolypoly.utils.various import extract
     extract(uniref50_viral_data+".gz", uniref50_viral_data)
+
+    # remove sequences of uncharacterized/hypothetical proteins, or non-informative such as "polyprotein fragment"
+    logger.info("Filtering UniRef50 viral protein sequences")
+    uniref_df = pl.read_csv(
+        uniref50_viral_data,
+        separator="\t",
+        null_values=["NA", ""],
+    )
+    to_remove_terms = [
+        "uncharacterized protein",
+        "hypothetical protein",
+        "putative protein",
+        "predicted protein",
+        "unnamed protein product",
+        "polyprotein fragment",
+        "genome polyprotein",
+        "fragment",        
+    ]
+    pattern = "|".join(to_remove_terms)
+    filtered_uniref_df = uniref_df.filter(
+        ~pl.col("Cluster Name").str.to_lowercase().str.contains(pattern)
+    )
+    filtered_ids = filtered_uniref_df.select(pl.col("Cluster ID")).to_series().to_list()
+    logger.info(f"Removing {uniref_df.height - filtered_uniref_df.height} non-informative sequences from UniRef50 viral dataset")
+    # filter fasta
+    # first load the fasta to a dataframe to get the original headers containing the Cluster IDs + defline and remove based on only the IDs
+    unidf = from_fastx_eager(uniref50_viral_fasta).with_columns(
+        pl.col("header").str.split(" ").list.first().alias("Cluster ID")
+    )
+    unidf_filtered = unidf.filter(
+        pl.col("Cluster ID").is_in(filtered_ids)
+    )
+    write_fasta_file(format="fasta",headers=unidf_filtered["header"].to_list(), seqs=unidf_filtered["sequence"].to_list(), output_file=uniref50_viral_fasta)
 
     # clean up temporary gz files
     try:    
@@ -979,11 +1027,12 @@ def prepare_pfam_rdrps_rt(data_dir, threads, logger: logging.Logger):
 
     # PFAM_A_38 RdRps and RTs
     # fetch Pfam-A.hmm.gz to the hmmdb directory and extract into that directory
-    pfam_url = "https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam38.0/Pfam-A.hmm.gz"
+    pfam_hmm_url = "https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam38.0/Pfam-A.hmm.gz"
+    pfam_msa_url = "https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam38.0/Pfam-A.fasta.gz"
     pfam_gz_path = os.path.join(hmmdb_dir, "Pfam-A.hmm.gz")
     os.makedirs(hmmdb_dir, exist_ok=True)
     fetch_and_extract(
-        url=pfam_url, fetched_to=pfam_gz_path, extract_to=hmmdb_dir
+        url=pfam_hmm_url, fetched_to=pfam_gz_path, extract_to=hmmdb_dir
     )
 
     RdRps_and_RTs = [
@@ -1004,63 +1053,31 @@ def prepare_pfam_rdrps_rt(data_dir, threads, logger: logging.Logger):
 
     # Use hmmfetch to extract the small set of Pfam HMMs we care about
     selected_pfam_output = os.path.join(hmmdb_dir, "pfam_rdrps_and_rts.hmm")
-    try:
-        with open(selected_pfam_output, "wb") as outfh:
-            cmd = [
-                "hmmfetch",
-                os.path.join(hmmdb_dir, "Pfam-A.hmm"),
-            ] + RdRps_and_RTs
-            subprocess.run(cmd, stdout=outfh, check=True)
-        logger.info(f"Wrote selected Pfam HMMs to {selected_pfam_output}")
-    except Exception as e:
-        logger.warning(f"Could not run hmmfetch to extract Pfam models: {e}")
-        # Fallback: parse the Pfam-A.hmm file and extract models with matching ACC lines
-        pfam_hmm_path = os.path.join(hmmdb_dir, "Pfam-A.hmm")
-        try:
-            targets_base = {t.split(".")[0] for t in RdRps_and_RTs}
-            wrote_any = False
-            with (
-                open(
-                    pfam_hmm_path, "r", encoding="utf-8", errors="replace"
-                ) as inf,
-                open(selected_pfam_output, "w", encoding="utf-8") as outfh,
-            ):
-                block_lines = []
-                for line in inf:
-                    block_lines.append(line)
-                    if line.strip() == "//":
-                        # end of model block
-                        block_text = "".join(block_lines)
-                        acc = None
-                        for bl in block_lines:
-                            if bl.startswith("ACC"):
-                                parts = bl.split()
-                                if len(parts) >= 2:
-                                    acc = parts[1].strip()
-                                    break
-                        if acc and acc.split(".")[0] in targets_base:
-                            outfh.write(block_text)
-                            wrote_any = True
-                        block_lines = []
-                # In case file doesn't end with // ensure no partial block missed
-            if wrote_any:
-                logger.info(
-                    f"Wrote selected Pfam HMMs to {selected_pfam_output} using fallback extractor"
-                )
-            else:
-                logger.warning(
-                    "Fallback extractor did not find any matching Pfam accessions in Pfam-A.hmm"
-                )
-        except Exception as e2:
-            logger.error(f"Fallback extraction failed: {e2}")
+    from rolypoly.utils.bio.alignments import hmm_fetch
+
+    hmm_fetch(accessions=RdRps_and_RTs,
+              hmm_db=os.path.join(hmmdb_dir, "Pfam-A.hmm"),
+              output=selected_pfam_output,
+              strip_after_char=".",
+                logger=logger)
+
+        # also prepare mmseqs profile db 
+    subprocess.run(
+                "mmseqs databases Pfam-A.seed data/profiles/mmseqs_dbs/pfam_a/pfam_a_38_seed tmp",
+                shell=True,
+                check=True,
+    )
+    
 
     # clean up downloaded gz
     try:
         os.remove(pfam_gz_path)
+        os.remove("tmp")
+
     except Exception:
         pass
 
-    logger.debug("Finished preparing rdrp-scan databases")
+    logger.debug("Finished preparing pfam and pfam rdrps+rts sub-database")
 
 
 def prepare_neordrp_profiles (data_dir, threads, logger: logging.Logger):
@@ -1151,9 +1168,9 @@ def prepare_RVMT_profiles(data_dir, threads, logger: logging.Logger):
     )
 
     mmseqs_profile_db_from_directory(
-        msa_dir=os.path.join(hmmdb_dir, "RVMT/NVPC/"),
+        msa_dir=os.path.join(hmmdb_dir, "RVMT/NVPC/msaFiles/"),
         output=os.path.join(mmseqs_dbs, "nvpc/nvpc"),
-        msa_pattern="ali*/*.FASTA",
+        msa_pattern="*.afa",
         info_table=os.path.join(profile_dir, "NVPC_descriptions.csv"),
         accs_col="profile_accession",
         name_col="Name",

@@ -1,3 +1,4 @@
+import datetime
 import inspect
 import logging
 from pathlib import Path
@@ -78,7 +79,7 @@ def setup_logging(
         return logger
 
     if log_file is None:
-        log_file = Path.cwd() / "rolypoly.log"
+        log_file = Path.cwd() / f"rolypoly.log" # add datetime.time
         # from sys import stdout
 
     # Convert log_file to Path if it's a string
