@@ -80,7 +80,7 @@ class ProteinAnnotationConfig(BaseConfig):
             "six-frame": {"threads": 1, "minimum_length": min_orf_length},
             "hmmsearch": {"inc_e": evalue, "mscore": 5},
             "diamond": {"evalue": evalue},
-            "mmseqs2": {"evalue": evalue, "cov": 0.5},
+            "mmseqs2": {"evalue": evalue, "cov": 0.1},
         }
 
         if override_parameters:
@@ -166,7 +166,7 @@ console = Console(width=150)
     default="Pfam,NVPC",
     type=str,
     help="""comma-separated list of database(s) for domain detection. \n
-    * Pfam: Pfam-A \n
+    * Pfam: Pfam-A (only hmmsearch) \n
     * RVMT: RVMT RdRp profiles \n
     * NVPC: RVMT's New Viral Profile Clusters, filtered to remove "hypothetical" proteins \n
     * genomad: genomad virus-specific markers - note these can be good for identification but not ideal for annotation. \n
@@ -261,7 +261,7 @@ def annotate_prot(
     * Translations: ORFfinder, pyrodigal, six-frame \n
     * Search engines: \n
     - (py)hmmsearch: Pfam, RVMT, genomad, vfam \n
-    - mmseqs2: Pfam, RVMT, genomad, vfam \n
+    - mmseqs2: NVPC, RVMT, genomad, vfam \n
     - diamond: Uniref50 (viral subset) \n
     * custom: user supplied database. Needs to be in tool appropriate format, or a directory of aligned fasta files (for hmmsearch)
     """
@@ -314,6 +314,9 @@ def process_protein_annotations(config):
         resolve_domain_overlaps,  # Resolve overlapping domain hits
         combine_results,
     ]
+
+    if config.search_tool in ["diamond", "mmseqs2"]:
+        config.skip_steps.append("resolve_domain_overlaps")
 
     for step in steps:
         step_name = step.__name__
@@ -405,7 +408,7 @@ def get_database_paths(config, tool_name):
     mmseqs2_dbdir = (
         Path(os.environ["ROLYPOLY_DATA"]) / "profiles" / "mmseqs_dbs"
     )
-    reference_seqs_dir = Path(os.environ["ROLYPOLY_DATA"]) / "reference_seqs"
+    reference_seqs_dir = Path(os.environ["ROLYPOLY_DATA"])
     # diamond_dbdir = Path(os.environ["ROLYPOLY_DATA"]) / "profiles" / "diamond" # not needed really , will just use the fasta as input cause diamond accepts fasta directly
 
     # Database paths for different tools
@@ -515,58 +518,58 @@ def get_database_paths(config, tool_name):
             # For other tools, just use the path as is
             database_paths = {"Custom": custom_database}
 
-    # Additional handling: if the user requested mmseqs2 and provided a directory
-    # with MSAs, optionally build an mmseqs profile DB from that directory. # TODO: test this
-    if tool_name == "mmseqs2":
-        # If the config indicates a directory, and db_create_mode requests mmseqs
-        try:
-            db_create_mode = config.db_create_mode
-        except Exception:
-            db_create_mode = "auto"
-        for key, path in list(database_paths.items()):
-            p = Path(str(path))
-            if p.is_dir():
-                # Decide whether to build mmseqs profile DB
-                build_mmseqs = False
-                if db_create_mode == "mmseqs":
-                    build_mmseqs = True
-                elif db_create_mode == "hmm":
+        # Additional handling: if the user requested mmseqs2 and provided a directory
+        # with MSAs, optionally build an mmseqs profile DB from that directory. # TODO: test this
+        if tool_name == "mmseqs2":
+            # If the config indicates a directory, and db_create_mode requests mmseqs
+            try:
+                db_create_mode = config.db_create_mode
+            except Exception:
+                db_create_mode = "auto"
+            for key, path in list(database_paths.items()):
+                p = Path(str(path))
+                if p.is_dir():
+                    # Decide whether to build mmseqs profile DB
                     build_mmseqs = False
-                else:  # auto: if dir contains MSAs (.faa/.msa), build mmseqs profiles
-                    msa_files = (
-                        list(p.glob("*.faa"))
-                        + list(p.glob("*.msa"))
-                        + list(p.glob("*.afa"))
-                    )
-                    if len(msa_files) > 0:
+                    if db_create_mode == "mmseqs":
                         build_mmseqs = True
+                    elif db_create_mode == "hmm":
+                        build_mmseqs = False
+                    else:  # auto: if dir contains MSAs (.faa/.msa), build mmseqs profiles
+                        msa_files = (
+                            list(p.glob("*.faa"))
+                            + list(p.glob("*.msa"))
+                            + list(p.glob("*.afa"))
+                        )
+                        if len(msa_files) > 0:
+                            build_mmseqs = True
 
-                if build_mmseqs:
-                    from rolypoly.utils.bio.alignments import (
-                        mmseqs_profile_db_from_directory,
-                    )
+                    if build_mmseqs:
+                        from rolypoly.utils.bio.alignments import (
+                            mmseqs_profile_db_from_directory,
+                        )
 
-                    mm_out = (
-                        Path(os.environ.get("ROLYPOLY_DATA", "."))
-                        / "mmseqs2"
-                        / p.name
-                    )
-                    mm_out_parent = mm_out.parent
-                    mm_out_parent.mkdir(parents=True, exist_ok=True)
-                    # default info table column names used by geNomad outputs
-                    name_col = "MARKER"
-                    accs_col = "ANNOTATION_ACCESSIONS"
-                    desc_col = "ANNOTATION_DESCRIPTION"
-                    mmseqs_profile_db_from_directory(
-                        msa_dir=str(p),
-                        output=str(mm_out),
-                        msa_pattern="*.faa",
-                        info_table=None,
-                        name_col=name_col,
-                        accs_col=accs_col,
-                        desc_col=desc_col,
-                    )
-                    database_paths[key] = str(mm_out)
+                        mm_out = (
+                            Path(os.environ.get("ROLYPOLY_DATA", "."))
+                            / "mmseqs2"
+                            / p.name
+                        )
+                        mm_out_parent = mm_out.parent
+                        mm_out_parent.mkdir(parents=True, exist_ok=True)
+                        # default info table column names used by geNomad outputs
+                        name_col = "MARKER"
+                        accs_col = "ANNOTATION_ACCESSIONS"
+                        desc_col = "ANNOTATION_DESCRIPTION"
+                        mmseqs_profile_db_from_directory(
+                            msa_dir=str(p),
+                            output=str(mm_out),
+                            msa_pattern="*.faa",
+                            info_table=None,
+                            name_col=name_col,
+                            accs_col=accs_col,
+                            desc_col=desc_col,
+                        )
+                        database_paths[key] = str(mm_out)
     else:
         requested_dbs = config.domain_db.split(",")
         database_paths = {}
@@ -738,6 +741,7 @@ def search_protein_domains_mmseqs2(config):
                 str(output_file),
                 str(config.output_dir / "tmp"),
             ],
+            positional_args_location="start",
             params={
                 "threads": config.threads,
                 "e": config.step_params["mmseqs2"]["evalue"],
@@ -788,6 +792,7 @@ def search_protein_domains_diamond(config):
         run_command_comp(
             "diamond",
             positional_args=["blastp"],
+            positional_args_location="start",
             params={
                 "query": str(translation_output),
                 "db": str(db_path),
@@ -966,6 +971,25 @@ def combine_results(config):
     for row in domain_files.iter_rows(named=True):
         try:
             df = pl.read_csv(row["file"], separator="\t")
+
+            if config.search_tool in ["diamond", "mmseqs2"]:
+                # Add headers to diamond output
+                # header: qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore
+                df.columns = [
+                    "qseqid",
+                    "sseqid",
+                    "pident",
+                    "length",
+                    "mismatch",
+                    "gapopen",
+                    "qstart",
+                    "qend",
+                    "sstart",
+                    "send",
+                    "evalue",
+                    "bitscore",
+                ]
+
             # Add metadata columns
             df = df.with_columns(
                 [

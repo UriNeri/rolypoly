@@ -90,7 +90,7 @@ class RNAAnnotationConfig(BaseConfig):
                     )
 
 
-@click.command(name="annotate_RNA")
+@click.command(name="annotate-rna")
 @click.option(
     "-i",
     "--input",
