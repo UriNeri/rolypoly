@@ -327,7 +327,9 @@ def process_protein_annotations(config):
             config.logger.info(f"Skipping step: {step_name}")
 
     config.logger.info("Protein annotation process completed successfully")
-    output_files.write_csv(config.output_dir / "output_files.tsv", separator="\t")
+    output_files.write_csv(
+        config.output_dir / "output_files.tsv", separator="\t"
+    )
 
 
 def predict_orfs(config):
@@ -403,7 +405,9 @@ def get_database_paths(config, tool_name):
     import os
 
     hmmdbdir = Path(os.environ["ROLYPOLY_DATA"]) / "profiles" / "hmmdbs"
-    mmseqs2_dbdir = Path(os.environ["ROLYPOLY_DATA"]) / "profiles" / "mmseqs_dbs"
+    mmseqs2_dbdir = (
+        Path(os.environ["ROLYPOLY_DATA"]) / "profiles" / "mmseqs_dbs"
+    )
     reference_seqs_dir = Path(os.environ["ROLYPOLY_DATA"])
     # diamond_dbdir = Path(os.environ["ROLYPOLY_DATA"]) / "profiles" / "diamond" # not needed really , will just use the fasta as input cause diamond accepts fasta directly
 
@@ -424,7 +428,8 @@ def get_database_paths(config, tool_name):
             "genomad".lower(): mmseqs2_dbdir / "genomad/rna_viral_markers",
         },
         "diamond": {
-            "uniref50".lower(): reference_seqs_dir / "uniref/uniref50_viral.fasta",
+            "uniref50".lower(): reference_seqs_dir
+            / "uniref/uniref50_viral.fasta",
             "RVMT".lower(): reference_seqs_dir / "RVMT/RVMT_cleaned_orfs.faa",
         },
     }
@@ -469,7 +474,9 @@ def get_database_paths(config, tool_name):
                 )
                 if ".hmm" in unique_extensions:
                     db_type = "hmm_directory"
-                elif unique_extensions.intersection({".faa", ".msa", ".afa", ".fasta"}):
+                elif unique_extensions.intersection(
+                    {".faa", ".msa", ".afa", ".fasta"}
+                ):
                     db_type = "msa_directory"
                 config.logger.info(
                     f"Database directory analysis: {db_type} detected based on file extensions"
@@ -487,7 +494,9 @@ def get_database_paths(config, tool_name):
                                 f_out.write(f_in.read())
                     database_paths = {"Custom": str(Path(db_info["path"]))}
                 elif db_info["type"] == "msa_directory":
-                    from rolypoly.utils.bio.alignments import hmmdb_from_directory
+                    from rolypoly.utils.bio.alignments import (
+                        hmmdb_from_directory,
+                    )
 
                     hmmdb_from_directory(
                         msa_dir=custom_database,
@@ -501,7 +510,9 @@ def get_database_paths(config, tool_name):
                     )
                     return {}
             else:
-                config.logger.error(f"Invalid custom database path: {custom_database}")
+                config.logger.error(
+                    f"Invalid custom database path: {custom_database}"
+                )
                 return {}
         else:
             # For other tools, just use the path as is
@@ -592,7 +603,9 @@ def search_protein_domains_hmmsearch(config):
         return
 
     global output_files
-    config.logger.info(f"Using {', '.join(database_paths.keys())} for domain search")
+    config.logger.info(
+        f"Using {', '.join(database_paths.keys())} for domain search"
+    )
     for db in database_paths.keys():
         config.logger.info(f"Searching with {db}...")
         search_hmmdb(
@@ -611,7 +624,9 @@ def search_protein_domains_hmmsearch(config):
         output_files = output_files.vstack(
             pl.DataFrame(
                 {
-                    "file": [str(config.output_dir / f"{db}_protein_domains.tsv")],
+                    "file": [
+                        str(config.output_dir / f"{db}_protein_domains.tsv")
+                    ],
                     "description": [f"protein domains for {db}"],
                     "db": [db],
                     "tool": ["hmmsearch"],
@@ -711,7 +726,9 @@ def search_protein_domains_mmseqs2(config):
         return
 
     global output_files
-    config.logger.info(f"Using {', '.join(database_paths.keys())} for domain search")
+    config.logger.info(
+        f"Using {', '.join(database_paths.keys())} for domain search"
+    )
     for db_name, db_path in database_paths.items():
         config.logger.info(f"Searching {db_name} for domains")
         output_file = config.output_dir / f"{db_name}_mmseqs2_domains.tsv"
@@ -766,7 +783,9 @@ def search_protein_domains_diamond(config):
         return
 
     global output_files
-    config.logger.info(f"Using {', '.join(database_paths.keys())} for domain search")
+    config.logger.info(
+        f"Using {', '.join(database_paths.keys())} for domain search"
+    )
     for db_name, db_path in database_paths.items():
         config.logger.info(f"Searching {db_name} for domains")
         output_file = config.output_dir / f"{db_name}_diamond_domains.tsv"
@@ -878,7 +897,9 @@ def resolve_domain_overlaps(config):
                 resolved_df = domain_df
 
             # Write resolved results
-            resolved_file = domain_file.parent / f"{domain_file.stem}_resolved.tsv"
+            resolved_file = (
+                domain_file.parent / f"{domain_file.stem}_resolved.tsv"
+            )
             resolved_df.write_csv(resolved_file, separator="\t")
 
             config.logger.info(
@@ -903,7 +924,9 @@ def resolve_domain_overlaps(config):
             )
 
         except Exception as e:
-            config.logger.error(f"Error resolving overlaps in {domain_file}: {e}")
+            config.logger.error(
+                f"Error resolving overlaps in {domain_file}: {e}"
+            )
             continue
 
     config.logger.info("Domain overlap resolution completed")
@@ -918,21 +941,29 @@ def combine_results(config):
     config.logger.info("Combining annotation results")
 
     # Get domain search output files (prefer resolved versions)
-    resolved_files = output_files.filter(pl.col("description").str.contains("resolved"))
+    resolved_files = output_files.filter(
+        pl.col("description").str.contains("resolved")
+    )
 
     if resolved_files.height > 0:
         # Use resolved files if available
         domain_files = resolved_files
-        config.logger.info(f"Using {resolved_files.height} resolved domain files")
+        config.logger.info(
+            f"Using {resolved_files.height} resolved domain files"
+        )
     else:
         # Fall back to unresolved domain files
         domain_files = output_files.filter(
             pl.col("description").str.contains("protein domains")
         )
-        config.logger.info(f"Using {domain_files.height} unresolved domain files")
+        config.logger.info(
+            f"Using {domain_files.height} unresolved domain files"
+        )
 
     if domain_files.height == 0:
-        config.logger.warning("No domain search files found for combining results")
+        config.logger.warning(
+            "No domain search files found for combining results"
+        )
         return
 
     # Load and combine all domain search results
@@ -990,19 +1021,27 @@ def combine_results(config):
     elif config.output_format == "csv":
         output_file = config.output_dir / "combined_annotations.csv"
         combined_data.write_csv(output_file)
-        config.logger.info(f"Combined annotation results written to {output_file}")
+        config.logger.info(
+            f"Combined annotation results written to {output_file}"
+        )
     else:  # tsv (default)
         output_file = config.output_dir / "combined_annotations.tsv"
         combined_data.write_csv(output_file, separator="\t")
-        config.logger.info(f"Combined annotation results written to {output_file}")
+        config.logger.info(
+            f"Combined annotation results written to {output_file}"
+        )
 
     # Log summary statistics
     config.logger.info(f"Total annotations: {combined_data.height}")
     if "database" in combined_data.columns:
-        dbs_used = combined_data.select("database").unique().to_series().to_list()
+        dbs_used = (
+            combined_data.select("database").unique().to_series().to_list()
+        )
         config.logger.info(f"Databases used: {', '.join(dbs_used)}")
     if "search_tool" in combined_data.columns:
-        tools_used = combined_data.select("search_tool").unique().to_series().to_list()
+        tools_used = (
+            combined_data.select("search_tool").unique().to_series().to_list()
+        )
         config.logger.info(f"Search tools used: {', '.join(tools_used)}")
 
     # Cleanup temporary directories
@@ -1011,7 +1050,9 @@ def combine_results(config):
     if tmp_dir.exists():
         try:
             shutil.rmtree(tmp_dir)
-            config.logger.info(f"Cleaned up mmseqs2 temporary directory: {tmp_dir}")
+            config.logger.info(
+                f"Cleaned up mmseqs2 temporary directory: {tmp_dir}"
+            )
         except Exception as e:
             config.logger.warning(f"Could not remove tmp directory: {e}")
 
@@ -1041,7 +1082,9 @@ def add_missing_gff_columns(dataframe):
     if "source" not in dataframe.columns:
         dataframe = dataframe.with_columns(pl.lit("rp").alias("source"))
     if "type" not in dataframe.columns:
-        dataframe = dataframe.with_columns(pl.lit("protein_domain").alias("type"))
+        dataframe = dataframe.with_columns(
+            pl.lit("protein_domain").alias("type")
+        )
     if "score" not in dataframe.columns:
         dataframe = dataframe.with_columns(pl.lit(0.0).alias("score"))
     if "strand" not in dataframe.columns:
@@ -1091,19 +1134,27 @@ def convert_record_to_gff3_record(row):
 
     # Try to identify other columns
     score_columns = ["score", "Score", "bitscore", "qscore", "bit", "bits"]
-    score_col = next((col for col in score_columns if col in row.keys()), "score")
+    score_col = next(
+        (col for col in score_columns if col in row.keys()), "score"
+    )
 
     source_columns = ["source", "Source", "db", "DB", "database"]
-    source_col = next((col for col in source_columns if col in row.keys()), "source")
+    source_col = next(
+        (col for col in source_columns if col in row.keys()), "source"
+    )
 
     type_columns = ["type", "Type", "feature", "Feature"]
     type_col = next((col for col in type_columns if col in row.keys()), "type")
 
     strand_columns = ["strand", "Strand", "sense", "Sense"]
-    strand_col = next((col for col in strand_columns if col in row.keys()), "strand")
+    strand_col = next(
+        (col for col in strand_columns if col in row.keys()), "strand"
+    )
 
     phase_columns = ["phase", "Phase"]
-    phase_col = next((col for col in phase_columns if col in row.keys()), "phase")
+    phase_col = next(
+        (col for col in phase_columns if col in row.keys()), "phase"
+    )
 
     # Build GFF3 attributes string
     attrs = []
@@ -1120,7 +1171,12 @@ def convert_record_to_gff3_record(row):
 
     for key, value in row.items():
         if key not in excluded_cols:
-            if value and str(value).strip() and str(value) != "." and str(value) != "":
+            if (
+                value
+                and str(value).strip()
+                and str(value) != "."
+                and str(value) != ""
+            ):
                 attrs.append(f"{key}={value}")
 
     # Get values with defaults
