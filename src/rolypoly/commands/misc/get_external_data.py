@@ -1,14 +1,11 @@
 import os
+import shutil
 from pathlib import Path as pt
 
 from rich.console import Console
 from rich_click import command, option
 
-from rolypoly.utils.various import (
-    extract,
-    find_most_recent_folder,
-    move_contents_to_parent,
-)
+from rolypoly.utils.various import extract
 
 console = Console()
 global tools
@@ -89,22 +86,31 @@ def get_data(info, rolypoly_data, log_file):
 
     logger.info(f"Starting data preparation to : {ROLYPOLY_DATA}")
 
-    ROLYPOLY_DATA.mkdir(exist_ok=True)
+    ROLYPOLY_DATA.mkdir(parents=True, exist_ok=True)
 
+    # Download the tarball
+    logger.info("Downloading data tarball...")
     response = requests.get(
         "https://portal.nersc.gov/dna/microbial/prokpubs/rolypoly/data/data.tar.gz",
         stream=True,
     )
-    with open(f"{ROLYPOLY_DATA}/data.tar.gz", "wb") as f:
+    tar_path = ROLYPOLY_DATA / "data.tar.gz"
+    with open(str(tar_path), "wb") as f:
         for chunk in response.iter_content(chunk_size=1024):
             if chunk:
                 f.write(chunk)
+    
+    logger.info("Extracting data tarball...")
+    # Extract directly to ROLYPOLY_DATA
+    # The tarball is created with relative paths (README.md, contam/, profiles/, etc.)
+    # so it will extract directly to the target directory without wrapper folders
     extract(
-        archive_path=f"{ROLYPOLY_DATA}/data.tar.gz",
-        extract_to=f"{ROLYPOLY_DATA}",
+        archive_path=str(tar_path),
+        extract_to=str(ROLYPOLY_DATA),
     )
-    most_recent_folder = find_most_recent_folder(f"{ROLYPOLY_DATA}")
-    move_contents_to_parent(most_recent_folder)
-    os.remove(f"{ROLYPOLY_DATA}/data.tar.gz")
+    
+    # Clean up the tarball
+    tar_path.unlink()
+    
     logger.info(f"Finished fetching and extracting data to : {ROLYPOLY_DATA}")
     return 0

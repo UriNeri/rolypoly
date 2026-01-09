@@ -733,6 +733,18 @@ def apply_filter(df, filter_str):
 
 
 def find_most_recent_folder(path):
+    """Find the deepest most-recently-modified folder in a directory tree.
+    
+    This is useful after extracting tar files that may have intermediate
+    wrapper folders. It recursively traverses down the directory tree to find
+    the deepest folder that was recently modified (i.e., the actual extracted content).
+    
+    Args:
+        path: Root directory path to search in
+        
+    Returns:
+        Path to the deepest most-recent folder, or None if no folders found
+    """
     import glob
     import os
 
@@ -743,8 +755,23 @@ def find_most_recent_folder(path):
     # Return None if no folders found
     if not folders:
         return None
+    
     # Find the most recent folder based on modification time
     most_recent_folder = max(folders, key=os.path.getmtime)
+    
+    # Recursively check if the most recent folder contains subdirectories
+    # If it does, go deeper to find the actual data folder
+    sub_folders = [
+        f for f in glob.glob(os.path.join(most_recent_folder, "*")) if os.path.isdir(f)
+    ]
+    
+    # If the most recent folder has exactly one subfolder (common with tar extraction),
+    # recursively search that subfolder to find the actual data directory
+    if len(sub_folders) == 1:
+        deeper_result = find_most_recent_folder(most_recent_folder)
+        if deeper_result and deeper_result != most_recent_folder:
+            return deeper_result
+    
     return most_recent_folder
 
 
