@@ -408,7 +408,7 @@ def get_database_paths(config, tool_name):
     mmseqs2_dbdir = (
         Path(os.environ["ROLYPOLY_DATA"]) / "profiles" / "mmseqs_dbs"
     )
-    reference_seqs_dir = Path(os.environ["ROLYPOLY_DATA"])
+    reference_seqs_dir = Path(os.environ["ROLYPOLY_DATA"] ) / "reference_seqs"
     # diamond_dbdir = Path(os.environ["ROLYPOLY_DATA"]) / "profiles" / "diamond" # not needed really , will just use the fasta as input cause diamond accepts fasta directly
 
     # Database paths for different tools
@@ -417,6 +417,7 @@ def get_database_paths(config, tool_name):
             "NVPC".lower(): hmmdbdir / "nvpc.hmm",
             "RVMT".lower(): hmmdbdir / "rvmt.hmm",
             "Pfam".lower(): hmmdbdir / "Pfam-A.hmm",
+            "Pfam_filtered".lower(): hmmdbdir / "pfam_filtered.hmm", 
             "genomad".lower(): hmmdbdir / "genomad_rna_viral_marker.hmm",
             "vfam".lower(): hmmdbdir / "vfam.hmm",
         },
@@ -424,7 +425,7 @@ def get_database_paths(config, tool_name):
             "NVPC".lower(): mmseqs2_dbdir / "nvpc/nvpc",
             "RVMT".lower(): mmseqs2_dbdir / "RVMT/RVMT",
             "vfam".lower(): mmseqs2_dbdir / "vfam/vfam",
-            # "Pfam".lower(): mmseqs2_dbdir / "pfam/pfamA37",
+            "Pfam".lower(): mmseqs2_dbdir / "pfam_a/pfam_a_38_seed",
             "genomad".lower(): mmseqs2_dbdir / "genomad/rna_viral_markers",
         },
         "diamond": {
