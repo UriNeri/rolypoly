@@ -121,7 +121,7 @@ log.txt
 target/
 
 # Miscellaneous project files
-misc/
+# misc/
 # notebooks/
 reference.fasta
 .crush
@@ -129,3 +129,4 @@ package.json
 .gitignore
 **taxdump**
 .nfs*
+rolypoly_data_slim_20260108.tar.gz
