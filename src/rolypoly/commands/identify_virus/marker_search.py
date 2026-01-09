@@ -277,7 +277,7 @@ def marker_search(
     )
 
     # Determine the databases to use
-    hmmdbdir = Path(os.environ["ROLYPOLY_DATA"]) / "hmmdbs"
+    hmmdbdir = Path(os.environ["ROLYPOLY_DATA"]) / "profiles/hmmdbs"
 
     DB_PATHS = {
         "NeoRdRp_v2.1".lower(): hmmdbdir / "neordrp2.1.hmm",
