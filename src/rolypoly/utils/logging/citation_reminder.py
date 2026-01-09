@@ -1,6 +1,5 @@
 import os
 from pathlib import Path
-from re import S
 from typing import List, Union
 
 import requests

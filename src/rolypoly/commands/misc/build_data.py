@@ -1,8 +1,6 @@
 import datetime
-from glob import glob
 import json
 import logging
-from multiprocessing.spawn import prepare
 import os
 import shutil
 import subprocess
@@ -10,7 +8,6 @@ import tarfile
 from pathlib import Path as pt
 
 import polars as pl
-import pyhmmer
 import requests
 from bbmapy import bbduk, bbmask, kcompress
 from rich.console import Console
@@ -405,7 +402,6 @@ def analyze_data_dependencies(src_dir="src/rolypoly", data_dir=None):
     """
     import re
     import os
-    from pathlib import Path
 
     required_paths = set()
 

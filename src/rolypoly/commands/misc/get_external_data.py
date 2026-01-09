@@ -1,5 +1,4 @@
 import os
-import shutil
 from pathlib import Path as pt
 
 from rich.console import Console

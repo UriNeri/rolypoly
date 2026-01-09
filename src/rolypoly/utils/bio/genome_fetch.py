@@ -31,17 +31,14 @@ import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import List, Optional, Tuple
 from urllib.parse import urlparse
 from urllib.request import urlretrieve
 
 import polars as pl
-from requests import get
 from rich.progress import (
     BarColumn,
     Progress,
-    SpinnerColumn,
-    TaskID,
     TextColumn,
     TimeElapsedColumn,
 )
@@ -154,7 +151,7 @@ def download_from_ftp_path(
                 file_size = output_file.stat().st_size
                 return output_file, file_size
             else:
-                logger.warning(f"Downloaded file is empty, trying next option")
+                logger.warning("Downloaded file is empty, trying next option")
                 output_file.unlink(missing_ok=True)
 
         except Exception as e:

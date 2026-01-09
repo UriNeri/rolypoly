@@ -1,8 +1,6 @@
 #  tree structures, mostly for taxonomic neighbor finding. this is mostly a place holder until i figure out if this functionality is trulyt needed, needed from scratch, or can be sourced from phylotree-rs
-import heapq
 from collections import defaultdict, deque
 
-import polars as pl
 
 
 class TaxonomyTree:
@@ -212,7 +210,7 @@ class TaxonomyTree:
                 if parent and parent != current and parent not in processed:
                     to_process.append(parent)
 
-        print(f"Propagation complete:")
+        print("Propagation complete:")
         print(f"  Initial nodes with data: {initial_count:,}")
         print(f"  Nodes updated: {nodes_updated:,}")
         print(f"  Final nodes with data: {len(self.data_available):,}")
@@ -900,30 +898,30 @@ class TaxonomyTree:
         stats = self.get_tree_stats()
 
         print("TAXONOMY TREE STATISTICS")
-        print(f"\nTree Structure:")
+        print("\nTree Structure:")
         print(f"  Total nodes:          {stats['total_nodes']:,}")
         print(f"  Leaf nodes:           {stats['leaf_nodes']:,}")
         print(f"  Internal nodes:       {stats['internal_nodes']:,}")
 
-        print(f"\nData Availability:")
+        print("\nData Availability:")
         print(f"  Nodes with data:      {stats['nodes_with_data']:,}")
         print(f"  Leaves with data:     {stats['leaves_with_data']:,}")
         print(f"  Leaves without data:  {stats['leaves_without_data']:,}")
         print(f"  Internal nodes w/data:{stats['internal_nodes_with_data']:,}")
 
-        print(f"\nCoverage:")
+        print("\nCoverage:")
         print(f"  All nodes:            {stats['coverage_percent_all']:.2f}%")
         print(
             f"  Leaf nodes only:      {stats['coverage_percent_leaves']:.2f}%"
         )
 
-        print(f"\nCache:")
+        print("\nCache:")
         print(f"  Cached queries:       {stats['cached_queries']:,}")
 
         if stats["priority_columns"]:
             print(f"\nPriority columns: {', '.join(stats['priority_columns'])}")
 
-        print(f"\nTop ranks by count:")
+        print("\nTop ranks by count:")
         sorted_ranks = sorted(
             stats["rank_distribution"].items(), key=lambda x: x[1], reverse=True
         )[:10]

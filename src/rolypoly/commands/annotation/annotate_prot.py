@@ -1,4 +1,3 @@
-import datetime
 import logging
 from pathlib import Path
 from typing import Union
@@ -1071,7 +1070,7 @@ def combine_results(config):
     if raw_out_dir.exists() and not any(raw_out_dir.iterdir()):
         try:
             raw_out_dir.rmdir()
-            config.logger.info(f"Removed empty raw_out directory")
+            config.logger.info("Removed empty raw_out directory")
         except Exception as e:
             config.logger.warning(f"Could not remove raw_out directory: {e}")
 

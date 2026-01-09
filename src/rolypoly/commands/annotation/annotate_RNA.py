@@ -1294,7 +1294,6 @@ def read_multiDBN_to_dataframe(MultiDBN_file):
 
 def resolve_rna_element_overlaps(config):
     """Resolve overlapping RNA element hits using consolidate_hits."""
-    from pathlib import Path
 
     import polars as pl
 
