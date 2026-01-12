@@ -195,8 +195,8 @@ def marker_search(
     """RNA virus marker protein search - using pre-made/user-supplied DBs.
     Most pre-made DBs are based on RdRp domain (except for geNomad).
     Input can be nucleotide contigs or amino acid seqs.
-    If nucleotide, by default all contigs will be translated to six end-to-end frames (with stops replaced by `X`), or into ORFs called by pyrodigal (meta) or callgenes.sh
-    Please cite accordingly based on the DBs you select. Pre-compiled options are: \n
+    If nucleotide, by default all contigs will be translated to six end-to-end frames (with stops replaced by `X`), or into ORFs called by pyrodigal (meta) or callgenes.sh \n
+    Pre-compiled options are: \n
     • NeoRdRp2.1 \n
         GitHub: https://github.com/shoichisakaguchi/NeoRdRp  | Paper: https://doi.org/10.1264/jsme2.ME22001 \n
     • RVMT \n
@@ -213,6 +213,7 @@ def marker_search(
     • geNomad \n
         RNA virus marker genes from geNomad v1.9 --- https://zenodo.org/records/14886553
     For custom path, either an .hmm file, a directory with .hmm files, or a folder with MSA files (which would be used to build an HMM DB).
+    Please cite accordingly based on the DBs you select. 
     """
     import json
 

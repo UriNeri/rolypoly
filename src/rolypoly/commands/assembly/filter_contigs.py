@@ -54,7 +54,7 @@ class FilterContigsConfig(BaseConfig):
         self.diamond_args = kwargs.get("diamond_args", "--id 50 --min-orf 50")
 
 
-@click.command(name="filter_contigs")
+@click.command(name="filter-contigs")
 @click.option(
     "-i",
     "--input",

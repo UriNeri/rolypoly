@@ -386,7 +386,7 @@ def run_penguin(config, libraries):
     return penguin_output
 
 
-@click.command()
+@click.command(name="assemble", no_args_is_help=True)
 @click.option("-t", "--threads", default=1, help="Threads ", type=int)
 @click.option(
     "-M",

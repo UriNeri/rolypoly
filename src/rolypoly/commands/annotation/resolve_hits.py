@@ -6,7 +6,7 @@ import rich_click as click
 from rolypoly.utils.bio.interval_ops import consolidate_hits
 
 
-@click.command(name="resolve_overlaps")
+@click.command(name="resolve-overlaps")
 @click.option("-i", "--input", required=True, help="Input hit table file")
 @click.option(
     "-o",

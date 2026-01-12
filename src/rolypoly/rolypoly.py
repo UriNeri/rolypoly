@@ -100,7 +100,7 @@ CONTEXT_SETTINGS = dict(
             "name": "RNA Virus Identification",
             "commands": {
                 "marker-search": "rolypoly.commands.identify_virus.marker_search.marker_search",
-                "search-viruses": "rolypoly.commands.identify_virus.search_viruses.virus_mapping",
+                "virus-mapping": "rolypoly.commands.identify_virus.search_viruses.virus_mapping",
                 "rdrp-motif-search": "rolypoly.commands.identify_virus.rdrp_motif_search.rdrp_motif_search",
             },
         },

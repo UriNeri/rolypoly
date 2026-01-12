@@ -10,7 +10,7 @@ from rolypoly.utils.bio.library_detection import (
 from rolypoly.utils.logging.loggit import log_start_info, setup_logging
 
 
-@click.command(name="shrink_reads", no_args_is_help=True)
+@click.command(name="shrink-reads", no_args_is_help=True)
 @click.option(
     "-i",
     "-in",

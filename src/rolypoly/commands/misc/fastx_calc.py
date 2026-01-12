@@ -4,7 +4,7 @@ from rich.console import Console
 console = Console()
 
 
-@click.command(name="fastx_calc")
+@click.command(name="fastx-calc")
 @click.option(
     "-i",
     "--input",

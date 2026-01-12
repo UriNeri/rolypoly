@@ -10,7 +10,7 @@ tools = []
 console = Console()
 
 
-@click.command()
+@click.command(name="virus-mapping")
 @click.option("-t", "--threads", default=1, help="Threads (all) [1]")
 @click.option("-M", "--memory", default="6g", help="MEMORY in gb (more) [6]")
 @click.option(

@@ -8,7 +8,7 @@ from rolypoly.utils.bio.sequences import process_sequences, rename_sequences
 console = Console()
 
 
-@click.command(name="rename_seqs")
+@click.command(name="rename-seqs")
 @click.option("-i", "--input", required=True, help="Input FASTA file")
 @click.option("-o", "--output", required=True, help="Output FASTA file")
 @click.option(

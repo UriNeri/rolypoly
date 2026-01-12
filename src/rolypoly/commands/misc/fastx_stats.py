@@ -7,7 +7,7 @@ from rich.console import Console
 console = Console()
 
 
-@click.command(name="fastx_stats")
+@click.command(name="fastx-stats")
 @click.option(
     "-i",
     "--input",
