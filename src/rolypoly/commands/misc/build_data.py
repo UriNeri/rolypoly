@@ -591,7 +591,6 @@ def create_slim_tarball(data_dir, required_paths, version=datetime.datetime.now(
                 deduped.append(path)
         return deduped
 
-    required_paths.append('README.md')  # always include README
     required_paths = [
         'README.md',
         'contam/adapters/AFire_illuminatetritis1223.fa',
@@ -632,6 +631,7 @@ def create_slim_tarball(data_dir, required_paths, version=datetime.datetime.now(
         'reference_seqs/uniref/uniref50_viral.tsv',
         'reference_seqs/uniref/uniref50_viral.fasta'
     ]
+    required_paths.append('README.md')  # always include README
     required_paths = deduplicate_paths(required_paths)
     # get size info
     total_size = 0
@@ -936,7 +936,7 @@ def prepare_genomad_rna_viral_markers(
         msa_dir=genomad_alignments_dir,
         output=output_hmm,
         msa_pattern="*.faa",
-        info_table=f"{genomad_dir}/rna_viral_markers_with_annotation.csv",
+        info_table=f"{profile_dir}/genomad_rna_viral_markers_with_annotation.csv",
         name_col="MARKER",
         accs_col="ANNOTATION_ACCESSIONS",
         desc_col="ANNOTATION_DESCRIPTION",
@@ -948,7 +948,7 @@ def prepare_genomad_rna_viral_markers(
         output=os.path.join(
             data_dir, "profiles/mmseqs_dbs/genomad/", "rna_viral_markers"
         ),
-        info_table=f"{genomad_dir}/rna_viral_markers_with_annotation.csv",
+        info_table=f"{profile_dir}/genomad_rna_viral_markers_with_annotation.csv",
         msa_pattern="*.faa",
         name_col="MARKER",
         accs_col="ANNOTATION_ACCESSIONS",
@@ -967,9 +967,9 @@ def prepare_genomad_rna_viral_markers(
     except Exception as e:
         logger.warning(f"Could not remove file: {e}")
 
-    logger.info(f"Created RNA viral HMM database at {output_hmm}")
+    logger.info(f"Created genomad RNA viral HMM database at {output_hmm}")
 
-
+ 
 def prepare_rdrp_scan(data_dir, threads, logger: logging.Logger):
     """Download and prepare RdRp profiles from RdRp-scan.
 
@@ -1057,12 +1057,31 @@ def prepare_pfam_rdrps_rt(data_dir, threads, logger: logging.Logger):
               strip_after_char=".",
                 logger=logger)
 
-        # also prepare mmseqs profile db 
+    # also prepare mmseqs profile db 
     subprocess.run(
                 "mmseqs databases Pfam-A.seed data/profiles/mmseqs_dbs/pfam_a/pfam_a_38_seed tmp",
                 shell=True,
                 check=True,
     )
+    # TODO: Filter the pfam_A mmseqs db to remove "hypothetical protein" + similar entries?
+
+    from rolypoly.utils.bio.alignments import fetchPfamMSA
+    # fetch Pfam MSAs for these accessions
+    pfam_msa_folder = os.path.join(hmmdb_dir, "pfam_msas")
+    os.makedirs(pfam_msa_folder, exist_ok=True)
+    for acc in [acc.split(".")[0] for acc in RdRps_and_RTs]:
+            fetchPfamMSA(
+                acc=acc,
+                output_folder=pfam_msa_folder,
+                logger=logger,
+            )
+            logger.info(f"Fetched MSA for Pfam accession {acc}")
+        # build mmseqs profile db from these msas
+    mmseqs_profile_db_from_directory(
+        msa_dir=pfam_msa_folder,
+        output=os.path.join(mmseqs_dbs, "pfam_rdrps_and_rts/pfam_rdrps_and_rts"),
+        msa_pattern="*.sth",
+        info_table=None)
     
 
     # clean up downloaded gz
@@ -1225,7 +1244,6 @@ def prepare_vfam(data_dir, logger: logging.Logger):
         extract_to=os.path.join(data_dir, "profiles", "hmmdbs", "vfam"),
     )
 
-
     import glob
     # remove GroupNames and msa files that only have 2 or less sequences, or that have "hypothetical" in the description
     msa_files = glob.glob(os.path.join(os.path.join(data_dir, "profiles", "hmmdbs", "vfam"), "msa/*.msa"))
@@ -1285,7 +1303,6 @@ def prepare_vfam(data_dir, logger: logging.Logger):
     logger.info(
         f"Created VFAM HMM database at {os.path.join(data_dir, 'hmmdbs', 'vfam.hmm')}"
     )
-
 
 def prepare_ncbi_ribovirus(data_dir, threads, logger: logging.Logger):
     """Download and prepare NCBI ribovirus reference sequences (RefSeq only).
