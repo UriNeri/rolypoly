@@ -3,15 +3,17 @@ name = "rolypoly_tk"
 dynamic = ["version"]
 authors = [
     { name = "Uri Neri", email = "uneri@lbl.gov" },
-    { name = "Simon Roux", email = "sroux@lbl.gov" },
+    { name = "Dimitris Karapliafis", email = "dimitris.karapliafis@atwur.nl" },
+    { name = "Lander De Coninck"},
     { name = "Brian Bushnell", email = "bbushnell@lbl.gov" },
+    { name = "Frederik Schulz", email = "fschulz@lbl.gov" },
     { name = "Antonio Camargo", email = "antoniop.camargo@lbl.gov" },
     { name = "Andrei Stecca Steindorff", email = "andreiss@jgi.doe.gov" },
     { name = "Clement Coclet", email = "cclement@jgi.doe.gov" },
     { name = "David Parker", email = "dparker@carnegiescience.edu" },
-    { name = "Dimitris Karapliafis", email = "dimitris.karapliafis@atwur.nl" },
-    { name = "Frederik Schulz", email = "fschulz@lbl.gov" },
+    { name = "Simon Roux", email = "sroux@lbl.gov" },
 ]
+
 description = "RNA virus analysis toolkit"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -38,7 +40,7 @@ dependencies = [
 ]
 
 [project.urls]
-Source = "https://code.jgi.doe.gov/rolypoly/rolypoly"
+Source = "https://github.com/UriNeri/rolypoly"
 Documentation = "https://pages.jgi.doe.gov/rolypoly/docs/"
 pypi = "https://pypi.org/project/rolypoly-tk/"
 
@@ -49,7 +51,16 @@ rolypoly = "rolypoly.rolypoly:rolypoly"
 build = ["hatch >=1.14.0,<2", "pip >=25.0.1,<26"]
 format = ["ruff >=0.11.3,<0.12"]
 publish = ["twine >=6.1.0,<7"]
-dev = ["aria2p>=0.12.1,<0.13", "tqdm>=4.67.1,<5", "fsspec>=2025.10.0,<2026", "networkx>=3.2.1,<4", "matplotlib>=3.9.4,<4", "baltic>=0.3.0,<0.4", "tskit>=0.6.4,<0.7", "pytest>=8.4.2,<9"]
+dev = [
+    "aria2p>=0.12.1,<0.13",
+    "tqdm>=4.67.1,<5",
+    "fsspec>=2025.10.0,<2026",
+    "networkx>=3.2.1,<4",
+    "matplotlib>=3.9.4,<4",
+    "baltic>=0.3.0,<0.4",
+    "tskit>=0.6.4,<0.7",
+    "pytest>=8.4.2,<9",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -108,13 +119,12 @@ diamond = ">=2.1.12,<3"
 [tool.pixi.feature.identify.dependencies]
 # For virus identification commands (marker-search, search-viruses)
 mmseqs2 = ">=18.8cc5c,<19"
-hmmer = ">=3.4,<4"
 diamond = ">=2.1.12,<3"
+# hmmer = ">=3.4,<4" # not needed, pyhmmer is used instead
 
 [tool.pixi.feature.misc.dependencies]
 # For miscellaneous commands (fetch-sra, quick-taxonomy, etc.)
 aria2 = ">=1.37.0,<2"
-freebayes = ">=1.3.10,<2"
 
 [tool.pixi.feature.dev.dependencies]
 # Development and testing tools
@@ -123,7 +133,7 @@ ipython = "*"
 uv = ">=0.7.13,<0.8"
 jupyter = "*"
 ipykernel = ">=6.30.1,<7"
-blast = ">=2.17.0,<3"
+blast = ">=2.17.0,<3" # for getting fasta from NCBI blastdbs
 aria2 = ">=1.37.0,<2"
 
 [tool.pixi.tasks]
@@ -138,10 +148,30 @@ python = "~=3.9.0"
 default = { features = ["py39"] }
 
 # Complete environment with all dependencies (for full functionality)
-complete = { features = ["py39", "reads", "assembly", "annotation-rna", "annotation-prot", "identify", "misc"] }
+complete = { features = [
+    "py39",
+    "reads",
+    "assembly",
+    "annotation-rna",
+    "annotation-prot",
+    "identify",
+    "misc",
+] }
 
 # Development environment
-dev = { features = ["py39", "reads", "assembly", "annotation-rna", "annotation-prot", "identify", "misc", "build", "format", "publish", "dev"] }
+dev = { features = [
+    "py39",
+    "reads",
+    "assembly",
+    "annotation-rna",
+    "annotation-prot",
+    "identify",
+    "misc",
+    "build",
+    "format",
+    "publish",
+    "dev",
+] }
 
 # Specific command group environments for targeted installations
 reads-only = { features = ["py39", "reads"] }
@@ -154,7 +184,14 @@ misc-only = { features = ["py39", "misc"] }
 
 # Common workflow combinations
 basic-analysis = { features = ["py39", "reads", "assembly", "identify"] }
-full-annotation = { features = ["py39", "reads", "assembly", "annotation-rna", "annotation-prot", "identify"] }
+full-annotation = { features = [
+    "py39",
+    "reads",
+    "assembly",
+    "annotation-rna",
+    "annotation-prot",
+    "identify",
+] }
 
 # [tool.pixi.project]
 # platforms = []
@@ -216,4 +253,3 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 [tool.ruff.format]
 line-ending = "auto"
 skip-magic-trailing-comma = true
-
