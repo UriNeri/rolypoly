@@ -129,4 +129,4 @@ package.json
 .gitignore
 **taxdump**
 .nfs*
-rolypoly_data_slim_20260108.tar.gz
+rolypoly_data_slim_*.tar.gz
