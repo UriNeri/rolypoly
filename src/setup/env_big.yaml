@@ -1,24 +1,45 @@
+name: rolypoly-tk
 channels:
-  - conda-forge
-  - bioconda
-  - defaults
-  
+- conda-forge
+- bioconda
+- nodefaults
 dependencies:
-  - python>=3.9  
-  - pip
-  - uv
-  - aragorn >=1.2.41,<2
-  - bowtie >=1.3.0,<2
-  - diamond >=2.1.10,<3
-  - linearfold >=1.0.1.dev20220829,<2
-  - megahit >=1.2.9,<2
-  - mmseqs2 >=16.747c6,<18
-  - ncbi-datasets-cli >=17.3.0,<18
-  - pigz >=2.8,<3
-  - plass >=5.cf8933,<6
-  - seqkit >=2.10.0,<3
-  - spades >=4.0.1,<5
-  - trnascan-se >=2.0.12,<3
-  - falco >=1.2.5,<2
-  # - pip:
-  #   - rolypoly-tk
+- python >=3.9
+- seqkit >=2.10.0,<3
+- bowtie >=1.3.1,<2
+- falco >=1.2.5,<2
+- pigz >=2.8,<3
+- spades >=4.2.0,<5
+- megahit >=1.2.9,<2
+- plass >=5.cf8933,<6
+- mmseqs2 >=18.8cc5c,<19
+- infernal >=1.1.5,<2
+- linearfold >=1.0.1.dev20220829,<2
+- aragorn >=1.2.41,<2
+- trnascan-se >=2.0.12,<3
+- diamond >=2.1.12,<3
+- aria2 >=1.37.0,<2
+- ipython *
+- pip >=25.1.1,<26
+
+- pip:
+  - pip>=25.0.1, <26
+  - aria2p>=0.12.1, <0.13
+  - genomicranges>=0.7.3, <0.8
+  - iranges>=0.5.1, <0.6
+  - lightmotif>=0.10.0, <0.11
+  - mappy>=2.30, <3
+  - needletail>=0.7.0, <0.8
+  - psutil>=7.0.0, <8
+  - pyfastx>=2.2.0, <3
+  - pyhmmer>=0.11.1, <0.12
+  - requests>=2.32.4, <3
+  - rich-click>=1.8.9, <2
+  - rich>=14.0.0, <15
+  - viennarna>=2.7.0, <3
+  - intervaltree>=3.1.0, <4
+  - polars>=1.29.0, <2
+  - bbmapy>=0.0.56, <0.0.58
+  - xxhash>=3.6.0, <4
+  - pyrodigal-rv>=0.1.0, <0.2
+  - rolypoly-tk>= 0.6.23, < 0.7.0
