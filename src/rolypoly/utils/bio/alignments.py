@@ -1,6 +1,7 @@
 """Alignments (MSAs, HMMs, and collection of them) and mapping utility functions."""
 
 import io
+import json
 import logging
 import re
 import tempfile
@@ -10,6 +11,7 @@ from typing import Dict, List, Optional, Union
 import polars as pl
 import pyhmmer
 from rich.progress import track
+
 
 from rolypoly.utils.logging.loggit import get_logger
 from rolypoly.utils.various import find_files_by_extension, run_command_comp
@@ -220,9 +222,9 @@ def search_hmmdb(
       pyhmmer_hmmsearch_args(dict, optional): Additional arguments to pass to pyhmmer.hmmsearch. (Default value = {})
 
     Example:
-      # Basic search with default parameters
+      ### Basic search with default parameters
       search_hmmdb("proteins.faa", "pfam.hmm", "results.txt", threads=4)
-      # Search with custom settings and full alignment info
+      ### Search with custom settings and full alignment info
       search_hmmdb("proteins.faa", "pfam.hmm", "results.txt", threads=4,
       inc_e=0.01, match_region=True, ali_str=True)
     """
@@ -389,7 +391,7 @@ def hmm_fetch(
     logger: Optional[logging.Logger] = None,
 ):
     """Fetch specific HMMs from an HMM database by accession. sort of like hmmfetch.
-    
+
     Args:
         hmm_db: str or Path, path to the HMM database
         accessions: List of str, list of HMM accessions to fetch
@@ -399,44 +401,44 @@ def hmm_fetch(
         invert: bool, if True, fetch HMMs NOT in accessions list (Default value = False)
         wrap: bool, if True, use substring matching instead of exact matching (Default value = False)
         logger: logging.Logger, optional logger for debug output
-    
+
     Returns:
         dict: Statistics containing 'hmms_processed' and 'hmms_written'
     """
     logger = get_logger(logger)
     hmm_db = Path(hmm_db)
     output = Path(output)
-    
+
     # Optimize for lookup pattern
     accessions_exact = set()  # For exact matches
     accessions_patterns = []  # For substring patterns
-    
+
     if wrap:
         # Use list for substring matching
         accessions_patterns = [
-            t.split(strip_after_char)[0] if strip_after_char else t 
+            t.split(strip_after_char)[0] if strip_after_char else t
             for t in accessions
         ]
     else:
         # Use set for fast O(1) lookup
         accessions_exact = {
-            t.split(strip_after_char)[0] if strip_after_char else t 
+            t.split(strip_after_char)[0] if strip_after_char else t
             for t in accessions
         }
-    
+
     if not hmm_db.exists():
         raise FileNotFoundError(f"HMM database {hmm_db} not found")
-    
+
     if logger:
         mode_str = "excluding" if invert else "fetching"
         match_str = "substring" if wrap else "exact"
         logger.info(
             f"{mode_str.capitalize()} HMMs ({match_str} match) from database {hmm_db} to {output}"
         )
-    
+
     hmms_processed = 0
     hmms_written = 0
-    
+
     with pyhmmer.plan7.HMMFile(hmm_db) as hmms:
         with open(output, "wb") as outfh:
             if not invert:
@@ -449,7 +451,7 @@ def hmm_fetch(
                         hmm_acc = hmm.accession.decode().strip()
                         if strip_after_char:
                             hmm_acc = hmm_acc.split(strip_after_char)[0]
-                        
+
                         if hmm_acc in target_accessions:
                             hmm.write(outfh, binary=binary)
                             hmms_written += 1
@@ -466,22 +468,25 @@ def hmm_fetch(
                         hmm_acc = hmm.accession.decode().strip()
                         if strip_after_char:
                             hmm_acc = hmm_acc.split(strip_after_char)[0]
-                        
-                        if any(pattern in hmm_acc for pattern in accessions_patterns):
+
+                        if any(
+                            pattern in hmm_acc
+                            for pattern in accessions_patterns
+                        ):
                             hmm.write(outfh, binary=binary)
                             hmms_written += 1
                             if logger:
                                 logger.debug(f"Fetched HMM {hmm_acc}")
             else:
                 # Inverted mode: exclude matching HMMs
-                if not wrap:    
+                if not wrap:
                     # Exact match exclusion
                     for hmm in hmms:
                         hmms_processed += 1
                         hmm_acc = hmm.accession.decode().strip()
                         if strip_after_char:
                             hmm_acc = hmm_acc.split(strip_after_char)[0]
-                        
+
                         if hmm_acc not in accessions_exact:
                             hmm.write(outfh, binary=binary)
                             hmms_written += 1
@@ -494,22 +499,22 @@ def hmm_fetch(
                         hmm_acc = hmm.accession.decode().strip()
                         if strip_after_char:
                             hmm_acc = hmm_acc.split(strip_after_char)[0]
-                        
-                        if not any(pattern in hmm_acc for pattern in accessions_patterns):
+
+                        if not any(
+                            pattern in hmm_acc
+                            for pattern in accessions_patterns
+                        ):
                             hmm.write(outfh, binary=binary)
                             hmms_written += 1
                             if logger:
                                 logger.debug(f"Fetched HMM {hmm_acc}")
-    
+
     if logger:
         logger.info(
             f"Processed {hmms_processed} HMMs, written {hmms_written} to {output}"
         )
-    
-    return {
-        "hmms_processed": hmms_processed,
-        "hmms_written": hmms_written,
-    }
+
+    return {"hmms_processed": hmms_processed, "hmms_written": hmms_written}
 
 
 def hmm_filter(
@@ -522,10 +527,10 @@ def hmm_filter(
     logger: Optional[logging.Logger] = None,
 ):
     """Filter HMMs from a database based on description keywords.
-    
+
     Useful for removing HMMs with uninformative descriptions like "hypothetical protein",
     "domain of unknown function", etc.
-    
+
     Args:
         hmm_db: str or Path, path to the HMM database
         keywords: List of str, list of keywords/phrases to search for in descriptions
@@ -534,10 +539,10 @@ def hmm_filter(
         invert: bool, if True, exclude HMMs matching keywords; if False, include only matching (Default value = False)
         case_sensitive: bool, if True, perform case-sensitive matching (Default value = False)
         logger: logging.Logger, optional logger for debug output
-    
+
     Returns:
         dict: Statistics containing 'hmms_processed', 'hmms_written', and 'hmms_filtered'
-    
+
     Example:
         # Remove HMMs with uninformative descriptions
         hmm_filter(
@@ -550,14 +555,14 @@ def hmm_filter(
     logger = get_logger(logger)
     hmm_db = Path(hmm_db)
     output = Path(output)
-    
+
     # Prepare keywords for matching
     if not case_sensitive:
         keywords = [kw.lower() for kw in keywords]
-    
+
     if not hmm_db.exists():
         raise FileNotFoundError(f"HMM database {hmm_db} not found")
-    
+
     if logger:
         mode_str = "excluding" if invert else "including"
         case_str = "case-sensitive" if case_sensitive else "case-insensitive"
@@ -565,47 +570,55 @@ def hmm_filter(
             f"Filtering HMMs ({mode_str} keywords, {case_str}) from {hmm_db} to {output}"
         )
         logger.info(f"Keywords: {', '.join(keywords)}")
-    
+
     hmms_processed = 0
     hmms_written = 0
     hmms_filtered = 0
-    
+
     with pyhmmer.plan7.HMMFile(hmm_db) as hmms:
         with open(output, "wb") as outfh:
             for hmm in hmms:
                 hmms_processed += 1
-                
+
                 # Get HMM description, handle None case
                 hmm_desc = ""
                 if hmm.description is not None:
                     hmm_desc = hmm.description.decode().strip()
-                
+
                 # Prepare for matching
                 search_text = hmm_desc if case_sensitive else hmm_desc.lower()
-                
+
                 # Check if any keyword matches
                 has_match = any(keyword in search_text for keyword in keywords)
-                
+
                 # Determine whether to write based on invert flag
                 should_write = has_match if not invert else not has_match
-                
+
                 if should_write:
                     hmm.write(outfh, binary=binary)
                     hmms_written += 1
                     if logger:
-                        hmm_acc = hmm.accession.decode().strip() if hmm.accession else "N/A"
+                        hmm_acc = (
+                            hmm.accession.decode().strip()
+                            if hmm.accession
+                            else "N/A"
+                        )
                         logger.debug(f"Kept HMM {hmm_acc}: {hmm_desc}")
                 else:
                     hmms_filtered += 1
                     if logger:
-                        hmm_acc = hmm.accession.decode().strip() if hmm.accession else "N/A"
+                        hmm_acc = (
+                            hmm.accession.decode().strip()
+                            if hmm.accession
+                            else "N/A"
+                        )
                         logger.debug(f"Filtered HMM {hmm_acc}: {hmm_desc}")
-    
+
     if logger:
         logger.info(
             f"Processed {hmms_processed} HMMs: {hmms_written} written, {hmms_filtered} filtered"
         )
-    
+
     return {
         "hmms_processed": hmms_processed,
         "hmms_written": hmms_written,
@@ -700,6 +713,7 @@ def hmmdb_from_directory(
         default_gath: str, default gathering threshold if none provided in info table
         missing_include: bool, whether to include MSAs with no matching info table entry (Default value = False)
         logger: logging.Logger, optional logger for debug output
+        debug: bool, whether to enable debug logging - will override logger level if provided (Default value = False)
 
     """
 
@@ -1158,9 +1172,13 @@ def msas_to_stockholm(
             info = info_table.filter(pl.col(name_col).str.contains(marker))
             if info.height == 1:
                 if accs_col in info.columns:
-                    accs_val = info[accs_col].item() or marker  # Use marker as fallback
+                    accs_val = (
+                        info[accs_col].item() or marker
+                    )  # Use marker as fallback
                 if desc_col in info.columns:
-                    desc_val = info[desc_col].item() or ""  # Empty string as fallback
+                    desc_val = (
+                        info[desc_col].item() or ""
+                    )  # Empty string as fallback
 
         accs_str = str(accs_val)
         desc_str = str(desc_val)
@@ -1213,3 +1231,118 @@ def msas_to_stockholm(
         fh.write(b"".join(all_msa_blocks))
 
     return out_sto
+
+
+def fetchPfamMSA(
+    acc,
+    alignment="seed",
+    compressed=False,
+    logger=None,
+    max_retries=5,
+    output_folder=".",
+    timeout=60,
+    outname=None,
+):
+    """
+    Download Pfam MSA file from InterPro for a specific Pfam ID.
+
+    Args:
+        acc(str): Pfam accession code (e.g., 'PF00001')
+        alignment(str): Alignment type: 'seed', 'full', or 'uniprot' (default: 'seed')
+        compressed(bool): Keep file gzipped if True (default: False)
+        timeout(int): Connection timeout in seconds (default: 60)
+        outname(str): Output filename without extension (default: Pfam accession)
+        output_folder(str): Output directory (default: '.')
+        max_retries(int): Maximum number of download retries (default: 5)
+        extension(str): File extension for the downloaded MSA (default: '.sth' for Stockholm format, not sure what other options are available)
+        json_metadata(bool): Whether to also save metadata as JSON next to the MSA file (default: False)
+
+    Returns:
+        str: Path to the downloaded MSA file
+
+    Raises:
+        ValueError: If Pfam ID is invalid or alignment type is not recognized
+        ConnectionError: If download fails or times out
+
+    Note:
+        Simplified from ProDy package to avoid dependency (http://www.bahargroup.org/prody/manual/reference/database/index.html#pfam)
+        (as in, a standalone function just to fetch Pfam MSA files from InterPro).
+
+    """
+    import requests
+    from time import sleep as time_sleep
+    import gzip
+
+    DOWNLOAD_FORMATS = {"seed", "full", "uniprot"}
+
+    PREFIX = "https://www.ebi.ac.uk/interpro/wwwapi/entry/"
+    logger = get_logger(logger)
+
+    # Validate Pfam ID
+    if not re.search(r"PF\d{5}$", acc):
+        raise ValueError(
+            f"{acc!r} is not a valid Pfam accession code (expected format: PF#####)"
+        )
+
+    if alignment not in DOWNLOAD_FORMATS:
+        raise ValueError(
+            f"alignment must be one of {', '.join(DOWNLOAD_FORMATS)}"
+        )
+
+    # Build URL
+    url = f"{PREFIX}pfam/{acc}/?annotation=alignment:{alignment}&download"
+    extension = ".sth"  # Stockholm format
+
+    # Download with retries
+    logger.info(f"Downloading Pfam MSA for {acc} from InterPro...")
+    response = None
+    retry_delay = 2
+
+    for attempt in range(max_retries):
+        try:
+            resp = requests.get(url, verify=False, timeout=timeout)
+            resp.raise_for_status()
+            response = resp.content
+            json_metadata = json.loads(requests.get(f"{PREFIX}pfam/{acc}", verify=False, timeout=timeout).content)
+            break
+        except requests.exceptions.RequestException as e:
+            if attempt < max_retries - 1:
+                logger.warning(
+                    f"Download attempt {attempt + 1} failed: {e}. Retrying in {retry_delay}s..."
+                )
+                time_sleep(retry_delay)
+                retry_delay = min(20, int(retry_delay * 1.5))
+            else:
+                raise ConnectionError(
+                    f"Failed to download Pfam MSA after {max_retries} attempts: {url}"
+                ) from e
+
+    if response is None or len(response) == 0:
+        raise ConnectionError(f"Empty response received from {url}")
+
+    # Prepare output path
+    outname = outname if outname is not None else acc
+    output_folder = Path(output_folder)
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+    filepath = output_folder / f"{outname}_{alignment}{extension}"
+    json_metadata_path = output_folder / f"{outname}_{alignment}_metadata.json"
+
+    # Write file
+    if compressed:
+        # Keep compressed
+        filepath = Path(str(filepath) + ".gz")
+        filepath.write_bytes(response)
+    else:
+        # Decompress if needed
+        try:
+            # Try to decompress (response might be gzipped)
+            decompressed = gzip.decompress(response)
+            filepath.write_bytes(decompressed)
+        except gzip.BadGzipFile:
+            # Not gzipped, write as-is
+            filepath.write_bytes(response)
+
+    logger.info(f"Pfam MSA for {acc} written to {filepath}")
+
+    return str(filepath)
