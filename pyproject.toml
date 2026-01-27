@@ -16,7 +16,7 @@ authors = [
 
 description = "RNA virus analysis toolkit"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { file = "LICENSE" }
 # License-File = "license"
 dependencies = [
@@ -141,7 +141,7 @@ gh-push = "src/setup/on_gh.sh push"
 gh-pull = "src/setup/on_gh.sh pull"
 
 [tool.pixi.feature.py39.dependencies]
-python = "~=3.9.0"
+python = "~=3.10.0"
 
 [tool.pixi.environments]
 # Minimal environment with just core Python dependencies
@@ -242,7 +242,7 @@ exclude = [
 
 line-length = 80
 indent-width = 4
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 ignore = ["E501", "E402", "E401", "PLC0415", "E712", "F403", "E722", "F841"]
