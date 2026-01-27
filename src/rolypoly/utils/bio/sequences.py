@@ -21,6 +21,14 @@ from needletail import parse_fastx_file
 
 from rolypoly.utils.various import find_files_by_extension
 
+global tab
+global tab_b
+global tab_extended
+global tab_extended_b
+tab = bytes.maketrans(b"ACTG", b"TGAC")
+tab_b = bytearray(tab)
+tab_extended = bytes.maketrans(b"ACGTURYSWKMBDHVN", b"TGCAAYRSWMKVHDBN")
+tab_extended_b = bytearray(tab_extended)
 
 def read_fasta_needletail(fasta_file: str) -> Tuple[list[str], list[str]]:
     """Read sequences from a FASTA/FASTQ file using needletail"""
@@ -465,7 +473,7 @@ def is_aa_string(sequence, extended=False):
             "U",
             "B",
             "Z",
-            "X",
+            "X", # hmmmmm not sure should be in non-extended but too common.
             "J",
         }
     )
@@ -500,11 +508,30 @@ def get_sequence_between_newlines(input_string):
     return input_string[newline_positions[0] + 1 : newline_positions[1]]
 
 
-def revcomp(seq: str) -> str:
-    """Calculate reverse complement of a DNA/RNA sequence."""
-    import mappy as mp
+# def revcomp(seq: str) -> str:
+#     """Calculate reverse complement of a DNA/RNA sequence."""
+#     import mappy as mp
 
-    return mp.revcomp(seq)
+#     return mp.revcomp(seq)
+
+def revcomp(seq: Union[bytes, str], return_str: bool = True) -> Union[bytes, str]:
+    """Compute the reverse complement of a DNA sequence in bytes, handling ambiguous bases.
+    Args:
+        seq(bytes|str): The input DNA sequence in bytes or string format (will be converted to bytes if string)
+        return_str(bool): Whether to return the result as a string (True) or bytes (False)
+    Returns:
+        bytes|str: The reverse complement sequence in bytes or string format (based on return_str)
+    Note:
+        This function is adapted from Jack Aidley's Stack overflow answer implemented in https://github.com/conchoecia/fastest_rc_python/blob/master/reverse_complement_tests.py#L91
+    """
+    if isinstance(seq, str):
+        seq = seq.encode()
+    rev_comp = seq.translate(tab_extended)[::-1]
+    if return_str:
+        return rev_comp.decode()
+    else:
+        return rev_comp
+
 
 
 def remove_duplicates(
