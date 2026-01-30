@@ -498,7 +498,7 @@ def filter_reads(
         raise
 
     config.logger.info("Read processing completed, probably successfully.")
-    if config.log_level != "DEBUG":
+    if config.log_level != 10:
         config.logger.info(
             f"remind citation is {os.environ.get('ROLYPOLY_REMIND_CITATIONS', 'not_set')}    "
         )

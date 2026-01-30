@@ -230,7 +230,7 @@ def filter_contigs(
     config.logger.info(
         f"Contig filtering completed. Final output saved to {config.output}"
     )
-    if config.log_level != "DEBUG":
+    if config.log_level != 10:
         with open(f"{config.log_file}", "a") as f_out:
             f_out.write(remind_citations(tools, return_bibtex=True) or "")
 

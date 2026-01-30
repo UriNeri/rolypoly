@@ -1,5 +1,6 @@
 import os
 from pathlib import Path as pt
+from typing import Literal
 
 import rich_click as click
 from rich.console import Console
@@ -224,7 +225,7 @@ def virus_mapping(
     logger.info(f"Final output: {output}")
     tools.append("mmseqs2")
     # remind_citations(tools)
-    if logger.log_level != "DEBUG":
+    if logger.level != 10:  # If not DEBUG level
         with open(f"{log_file}", "a") as f_out:
             f_out.write(remind_citations(tools, return_bibtex=True) or "")
 
