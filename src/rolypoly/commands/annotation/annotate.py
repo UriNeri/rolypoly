@@ -265,7 +265,7 @@ def annotate(
     config.logger.info("Annotation process completed.")
 
     # remind_citations(tools)
-    if config.log_level != "DEBUG":
+    if config.log_level != 10:
         with open(f"{config.log_file}", "a") as f_out:
             f_out.write(remind_citations(tools, return_bibtex=True) or "")
 
