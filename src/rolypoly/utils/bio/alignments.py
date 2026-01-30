@@ -671,8 +671,18 @@ def hmm_from_msa(
     hmm.name = msa.name
     if hasattr(msa, "accession") and msa.accession is not None:
         hmm.accession = msa.accession
+    # Only set description when it's non-empty (avoid empty DESC lines)
     if hasattr(msa, "description") and msa.description is not None:
-        hmm.description = msa.description
+        try:
+            if isinstance(msa.description, bytes):
+                if len(msa.description.strip()) > 0:
+                    hmm.description = msa.description
+            else:
+                if str(msa.description).strip():
+                    hmm.description = str(msa.description).encode("utf-8")
+        except Exception:
+            # fallback: do not set an empty description
+            pass
 
     # Set gathering threshold if provided
     if set_ga:
@@ -833,8 +843,13 @@ def hmmdb_from_directory(
                         )
                         continue
             else:
-                # Use empty string instead of "None" when no info table
-                msa.description = b""
+                # Do not set an empty description when no info table
+                # (setting empty bytes leads to invalid HMM DESC lines)
+                if hasattr(msa, "description"):
+                    try:
+                        msa.description = None
+                    except Exception:
+                        pass
             # Build the HMM
             builder = pyhmmer.plan7.Builder(msa.alphabet)
             background = pyhmmer.plan7.Background(msa.alphabet)
@@ -842,10 +857,48 @@ def hmmdb_from_directory(
 
             # Transfer metadata from MSA to HMM
             hmm.name = msa.name
+            # Ensure accession present: prefer MSA accession, else use MSA name as fallback
             if hasattr(msa, "accession") and msa.accession is not None:
                 hmm.accession = msa.accession
+            else:
+                try:
+                    # use msa.name if available, else generate from first sequence name
+                    fallback_acc = msa.name if getattr(msa, "name", None) is not None else None
+                    if fallback_acc is None and hasattr(msa, "names") and len(msa.names) > 0:
+                        fallback_acc = msa.names[0]
+                    if fallback_acc is None:
+                        fallback_acc = b"unknown_acc"
+                    hmm.accession = (
+                        fallback_acc
+                        if isinstance(fallback_acc, bytes)
+                        else str(fallback_acc).encode("utf-8")
+                    )
+                except Exception:
+                    hmm.accession = b"unknown_acc"
+            # Ensure description present: prefer MSA description, else use a concise fallback
+            desc_set = False
             if hasattr(msa, "description") and msa.description is not None:
-                hmm.description = msa.description
+                try:
+                    if isinstance(msa.description, bytes):
+                        if len(msa.description.strip()) > 0:
+                            hmm.description = msa.description
+                            desc_set = True
+                    else:
+                        if str(msa.description).strip():
+                            hmm.description = str(msa.description).encode("utf-8")
+                            desc_set = True
+                except Exception:
+                    desc_set = False
+            if not desc_set:
+                # Fallback description for consistency (avoid empty DESC lines)
+                try:
+                    name_text = (
+                        msa.name.decode("utf-8") if isinstance(msa.name, bytes) else str(msa.name)
+                    )
+                except Exception:
+                    name_text = "unknown"
+                fallback_desc = f"No description provided for {name_text}"
+                hmm.description = fallback_desc.encode("utf-8")
 
             # Set gathering threshold if provided (or default to 1)
             hmm.cutoffs.gathering = (float(this_gath), float(this_gath))
@@ -952,7 +1005,9 @@ def mmseqs_profile_db_from_directory(
         except Exception:
             pass
         try:
-            msa.description = desc_str.encode("utf-8")
+            # Only set description when non-empty to avoid empty DESC lines
+            if str(desc_str).strip():
+                msa.description = desc_str.encode("utf-8")
         except Exception:
             pass
 
@@ -1193,7 +1248,9 @@ def msas_to_stockholm(
         except Exception:
             pass
         try:
-            msa.description = desc_str.encode("utf-8")
+            # Only set description when non-empty to avoid empty DESC lines
+            if str(desc_str).strip():
+                msa.description = desc_str.encode("utf-8")
         except Exception:
             pass
         try:
