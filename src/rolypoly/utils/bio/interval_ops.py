@@ -188,7 +188,7 @@ def consolidate_hits(
 
         # Calculate adaptive thresholds for each hit
         def calc_overlap_threshold(row):
-            ali_len = row[q2_col] - row[q1_col]
+            ali_len = int(row[q2_col]) - int(row[q1_col])
             is_polyprotein = row[query_id_col] in polyprotein_queries
             return calculate_adaptive_overlap_threshold(ali_len, is_polyprotein)
 
