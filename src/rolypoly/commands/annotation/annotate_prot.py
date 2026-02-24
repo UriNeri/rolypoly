@@ -1,8 +1,10 @@
 import logging
+import os
 from pathlib import Path
 from typing import Union
 
 import polars as pl
+from polars.exceptions import NoDataError
 import rich_click as click
 from rich.console import Console
 
@@ -20,6 +22,49 @@ output_files = pl.DataFrame(
         "command": pl.Utf8,
     }
 )
+
+INFO_TABLE_SPECS = {
+    "nvpc": {
+        "relative_path": Path("profiles") / "NVPC_descriptions.csv",
+        "join_column": "profile_accession",
+        "prefix": "nvpc_meta",
+        "columns": [
+            "profile_accession",
+            "Name",
+            "Description",
+            "neff",
+            "nseq",
+        ],
+        "read_csv_kwargs": {"separator": ",", "has_header": True},
+    },
+    "genomad": {
+        "relative_path": Path("profiles")
+        / "genomad_rna_viral_markers_with_annotation.csv",
+        "join_column": "MARKER",
+        "prefix": "genomad_meta",
+        "columns": [
+            "MARKER",
+            "ANNOTATION_ACCESSIONS",
+            "ANNOTATION_DESCRIPTION",
+            "TAXONOMY",
+        ],
+        "read_csv_kwargs": {"separator": ",", "has_header": True},
+    },
+    "vfam": {
+        "relative_path": Path("profiles") / "vfam.annotations.tsv",
+        "join_column": "GroupName",
+        "prefix": "vfam_meta",
+        "columns": [
+            "GroupName",
+            "ProteinCount",
+            "SpeciesCount",
+            "FunctionalCategory",
+            "ConsensusFunctionalDescription",
+        ],
+        "rename_columns": {"#GroupName": "GroupName"},
+        "read_csv_kwargs": {"separator": ",", "has_header": True},
+    },
+}
 
 
 class ProteinAnnotationConfig(BaseConfig):
@@ -44,6 +89,7 @@ class ProteinAnnotationConfig(BaseConfig):
         output_format: str = "tsv",
         resolve_mode: str = "simple",
         min_overlap_positions: int = 10,
+        include_alignment_strings: bool = True,
         **kwargs,
     ):
         # Extract BaseConfig parameters
@@ -67,6 +113,7 @@ class ProteinAnnotationConfig(BaseConfig):
         self.output_format = output_format
         self.resolve_mode = resolve_mode
         self.min_overlap_positions = min_overlap_positions
+        self.include_alignment_strings = include_alignment_strings
         self.step_params = {
             "ORFfinder": {
                 "minimum_length": min_orf_length,
@@ -236,6 +283,11 @@ console = Console(width=150)
     default=10,
     help="Minimal number of overlapping positions between two intersecting ranges before they are considered as overlapping (used in some resolve_mode(s)). With 'simple' mode, this is adaptively adjusted for polyprotein detection.",
 )
+@click.option(
+    "--alignment-strings/--no-alignment-strings",
+    default=True,
+    help="Include alignment identity strings in hmmsearch outputs (applies to modomtblout format).",
+)
 def annotate_prot(
     input,
     output_dir,
@@ -254,12 +306,13 @@ def annotate_prot(
     output_format,
     resolve_mode,
     min_overlap_positions,
+    alignment_strings,
 ):
     """Identify coding sequences (ORFs) from fasta, and predicts their translated seqs putative function via homology search. \n
     Currently supported tools and databases: \n
     * Translations: ORFfinder, pyrodigal, six-frame \n
     * Search engines: \n
-    - (py)hmmsearch: Pfam, RVMT, genomad, vfam \n
+    - (py)hmmsearch: Pfam, NVPC, RVMT, genomad, vfam \n
     - mmseqs2: NVPC, RVMT, genomad, vfam \n
     - diamond: Uniref50 (viral subset) \n
     * custom: user supplied database. Needs to be in tool appropriate format, or a directory of aligned fasta files (for hmmsearch)
@@ -289,6 +342,7 @@ def annotate_prot(
         output_format=output_format,
         resolve_mode=resolve_mode,
         min_overlap_positions=min_overlap_positions,
+        include_alignment_strings=alignment_strings,
     )
 
     # config.logger.info(f"Using {config.search_tool} for domain search")
@@ -417,7 +471,7 @@ def get_database_paths(config, tool_name):
             "RVMT".lower(): hmmdbdir / "rvmt.hmm",
             "Pfam".lower(): hmmdbdir / "Pfam-A.hmm",
             "Pfam_filtered".lower(): hmmdbdir / "pfam_filtered.hmm", 
-            "genomad".lower(): hmmdbdir / "genomad_rna_viral_marker.hmm",
+            "genomad".lower(): hmmdbdir / "genomad_rna_viral_markers.hmm",
             "vfam".lower(): hmmdbdir / "vfam.hmm",
         },
         "mmseqs2": {
@@ -617,7 +671,7 @@ def search_protein_domains_hmmsearch(config):
             logger=config.logger,
             match_region=False,
             full_qseq=False,
-            ali_str=False,
+            ali_str=config.include_alignment_strings,
             inc_e=config.step_params["hmmsearch"]["inc_e"],
             mscore=config.step_params["hmmsearch"]["mscore"],
         )
@@ -651,9 +705,10 @@ def predict_orfs_with_orffinder(config):
         config.logger.error(
             "ORFfinder not found. Please install ORFfinder and add it to your PATH (it isn't a conda/mamba installable package, but you can do the following:  wget ftp://ftp.ncbi.nlm.nih.gov/genomes/TOOLS/ORFfinder/linux-i64/ORFfinder.gz; gunzip ORFfinder.gz; chmod a+x ORFfinder; mv ORFfinder $CONDA_PREFIX/bin)."
         )
-        lazy = input(
-            "Do you want to install ORFfinder for you (i.e. ran the above commands)? [yes/no]  "
-        )
+        # lazy = input(
+        #     "Do you want to install ORFfinder for you (i.e. ran the above commands)? [yes/no]  "
+        # )
+        lazy="yes" # most people don't care
         if lazy.lower() == "yes":
             os.system(
                 "wget ftp://ftp.ncbi.nlm.nih.gov/genomes/TOOLS/ORFfinder/linux-i64/ORFfinder.gz; gunzip ORFfinder.gz; chmod a+x ORFfinder; mv ORFfinder $CONDA_PREFIX/bin"
@@ -749,6 +804,43 @@ def search_protein_domains_mmseqs2(config):
             },
             logger=config.logger,
         )
+        if output_file.exists() and output_file.stat().st_size > 0:
+            mmseqs_columns = [
+                "qseqid",
+                "sseqid",
+                "pident",
+                "length",
+                "mismatch",
+                "gapopen",
+                "qstart",
+                "qend",
+                "sstart",
+                "send",
+                "evalue",
+                "bitscore",
+            ]
+            suffix_pattern = r"(?:\.faa\.msa\.Cons\.msa|\.msa\.Cons\.msa|\.Cons\.msa|\.faa\.msa|\.msa)$"
+            try:
+                cleaned = (
+                    pl.read_csv(
+                        output_file,
+                        separator="\t",
+                        has_header=False,
+                        new_columns=mmseqs_columns,
+                    )
+                    .with_columns(
+                        pl.col("sseqid")
+                        .str.replace_all(suffix_pattern, "", literal=False)
+                        .alias("sseqid"),
+                    )
+                )
+                cleaned.write_csv(
+                    output_file, separator="\t", include_header=False
+                )
+            except NoDataError:
+                config.logger.debug(
+                    f"No data found in {output_file}, skipping suffix cleanup"
+                )
         output_files = output_files.vstack(
             pl.DataFrame(
                 {
@@ -997,6 +1089,25 @@ def combine_results(config):
                     pl.lit(row["tool"]).alias("search_tool"),
                 ]
             )
+            if "profile_accession" not in df.columns:
+                accession_source = None
+                for candidate in [
+                    "target_accession",
+                    "accession",
+                    "sseqid",
+                    "target_name",
+                ]:
+                    if candidate in df.columns:
+                        accession_source = candidate
+                        break
+                if accession_source:
+                    df = df.with_columns(
+                        pl.col(accession_source).alias("profile_accession")
+                    )
+                else:
+                    df = df.with_columns(
+                        pl.lit(row["db"]).alias("profile_accession")
+                    )
             all_domain_data.append(df)
         except Exception as e:
             config.logger.warning(f"Could not read {row['file']}: {e}")
@@ -1008,6 +1119,13 @@ def combine_results(config):
 
     # Combine all domain data
     combined_data = pl.concat(all_domain_data, how="diagonal")
+
+    if "profile_accession" in combined_data.columns:
+        combined_data = combined_data.with_columns(
+            pl.col("profile_accession").cast(pl.Utf8).str.strip_chars()
+        )
+
+    combined_data = enrich_with_info_tables(combined_data, config.logger)
 
     # Normalize column names for GFF3 compatibility
     from rolypoly.utils.bio.polars_fastx import normalize_column_names
@@ -1073,6 +1191,95 @@ def combine_results(config):
             config.logger.info("Removed empty raw_out directory")
         except Exception as e:
             config.logger.warning(f"Could not remove raw_out directory: {e}")
+
+
+def enrich_with_info_tables(dataframe: pl.DataFrame, logger: logging.Logger):
+    """Join domain metadata from known info tables onto combined annotations."""
+
+    if "database" not in dataframe.columns or "profile_accession" not in dataframe.columns:
+        return dataframe
+
+    log = logger or logging.getLogger(__name__)
+
+    try:
+        data_root = Path(os.environ["ROLYPOLY_DATA"])
+    except KeyError:
+        log.warning("ROLYPOLY_DATA is not set; skipping metadata enrichment")
+        return dataframe
+
+    db_values = (
+        dataframe.get_column("database")
+        .drop_nulls()
+        .unique()
+        .to_list()
+    )
+    db_keys = {
+        str(value).lower() for value in db_values if isinstance(value, str)
+    }
+    matched_specs = db_keys.intersection(INFO_TABLE_SPECS.keys())
+    if not matched_specs:
+        return dataframe
+
+    enriched = dataframe
+    for db_key in matched_specs:
+        spec = INFO_TABLE_SPECS[db_key]
+        info_path = data_root / spec["relative_path"]
+        if not info_path.exists():
+            log.warning(
+                f"Metadata table for '{db_key}' not found at {info_path}, skipping join"
+            )
+            continue
+
+        read_kwargs = {"separator": ",", "has_header": True}
+        read_kwargs.update(spec.get("read_csv_kwargs", {}))
+        try:
+            info_df = pl.read_csv(info_path, **read_kwargs)
+        except Exception as exc:
+            log.warning(f"Failed to read metadata table {info_path}: {exc}")
+            continue
+
+        rename_map = spec.get("rename_columns", {})
+        if rename_map:
+            info_df = info_df.rename(rename_map)
+
+        join_column = spec["join_column"]
+        if join_column not in info_df.columns:
+            log.warning(
+                f"Join column '{join_column}' missing in {info_path}, skipping join"
+            )
+            continue
+
+        requested_cols = spec.get("columns")
+        if requested_cols:
+            ordered_unique = []
+            for col in requested_cols:
+                if col in info_df.columns and col not in ordered_unique:
+                    ordered_unique.append(col)
+            if join_column not in ordered_unique:
+                ordered_unique.insert(0, join_column)
+            info_df = info_df.select(ordered_unique)
+
+        info_df = info_df.with_columns(
+            pl.col(join_column)
+            .cast(pl.Utf8)
+            .str.strip_chars()
+            .alias(join_column)
+        )
+        info_df = info_df.rename({join_column: "profile_accession"})
+
+        meta_cols = [col for col in info_df.columns if col != "profile_accession"]
+        if not meta_cols:
+            continue
+
+        prefix = spec.get("prefix", db_key)
+        rename_targets = {col: f"{prefix}_{col}" for col in meta_cols}
+        info_df = info_df.rename(rename_targets)
+        selected_cols = ["profile_accession"] + list(rename_targets.values())
+        info_df = info_df.select(selected_cols)
+
+        enriched = enriched.join(info_df, on="profile_accession", how="left")
+
+    return enriched
 
 
 def add_missing_gff_columns(dataframe):

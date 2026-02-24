@@ -256,6 +256,7 @@ def search_hmmdb(
     mod_title_domtblout = [
         "query_full_name",
         "hmm_full_name",
+        "profile_accession",
         "hmm_len",
         "qlen",
         "full_hmm_evalue",
@@ -344,9 +345,18 @@ def search_hmmdb(
                                     "", "utf-8"
                                 )
 
+                                accession = hits.query.accession
+                                if accession is None:
+                                    profile_acc = ""
+                                elif isinstance(accession, bytes):
+                                    profile_acc = accession.decode()
+                                else:
+                                    profile_acc = str(accession)
+
                                 outputline = [
                                     f"{full_prot_name}",  # query_full_name
                                     f"{hits.query.name.decode()}",  # hmm_full_name
+                                    profile_acc,  # profile_accession
                                     f"{domain.alignment.hmm_length}",  # hmm_len
                                     f"{hit.length}",  # qlen
                                     f"{hit.evalue}",  # full_hmm_evalue

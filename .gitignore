@@ -130,3 +130,4 @@ package.json
 **taxdump**
 .nfs*
 rolypoly_data_slim_*.tar.gz
+.github/copilot-instructions.md
