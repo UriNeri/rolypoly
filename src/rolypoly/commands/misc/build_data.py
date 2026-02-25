@@ -47,7 +47,8 @@ data_dir = "/clusterfs/jgi/scratch/science/metagen/neri/code/rolypoly/data"
     default="./prepare_external_data_logfile.txt",
     help="Path to the log file",
 )
-def build_data(data_dir, threads, log_file):
+@option("--log-level", hidden=True, default="INFO", help="Log level")
+def build_data(data_dir, threads, log_file, log_level):
     """Build external data required for RolyPoly. This is an internal scratch script, wrapped in a click command for convenience (and logging), but exposed to users.
     1. Build geNomad RNA viral HMMs
     2. Build protein HMMs RdRp-scan, RVMT, Neordrp_v2.1, tsa_2018 and pfam_A_38
@@ -62,7 +63,7 @@ def build_data(data_dir, threads, log_file):
     global contam_dir
     global trna_dir
 
-    logger = setup_logging(log_file)
+    logger = setup_logging(log_file, log_level)
     logger.info(f"Starting data preparation to : {data_dir}")
 
     contam_dir = os.path.join(data_dir, "contam")

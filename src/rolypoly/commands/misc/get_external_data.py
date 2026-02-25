@@ -28,7 +28,8 @@ tools = []
     default="./get_external_data_logfile.txt",
     help="Path to the log file",
 )
-def get_data(info, rolypoly_data, log_file):
+@option("--log-level", hidden=True, default="INFO", help="Log level")
+def get_data(info, rolypoly_data, log_file, log_level):
     """Download or build external data required for RolyPoly.
 
     This command either downloads pre-built databases and reference data from
@@ -49,7 +50,7 @@ def get_data(info, rolypoly_data, log_file):
 
     from rolypoly.utils.logging.loggit import get_version_info, setup_logging
 
-    logger = setup_logging(log_file)
+    logger = setup_logging(log_file, log_level)
 
     # probably a good time to verify java is present
     from bbmapy.update import ensure_java_availability

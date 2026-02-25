@@ -280,7 +280,7 @@ def consolidate_hits(
             subdfs.append(subdf)
         tmp_concat = pl.concat(subdfs)
         work_table_culled = work_table.filter(
-            pl.col("uid").is_in(tmp_concat.get_column("uid"))
+            pl.col("uid").is_in(set(tmp_concat.get_column("uid")))
         )
         work_table_culled = work_table_culled.rename(
             {rank_list_renamed[i]: rank_list[i] for i in range(len(rank_list))}

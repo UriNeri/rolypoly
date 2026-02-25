@@ -34,13 +34,16 @@ console = Console()
     default=lambda: f"{os.getcwd()}/refinement_logfile.txt",
     help="Path to log file",
 )
-def refinement(input, reads, output, threads, memory, variant_caller, log_file):
+@option("-ll", "--log-level", hidden=True, default="INFO", help="Log level")
+def refinement(
+    input, reads, output, threads, memory, variant_caller, log_file, log_level
+):
     """
     Refine assembly by de-entangling strains and rerunning assembly - post host removal.
     """
     from rolypoly.utils.logging.loggit import setup_logging
 
-    logger = setup_logging(log_file)
+    logger = setup_logging(log_file, log_level)
     logger.info("Starting assembly refinement process")
 
     # Create output directory

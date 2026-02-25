@@ -49,11 +49,11 @@ class TaxonomyTree:
         self.priority_columns = priority_columns or []
         self.leaf_nodes = set()  # Track leaf nodes
 
-        self._build_tree()
+        self.build_tree()
         if data_availability_df is not None:
-            self._set_data_availability(data_availability_df)
+            self.set_data_availability(data_availability_df)
 
-    def _build_tree(self):
+    def build_tree(self):
         """Build internal tree structure from nodes DataFrame"""
         for row in self.nodes_df.iter_rows(named=True):
             tax_id = row["tax_id"]
@@ -79,7 +79,7 @@ class TaxonomyTree:
             f"Built tree with {len(self.parent_map)} nodes, {len(self.leaf_nodes)} leaf nodes"
         )
 
-    def _set_data_availability(self, data_df):
+    def set_data_availability(self, data_df):
         """Set which tax_ids have available data and store metadata"""
         # Store all metadata for each tax_id
         available_tax_ids = []
@@ -265,7 +265,7 @@ class TaxonomyTree:
             visited_ancestors.add(current)
 
             # Search descendants of this ancestor for leaves with data
-            leaves_here = self._find_leaves_with_data_in_subtree(
+            leaves_here = self.find_leaves_with_data_in_subtree(
                 current,
                 max_depth=max_distance - distance_to_ancestor,
                 priority_cols=priority_cols,
@@ -299,7 +299,7 @@ class TaxonomyTree:
 
         return {"leaves": prioritized_leaves, "self_is_leaf_with_data": False}
 
-    def _find_leaves_with_data_in_subtree(
+    def find_leaves_with_data_in_subtree(
         self, root_id, max_depth, priority_cols
     ):
         """
@@ -590,12 +590,12 @@ class TaxonomyTree:
         }
 
         # Find the tax_id of the max_rank node in lineage (search boundary)
-        max_rank_tax_id = self._find_rank_boundary(tax_id, max_rank)
+        max_rank_tax_id = self.find_rank_boundary(tax_id, max_rank)
 
         # Search for ancestor within rank boundary
         if include_ancestors:
             result["ancestor"], rank_reached = (
-                self._find_nearest_ancestor_with_data_constrained(
+                self.find_nearest_ancestor_with_data_constrained(
                     tax_id, max_rank_tax_id, priority_cols
                 )
             )
@@ -606,7 +606,7 @@ class TaxonomyTree:
         # Search for leaf relatives within rank boundary
         if include_leaves:
             result["leaves"], rank_reached = (
-                self._find_nearest_leaf_with_data_constrained(
+                self.find_nearest_leaf_with_data_constrained(
                     tax_id, max_rank_tax_id, priority_cols
                 )
             )
@@ -687,7 +687,7 @@ class TaxonomyTree:
             return results, stats
         return results
 
-    def _find_rank_boundary(self, tax_id, max_rank):
+    def find_rank_boundary(self, tax_id, max_rank):
         """
         Find the tax_id of the ancestor at max_rank level.
         Returns None if max_rank is not found in lineage.
@@ -711,7 +711,7 @@ class TaxonomyTree:
 
         return None
 
-    def _find_nearest_ancestor_with_data_constrained(
+    def find_nearest_ancestor_with_data_constrained(
         self, tax_id, max_rank_tax_id, priority_cols
     ):
         """
@@ -742,7 +742,7 @@ class TaxonomyTree:
 
         return None, rank_reached
 
-    def _find_nearest_leaf_with_data_constrained(
+    def find_nearest_leaf_with_data_constrained(
         self, tax_id, max_rank_tax_id, priority_cols
     ):
         """
@@ -764,14 +764,14 @@ class TaxonomyTree:
             # If at max_rank boundary, search its subtree and stop
             if max_rank_tax_id and current == max_rank_tax_id:
                 rank_reached = True
-                leaves_here = self._find_leaves_with_data_in_subtree(
+                leaves_here = self.find_leaves_with_data_in_subtree(
                     current, priority_cols
                 )
                 nearest_leaves.extend(leaves_here)
                 break
 
             # Search descendants for leaves
-            leaves_here = self._find_leaves_with_data_in_subtree(
+            leaves_here = self.find_leaves_with_data_in_subtree(
                 current, priority_cols
             )
             nearest_leaves.extend(leaves_here)
@@ -788,7 +788,7 @@ class TaxonomyTree:
         )
         return prioritized_leaves, rank_reached
 
-    def _find_leaves_with_data_in_subtree(self, root_id, priority_cols):
+    def find_leaves_with_data_in_subtree(self, root_id, priority_cols):
         """
         Find all leaves with data in the subtree rooted at root_id (optimized BFS).
         """

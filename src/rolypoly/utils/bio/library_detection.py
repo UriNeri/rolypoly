@@ -45,7 +45,7 @@ def create_sample_file(
     is_gz_output = True if Path(output_file).suffix == ".gz" else False
 
     # Helper to get total reads in a FASTQ file
-    def _get_total_reads(fpath, gzipped):
+    def get_total_reads(fpath, gzipped):
         import subprocess as sp
 
         if gzipped:
@@ -78,7 +78,7 @@ def create_sample_file(
         is_gz = is_gzipped(file_path)
         total_reads = None
         if need_total_reads:
-            total_reads = _get_total_reads(file_path, is_gz)
+            total_reads = get_total_reads(file_path, is_gz)
             # If sample_size is float, convert to int number of reads
             if isinstance(sample_size, float):
                 sample_size = int(sample_size * total_reads)
@@ -118,7 +118,7 @@ def create_sample_file(
                 sample_size_int = int(sample_size)
                 sample_size_int = sample_size_int - (sample_size_int % 2)
                 if total_reads is None:
-                    total_reads = _get_total_reads(file_path, is_gz)
+                    total_reads = get_total_reads(file_path, is_gz)
                 if sample_size_int > total_reads:
                     logger.warning(
                         f"Requested sample_size {sample_size_int} > total_reads {total_reads}, using all reads."
@@ -181,7 +181,7 @@ def create_sample_file(
             r1_output_file, r2_output_file = output_file.split(",")
             total_reads = None
             if need_total_reads:
-                total_reads = _get_total_reads(r1_path, is_gz)
+                total_reads = get_total_reads(r1_path, is_gz)
                 if isinstance(sample_size, float):
                     sample_size = int(sample_size * total_reads)
             if subset_type == "top_reads":
@@ -197,7 +197,7 @@ def create_sample_file(
                 sample_size_int = int(sample_size)
                 sample_size_int = sample_size_int - (sample_size_int % 2)
                 if total_reads is None:
-                    total_reads = _get_total_reads(r1_path, is_gz)
+                    total_reads = get_total_reads(r1_path, is_gz)
                 if sample_size_int > total_reads:
                     logger.warning(
                         f"Requested sample_size {sample_size_int} > total_reads {total_reads}, using all reads."

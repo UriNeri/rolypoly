@@ -4,6 +4,7 @@ import polars as pl
 import rich_click as click
 
 from rolypoly.utils.bio.interval_ops import consolidate_hits
+from rolypoly.utils.logging.loggit import setup_logging
 
 
 @click.command(name="resolve-overlaps")
@@ -71,6 +72,9 @@ from rolypoly.utils.bio.interval_ops import consolidate_hits
     is_flag=True,
     help="Merge overlapping domains/profiles hits into one - not recommended unless the profiles are from the same functional family",
 )
+@click.option(
+    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
+)
 def consolidate_hits_rich(
     input: Union[str, pl.DataFrame],
     output: Optional[str],
@@ -82,6 +86,7 @@ def consolidate_hits_rich(
     column_specs: str,
     drop_contained: bool,
     split: bool,
+    log_level: str,
 ):
     """Resolve overlaps in a hit table using various strategies.
 
@@ -113,6 +118,8 @@ def consolidate_hits_rich(
              )
     """
     from sys import stdout
+
+    setup_logging(None, log_level)
 
     if output is None:
         output = stdout

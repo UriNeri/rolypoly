@@ -18,15 +18,15 @@ tools = []
 class FilterContigsConfig(BaseConfig):
     # initialize the BaseConfig class
     def __init__(self, **kwargs):
+        output_path = Path(kwargs.get("output", "filtered_contigs.fasta"))
         # in this case output_dir and output are NOT the same, so we only explicitly make sure output_dir exists, and just "touch" the output file.
-        if not Path(kwargs.get("output", "")).exists():
-            kwargs["output_dir"] = Path(kwargs.get("output")).parent  # type: ignore # the main function always sets it, can't really be none
-            Path(kwargs.get("output")).parent.mkdir(parents=True, exist_ok=True)  # type: ignore # the main function always sets it, can't really be none
-            Path(kwargs.get("output")).touch()  # type: ignore # the main function always sets it, can't really be nones
+        if not output_path.exists():
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.touch()
 
         super().__init__(
             input=kwargs.get("input", ""),
-            output=kwargs.get("output", "filtered_contigs.fasta"),
+            output=output_path.parent,
             keep_tmp=kwargs.get("keep_tmp", False),
             log_file=kwargs.get("log_file", "filter_contigs_log.txt"),
             threads=kwargs.get("threads", 1),
@@ -35,6 +35,9 @@ class FilterContigsConfig(BaseConfig):
             overwrite=kwargs.get("overwrite", False),
             log_level=kwargs.get("log_level", "INFO"),
         )
+
+        self.output = output_path
+        self.output_dir = output_path.parent
 
         # initialize the rest of the parameters (i.e. the ones that are not in the BaseConfig class)
         self.host = Path(kwargs.get("host", "")).absolute().resolve()
@@ -242,8 +245,8 @@ def filter_contigs_nuc(config: FilterContigsConfig):
     import pyfastx
     from rich_click import Context
 
-    from rolypoly.utils.bio.interval_ops import mask_dna
-    from rolypoly.utils.bio.library_detection import ensure_faidx
+    from rolypoly.commands.reads.mask_dna import mask_dna
+    from rolypoly.utils.bio.sequences import ensure_faidx
     from rolypoly.utils.various import apply_filter, ensure_memory
 
     config.logger.info(f"Started nucleotide host filtering for: {config.input}")
@@ -409,7 +412,7 @@ def filter_contigs_aa(config: FilterContigsConfig):
     import pyfastx
     from bbmapy import callgenes
 
-    from rolypoly.utils.bio.library_detection import ensure_faidx
+    from rolypoly.utils.bio.sequences import ensure_faidx
     from rolypoly.utils.bio.sequences import guess_fasta_alpha
     from rolypoly.utils.various import apply_filter, ensure_memory
 

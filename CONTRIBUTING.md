@@ -48,6 +48,16 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
    - Use small/local fixtures from `testing_folder/` when possible.
    - You can also use `/clusterfs/jgi/scratch/science/metagen/neri/tests/rp_tests/` (on dori), which contains larger example data for different commands.
    - **Run standardized CLI tests**: `pixi run -e dev pytest -q src/tests/test_cli_contracts.py`
+   - **Run fast help-only smoke tests** (just `--help` for top-level + each command): `pixi run -e dev pytest -q src/tests/test_cli_help_smoke.py`
+   - **Run one command's scenarios**: `pixi run -e dev pytest -q src/tests/test_cli_contracts.py --cli-commands fetch-sra`
+   - **Run multiple commands' scenarios**: `pixi run -e dev pytest -q src/tests/test_cli_contracts.py --cli-commands annotate,assemble,marker-search`
+   - **Run specific scenario IDs**: `pixi run -e dev pytest -q src/tests/test_cli_contracts.py --cli-scenarios marker_search_runtime_genomad,assemble_megahit_runtime`
+   - **Run by text match (id/description/command)**: `pixi run -e dev pytest -q src/tests/test_cli_contracts.py --cli-match fetch,identify`
+   - **Environment-variable based selection** (useful in CI/shell scripts):
+     - `RP_CLI_COMMANDS=fetch-sra,marker-search pixi run -e dev pytest -q src/tests/test_cli_contracts.py`
+     - `RP_CLI_SCENARIOS=assemble_megahit_runtime pixi run -e dev pytest -q src/tests/test_cli_contracts.py`
+     - `RP_CLI_MATCH=identify pixi run -e dev pytest -q src/tests/test_cli_contracts.py`
+   - **Run all command scenarios + unit tests**: `pixi run -e dev pytest -q src/tests`
    - **Run all tests**: `pixi run -e dev pytest -q src/tests`
    - Legacy ad-hoc scripts under `testing_folder/*.sh` are still useful for manual debugging, but new command validation should be added to the pytest flow above.
 2. **Benchmarking**:

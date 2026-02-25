@@ -26,11 +26,14 @@ console = Console()
     default=lambda: f"{os.getcwd()}/summarise_logfile.txt",
     help="Path to log file",
 )
-def summarise(input, output, threads, log_file):
+@click.option(
+    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
+)
+def summarise(input, output, threads, log_file, log_level):
     """WIP WIP WIP Summarize RolyPoly results."""
     from rolypoly.utils.logging.loggit import setup_logging
 
-    logger = setup_logging(log_file)
+    logger = setup_logging(log_file, log_level)
     logger.info("Starting to summarise RolyPoly     ")
     logger.info("Sorry! command noit yet implemented!")
 

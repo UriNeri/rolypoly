@@ -7,7 +7,7 @@ import rich_click as click
 # from rich.console import Console
 from rolypoly.utils.bio.alignments import calculate_percent_identity
 from rolypoly.utils.bio.interval_ops import mask_nuc_range, mask_sequence_mp
-from rolypoly.utils.logging.loggit import get_logger
+from rolypoly.utils.logging.loggit import get_logger, setup_logging
 from rolypoly.utils.various import (  # TODO: Replace sp.run with run_command_comp.
     ensure_memory,
     run_command_comp,
@@ -54,6 +54,9 @@ datadir = Path(
     default=None,
     help="Temporary directory to use (default: output file's parent/tmp - if you have enough RAM, you can set this to /dev/shm/ or /tmp/ for faster I/O)",
 )
+@click.option(
+    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
+)
 def mask_dna(
     threads,
     memory,
@@ -64,6 +67,7 @@ def mask_dna(
     reference,
     mask_low_complexity,
     tmpdir,
+    log_level,
 ):
     """Mask an input fasta file for sequences that could be RNA viral (or mistaken for such).
 
@@ -80,6 +84,7 @@ def mask_dna(
     Returns:
       None
     """
+    setup_logging(None, log_level)
     logger = get_logger()
     logger.debug(f"datadir used: {datadir}")
 

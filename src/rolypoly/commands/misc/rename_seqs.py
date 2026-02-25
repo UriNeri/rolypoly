@@ -27,8 +27,17 @@ console = Console()
     default=True,
     help="Include sequence statistics in mapping file (length, GC content)",
 )
+@click.option(
+    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
+)
 def rename_seqs(
-    input: str, output: str, mapping: str, prefix: str, hash: bool, stats: bool
+    input: str,
+    output: str,
+    mapping: str,
+    prefix: str,
+    hash: bool,
+    stats: bool,
+    log_level: str,
 ):
     """Rename sequences in a FASTA file with consistent IDs (supports numbering or hashing, appending attributes like GC and length).
 
@@ -36,8 +45,9 @@ def rename_seqs(
     or hashes, and generates a lookup table mapping old IDs to new IDs.
     Optionally includes sequence statistics (length, GC content).
     """
-    from rolypoly.utils.logging.loggit import get_logger
+    from rolypoly.utils.logging.loggit import get_logger, setup_logging
 
+    setup_logging(None, log_level)
     logger = get_logger()
 
     # Read input FASTA

@@ -16,24 +16,27 @@ console = Console()
 @click.option(
     "-o",
     "--output",
-    default=lambda: f"{os.getcwd()}_corrolate.tsv",
+    default=lambda: f"{os.getcwd()}_correlate.tsv",
     help="output path",
 )
 @click.option("-t", "--threads", default=1, help="Number of threads")
 @click.option(
     "-g",
     "--log-file",
-    default=lambda: f"{os.getcwd()}/corrolate_logfile.txt",
+    default=lambda: f"{os.getcwd()}/correlate_logfile.txt",
     help="Path to log file",
 )
-def corrolate(input, output, threads, log_file):
-    """WIP WIP WIP Corrolate identified viral sequence across samples"""
+@click.option(
+    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
+)
+def correlate(input, output, threads, log_file, log_level):
+    """WIP WIP WIP correlate identified viral sequence across samples"""
     from rolypoly.utils.logging.loggit import setup_logging
 
-    logger = setup_logging(log_file)
-    logger.info("Starting to corrolate      ")
+    logger = setup_logging(log_file, log_level)
+    logger.info("Starting to correlate      ")
     logger.info("Sorry! command not yet implemented!")
 
 
 if __name__ == "main":
-    corrolate()
+    correlate()

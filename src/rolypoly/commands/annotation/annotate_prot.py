@@ -1,6 +1,7 @@
 import logging
 import os
 from pathlib import Path
+import shutil
 from typing import Union
 
 import polars as pl
@@ -8,20 +9,26 @@ from polars.exceptions import NoDataError
 import rich_click as click
 from rich.console import Console
 
+from rolypoly.utils.bio.sequences import guess_fasta_alpha
 from rolypoly.utils.logging.config import BaseConfig
 from rolypoly.utils.various import run_command_comp
 
+
+def init_output_files_table() -> pl.DataFrame:
+    return pl.DataFrame(
+        schema={
+            "file": pl.Utf8,
+            "description": pl.Utf8,
+            "db": pl.Utf8,
+            "tool": pl.Utf8,
+            "params": pl.Utf8,
+            "command": pl.Utf8,
+        }
+    )
+
+
 global output_files
-output_files = pl.DataFrame(
-    schema={
-        "file": pl.Utf8,
-        "description": pl.Utf8,
-        "db": pl.Utf8,
-        "tool": pl.Utf8,
-        "params": pl.Utf8,
-        "command": pl.Utf8,
-    }
-)
+output_files = init_output_files_table()
 
 INFO_TABLE_SPECS = {
     "nvpc": {
@@ -76,7 +83,8 @@ class ProteinAnnotationConfig(BaseConfig):
         output_dir: Path,
         threads: int,
         log_file: Union[Path, logging.Logger, None],
-        memory: str,
+        log_level: str = "INFO",
+        memory: str = "6gb",
         override_parameters: dict[str, object] = {},
         skip_steps: list[str] = [],
         search_tool: str = "hmmsearch",
@@ -98,6 +106,7 @@ class ProteinAnnotationConfig(BaseConfig):
             "output": output_dir,
             "threads": threads,
             "log_file": log_file,
+            "log_level": log_level,
             "memory": memory,
         }
         super().__init__(**base_config_params)
@@ -142,6 +151,34 @@ class ProteinAnnotationConfig(BaseConfig):
 console = Console(width=150)
 
 
+def stage_protein_input_as_orfs(config) -> bool:
+    input_path = Path(config.input)
+    if not input_path.exists() or not input_path.is_file():
+        return False
+
+    if guess_fasta_alpha(str(input_path)) != "amino":
+        return False
+
+    output_file = config.output_dir / "predicted_orfs.faa"
+    if input_path.resolve() != output_file.resolve():
+        shutil.copyfile(input_path, output_file)
+
+    global output_files
+    output_files = output_files.vstack(
+        pl.DataFrame(
+            {
+                "file": [str(output_file)],
+                "description": ["provided amino-acid input (used as ORFs)"],
+                "db": ["input"],
+                "tool": ["input_protein"],
+                "params": ["{}"],
+                "command": [f"copy input protein FASTA: {input_path} -> {output_file}"],
+            }
+        )
+    )
+    return True
+
+
 @click.command()
 @click.option(
     "-i",
@@ -161,6 +198,13 @@ console = Console(width=150)
     "--log-file",
     default="./annotate_prot_logfile.txt",
     help="Path to log file",
+)
+@click.option(
+    "--log-level",
+    default="INFO",
+    type=click.Choice(["INFO", "DEBUG", "WARNING", "ERROR", "CRITICAL"]),
+    help="Log level",
+    hidden=True,
 )
 @click.option(
     "-M",
@@ -293,6 +337,7 @@ def annotate_prot(
     output_dir,
     threads,
     log_file,
+    log_level,
     memory,
     override_parameters,
     skip_steps,
@@ -327,6 +372,7 @@ def annotate_prot(
         output_dir=output_dir,
         threads=threads,
         log_file=log_file,
+        log_level=log_level,
         memory=ensure_memory(memory)["giga"],
         override_parameters=(
             json.loads(override_parameters) if override_parameters else {}
@@ -355,7 +401,18 @@ def annotate_prot(
 
 def process_protein_annotations(config):
     """Process protein annotations"""
+    global output_files
+    output_files = init_output_files_table()
+
     config.logger.info("Starting protein annotation process")
+
+    if stage_protein_input_as_orfs(config):
+        config.logger.info(
+            "Detected amino-acid input; using it directly as predicted ORFs and skipping ORF prediction"
+        )
+        if "predict_orfs" not in config.skip_steps:
+            config.skip_steps.append("predict_orfs")
+
     # create a "raw_out" subdirectory in output folder
     raw_out_dir = config.output_dir / "raw_out"
     raw_out_dir.mkdir(parents=True, exist_ok=True)
@@ -803,6 +860,7 @@ def search_protein_domains_mmseqs2(config):
                 "c": config.step_params["mmseqs2"]["cov"],
             },
             logger=config.logger,
+            output_file=str(output_file),
         )
         if output_file.exists() and output_file.stat().st_size > 0:
             mmseqs_columns = [
@@ -894,6 +952,7 @@ def search_protein_domains_diamond(config):
                 "evalue": config.step_params["diamond"]["evalue"],
             },
             logger=config.logger,
+            output_file=str(output_file),
         )
         output_files = output_files.vstack(
             pl.DataFrame(
