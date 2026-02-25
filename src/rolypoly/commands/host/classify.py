@@ -31,11 +31,14 @@ import rich_click as click
     default=lambda: f"{os.getcwd()}/predict_host_range_logfile.txt",
     help="Path to log file",
 )
-def predict_host_range(input, output, threads, log_file):
+@click.option(
+    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
+)
+def predict_host_range(input, output, threads, log_file, log_level):
     """WIP WIP WIP Predict a viral seq host range - caution! this is not definitive"""
     from rolypoly.utils.logging.loggit import setup_logging
 
-    logger = setup_logging(log_file)
+    logger = setup_logging(log_file, log_level)
     logger.info("Starting to predict      ")
     logger.info("Sorry! command not yet implemented!")
 

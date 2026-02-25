@@ -6,6 +6,7 @@ from typing import Union
 import rich_click as click
 from rich.console import Console
 
+from rolypoly.utils.bio.sequences import guess_fasta_alpha
 from rolypoly.utils.logging.citation_reminder import remind_citations
 from rolypoly.utils.logging.config import BaseConfig
 from rolypoly.utils.various import ensure_memory
@@ -275,6 +276,8 @@ def annotate_RNA(
 def process_RNA_annotations(config):
     config.logger.info("Starting RNA annotation process")
 
+    validate_rna_input_alphabet(config)
+
     # Set up logging for sh commands
     # logging.basicConfig(level=logging.INFO)
 
@@ -300,6 +303,33 @@ def process_RNA_annotations(config):
     combine_results(config)
 
     config.logger.info("RNA annotation process completed successfully")
+
+
+def validate_rna_input_alphabet(config) -> None:
+    input_path = Path(config.input)
+
+    if input_path.is_file():
+        fasta_paths = [input_path]
+    elif input_path.is_dir():
+        from rolypoly.utils.bio.library_detection import find_fasta_files
+
+        fasta_paths = find_fasta_files(input_path, logger=config.logger)
+        if not fasta_paths:
+            raise click.ClickException(
+                f"No FASTA files found in input directory: {input_path}"
+            )
+    else:
+        raise click.ClickException(
+            f"Input path is neither a file nor a directory: {input_path}"
+        )
+
+    for fasta_path in fasta_paths:
+        alphabet = guess_fasta_alpha(str(fasta_path))
+        if alphabet == "amino":
+            raise click.ClickException(
+                "annotate-rna expects nucleotide input. "
+                f"Detected amino-acid FASTA: {fasta_path}"
+            )
 
 
 def predict_secondary_structure(config):

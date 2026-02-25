@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 
@@ -127,6 +128,50 @@ def load_cli_scenarios() -> list[dict]:
     return json.loads(scenario_path.read_text())
 
 
+def parse_csv_values(raw_value: str | None) -> set[str]:
+    if not raw_value:
+        return set()
+    return {item.strip() for item in raw_value.split(",") if item.strip()}
+
+
+def should_skip_scenario(scenario: dict, request: pytest.FixtureRequest) -> str | None:
+    scenario_ids = parse_csv_values(
+        request.config.getoption("--cli-scenarios")
+        or os.environ.get("RP_CLI_SCENARIOS")
+    )
+    command_names = parse_csv_values(
+        request.config.getoption("--cli-commands")
+        or os.environ.get("RP_CLI_COMMANDS")
+    )
+    match_tokens = parse_csv_values(
+        request.config.getoption("--cli-match")
+        or os.environ.get("RP_CLI_MATCH")
+    )
+
+    scenario_id = str(scenario.get("id", ""))
+    command_name = (
+        str(scenario.get("args", [""])[0]) if scenario.get("args") else ""
+    )
+    searchable = " ".join(
+        [
+            scenario_id,
+            str(scenario.get("description", "")),
+            command_name,
+        ]
+    ).lower()
+
+    if scenario_ids and scenario_id not in scenario_ids:
+        return f"scenario id '{scenario_id}' not selected"
+
+    if command_names and command_name not in command_names:
+        return f"command '{command_name}' not selected"
+
+    if match_tokens and not any(token.lower() in searchable for token in match_tokens):
+        return "no cli-match token matched"
+
+    return None
+
+
 def test_top_level_help(runner: CliRunner) -> None:
     result = runner.invoke(rolypoly, ["--help"], catch_exceptions=False)
     assert result.exit_code == 0, result.output
@@ -150,7 +195,16 @@ def test_all_registered_commands_have_help(runner: CliRunner) -> None:
 
 
 @pytest.mark.parametrize("scenario", load_cli_scenarios(), ids=lambda row: row["id"])
-def test_cli_scenarios(runner: CliRunner, tmp_path: Path, scenario: dict) -> None:
+def test_cli_scenarios(
+    runner: CliRunner,
+    tmp_path: Path,
+    scenario: dict,
+    request: pytest.FixtureRequest,
+) -> None:
+    skip_reason = should_skip_scenario(scenario, request)
+    if skip_reason is not None:
+        pytest.skip(skip_reason)
+
     apply_preconditions(scenario, tmp_path)
 
     args = render_values(scenario["args"], tmp_path)

@@ -406,5 +406,195 @@
         "RVMT"
       ]
     }
+  },
+  {
+    "id": "assemble_megahit_runtime",
+    "description": "Runtime smoke test assemble using megahit and local single-end fixture",
+    "args": [
+      "assemble",
+      "-o",
+      "{tmp}/assemble_out",
+      "--single-end",
+      "1",
+      "testing_folder/some_soil_shrinked.fq",
+      "-A",
+      "megahit",
+      "-p",
+      "none",
+      "-t",
+      "1"
+    ],
+    "expected_files": [
+      "{tmp}/assemble_out/all_contigs_renamed.fasta",
+      "{tmp}/assemble_out/contigs_id_map.tsv"
+    ]
+  },
+  {
+    "id": "end2end_help_smoke",
+    "description": "Smoke test end2end command wiring via help",
+    "args": [
+      "end2end",
+      "--help"
+    ]
+  },
+  {
+    "id": "fetch_sra_empty_input_runtime",
+    "description": "Runtime smoke test fetch-sra using empty local run-id list",
+    "args": [
+      "fetch-sra",
+      "-i",
+      "/dev/null",
+      "-o",
+      "{tmp}/fetch_sra"
+    ]
+  },
+  {
+    "id": "filter_contigs_runtime_nuc",
+    "description": "Runtime smoke test filter-contigs nucleotide mode with local fixtures",
+    "required_any_commands": [
+      [
+        "mmseqs",
+        "mmseqs2"
+      ]
+    ],
+    "args": [
+      "filter-contigs",
+      "-i",
+      "testing_folder/test_contigs.fasta",
+      "-d",
+      "testing_folder/test_fasta_for_masking.fasta",
+      "-o",
+      "{tmp}/filter_contigs_out.fasta",
+      "-m",
+      "nuc",
+      "-t",
+      "1",
+      "--dont-mask"
+    ],
+    "expected_files": [
+      "{tmp}/filter_contigs_out.fasta"
+    ]
+  },
+  {
+    "id": "filter_reads_runtime_skip_heavy",
+    "description": "Runtime smoke test filter-reads with heavy steps skipped on local fixture",
+    "args": [
+      "filter-reads",
+      "-i",
+      "testing_folder/some_soil_shrinked.fq",
+      "-o",
+      "{tmp}/filter_reads_out",
+      "--skip-steps",
+      "filter_known_dna,decontaminate_rrna,filter_identified_dna,dedupe,trim_adapters,remove_synthetic_artifacts,entropy_filter,error_correct_1,error_correct_2,merge_reads,quality_trim_unmerged",
+      "-t",
+      "1"
+    ],
+    "expected_files": [
+      "{tmp}/filter_reads_out/dedupe_final_interleaved_some_soil_shrinked.fq.gz"
+    ]
+  },
+  {
+    "id": "get_data_info_smoke",
+    "description": "Smoke test get-data --info execution path",
+    "required_commands": [
+      "java"
+    ],
+    "args": [
+      "get-data",
+      "--info"
+    ]
+  },
+  {
+    "id": "marker_search_runtime_genomad",
+    "description": "Runtime smoke test marker-search on local contig fixture with genomad database",
+    "args": [
+      "marker-search",
+      "-i",
+      "testing_folder/test_contigs.fasta",
+      "-o",
+      "{tmp}/marker_search_out",
+      "-db",
+      "genomad",
+      "-t",
+      "1"
+    ],
+    "expected_files": [
+      "{tmp}/marker_search_out/marker_search_results.tsv"
+    ]
+  },
+  {
+    "id": "mask_dna_help_smoke",
+    "description": "Smoke test mask-dna command wiring via help",
+    "args": [
+      "mask-dna",
+      "--help"
+    ]
+  },
+  {
+    "id": "quick_taxonomy_help_smoke",
+    "description": "Smoke test quick-taxonomy command wiring via help",
+    "args": [
+      "quick-taxonomy",
+      "--help"
+    ]
+  },
+  {
+    "id": "rdrp_motif_search_help_smoke",
+    "description": "Smoke test rdrp-motif-search command wiring via help",
+    "args": [
+      "rdrp-motif-search",
+      "--help"
+    ]
+  },
+  {
+    "id": "shrink_reads_top_reads_runtime",
+    "description": "Runtime smoke test shrink-reads with local FASTQ fixture",
+    "args": [
+      "shrink-reads",
+      "-i",
+      "testing_folder/some_soil_shrinked.fq",
+      "-out",
+      "{tmp}",
+      "-st",
+      "top_reads",
+      "-sz",
+      "10"
+    ],
+    "expected_files": [
+      "{tmp}/some_soil_shrinked_shrinked.fastq"
+    ]
+  },
+  {
+    "id": "version_runtime_smoke",
+    "description": "Smoke test version command runtime path",
+    "args": [
+      "version"
+    ]
+  },
+  {
+    "id": "virus_mapping_runtime_custom_db",
+    "description": "Runtime smoke test virus-mapping with tiny custom local database",
+    "required_any_commands": [
+      [
+        "mmseqs",
+        "mmseqs2"
+      ]
+    ],
+    "args": [
+      "virus-mapping",
+      "-i",
+      "testing_folder/test_contigs.fasta",
+      "-o",
+      "{tmp}/virus_mapping_custom.tab",
+      "--db",
+      "other",
+      "--db-path",
+      "testing_folder/test_fasta_for_masking.fasta",
+      "-t",
+      "1"
+    ],
+    "expected_files": [
+      "{tmp}/virus_mapping_custom_vs_Custom.tab"
+    ]
   }
 ]

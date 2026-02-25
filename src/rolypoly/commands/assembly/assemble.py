@@ -622,9 +622,7 @@ def assembly(
             input_dir, library_info, config.logger
         )
     else:
-        libraries = {}
-        for lib_name, data in library_info.rolypoly_data.items():
-            libraries[lib_name] = data
+        libraries = library_info.to_assembly_dict()
         n_libraries = len(libraries)
 
     config.logger.info(f"Found {n_libraries} libraries")

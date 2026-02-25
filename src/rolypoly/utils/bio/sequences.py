@@ -883,12 +883,12 @@ def rename_sequences(
         # Use polars expressions for hash generation directly
         import hashlib
 
-        def _hash(seq: str) -> str:
+        def hash(seq: str) -> str:
             return hashlib.md5(seq.encode()).hexdigest()[:32]
 
         df_with_hashes = df.with_columns(
             pl.col("sequence")
-            .map_elements(_hash, return_dtype=pl.String)
+            .map_elements(hash, return_dtype=pl.String)
             .alias("seq_hash")
         )
         new_headers = [f"{prefix}_{h}" for h in df_with_hashes["seq_hash"]]

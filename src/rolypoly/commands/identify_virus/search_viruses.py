@@ -41,13 +41,16 @@ console = Console()
     help="Abs path to logfile",
 )
 @click.option(
+    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
+)
+@click.option(
     "-i",
     "--input",
     required=True,
     help="Input path to nucl fasta file OR preformatted mmseqs db",
 )
 def virus_mapping(
-    threads, memory, output, keep_tmp, db, db_path, log_file, input
+    threads, memory, output, keep_tmp, db, db_path, log_file, log_level, input
 ):
     """MMseqs2 Virus mapping/search wrapper - takes in reads/contigs (i.e. nucs), and search them against precompiled virus databases OR user-supplied databases."""
     import shutil
@@ -61,7 +64,7 @@ def virus_mapping(
     og_input = input
     output = pt(output).absolute().resolve()
     # Logging
-    logger = setup_logging(log_file)
+    logger = setup_logging(log_file, log_level)
 
     log_start_info(
         logger,
@@ -74,6 +77,7 @@ def virus_mapping(
             "memory": memory,
             "keep_tmp": keep_tmp,
             "log_file": log_file,
+            "log_level": log_level,
         },
     )
     logger.info(f"Input : {input}")

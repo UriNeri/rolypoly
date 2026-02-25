@@ -40,7 +40,7 @@ class SequenceExpr:
     def codon_usage(self) -> pl.Expr:
         """Calculate codon usage frequencies"""
 
-        def _calc_codons(seq: str) -> dict:
+        def calc_codons(seq: str) -> dict:
             codons = defaultdict(int)
             for i in range(0, len(seq) - 2, 3):
                 codon = seq[i : i + 3].upper()
@@ -51,16 +51,16 @@ class SequenceExpr:
                 {k: v / total for k, v in codons.items()} if total > 0 else {}
             )
 
-        return self._expr.map_elements(_calc_codons, return_dtype=pl.Struct)
+        return self._expr.map_elements(calc_codons, return_dtype=pl.Struct)
 
     def generate_hash(self, length: int = 32) -> pl.Expr:
         """Generate a hash for a sequence"""
         import hashlib
 
-        def _hash(seq: str) -> str:
+        def hash(seq: str) -> str:
             return hashlib.md5(seq.encode()).hexdigest()[:length]
 
-        return self._expr.map_elements(_hash, return_dtype=pl.String)
+        return self._expr.map_elements(hash, return_dtype=pl.String)
 
 
 @pl.api.register_lazyframe_namespace("from_fastx")

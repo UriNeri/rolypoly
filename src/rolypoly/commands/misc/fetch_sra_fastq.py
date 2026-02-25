@@ -1,3 +1,5 @@
+import logging
+import re
 import shutil
 from pathlib import Path
 
@@ -7,7 +9,52 @@ import rich_click as click
 from rolypoly.utils.logging.loggit import setup_logging
 from rolypoly.utils.various import run_command_comp
 
-logger = setup_logging(None)
+logger = logging.getLogger(__name__)
+
+
+def is_valid_run_id(run_id: str) -> bool:
+    """Validate ENA/SRA run accession format (e.g., SRR10307479)."""
+    return bool(re.fullmatch(r"(SRR|ERR|DRR)\d+", run_id.strip()))
+
+
+def is_valid_accession(accession: str) -> bool:
+    """Validate common ENA/SRA accession formats (run/experiment/sample/study)."""
+    return bool(
+        re.fullmatch(
+            r"(SRR|ERR|DRR|SRX|ERX|DRX|SRS|ERS|DRS|SRP|ERP|DRP)\d+",
+            accession.strip(),
+        )
+    )
+
+
+def resolve_accession_to_run_ids(accession: str) -> list[str]:
+    """Resolve a run/experiment/sample/study accession to one or more run IDs."""
+    accession = accession.strip()
+    if is_valid_run_id(accession):
+        return [accession]
+
+    if not is_valid_accession(accession):
+        return []
+
+    url = (
+        "https://www.ebi.ac.uk/ena/portal/api/filereport"
+        f"?accession={accession}&result=read_run&fields=run_accession&format=tsv"
+    )
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as exc:
+        logger.warning(f"Failed to resolve accession {accession}: {exc}")
+        return []
+
+    lines = [line.strip() for line in response.text.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return []
+
+    # first line is expected to be a header like "run_accession"
+    run_ids = [line for line in lines[1:] if is_valid_run_id(line)]
+    return list(dict.fromkeys(run_ids))
 
 
 def get_downloader():
@@ -189,8 +236,11 @@ def download_xml(run_id, output_path):
     type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
     help="Directory to save downloaded files",
 )
+@click.option(
+    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
+)
 @click.option("--report", is_flag=True, help="Download XML report for each run")
-def fetch_sra(input, output_dir, report):
+def fetch_sra(input, output_dir, log_level, report):
     """Download SRA run FASTQ files and optional XML metadata from *ENA*
 
     Takes either a single SRA run ID (e.g., SRR12345678) or a file containing multiple run IDs (one per line).
@@ -207,16 +257,57 @@ def fetch_sra(input, output_dir, report):
     * Note: The fastq headers may vary for the same SRA run/expriemtn based on the source and fetching method (s3, ftp, ena...)
     """
 
+    global logger
+    logger = setup_logging(None, log_level)
+
     # Validate input
     run_ids = []
-    if Path(input).is_file():
-        with open(input, "r") as f:
-            run_ids = [line.strip() for line in f if line.strip()]
+    input_path = Path(input)
+    if input_path.exists() and not input_path.is_dir():
+        with open(input_path, "r") as f:
+            accessions = [line.strip() for line in f if line.strip()]
+
+        invalid_ids = [acc for acc in accessions if not is_valid_accession(acc)]
+        if invalid_ids:
+            logger.warning(
+                f"Ignoring invalid accession(s): {', '.join(invalid_ids)}"
+            )
+
+        unresolved_ids = []
+        for accession in accessions:
+            if not is_valid_accession(accession):
+                continue
+            resolved = resolve_accession_to_run_ids(accession)
+            if not resolved:
+                unresolved_ids.append(accession)
+                continue
+            run_ids.extend(resolved)
+
+        if unresolved_ids:
+            logger.warning(
+                "Could not resolve accession(s) to run IDs: "
+                + ", ".join(unresolved_ids)
+            )
+
+        run_ids = list(dict.fromkeys(run_ids))
         if not run_ids:
-            logger.error("Error: Input file is empty")
+            logger.error("Error: Input file is empty or has no resolvable accessions")
             return
     else:
-        run_ids = [input]
+        candidate = input.strip()
+        if not is_valid_accession(candidate):
+            logger.error(
+                "Error: Input does not look like a supported ENA/SRA accession. "
+                "Expected run/experiment/sample/study formats like "
+                "SRR10307479, SRX7018852, SRS123456, or SRP123456."
+            )
+            return
+        run_ids = resolve_accession_to_run_ids(candidate)
+        if not run_ids:
+            logger.error(
+                f"Error: Could not resolve accession '{candidate}' to run IDs"
+            )
+            return
 
     # Create output directory
     output_dir.mkdir(parents=True, exist_ok=True)

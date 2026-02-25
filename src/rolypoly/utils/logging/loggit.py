@@ -1,4 +1,3 @@
-import datetime
 import inspect
 import logging
 from pathlib import Path
@@ -6,6 +5,9 @@ from typing import Dict, Optional, Union
 
 from rich.console import Console
 from rich.logging import RichHandler
+
+
+ROLYPOLY_HANDLER_ATTR = "rolypoly_handler_type"
 
 
 def get_version_info() -> dict[str, str]:
@@ -73,30 +75,13 @@ def setup_logging(
     if isinstance(log_file, logging.Logger):
         return log_file
 
-    # Get existing logger if it exists (now using root logger)
-    logger = logging.getLogger()  # Root logger
-    if logger.handlers:  # If root already has handlers, it's already set up
-        return logger
-
     if log_file is None:
-        log_file = Path.cwd() / f"rolypoly.log" # add datetime.time
-        # from sys import stdout
+        log_file = Path.cwd() / "rolypoly.log"
 
     # Convert log_file to Path if it's a string
     if isinstance(log_file, str):
         log_file = Path(log_file)
 
-    # Create an empty log file if it doesn't exist
-    if not log_file.exists():
-        # print(f"Creating log file: {log_file}")
-        # from os import  devnull
-
-        Path.touch(log_file)
-        # log_file = devnull
-        # subprocess.call(f"echo ' ' > {log_file}", shell=True)
-
-    # Create logger (root)
-    logger = logging.getLogger()  # Root logger
     if isinstance(log_level, str):
         log_level = {
             "debug": logging.DEBUG,
@@ -105,34 +90,71 @@ def setup_logging(
             "error": logging.ERROR,
             "critical": logging.CRITICAL,
         }.get(log_level.lower(), logging.INFO)
-    else:
-        log_level = log_level  # I think this is fine (i.e. 10/20/30/40/50 mapped automatically into debug/info/warning/error/critical)?
+
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    if not log_file.exists():
+        Path.touch(log_file)
+
+    logger = logging.getLogger()
 
     logger.setLevel(log_level)
     # No need to set propagate=False on root (it doesn't propagate anyway)
 
-    # Create console handler with rich formatting
-    console = Console(width=150)
-    console_handler = RichHandler(
-        rich_tracebacks=True, console=console, show_time=False
-    )
-    console_handler.setLevel(log_level)
+    rolypoly_console_handler = None
+    rolypoly_file_handlers = []
+    for handler in logger.handlers:
+        handler_type = getattr(handler, ROLYPOLY_HANDLER_ATTR, None)
+        if handler_type == "console":
+            rolypoly_console_handler = handler
+        elif handler_type == "file":
+            rolypoly_file_handlers.append(handler)
 
-    console_formatter = logging.Formatter(
-        "%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-    )
-    console_handler.setFormatter(console_formatter)
-    logger.addHandler(console_handler)
+    if rolypoly_console_handler is None:
+        console = Console(width=150)
+        try:
+            rolypoly_console_handler = RichHandler(
+                rich_tracebacks=True,
+                console=console,
+                show_time=False,
+                show_path=True,
+                enable_link_path=True,
+            )
+        except TypeError:
+            rolypoly_console_handler = RichHandler(
+                rich_tracebacks=True,
+                console=console,
+                show_time=False,
+                show_path=True,
+            )
+        setattr(
+            rolypoly_console_handler,
+            ROLYPOLY_HANDLER_ATTR,
+            "console",
+        )
+        logger.addHandler(rolypoly_console_handler)
 
-    # Create file handler
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setLevel(log_level)
+    rolypoly_console_handler.setLevel(log_level)
+    rolypoly_console_handler.setFormatter(logging.Formatter("%(message)s"))
+
+    existing_file_handler = None
+    for file_handler in rolypoly_file_handlers:
+        if Path(file_handler.baseFilename).resolve() == log_file.resolve():
+            existing_file_handler = file_handler
+        else:
+            logger.removeHandler(file_handler)
+            file_handler.close()
+
+    if existing_file_handler is None:
+        existing_file_handler = logging.FileHandler(log_file)
+        setattr(existing_file_handler, ROLYPOLY_HANDLER_ATTR, "file")
+        logger.addHandler(existing_file_handler)
+
+    existing_file_handler.setLevel(log_level)
     file_formatter = logging.Formatter(
-        "%(asctime)s --- %(levelname)s --- %(message)s --- %(filename)s:%(lineno)d ",
+        "%(asctime)s --- %(levelname)s --- %(message)s --- %(pathname)s:%(lineno)d",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    file_handler.setFormatter(file_formatter)
-    logger.addHandler(file_handler)
+    existing_file_handler.setFormatter(file_formatter)
 
     return logger
 
@@ -183,7 +205,7 @@ def get_logger(logger: Optional[logging.Logger] = None) -> logging.Logger:
     return logging.getLogger(caller_name)
 
 
-def _resolve_datadir() -> Path:
+def resolve_datadir() -> Path:
     """Resolve ROLYPOLY data directory at runtime.
 
     Order of resolution:

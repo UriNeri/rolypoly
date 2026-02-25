@@ -183,7 +183,7 @@ def fetch_and_extract(
         )
 
     # Check if extraction is needed using file signatures
-    extracted_path = _extract_with_signature_detection(
+    extracted_path = extract_with_signature_detection(
         fetched_path, extract_dir, expected_file, logger, debug
     )
 
@@ -198,7 +198,7 @@ def fetch_and_extract(
             # Check if it's still compressed
             with open(extracted_path, "rb") as f:
                 sig = f.read(16)
-            is_compressed = _is_archive_by_signature(sig)
+            is_compressed = is_archive_by_signature(sig)
             print(
                 f"DEBUG: Extracted file signature: {sig[:4]}, is still compressed: {is_compressed}"
             )
@@ -267,7 +267,7 @@ def simple_fetch(
     return output_path
 
 
-def _extract_with_signature_detection(
+def extract_with_signature_detection(
     archive_path: Path,
     extract_dir: Path,
     expected_file: Optional[str] = None,
@@ -294,11 +294,11 @@ def _extract_with_signature_detection(
 
     if debug:
         print(
-            f"DEBUG: File signature: {signature}, is_archive: {_is_archive_by_signature(signature)}"
+            f"DEBUG: File signature: {signature}, is_archive: {is_archive_by_signature(signature)}"
         )
 
     # No extraction needed for regular files
-    if not _is_archive_by_signature(signature):
+    if not is_archive_by_signature(signature):
         logger.info(
             f"File {archive_path} is not compressed/archived - no extraction needed"
         )
@@ -313,13 +313,13 @@ def _extract_with_signature_detection(
         if signature.startswith(b"\x1f\x8b"):  # gzip
             if debug:
                 print("DEBUG: Detected gzip, calling _extract_gzip")
-            extracted_path = _extract_gzip(
+            extracted_path = extract_gzip(
                 archive_path, extract_dir, expected_file, logger, debug
             )
         elif signature.startswith(b"BZ"):  # bzip2
             if debug:
                 print("DEBUG: Detected bzip2")
-            extracted_path = _extract_bzip2(
+            extracted_path = extract_bzip2(
                 archive_path, extract_dir, expected_file, logger
             )
         elif signature.startswith(
@@ -327,21 +327,21 @@ def _extract_with_signature_detection(
         ):  # xz/lzma
             if debug:
                 print("DEBUG: Detected xz/lzma")
-            extracted_path = _extract_xz(
+            extracted_path = extract_xz(
                 archive_path, extract_dir, expected_file, logger
             )
         elif signature.startswith(b"PK"):  # zip
             if debug:
                 print("DEBUG: Detected zip")
-            extracted_path = _extract_zip(archive_path, extract_dir, logger)
+            extracted_path = extract_zip_archive(archive_path, extract_dir, logger)
         elif (
             b"ustar" in signature
             or signature.startswith((b"\x1f\x8b", b"BZ"))
-            and _is_tar_content(archive_path)
+            and is_tar_content(archive_path)
         ):
             if debug:
                 print("DEBUG: Detected tar")
-            extracted_path = _extract_tar(archive_path, extract_dir, logger)
+            extracted_path = extract_tar(archive_path, extract_dir, logger)
         else:
             logger.warning(
                 f"Unknown archive format for {archive_path}, copying as-is"
@@ -364,7 +364,7 @@ def _extract_with_signature_detection(
         return archive_path
 
 
-def _is_archive_by_signature(signature: bytes) -> bool:
+def is_archive_by_signature(signature: bytes) -> bool:
     """Check if file is an archive based on magic numbers."""
     return (
         signature.startswith(b"\x1f\x8b")  # gzip
@@ -377,7 +377,7 @@ def _is_archive_by_signature(signature: bytes) -> bool:
     )
 
 
-def _is_tar_content(file_path: Path) -> bool:
+def is_tar_content(file_path: Path) -> bool:
     """Check if a potentially compressed file contains tar content."""
     import tarfile
 
@@ -389,7 +389,7 @@ def _is_tar_content(file_path: Path) -> bool:
         return False
 
 
-def _extract_gzip(
+def extract_gzip(
     archive_path: Path,
     extract_dir: Path,
     expected_file: Optional[str],
@@ -405,13 +405,13 @@ def _extract_gzip(
         )
 
     # First check if it's a tar.gz
-    is_tar = _is_tar_content(archive_path)
+    is_tar = is_tar_content(archive_path)
     if debug:
         print(f"DEBUG: Is tar content: {is_tar}")
     if is_tar:
         if debug:
             print("DEBUG: Treating as tar.gz")
-        return _extract_tar(archive_path, extract_dir, logger)
+        return extract_tar(archive_path, extract_dir, logger)
 
     # Handle standalone gzip
     if expected_file:
@@ -457,7 +457,7 @@ def _extract_gzip(
     return output_path
 
 
-def _extract_bzip2(
+def extract_bzip2(
     archive_path: Path, extract_dir: Path, expected_file: Optional[str], logger
 ) -> Path:
     """Extract bzip2 files."""
@@ -478,7 +478,7 @@ def _extract_bzip2(
     return output_path
 
 
-def _extract_xz(
+def extract_xz(
     archive_path: Path, extract_dir: Path, expected_file: Optional[str], logger
 ) -> Path:
     """Extract xz/lzma files."""
@@ -499,7 +499,7 @@ def _extract_xz(
     return output_path
 
 
-def _extract_tar(archive_path: Path, extract_dir: Path, logger) -> Path:
+def extract_tar(archive_path: Path, extract_dir: Path, logger) -> Path:
     """Extract tar archives (including compressed tar files)."""
     import tarfile
 
@@ -509,7 +509,7 @@ def _extract_tar(archive_path: Path, extract_dir: Path, logger) -> Path:
     return extract_dir
 
 
-def _extract_zip(archive_path: Path, extract_dir: Path, logger) -> Path:
+def extract_zip_archive(archive_path: Path, extract_dir: Path, logger) -> Path:
     """Extract zip archives."""
     import zipfile
 

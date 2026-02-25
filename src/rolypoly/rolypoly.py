@@ -5,7 +5,7 @@ from json import load
 import rich_click as click
 
 from .utils.lazy_group import LazyGroup
-from .utils.logging.loggit import get_version_info
+from .utils.logging.loggit import get_version_info, setup_logging
 from .utils.various import flat_dict
 
 # click.rich_click.USE_RICH_MARKUP = True
@@ -123,10 +123,14 @@ def rolypoly():
 
 
 @rolypoly.command()
-def version():
+@click.option(
+    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
+)
+def version(log_level):
     """
     Print code version (commit or semvar) and data (date) information.
     """
+    setup_logging(None, log_level)
     # click wrapper for version/data information, so it could be called vai rolypoly version (on top of rolypoly --version)
     print(flat_dict(get_version_info(), sep="\n"))
 

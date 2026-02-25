@@ -21,6 +21,27 @@ console = Console()
 config = None
 
 
+def format_bbmapy_output(stdout_obj, stderr_obj) -> str:
+    parts = []
+    for item in (stderr_obj, stdout_obj):
+        if item is None:
+            continue
+        if isinstance(item, str):
+            text = item.strip()
+            if text:
+                parts.append(text)
+            continue
+        if isinstance(item, (list, tuple)):
+            text = "\n".join(str(x) for x in item if x is not None).strip()
+            if text:
+                parts.append(text)
+            continue
+        text = str(item).strip()
+        if text:
+            parts.append(text)
+    return "\n".join(parts)
+
+
 class ReadFilterConfig(BaseConfig):
     def __init__(self, **kwargs):
         # in this case output_dir and output are the same, so need to explicitly make sure it exists.
@@ -260,10 +281,9 @@ def process_reads(
 
     # Final deduplication step
     merged_file = output_tracker.get_latest_merged_file()
-    if not (
+    if merged_file is not None and not (
         config.skip_existing
         and check_existing_file(Path(f"dedup_merged_{config.file_name}.fq.gz"))
-        and merged_file == None
     ):
         dedup_merged = dedupe(
             Path(merged_file), config, output_tracker, "final_merged"
@@ -569,7 +589,7 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
                 append="f" if i == 0 else "t",
                 Xmx=str(config.memory["giga"]),
             )
-            config.logger.info(" ".join((bb_stderr, bb_stdout)))
+            config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
 
     # Process interleaved files
     if len(file_info["interleaved_files"]) != 0:
@@ -588,7 +608,7 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
                 Xmx=str(config.memory["giga"]),
                 int=True,
             )
-            config.logger.info(" ".join((bb_stderr, bb_stdout)))
+            config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
 
     # Process single-end files
     if (
@@ -614,7 +634,7 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
                 append="f" if i == 0 and not temp_interleaved.exists() else "t",
                 Xmx=str(config.memory["giga"]),
             )
-            config.logger.info(" ".join((bb_stderr, bb_stdout)))
+            config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
 
     # Clean up temporary file if it exists
     if temp_interleaved.exists():
@@ -678,7 +698,7 @@ def filter_known_dna(
             stats=config.temp_dir
             / f"stats_filter_known_dna_{config.file_name}.txt",
         )
-        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+        config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
 
         output_tracker.add_file(
             str(output_file),
@@ -727,7 +747,7 @@ def decontaminate_rrna(
             / f"stats_decontaminate_rrna_{config.file_name}.txt",
             capture_output=True,
         )
-        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+        config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
 
         output_tracker.add_file(
             str(output_file),
@@ -851,7 +871,7 @@ def filter_identified_dna(
             stats=config.temp_dir
             / f"stats_filter_identified_dna_{config.file_name}.txt",
         )
-        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+        config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
 
         output_tracker.add_file(
             str(output_file),
@@ -903,7 +923,7 @@ def dedupe(
             overwrite="t",
             interleaved="t",
         )
-        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+        config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
 
         output_tracker.add_file(
             str(output_file),
@@ -947,7 +967,7 @@ def trim_adapters(
             stats=config.temp_dir
             / f"stats_trim_adapters_{config.file_name}.txt",
         )
-        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+        config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
 
         output_tracker.add_file(
             str(output_file),
@@ -988,7 +1008,7 @@ def remove_synthetic_artifacts(
             stats=config.temp_dir
             / f"stats_remove_synthetic_artifacts_{config.file_name}.txt",
         )
-        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+        config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
 
         output_tracker.add_file(
             str(output_file),
@@ -1025,7 +1045,7 @@ def entropy_filter(
             overwrite="t",
             interleaved="t",
         )
-        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+        config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
 
         output_tracker.add_file(
             str(output_file),
@@ -1062,7 +1082,7 @@ def error_correct_1(
             overwrite="t",
             interleaved="t",
         )
-        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+        config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
 
         output_tracker.add_file(
             str(output_file),
@@ -1099,7 +1119,7 @@ def error_correct_2(
             overwrite="t",
             interleaved="t",
         )
-        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+        config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
 
         output_tracker.add_file(
             str(output_file),
@@ -1142,7 +1162,7 @@ def merge_reads(
             / f"out_adapter_merged_{config.file_name}.txt",
             strict="true",
         )
-        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+        config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
 
         output_tracker.add_file(
             str(output_file),
@@ -1189,7 +1209,7 @@ def quality_trim_unmerged(
             overwrite="t",
             interleaved="t",
         )
-        config.logger.info(" ".join((bb_stderr, bb_stdout)))
+        config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
 
         output_tracker.add_file(
             str(output_file),

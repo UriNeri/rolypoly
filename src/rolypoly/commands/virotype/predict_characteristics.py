@@ -32,11 +32,16 @@ console = Console()
     default=lambda: f"{os.getcwd()}/predict_characteristics_logfile.txt",
     help="Path to log file",
 )
-def predict_characteristics(input, output, database, threads, log_file):
+@click.option(
+    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
+)
+def predict_characteristics(
+    input, output, database, threads, log_file, log_level
+):
     """WIP WIP WIP Predict characteristics based on annotation and ""taxonomy"" results, and if possible by literature mined data."""
     from rolypoly.utils.logging.loggit import setup_logging
 
-    logger = setup_logging(log_file)
+    logger = setup_logging(log_file, log_level)
     logger.info("Starting virus characteristic prediction    ")
     logger.info("Sorry! command noit yet implemented!")
 
