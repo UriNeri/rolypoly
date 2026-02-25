@@ -1,0 +1,410 @@
+[
+  {
+    "id": "termini_demo",
+    "description": "Smoke test termini on bundled segmented demo FASTA",
+    "args": [
+      "termini",
+      "-i",
+      "testing_folder/termini_ncbi/segmented_shared_termini.fasta",
+      "-n",
+      "4-2000",
+      "-d",
+      "0",
+      "--clip-mode",
+      "both",
+      "--max-clipped",
+      "4",
+      "-o",
+      "{tmp}/termini_demo.tsv",
+      "--output-format",
+      "tsv"
+    ],
+    "expected_files": [
+      "{tmp}/termini_demo.tsv",
+      "{tmp}/termini_demo.groups.tsv",
+      "{tmp}/termini_demo.motifs.fasta"
+    ],
+    "expected_table_columns": {
+      "{tmp}/termini_demo.groups.tsv": [
+        "group_id",
+        "member_count",
+        "motif",
+        "found_in"
+      ]
+    },
+    "expected_table_min_rows": {
+      "{tmp}/termini_demo.groups.tsv": 1
+    },
+    "expected_contains": {
+      "{tmp}/termini_demo.groups.tsv": [
+        "group_id",
+        "found_in",
+        "fwd_on_5_end"
+      ]
+    }
+  },
+  {
+    "id": "fastx_calc_hash_fields",
+    "description": "Validate fastx-calc with explicit fields and TSV output",
+    "args": [
+      "fastx-calc",
+      "-i",
+      "testing_folder/test_contigs.fasta",
+      "-o",
+      "{tmp}/fastx_calc.tsv",
+      "--format",
+      "tsv",
+      "-f",
+      "length",
+      "-f",
+      "gc_content",
+      "-f",
+      "hash"
+    ],
+    "expected_files": [
+      "{tmp}/fastx_calc.tsv"
+    ],
+    "expected_table_columns": {
+      "{tmp}/fastx_calc.tsv": [
+        "header",
+        "length",
+        "gc_content",
+        "hash"
+      ]
+    },
+    "expected_table_min_rows": {
+      "{tmp}/fastx_calc.tsv": 1
+    }
+  },
+  {
+    "id": "fastx_stats_basic",
+    "description": "Validate fastx-stats aggregate TSV output",
+    "args": [
+      "fastx-stats",
+      "-i",
+      "testing_folder/test_contigs.fasta",
+      "-o",
+      "{tmp}/fastx_stats.tsv",
+      "--format",
+      "tsv",
+      "-f",
+      "length",
+      "-f",
+      "gc_content"
+    ],
+    "expected_files": [
+      "{tmp}/fastx_stats.tsv"
+    ],
+    "expected_table_columns": {
+      "{tmp}/fastx_stats.tsv": [
+        "min_length",
+        "max_length",
+        "mean_length",
+        "total_sequences"
+      ]
+    },
+    "expected_table_min_rows": {
+      "{tmp}/fastx_stats.tsv": 1
+    }
+  },
+  {
+    "id": "rename_seqs_hash_mode",
+    "description": "Validate rename-seqs hash mode and mapping output",
+    "args": [
+      "rename-seqs",
+      "-i",
+      "testing_folder/test_contigs.fasta",
+      "-o",
+      "{tmp}/renamed.fasta",
+      "-m",
+      "{tmp}/mapping.tsv",
+      "--hash",
+      "--no-stats"
+    ],
+    "expected_files": [
+      "{tmp}/renamed.fasta",
+      "{tmp}/mapping.tsv"
+    ],
+    "expected_table_columns": {
+      "{tmp}/mapping.tsv": [
+        "old_id",
+        "new_id"
+      ]
+    },
+    "expected_table_min_rows": {
+      "{tmp}/mapping.tsv": 1
+    },
+    "expected_contains": {
+      "{tmp}/mapping.tsv": [
+        "CID_"
+      ]
+    }
+  },
+  {
+    "id": "annotate_rna_dna_skipsteps",
+    "description": "Smoke test annotate-rna DNA input with explicit step skipping",
+    "args": [
+      "annotate-rna",
+      "-i",
+      "testing_folder/test_contigs.fasta",
+      "-o",
+      "{tmp}/annotate_rna",
+      "--skip-steps",
+      "predict_secondary_structure,search_ribozymes,predict_trnas",
+      "-t",
+      "1"
+    ],
+    "expected_dirs": [
+      "{tmp}/annotate_rna"
+    ]
+  },
+  {
+    "id": "annotate_wrapper_dna_skipsteps",
+    "description": "Smoke test annotate wrapper DNA input with both subpipelines skipped",
+    "args": [
+      "annotate",
+      "-i",
+      "testing_folder/test_contigs.fasta",
+      "-o",
+      "{tmp}/annotate_wrapper",
+      "--skip-steps",
+      "RNA_annotation,protein_annotation",
+      "-t",
+      "1"
+    ],
+    "expected_dirs": [
+      "{tmp}/annotate_wrapper",
+      "{tmp}/annotate_wrapper/rna_annotation",
+      "{tmp}/annotate_wrapper/protein_annotation"
+    ]
+  },
+  {
+    "id": "annotate_prot_hmm_dna_nvpc",
+    "description": "Annotate-prot DNA input with hmmsearch and NVPC",
+    "required_paths": [
+      "data/profiles/hmmdbs/nvpc.hmm"
+    ],
+    "args": [
+      "annotate-prot",
+      "-i",
+      "testing_folder/test_contigs.fasta",
+      "-o",
+      "{tmp}/annotate_prot_hmm_dna",
+      "-gp",
+      "six-frame",
+      "-st",
+      "hmmsearch",
+      "-d",
+      "NVPC",
+      "-t",
+      "1",
+      "--override-parameters",
+      "{\"hmmsearch\":{\"inc_e\":0.001,\"mscore\":3}}",
+      "--output-format",
+      "tsv"
+    ],
+    "expected_files": [
+      "{tmp}/annotate_prot_hmm_dna/predicted_orfs.faa",
+      "{tmp}/annotate_prot_hmm_dna/NVPC_protein_domains.tsv",
+      "{tmp}/annotate_prot_hmm_dna/NVPC_protein_domains_resolved.tsv",
+      "{tmp}/annotate_prot_hmm_dna/combined_annotations.tsv",
+      "{tmp}/annotate_prot_hmm_dna/output_files.tsv"
+    ],
+    "expected_table_columns": {
+      "{tmp}/annotate_prot_hmm_dna/combined_annotations.tsv": [
+        "query_full_name",
+        "profile_accession",
+        "source",
+        "search_tool"
+      ],
+      "{tmp}/annotate_prot_hmm_dna/output_files.tsv": [
+        "file",
+        "description",
+        "db",
+        "tool"
+      ]
+    },
+    "expected_table_min_rows": {
+      "{tmp}/annotate_prot_hmm_dna/output_files.tsv": 1
+    },
+    "expected_contains": {
+      "{tmp}/annotate_prot_hmm_dna/output_files.tsv": [
+        "hmmsearch"
+      ]
+    }
+  },
+  {
+    "id": "annotate_prot_hmm_aa_nvpc",
+    "description": "Annotate-prot amino input with hmmsearch and NVPC",
+    "required_paths": [
+      "data/profiles/hmmdbs/nvpc.hmm",
+      "testing_folder/inputs/proteins/test_proteins.faa"
+    ],
+    "args": [
+      "annotate-prot",
+      "-i",
+      "testing_folder/inputs/proteins/test_proteins.faa",
+      "-o",
+      "{tmp}/annotate_prot_hmm_aa",
+      "-st",
+      "hmmsearch",
+      "-d",
+      "NVPC",
+      "-t",
+      "1",
+      "--override-parameters",
+      "{\"hmmsearch\":{\"inc_e\":0.001,\"mscore\":3}}",
+      "--output-format",
+      "tsv"
+    ],
+    "expected_files": [
+      "{tmp}/annotate_prot_hmm_aa/predicted_orfs.faa",
+      "{tmp}/annotate_prot_hmm_aa/output_files.tsv"
+    ],
+    "expected_table_columns": {
+      "{tmp}/annotate_prot_hmm_aa/output_files.tsv": [
+        "file",
+        "description",
+        "db",
+        "tool"
+      ]
+    },
+    "expected_contains": {
+      "{tmp}/annotate_prot_hmm_aa/output_files.tsv": [
+        "input_protein",
+        "hmmsearch"
+      ]
+    }
+  },
+  {
+    "id": "annotate_prot_mmseqs_dna_genomad",
+    "description": "Annotate-prot DNA input with mmseqs2 and genomad profile DB",
+    "required_any_commands": [
+      [
+        "mmseqs",
+        "mmseqs2"
+      ]
+    ],
+    "required_paths": [
+      "data/profiles/mmseqs_dbs/genomad/rna_viral_markers"
+    ],
+    "args": [
+      "annotate-prot",
+      "-i",
+      "testing_folder/test_contigs.fasta",
+      "-o",
+      "{tmp}/annotate_prot_mmseqs_genomad",
+      "-gp",
+      "six-frame",
+      "-st",
+      "mmseqs2",
+      "-d",
+      "genomad",
+      "-t",
+      "1",
+      "--override-parameters",
+      "{\"mmseqs2\":{\"evalue\":0.001,\"cov\":0.2}}",
+      "--output-format",
+      "tsv"
+    ],
+    "expected_files": [
+      "{tmp}/annotate_prot_mmseqs_genomad/genomad_mmseqs2_domains.tsv",
+      "{tmp}/annotate_prot_mmseqs_genomad/output_files.tsv"
+    ],
+    "expected_table_columns": {
+      "{tmp}/annotate_prot_mmseqs_genomad/output_files.tsv": [
+        "file",
+        "description",
+        "db",
+        "tool"
+      ]
+    },
+    "expected_contains": {
+      "{tmp}/annotate_prot_mmseqs_genomad/output_files.tsv": [
+        "mmseqs2",
+        "genomad"
+      ]
+    }
+  },
+  {
+    "id": "annotate_prot_mmseqs_dna_nvpc",
+    "description": "Annotate-prot DNA input with mmseqs2 and NVPC profile DB",
+    "required_any_commands": [
+      [
+        "mmseqs",
+        "mmseqs2"
+      ]
+    ],
+    "required_paths": [
+      "data/profiles/mmseqs_dbs/nvpc/nvpc"
+    ],
+    "args": [
+      "annotate-prot",
+      "-i",
+      "testing_folder/test_contigs.fasta",
+      "-o",
+      "{tmp}/annotate_prot_mmseqs_nvpc",
+      "-gp",
+      "six-frame",
+      "-st",
+      "mmseqs2",
+      "-d",
+      "NVPC",
+      "-t",
+      "1",
+      "--override-parameters",
+      "{\"mmseqs2\":{\"evalue\":0.001,\"cov\":0.2}}",
+      "--output-format",
+      "tsv"
+    ],
+    "expected_files": [
+      "{tmp}/annotate_prot_mmseqs_nvpc/NVPC_mmseqs2_domains.tsv",
+      "{tmp}/annotate_prot_mmseqs_nvpc/output_files.tsv"
+    ],
+    "expected_contains": {
+      "{tmp}/annotate_prot_mmseqs_nvpc/output_files.tsv": [
+        "mmseqs2",
+        "NVPC"
+      ]
+    }
+  },
+  {
+    "id": "annotate_prot_diamond_dna_rvmt",
+    "description": "Annotate-prot DNA input with diamond and RVMT reference database",
+    "required_commands": [
+      "diamond"
+    ],
+    "required_paths": [
+      "data/reference_seqs/RVMT/RVMT_cleaned_orfs.faa"
+    ],
+    "args": [
+      "annotate-prot",
+      "-i",
+      "testing_folder/test_contigs.fasta",
+      "-o",
+      "{tmp}/annotate_prot_diamond_rvmt",
+      "-gp",
+      "six-frame",
+      "-st",
+      "diamond",
+      "-d",
+      "RVMT",
+      "-t",
+      "1",
+      "--override-parameters",
+      "{\"diamond\":{\"evalue\":0.001}}",
+      "--output-format",
+      "tsv"
+    ],
+    "expected_files": [
+      "{tmp}/annotate_prot_diamond_rvmt/RVMT_diamond_domains.tsv",
+      "{tmp}/annotate_prot_diamond_rvmt/output_files.tsv"
+    ],
+    "expected_contains": {
+      "{tmp}/annotate_prot_diamond_rvmt/output_files.tsv": [
+        "diamond",
+        "RVMT"
+      ]
+    }
+  }
+]

@@ -7,11 +7,11 @@ RolyPoly is an RNA virus analysis toolkit, meant to be a "swiss-army knife" for 
 - Help (software) developers of virus analysis pipeline "plug" holes missing from their framework, by using specific RolyPoly commands to add features to their existing code base.
 
 ## Note - Rolypoly is still under development (contributions welcome!)
-RolyPoly is an open, still in progress project - I aim to summrise the main functionality into a manuscript ~early 2026. Pull requests and contributions are welcome and will be considered (see [CONTRIBUTING.md](CONTRIBUTING.md)).  
+RolyPoly is an open, still in progress project - I aim to summarise the main functionality into a manuscript ~early 2026. Pull requests and contributions are welcome and will be considered (see [CONTRIBUTING.md](CONTRIBUTING.md)).  
 This also means that there are bugs, verbose logging even for non debug mode, and some place holders and TODOs here and there.
 
 ## Docs
-For more detailed information, please refer to the [docs](https://pages.jgi.doe.gov/rolypoly/docs/). While it isn't updated often, it should still be helpful. Most commands support a `--help` flag and that tends to be the most up date.
+For more detailed information, please refer to the [docs](https://pages.jgi.doe.gov/rolypoly/docs/). While it isn't updated often, it should still be helpful. Most commands support a `--help` flag and that tends to be the most up to date.
 
 ## Installation
 
@@ -19,7 +19,7 @@ For more detailed information, please refer to the [docs](https://pages.jgi.doe.
 **Recommended for most users** who want a "just works" solution and primarily intend to use rolypoly as a CLI tool in an independent environment.
 
 We hope to have rolypoly available from bioconda in the near future.  
-In the meantime, it can be installed with the [`quick_setup.sh`](https://code.jgi.doe.gov/rolypoly/rolypoly/-/raw/main/src/setup/quick_setup.sh) script which which will also fetch the pre-generated data rolypoly will require.
+In the meantime, it can be installed with the [`quick_setup.sh`](https://code.jgi.doe.gov/rolypoly/rolypoly/-/raw/main/src/setup/quick_setup.sh) script, which will also fetch the pre-generated data rolypoly requires.
 
 ```bash
 curl -O https://code.jgi.doe.gov/rolypoly/rolypoly/-/raw/main/src/setup/quick_setup.sh && \
@@ -34,13 +34,13 @@ bash quick_setup.sh /path/to/conda/env /path/to/install/rolypoly_code /path/to/s
 By default if no positional arguments are supplied, rolypoly is installed into the session current folder (path the quick_setup.sh is called from):   
 - database in `./rolypoly/data/`  
 - code in `./rolypoly/code/ `  
-- conda enviroment in `./rolypoly/env/`  
+- conda environment in `./rolypoly/env/`  
 - log file in `./RolyPoly_quick_setup.log`   
 
 
 
 ### Modular / Dev - Command-Specific Pixi Environments
-**For software developers** looking to try or make use of specific rolypoly features with minimal risk of dependency conflicts. This approach should allow you to install only the tools you need for specific functionality. Note: dependencies from pip are allways installed, the ones from conda/bioconda are the ones that are modular.
+**For software developers** looking to try or make use of specific rolypoly features with minimal risk of dependency conflicts. This approach should allow you to install only the tools you need for specific functionality. Note: dependencies from pip are always installed; conda/bioconda dependencies are the modular ones.
 
 ```bash
 # Install pixi first (if not already installed)
@@ -71,57 +71,49 @@ RolyPoly is a command-line tool with subcommands grouped by analysis stage. For 
 rolypoly  <COMMAND> [ARGS]...
 ```
 
-### Commands
-<!-- "groups" are just categories to help organise, the scripts paths can differ as long as tthe click entry points are correct. -->
+## Commands and Project Status
+Active development. Command groups and current implementation status are summarized below.
+
+<!-- "groups" are categories to help organize commands; script paths can differ as long as click entry points are correct. -->
 #### data
-- `get-data` — Download/setup required data
-- `version` — Show code and data version info
+- ✅ [`get-data`](https://pages.jgi.doe.gov/rolypoly/docs/commands/prepare_external_data) — Download/setup required data
+- ✅ `version` — Show code and data version info
 
 #### reads
-- [`filter-reads`](https://pages.jgi.doe.gov/rolypoly/docs/commands/read_processing): Host/rRNA/adapters/artifact filtering and QC (bbmap, seqkit, etc.)
-- [`shrink-reads`](https://pages.jgi.doe.gov/rolypoly/docs/commands/shrink_reads): Downsample or subsample reads. Useful for testing or normalizing coverage across samples.
-- [`mask-dna`](https://pages.jgi.doe.gov/rolypoly/docs/commands/mask_dna): Mask DNA regions in RNA-seq reads (bbmap, seqkit). Useful for avoiding mis-filtering of RNA virus reads in because of potential matches to EVEs.
+- ✅ [`filter-reads`](https://pages.jgi.doe.gov/rolypoly/docs/commands/read_processing) — Host/rRNA/adapters/artifact filtering and QC (bbmap, seqkit, etc.)
+- ✅ [`shrink-reads`](https://pages.jgi.doe.gov/rolypoly/docs/commands/shrink_reads) — Downsample or subsample reads. Useful for testing or normalizing coverage across samples.
+- ✅ [`mask-dna`](https://pages.jgi.doe.gov/rolypoly/docs/commands/mask_dna) — Mask DNA regions in RNA-seq reads (bbmap, seqkit). Useful for avoiding mis-filtering of RNA virus reads in because of potential matches to EVEs.
 
 #### annotation
-- [`annotate`](https://pages.jgi.doe.gov/rolypoly/docs/commands/annotate): Genome feature annotation (pyrodigal-rv wraps the rna and prot commands)
-- [`annotate-rna`](https://pages.jgi.doe.gov/rolypoly/docs/commands/annotate_rna): RNA secondary structure labelling and ribozyme detection (Infernal, ViennaRNA/linearfold, cmsearch on Rfam...)
-- [`annotate-prot`](https://pages.jgi.doe.gov/rolypoly/docs/commands/annotate_prot): Protein domain annotation and functional prediction (HMMER, Pfam, custom)
+- ✅ [`annotate`](https://pages.jgi.doe.gov/rolypoly/docs/commands/annotate) — Genome feature annotation (pyrodigal-rv wraps the rna and prot commands)
+- ✅ [`annotate-rna`](https://pages.jgi.doe.gov/rolypoly/docs/commands/annotate_rna) — RNA secondary structure labelling and ribozyme detection (Infernal, ViennaRNA/linearfold, cmsearch on Rfam...)
+- 🚧 [`annotate-prot`](https://pages.jgi.doe.gov/rolypoly/docs/commands/annotate_prot) — Protein domain annotation and functional prediction (HMMER, Pfam, custom); mostly done, more DB/tool checks pending.
 
 #### assembly (Meta/Genome Assembly)
-- `assemble` — Assemble reads into contigs (SPAdes, MEGAHIT, penguin) 
-- `filter-contigs` — Filter seqs based on user-supplied host/contamination sequences. Wrapper for both nucleotide and amino acid filtering.
-
-#### misc (Miscellaneous)
-- `end2end` — Run end-to-end pipeline
-- `fetch-sra` — Download SRA fastq files
-- `fastx-stats` — Calculate aggregate statistics for sequences (min, max, mean, median, ...) (input is file/s)
-- `fastx_calc` Calculate per-sequence metrics (length, GC content, hash,...)                                                                                
-- `rename-seqs` — Rename sequences
-- `quick-taxonomy` — Quick taxonomy assignment
+- ✅ [`assemble`](https://pages.jgi.doe.gov/rolypoly/docs/commands/assembly) — Assemble reads into contigs (SPAdes, MEGAHIT, penguin)
+- ✅ [`filter-contigs`](https://pages.jgi.doe.gov/rolypoly/docs/commands/filter_assembly) — Filter sequences based on user-supplied host/contamination references (nucleotide and amino acid modes).
 
 #### identify (RNA Virus Identification)
-- `marker-search` — Search for viral markers
-- `search-viruses` — Map and identify viruses
+- ✅ [`marker-search`](https://pages.jgi.doe.gov/rolypoly/docs/commands/marker_search) — Search for viral markers (mainly RdRps, genomad VVs, or user-provided)
+- ✅ [`virus-mapping`](https://pages.jgi.doe.gov/rolypoly/docs/commands/search_viruses) — Map and identify viruses
+- ✅ `rdrp-motif-search` — Search RdRp motifs (A/B/C/D) in nucleotide or amino acid sequences.
+
+#### misc (Miscellaneous)
+- ✅ `end2end` — Run end-to-end pipeline
+- ✅ `fetch-sra` — Download SRA fastq files
+- ✅ `fastx-stats` — Calculate aggregate statistics for sequences (min, max, mean, median, ...) (input is file/s)
+- ✅ `fastx-calc` — Calculate per-sequence metrics (length, GC content, hash, ...)
+- ✅ `rename-seqs` — Rename sequences
+- ✅ `quick-taxonomy` — Quick taxonomy assignment
+
+#### bining
+- 🧪 `termini` (experimental) — Shared termini grouping and motif reporting. Writes assignments + groups tables (TSV/CSV/Parquet/JSONL) and motif FASTA by default.
+- 🧪 `correlate` (experimental) — Binning-related command under active development (not currently exposed in the main CLI entry point).
 
 **Notes:**
-- Only the commands listed above are currently exposed via the CLI. Some modules in the codebase are not available as CLI commands.
+- Commands marked with ✅ above are currently exposed via the CLI. Experimental items (🧪) may exist only in dev branches or as not-yet-registered modules.
 - For help on any command, use: `rolypoly <command> <options> --help`
 - Some commands (e.g., `co-assembly`, `refine`, `visualize`, `characterise`, etc.) are not currently available or are commented out in the CLI.
-
-## Project Status
-Active development. Currently implemented features:
-
-- ✅ NGS raw read filtering (Host, rRNA, adapters, artefacts) and quality control report ([`reads filter-reads`](https://pages.jgi.doe.gov/rolypoly/docs/commands/read_processing))
-- ✅ Assembly (SPAdes, MEGAHIT and penguin) ([` assemble`](https://pages.jgi.doe.gov/rolypoly/docs/commands/assembly))
-- ✅ Contig filtering and clustering ([`filter-contigs`](https://pages.jgi.doe.gov/rolypoly/docs/commands/filter_assembly))
-- ✅ Marker gene search with pyhmmer (mainly RdRps, genomad VV's or user-provided) ([`identify marker-search`](https://pages.jgi.doe.gov/rolypoly/docs/commands/marker_search))
-- ✅ RNA secondary structure prediction, annotation and ribozyme identification ([`annotation annotate-rna`](https://pages.jgi.doe.gov/rolypoly/docs/commands/annotate_rna))
-- 🚧 Protein annotation (`annotate-prot`) (mostly done, but need to check other DBs or tools)
-- ✅ Nucleotide search vs known viruses ([`identify search-viruses`](https://pages.jgi.doe.gov/rolypoly/docs/commands/search_viruses))
-- ✅ Prepare external data ([`data get-data`](https://pages.jgi.doe.gov/rolypoly/docs/commands/prepare_external_data))
-
-
-Under development:
 
 Planned/under consideration features (but not yet started):
 - 🚧 Genome binning and refinement (`TBD`)
@@ -205,7 +197,7 @@ RolyPoly will try to remind you to cite these too based on the commands you run.
 </details>
 
 ## Motivation
-There are many good virus analysis software out there*. Many of them are custom made for specific virus groups, some are generalists, but most of them require complete control over the analysis process (so one or two point of entry for data). Apart from the input, these pipelines vary in their implementation (laguange, workflow magnement system (snakemake, nextflow...), dependecies), methodologies (tool choice for similar step like assembler), goals (e.g. specific pathogen analysis vs whole  virome analysis). These are other differences effect the design process and the tooling choices (such as selecting a fast nucleic based sequence search method limited to high identity, over a slow but more senstive profile or structure (amino) based search method). This has created some "lock in" (IMO), and I have found myself asked by people "what do you recomend for xyz" or "which pipeline should I use". Most people have limited time to invest in custom analysis pipeline design and so end up opting for an existing, off-the-shelve option, potentially compromising or having to align their goals with what the given software offers (if they they are already aligned - great!). 
+There are many good virus analysis tools out there*. Many of them are custom made for specific virus groups, some are generalists, but most require complete control over the analysis process (so one or two points of entry for data). Apart from input requirements, these pipelines vary in implementation (language, workflow management system (snakemake, nextflow...), dependencies), methodologies (tool choice for a similar step such as assembly), and goals (e.g. specific pathogen analysis vs whole virome analysis). These differences affect design and tooling choices (such as selecting a fast nucleotide-based sequence search method limited to high identity, over a slower but more sensitive profile- or structure-based (amino acid) search method). This has created some "lock in" (IMO), and I have found myself asked by people "what do you recommend for xyz" or "which pipeline should I use". Most people have limited time to invest in custom analysis pipeline design and so end up opting for an existing, off-the-shelf option, potentially compromising or having to align their goals with what the given software offers (if they are already aligned - great!). 
 * Checkout [awesome-rna-virus-tools](https://github.com/rdrp-summit/awesome-rna-virus-tools) for an awesome list of RNA virus (and related) software.
 
 ### Reporting Issues
@@ -232,10 +224,12 @@ All forms of contributions are welcome - please see the [CONTRIBUTING.md](./CONT
 </details>
 
 ## Related projects
-- [RdRp-CATCH](https://github.com/dimitris-karapliafis/RdRpCATCH) If you are interested in profile based marker searches, benchmarking, and thershold setting.
-- [suvtk](https://github.com/LanderDC/suvtk) if you are looking to expediate NCBI submission (among other tasks)
+- [RdRp-CATCH](https://github.com/dimitris-karapliafis/RdRpCATCH) If you are interested in profile-based marker searches, benchmarking, and threshold setting.
+- [suvtk](https://github.com/LanderDC/suvtk) if you are looking to expedite NCBI submission (among other tasks)
 - [gff2parquet](https://github.com/UriNeri/gff2parquet) if you are looking for a fast GFF parser and converter to parquet format (note, also WIP).
 - [pyrodigal-rv](https://github.com/LanderDC/pyrodigal-rv) if you are looking for an RNA virus specific Prodigal fork (incl. newly trained models for exotic genetic codes!)
+- [hoodini](https://github.com/pentamorfico/hoodini) if you are interested in large-scale gene neighborhood analyses and visualization.
+
 
 ## Acknowledgments
 Thanks to the DOE Joint Genome Institute for infrastructure support. Special thanks to all contributors who have offered insights and improvements.

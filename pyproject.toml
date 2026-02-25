@@ -207,6 +207,7 @@ build-pypi = "hatch version micro && hatch build --clean"
 
 [tool.pixi.feature.dev.tasks]
 test-import = "python -c 'import rolypoly; print(rolypoly.__version__)'"
+test-cli = "pytest -q src/tests/test_cli_contracts.py"
 
 [tool.ruff]
 exclude = [
@@ -253,3 +254,13 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 [tool.ruff.format]
 line-ending = "auto"
 skip-magic-trailing-comma = true
+
+[tool.pytest.ini_options]
+testpaths = ["src/tests"]
+addopts = "-ra"
+log_file = "src/tests/pytest.log"
+log_file_level = "DEBUG"
+filterwarnings = [
+    "ignore:`use_rich_markup=` will be deprecated.*:PendingDeprecationWarning",
+    "ignore:'BaseCommand' is deprecated and will be removed in Click 9.0.*:DeprecationWarning",
+]

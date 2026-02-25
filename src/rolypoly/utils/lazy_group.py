@@ -24,9 +24,9 @@ class LazyGroup(click.RichGroup):
         super().__init__(*args, **kwargs)
         self.lazy_subcommands = lazy_subcommands or {}
         self._command_groups = {}  # Store group info for help display
-        self._init_command_groups()
+        self.init_command_groups()
 
-    def _init_command_groups(self):
+    def init_command_groups(self):
         """Initialize command groups from lazy_subcommands configuration."""
         for name, value in list(self.lazy_subcommands.items()):
             if (
@@ -66,7 +66,7 @@ class LazyGroup(click.RichGroup):
         """Get a command by name, loading it if necessary."""
         if cmd_name in self.lazy_subcommands:
             try:
-                return self._lazy_load(cmd_name)
+                return self.lazy_load(cmd_name)
             except (ImportError, AttributeError) as e:
                 # If loading fails, remove the command from listings
                 if not self.lazy_subcommands[cmd_name].startswith("hidden:"):
@@ -76,7 +76,7 @@ class LazyGroup(click.RichGroup):
                 return None
         return super().get_command(ctx, cmd_name)
 
-    def _lazy_load(self, cmd_name):
+    def lazy_load(self, cmd_name):
         """Load a command lazily from its module."""
         from importlib import import_module, util
 
@@ -104,7 +104,7 @@ class LazyGroup(click.RichGroup):
             cmd_object = getattr(mod, cmd_object_name)
 
             # Verify it's a Click command
-            if not isinstance(cmd_object, click.BaseCommand):
+            if not isinstance(cmd_object, click.Command):
                 raise ValueError(
                     f"Object '{cmd_object_name}' in module '{modname}' is not a Click command"
                 )

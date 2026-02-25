@@ -43,10 +43,13 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
 
 ## Testing & Benchmarking
 1. **Testing**:
-   - Add code `src/tests/*`
-   - You can take a look at `/clusterfs/jgi/scratch/science/metagen/neri/tests/rp_tests/` (on dori) which conntains example data for different commands, seperated by input size.
-   - **Running tests**: Use `pixi run python src/tests/test_cli_commands.py` or point directly to the interpreter at `.pixi/envs/default/bin/python` to ensure correct environment
-   - For quick tests during development, use `pixi run python <script.py>` to run Python scripts with the correct dependencies
+   - Add tests under `src/tests/*`.
+   - Prefer `pytest` for new tests, and keep command smoke tests in `src/tests/test_cli_contracts.py` with scenarios in `src/tests/cli_scenarios.json`.
+   - Use small/local fixtures from `testing_folder/` when possible.
+   - You can also use `/clusterfs/jgi/scratch/science/metagen/neri/tests/rp_tests/` (on dori), which contains larger example data for different commands.
+   - **Run standardized CLI tests**: `pixi run -e dev pytest -q src/tests/test_cli_contracts.py`
+   - **Run all tests**: `pixi run -e dev pytest -q src/tests`
+   - Legacy ad-hoc scripts under `testing_folder/*.sh` are still useful for manual debugging, but new command validation should be added to the pytest flow above.
 2. **Benchmarking**:
    - Use `/usr/bin/time` for resource monitoring. Alternatively, hyperfine is great too but. Ideallt - use SLURM and keep track of the job IDs for later analysis with seff/pyseff.
 
