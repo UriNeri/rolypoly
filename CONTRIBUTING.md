@@ -6,7 +6,7 @@ Contributions welcome! Whether it's bug fixes, new features, documentation impro
 Check out our [project roadmap and TODO list](https://docs.google.com/spreadsheets/d/1udNbxtK1QMfOhVgxHyhrgw7U1hHFeIazlcLM6VIcbJo/edit?gid=0#gid=0) to see what features and improvements are planned.
 
 ## Contribution guidelines
-- **Primary Language**: Python >=3.9
+- **Primary Language**: Python >=3.10
 - **Secondary Languages**: Some system calls to Bash are allowed.
 - **Dependency Management**: via pixi (development)
   - Prefer using existing dependencies over adding new ones.
@@ -26,6 +26,7 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
    - Functions and Internal variables: Snake case (e.g., `skip_existing`). Try and reuse variable names from other commands for the same purpose. Long descriptive names are ok.
    - Classes: PascalCase (though use classes sparingly).
    - Environment or Global variables: UPPERCASE or CamelCase.
+   - Avoid "_" prefix for "private" functions. if somthing is explictly not meant to ever at all be used outside its scope, that should be in a comment or docstring, but in generally we want to avoid these and there shouldn't be "private" breaking stuff.
 
 3. **Temporary Files**:
    - Optionally, create temp directory (hidden argument in some commands `--temp-dir`, if not specified it's within user's output path).  
