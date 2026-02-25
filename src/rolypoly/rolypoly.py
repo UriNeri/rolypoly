@@ -86,6 +86,12 @@ CONTEXT_SETTINGS = dict(
                 # "test": "tests.test_cli_commands.test",
             },
         },
+        "bining": {
+            "name": "Binning",
+            "commands": {
+                "termini": "rolypoly.commands.bining.termini.termini",
+            },
+        },
         # "characterise": {
         #     "name": "Characterisation",
         #     "commands": {
