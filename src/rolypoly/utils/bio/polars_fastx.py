@@ -36,7 +36,9 @@ class SequenceExpr:
     def length(self) -> pl.Expr:
         """Get sequence length"""
         # return self._expr.str.len_chars().cast(pl.Int64)
-        return self._expr.str.len_bytes().cast(pl.Int64) # len_bytes is faster than len_chars but assumes to be 1 byte per letter assumes str is ASCII.
+        return self._expr.str.len_bytes().cast(
+            pl.Int64
+        )  # len_bytes is faster than len_chars but assumes to be 1 byte per letter assumes str is ASCII.
 
     def codon_usage(self) -> pl.Expr:
         """Calculate codon usage frequencies"""
@@ -368,7 +370,9 @@ def fasta_stats(
     #     stats_expr.append(pl.col("sequence").seq.field(field).alias(field))
 
     if "length" in selected_fields:
-        stats_expr.append(pl.col("sequence").seq.length().cast(pl.Int64).alias("length"))
+        stats_expr.append(
+            pl.col("sequence").seq.length().cast(pl.Int64).alias("length")
+        )
     if "gc_content" in selected_fields:
         stats_expr.append(
             pl.col("sequence").seq.gc_content().alias("gc_content")

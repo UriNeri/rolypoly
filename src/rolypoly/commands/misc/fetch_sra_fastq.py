@@ -48,7 +48,9 @@ def resolve_accession_to_run_ids(accession: str) -> list[str]:
         logger.warning(f"Failed to resolve accession {accession}: {exc}")
         return []
 
-    lines = [line.strip() for line in response.text.splitlines() if line.strip()]
+    lines = [
+        line.strip() for line in response.text.splitlines() if line.strip()
+    ]
     if len(lines) < 2:
         return []
 
@@ -291,7 +293,9 @@ def fetch_sra(input, output_dir, log_level, report):
 
         run_ids = list(dict.fromkeys(run_ids))
         if not run_ids:
-            logger.error("Error: Input file is empty or has no resolvable accessions")
+            logger.error(
+                "Error: Input file is empty or has no resolvable accessions"
+            )
             return
     else:
         candidate = input.strip()

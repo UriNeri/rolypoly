@@ -20,9 +20,7 @@ def infer_separator(input_path: Path, separator: str) -> str:
 
 
 def parse_abundance_table(
-    input_path: Path,
-    separator: str,
-    logger,
+    input_path: Path, separator: str, logger
 ) -> tuple[pl.DataFrame, str, list[str]]:
     """Read a contig x sample abundance/presence table."""
     if not input_path.exists():
@@ -46,15 +44,15 @@ def parse_abundance_table(
     )
 
     casted = df.with_columns(
-        [pl.col(column).cast(pl.Float64, strict=False) for column in sample_columns]
+        [
+            pl.col(column).cast(pl.Float64, strict=False)
+            for column in sample_columns
+        ]
     )
 
     failed_cast_count = casted.select(
         [
-            pl.col(column)
-            .is_null()
-            .sum()
-            .alias(column)
+            pl.col(column).is_null().sum().alias(column)
             for column in sample_columns
         ]
     ).row(0)
@@ -140,8 +138,7 @@ def build_pair_frame(
 
 
 def build_groups(
-    contig_ids: np.ndarray,
-    edge_frame: pl.DataFrame,
+    contig_ids: np.ndarray, edge_frame: pl.DataFrame
 ) -> pl.DataFrame:
     """Create connected components from undirected edges."""
     if edge_frame.is_empty():
@@ -167,7 +164,9 @@ def build_groups(
         if root_a != root_b:
             parent[root_b] = root_a
 
-    for edge in edge_frame.select(["contig_1", "contig_2"]).iter_rows(named=True):
+    for edge in edge_frame.select(["contig_1", "contig_2"]).iter_rows(
+        named=True
+    ):
         union_nodes(edge["contig_1"], edge["contig_2"])
 
     component_map: dict[str, list[str]] = {}
@@ -260,7 +259,9 @@ def build_groups(
     show_default=True,
     help="Input delimiter",
 )
-@click.option("-t", "--threads", default=1, show_default=True, help="Number of threads")
+@click.option(
+    "-t", "--threads", default=1, show_default=True, help="Number of threads"
+)
 @click.option(
     "-g",
     "--log-file",
@@ -309,9 +310,7 @@ def correlate(
     output_base.parent.mkdir(parents=True, exist_ok=True)
 
     df, id_column, sample_columns = parse_abundance_table(
-        input_path,
-        separator,
-        logger,
+        input_path, separator, logger
     )
 
     contig_ids = df[id_column].to_numpy()
@@ -343,12 +342,10 @@ def correlate(
             }
         )
         empty_edges.write_csv(
-            output_base.with_suffix(".selected_pairs.tsv"),
-            separator="\t",
+            output_base.with_suffix(".selected_pairs.tsv"), separator="\t"
         )
         empty_groups.write_csv(
-            output_base.with_suffix(".groups.tsv"),
-            separator="\t",
+            output_base.with_suffix(".groups.tsv"), separator="\t"
         )
         return
 
@@ -376,23 +373,21 @@ def correlate(
         np.fill_diagonal(correlation_matrix, 1.0)
 
         correlation_pairs = build_pair_frame(
-            contig_ids,
-            correlation_matrix,
-            min_correlation,
-            "correlation",
+            contig_ids, correlation_matrix, min_correlation, "correlation"
         )
         correlation_pairs.write_csv(
-            output_base.with_suffix(".correlation_pairs.tsv"),
-            separator="\t",
+            output_base.with_suffix(".correlation_pairs.tsv"), separator="\t"
         )
         logger.info(
-            "Wrote %s correlation-supported pairs",
-            correlation_pairs.height,
+            "Wrote %s correlation-supported pairs", correlation_pairs.height
         )
 
     cooccurrence_pairs = pl.DataFrame()
     if mode in {"cooccurrence", "both"}:
-        shared_matrix = presence_matrix.astype(np.int32) @ presence_matrix.astype(np.int32).T
+        shared_matrix = (
+            presence_matrix.astype(np.int32)
+            @ presence_matrix.astype(np.int32).T
+        )
         cooccurrence_pairs = build_pair_frame(
             contig_ids,
             shared_matrix.astype(np.float64),
@@ -400,12 +395,10 @@ def correlate(
             "shared_samples",
         ).with_columns(pl.col("shared_samples").cast(pl.Int64))
         cooccurrence_pairs.write_csv(
-            output_base.with_suffix(".cooccurrence_pairs.tsv"),
-            separator="\t",
+            output_base.with_suffix(".cooccurrence_pairs.tsv"), separator="\t"
         )
         logger.info(
-            "Wrote %s permissive co-occurrence pairs",
-            cooccurrence_pairs.height,
+            "Wrote %s permissive co-occurrence pairs", cooccurrence_pairs.height
         )
 
     if mode == "correlation":
@@ -422,8 +415,7 @@ def correlate(
         ).unique()
 
     selected_pairs.write_csv(
-        output_base.with_suffix(".selected_pairs.tsv"),
-        separator="\t",
+        output_base.with_suffix(".selected_pairs.tsv"), separator="\t"
     )
 
     groups = build_groups(contig_ids, selected_pairs)

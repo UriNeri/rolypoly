@@ -1,6 +1,5 @@
 import os
 from pathlib import Path as pt
-from typing import Literal
 
 import rich_click as click
 from rich.console import Console

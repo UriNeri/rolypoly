@@ -24,7 +24,8 @@ from rolypoly.utils.bio.sequences import (
 )
 
 from rolypoly.utils.bio.polars_fastx import from_fastx_eager
-# import tqdm 
+
+# import tqdm
 from rolypoly.utils.logging.citation_reminder import remind_citations
 from rolypoly.utils.logging.loggit import get_version_info, setup_logging
 from rolypoly.utils.various import fetch_and_extract, run_command_comp
@@ -135,10 +136,10 @@ def build_data(data_dir, threads, log_file, log_level):
 
     # UniRef50 viral
     prepare_uniref50_viral(data_dir, threads, logger)
-    
+
     # contaminations
     prepare_contamination_seqs(data_dir, threads, logger)
-    
+
     # plastid reference sequences
     prepare_plastid_data(data_dir, logger)
     # tRNA reference sequences
@@ -316,11 +317,7 @@ def download_and_extract_rfam(data_dir, logger):
 
     logger.info("Downloading Rfam database")
     try:
-        fetch_and_extract(
-            rfam_url,
-            extract_to=rfam_extract_path,
-
-        )
+        fetch_and_extract(rfam_url, extract_to=rfam_extract_path)
         logger.info("Rfam database downloaded and extracted successfully.")
     except requests.exceptions.RequestException as e:
         logger.error(f"Error downloading Rfam database: {e}")
@@ -372,12 +369,11 @@ def tar_everything_and_upload_to_NERSC(data_dir, version=""):
         tools.append("refseq")
         f_out.write(remind_citations(tools, return_as_text=True) or "")
 
-    
     tar_command = f"tar --use-compress-program='pigz -p 8 --best' -cf rpdb.tar.gz {data_dir}"  # threads
 
     subprocess.run(tar_command, shell=True)
-    
-    #check which .py files use files/stuff from datadir/data_dir
+
+    # check which .py files use files/stuff from datadir/data_dir
     # sp.run(f"find src/rolypoly -name '*.py' -exec grep  data_dir|datadir \;", shell=True)
 
     # # On NERSC
@@ -385,6 +381,7 @@ def tar_everything_and_upload_to_NERSC(data_dir, version=""):
     # chmod +777 -R /global/dna/projectdirs/microbial/prokpubs/www/rolypoly/data/
     # upload_command = f"gsutil cp {data_dir}.tar.gz gs://rolypoly-data/"
     # subprocess.run(upload_command, shell=True)
+
 
 def analyze_data_dependencies(src_dir="src/rolypoly", data_dir=None):
     """Analyze Python files to determine required data paths for a slim tar.gz.
@@ -414,37 +411,45 @@ def analyze_data_dependencies(src_dir="src/rolypoly", data_dir=None):
                 full_path = os.path.join(root, file)
                 rel_path = os.path.relpath(full_path, data_dir)
                 data_files.add(rel_path)
-                data_files.add(file)  # Also add just the filename for direct matches
+                data_files.add(
+                    file
+                )  # Also add just the filename for direct matches
 
     # Find all Python files that reference data_dir, datadir, or ROLYPOLY_DATA
     result = subprocess.run(
         f"find {src_dir} -name '*.py' -exec grep -l 'data_dir\\|datadir\\|ROLYPOLY_DATA' {{}} \\;",
         shell=True,
         capture_output=True,
-        text=True
+        text=True,
     )
-    py_files = result.stdout.strip().split('\n') if result.stdout.strip() else []
+    py_files = (
+        result.stdout.strip().split("\n") if result.stdout.strip() else []
+    )
 
     # Also find Python files that contain any of the data filenames
     if data_files:
-        filename_pattern = '|'.join(re.escape(f) for f in data_files if f)
+        filename_pattern = "|".join(re.escape(f) for f in data_files if f)
         if filename_pattern:
             result2 = subprocess.run(
                 f"find {src_dir} -name '*.py' -exec grep -l '{filename_pattern}' {{}} \\;",
                 shell=True,
                 capture_output=True,
-                text=True
+                text=True,
             )
-            py_files.extend(result2.stdout.strip().split('\n') if result2.stdout.strip() else [])
+            py_files.extend(
+                result2.stdout.strip().split("\n")
+                if result2.stdout.strip()
+                else []
+            )
 
     # Remove duplicates and empty strings
     py_files = list(set(py_files))
     py_files = [f for f in py_files if f]
 
     for py_file in py_files:
-        if not py_file or 'build_data.py' in py_file:
+        if not py_file or "build_data.py" in py_file:
             continue
-        with open(py_file, 'r') as f:
+        with open(py_file, "r") as f:
             content = f.read()
 
         # Find patterns like data_dir / "path" or Path(data_dir) / "path"
@@ -474,7 +479,7 @@ def analyze_data_dependencies(src_dir="src/rolypoly", data_dir=None):
         print(f"Pattern 3 matches in {py_file}: {matches3}")
         for match in matches3:
             # Remove leading / if present
-            path = match.lstrip('/')
+            path = match.lstrip("/")
             required_paths.add(path)
 
         # Pattern 4: Path(data_dir) / "path"
@@ -508,14 +513,14 @@ def analyze_data_dependencies(src_dir="src/rolypoly", data_dir=None):
             required_paths.add(match)
 
         # Pattern 7b: Path(os.environ.get("ROLYPOLY_DATA", ""), "path") - multiple args to Path
-        rolypoly_path_multi_pattern = r'Path\(os\.environ\.get\(\"ROLYPOLY_DATA\",\s*\"\"\),\s*\"([^\"]+)\"'
+        rolypoly_path_multi_pattern = r"Path\(os\.environ\.get\(\"ROLYPOLY_DATA\",\s*\"\"\),\s*\"([^\"]+)\""
         matches7b = re.findall(rolypoly_path_multi_pattern, content)
         print(f"Pattern 7b matches in {py_file}: {matches7b}")
         for match in matches7b:
             required_paths.add(match)
 
         # Pattern 7c: os.path.join(Path(os.environ.get("ROLYPOLY_DATA", "")), "path")
-        rolypoly_join_path_pattern = r'os\.path\.join\(\s*Path\(os\.environ\.get\(\"ROLYPOLY_DATA\",\s*\"\"\)\),\s*\"([^\"]+)\"'
+        rolypoly_join_path_pattern = r"os\.path\.join\(\s*Path\(os\.environ\.get\(\"ROLYPOLY_DATA\",\s*\"\"\)\),\s*\"([^\"]+)\""
         matches7c = re.findall(rolypoly_join_path_pattern, content)
         print(f"Pattern 7c matches in {py_file}: {matches7c}")
         for match in matches7c:
@@ -540,17 +545,19 @@ def analyze_data_dependencies(src_dir="src/rolypoly", data_dir=None):
         # Pattern 10: Direct filename matches from data directory
         if data_files:
             for data_file in data_files:
-                if data_file in content and '/' in data_file:  # Only add if it's a full path
+                if (
+                    data_file in content and "/" in data_file
+                ):  # Only add if it's a full path
                     required_paths.add(data_file)
 
     # Clean up paths (remove any empty or invalid)
-    required_paths = {p for p in required_paths if p and not p.startswith('/')}
+    required_paths = {p for p in required_paths if p and not p.startswith("/")}
 
     # Get all existing paths in data_dir
     all_paths = set()
     for root, dirs, files in os.walk(data_dir):
         rel_root = os.path.relpath(root, data_dir)
-        if rel_root != '.':
+        if rel_root != ".":
             all_paths.add(rel_root)
         for d in dirs:
             all_paths.add(os.path.relpath(os.path.join(root, d), data_dir))
@@ -566,7 +573,9 @@ def analyze_data_dependencies(src_dir="src/rolypoly", data_dir=None):
     return filtered_paths
 
 
-def create_slim_tarball(data_dir, required_paths, version=datetime.datetime.now().strftime("%Y%m%d")):
+def create_slim_tarball(
+    data_dir, required_paths, version=datetime.datetime.now().strftime("%Y%m%d")
+):
     """Create a slim tarball containing only the required data paths.
 
     Args:
@@ -593,46 +602,46 @@ def create_slim_tarball(data_dir, required_paths, version=datetime.datetime.now(
         return deduped
 
     required_paths = [
-        'README.md',
-        'contam/adapters/AFire_illuminatetritis1223.fa',
-        'contam/adapters/bbmap_adapters.fa',
-        'contam/masking/combined_deduplicated_orfs.faa',
-        'contam/masking/combined_entropy_masked.fasta',
-        'contam/rrna/ncbi_rRNA_all_sequences_masked_entropy.fasta',
-        'contam/rrna/rrna_to_genome_mapping.parquet',
-        'contam/rrna/silva_rRNA_all_sequences_masked_entropy.fasta',
-        'profiles/genomad_rna_viral_markers_with_annotation.csv',
-        'profiles/motif_metadata.json',
-        'profiles/NVPC_descriptions.csv',
-        'profiles/vfam.annotations.tsv',
-        'profiles/cm/Rfam.cm',
-        'profiles/hmmdbs/genomad_rna_viral_markers.hmm',
-        'profiles/hmmdbs/neordrp2.1.hmm',
-        'profiles/hmmdbs/nvpc.hmm',
-        'profiles/hmmdbs/pfam_rdrps_and_rts.hmm',
-        'profiles/hmmdbs/Pfam-A.hmm',
-        'profiles/hmmdbs/rdrp_scan.hmm',
-        'profiles/hmmdbs/rvmt_motifs.hmm',
-        'profiles/hmmdbs/rvmt.hmm',
-        'profiles/hmmdbs/vfam.hmm',
-        'profiles/mmseqs_dbs/genomad',
-        'profiles/mmseqs_dbs/nvpc',
-        'profiles/mmseqs_dbs/rdrp_scan',
-        'profiles/mmseqs_dbs/RVMT',
-        'profiles/mmseqs_dbs/rvmt_motifs',
-        'profiles/mmseqs_dbs/vfam',
+        "README.md",
+        "contam/adapters/AFire_illuminatetritis1223.fa",
+        "contam/adapters/bbmap_adapters.fa",
+        "contam/masking/combined_deduplicated_orfs.faa",
+        "contam/masking/combined_entropy_masked.fasta",
+        "contam/rrna/ncbi_rRNA_all_sequences_masked_entropy.fasta",
+        "contam/rrna/rrna_to_genome_mapping.parquet",
+        "contam/rrna/silva_rRNA_all_sequences_masked_entropy.fasta",
+        "profiles/genomad_rna_viral_markers_with_annotation.csv",
+        "profiles/motif_metadata.json",
+        "profiles/NVPC_descriptions.csv",
+        "profiles/vfam.annotations.tsv",
+        "profiles/cm/Rfam.cm",
+        "profiles/hmmdbs/genomad_rna_viral_markers.hmm",
+        "profiles/hmmdbs/neordrp2.1.hmm",
+        "profiles/hmmdbs/nvpc.hmm",
+        "profiles/hmmdbs/pfam_rdrps_and_rts.hmm",
+        "profiles/hmmdbs/Pfam-A.hmm",
+        "profiles/hmmdbs/rdrp_scan.hmm",
+        "profiles/hmmdbs/rvmt_motifs.hmm",
+        "profiles/hmmdbs/rvmt.hmm",
+        "profiles/hmmdbs/vfam.hmm",
+        "profiles/mmseqs_dbs/genomad",
+        "profiles/mmseqs_dbs/nvpc",
+        "profiles/mmseqs_dbs/rdrp_scan",
+        "profiles/mmseqs_dbs/RVMT",
+        "profiles/mmseqs_dbs/rvmt_motifs",
+        "profiles/mmseqs_dbs/vfam",
         # 'reference_seqs/mito_refseq/combined_mito_refseq.fasta',
         # 'reference_seqs/plastid_refseq/combined_plastid_refseq.fasta',
-        'reference_seqs/ncbi_ribovirus/mmseqs',
-        'reference_seqs/ncbi_ribovirus/refseq_ribovirus_genomes_orfs.faa',
-        'reference_seqs/ncbi_ribovirus/refseq_ribovirus_genomes.fasta',
-        'reference_seqs/RVMT/mmseqs',
-        'reference_seqs/RVMT/RVMT_cleaned_contigs.fasta',
-        'reference_seqs/RVMT/RVMT_cleaned_orfs.faa',
-        'reference_seqs/uniref/uniref50_viral.tsv',
-        'reference_seqs/uniref/uniref50_viral.fasta'
+        "reference_seqs/ncbi_ribovirus/mmseqs",
+        "reference_seqs/ncbi_ribovirus/refseq_ribovirus_genomes_orfs.faa",
+        "reference_seqs/ncbi_ribovirus/refseq_ribovirus_genomes.fasta",
+        "reference_seqs/RVMT/mmseqs",
+        "reference_seqs/RVMT/RVMT_cleaned_contigs.fasta",
+        "reference_seqs/RVMT/RVMT_cleaned_orfs.faa",
+        "reference_seqs/uniref/uniref50_viral.tsv",
+        "reference_seqs/uniref/uniref50_viral.fasta",
     ]
-    required_paths.append('README.md')  # always include README
+    required_paths.append("README.md")  # always include README
     required_paths = deduplicate_paths(required_paths)
     # get size info
     total_size = 0
@@ -646,19 +655,23 @@ def create_slim_tarball(data_dir, required_paths, version=datetime.datetime.now(
                     for f in filenames:
                         fp = os.path.join(dirpath, f)
                         total_size += os.path.getsize(fp)
-    print(f"Total size of selected data for slim tarball: {total_size / (1024*1024):.2f} MB")
+    print(
+        f"Total size of selected data for slim tarball: {total_size / (1024 * 1024):.2f} MB"
+    )
 
     tarball_name = f"rolypoly_data_slim_{version}.tar.gz"
-    
+
     print(f"Creating slim tarball: {tarball_name}")
     print(f"Required paths: {sorted(required_paths)}")
 
     # Create a temporary file with the list of paths
-    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+    with tempfile.NamedTemporaryFile(
+        mode="w", delete=False, suffix=".txt"
+    ) as f:
         for rel_path in required_paths:
             full_path = os.path.join(data_dir, rel_path)
             if os.path.exists(full_path):
-                f.write(rel_path + '\n')
+                f.write(rel_path + "\n")
             else:
                 print(f"Warning: {rel_path} does not exist, skipping")
         listfile = f.name
@@ -680,10 +693,10 @@ def create_slim_tarball(data_dir, required_paths, version=datetime.datetime.now(
 def prepare_uniref50_viral(data_dir, threads, logger):
     """Download and prepare UniRef50 viral protein sequences."""
     logger.info("Downloading UniRef50 viral protein sequences")
-    os.makedirs(os.path.join(
-        data_dir, "reference_seqs/uniref"), exist_ok=True)
+    os.makedirs(os.path.join(data_dir, "reference_seqs/uniref"), exist_ok=True)
     uniref50_viral_fasta = os.path.join(
-        data_dir, "reference_seqs/uniref/uniref50_viral.fasta")
+        data_dir, "reference_seqs/uniref/uniref50_viral.fasta"
+    )
     fetch_and_extract(
         "https://rest.uniprot.org/uniref/stream?compressed=true&format=fasta&query=%28%28identity%3A0.5%29+AND+%28taxonomy_id%3A10239%29+AND+%28count%3A%5B1+TO+192133%5D%29%29",
         fetched_to=uniref50_viral_fasta + ".gz",
@@ -693,10 +706,11 @@ def prepare_uniref50_viral(data_dir, threads, logger):
         debug=True,
     )
     uniref50_viral_data = os.path.join(
-        data_dir, "reference_seqs/uniref/uniref50_viral.tsv")
+        data_dir, "reference_seqs/uniref/uniref50_viral.tsv"
+    )
     fetch_and_extract(
         "https://rest.uniprot.org/uniref/stream?compressed=true&fields=id%2Cname%2Ctypes%2Ccount%2Corganism%2Clength%2Cidentity%2Cmembers&format=tsv&query=%28%28identity%3A0.5%29+AND+%28taxonomy_id%3A10239%29+AND+%28count%3A%5B1+TO+192133%5D%29%29",
-        fetched_to=uniref50_viral_data+ ".gz",
+        fetched_to=uniref50_viral_data + ".gz",
         extract_to=os.path.dirname(uniref50_viral_fasta),
         extract=True,
         logger=logger,
@@ -704,14 +718,13 @@ def prepare_uniref50_viral(data_dir, threads, logger):
     )
     # why the hell is it still compressed??? 2 times gzipped???
     from rolypoly.utils.various import extract
-    extract(uniref50_viral_data+".gz", uniref50_viral_data)
+
+    extract(uniref50_viral_data + ".gz", uniref50_viral_data)
 
     # remove sequences of uncharacterized/hypothetical proteins, or non-informative such as "polyprotein fragment"
     logger.info("Filtering UniRef50 viral protein sequences")
     uniref_df = pl.read_csv(
-        uniref50_viral_data,
-        separator="\t",
-        null_values=["NA", ""],
+        uniref50_viral_data, separator="\t", null_values=["NA", ""]
     )
     to_remove_terms = [
         "uncharacterized protein",
@@ -721,26 +734,33 @@ def prepare_uniref50_viral(data_dir, threads, logger):
         "unnamed protein product",
         "polyprotein fragment",
         "genome polyprotein",
-        "fragment",        
+        "fragment",
     ]
     pattern = "|".join(to_remove_terms)
     filtered_uniref_df = uniref_df.filter(
         ~pl.col("Cluster Name").str.to_lowercase().str.contains(pattern)
     )
-    filtered_ids = filtered_uniref_df.select(pl.col("Cluster ID")).to_series().to_list()
-    logger.info(f"Removing {uniref_df.height - filtered_uniref_df.height} non-informative sequences from UniRef50 viral dataset")
+    filtered_ids = (
+        filtered_uniref_df.select(pl.col("Cluster ID")).to_series().to_list()
+    )
+    logger.info(
+        f"Removing {uniref_df.height - filtered_uniref_df.height} non-informative sequences from UniRef50 viral dataset"
+    )
     # filter fasta
     # first load the fasta to a dataframe to get the original headers containing the Cluster IDs + defline and remove based on only the IDs
     unidf = from_fastx_eager(uniref50_viral_fasta).with_columns(
         pl.col("header").str.split(" ").list.first().alias("Cluster ID")
     )
-    unidf_filtered = unidf.filter(
-        pl.col("Cluster ID").is_in(filtered_ids)
+    unidf_filtered = unidf.filter(pl.col("Cluster ID").is_in(filtered_ids))
+    write_fasta_file(
+        format="fasta",
+        headers=unidf_filtered["header"].to_list(),
+        seqs=unidf_filtered["sequence"].to_list(),
+        output_file=uniref50_viral_fasta,
     )
-    write_fasta_file(format="fasta",headers=unidf_filtered["header"].to_list(), seqs=unidf_filtered["sequence"].to_list(), output_file=uniref50_viral_fasta)
 
     # clean up temporary gz files
-    try:    
+    try:
         os.remove(uniref50_viral_fasta + ".gz")
         os.remove(uniref50_viral_data + ".gz")
     except FileNotFoundError:
@@ -753,9 +773,9 @@ def prepare_uniref50_viral(data_dir, threads, logger):
     # https://rest.uniprot.org/uniref/stream?compressed=true&format=fasta&query=%28%28identity%3A0.5%29+AND+%28taxonomy_id%3A10239%29+AND+%28count%3A%5B1+TO+192133%5D%29%29
 
 
-
 def prepare_genomad_rna_viral_markers(
-    data_dir, threads, logger: logging.Logger):
+    data_dir, threads, logger: logging.Logger
+):
     """Download and prepare RNA viral HMMs from geNomad markers.
 
     Downloads the geNomad database, analyzes the marker metadata to identify
@@ -856,7 +876,6 @@ def prepare_genomad_rna_viral_markers(
 
     filled_interpro = []
     from rich.progress import track
-
 
     tiny_fill = to_fill.select(
         ["ANNOTATION_ACCESSIONS_struct", "source_db"]
@@ -961,7 +980,10 @@ def prepare_genomad_rna_viral_markers(
         # move the info table to the head folder of profiles (from all dbs)
         shutil.move(
             f"{genomad_dir}/rna_viral_markers_with_annotation.csv",
-            os.path.join(data_dir, "profiles/genomad_rna_viral_markers_with_annotation.csv"),
+            os.path.join(
+                data_dir,
+                "profiles/genomad_rna_viral_markers_with_annotation.csv",
+            ),
         )
         os.remove(f"{genomad_dir}/genomad_msa_v1.9.tar.gz")
         shutil.rmtree(genomad_db_dir)
@@ -970,7 +992,7 @@ def prepare_genomad_rna_viral_markers(
 
     logger.info(f"Created genomad RNA viral HMM database at {output_hmm}")
 
- 
+
 def prepare_rdrp_scan(data_dir, threads, logger: logging.Logger):
     """Download and prepare RdRp profiles from RdRp-scan.
 
@@ -1052,38 +1074,39 @@ def prepare_pfam_rdrps_rt(data_dir, threads, logger: logging.Logger):
     selected_pfam_output = os.path.join(hmmdb_dir, "pfam_rdrps_and_rts.hmm")
     from rolypoly.utils.bio.alignments import hmm_fetch
 
-    hmm_fetch(accessions=RdRps_and_RTs,
-              hmm_db=os.path.join(hmmdb_dir, "Pfam-A.hmm"),
-              output=selected_pfam_output,
-              strip_after_char=".",
-                logger=logger)
+    hmm_fetch(
+        accessions=RdRps_and_RTs,
+        hmm_db=os.path.join(hmmdb_dir, "Pfam-A.hmm"),
+        output=selected_pfam_output,
+        strip_after_char=".",
+        logger=logger,
+    )
 
-    # also prepare mmseqs profile db 
+    # also prepare mmseqs profile db
     subprocess.run(
-                "mmseqs databases Pfam-A.seed data/profiles/mmseqs_dbs/pfam_a/pfam_a_38_seed tmp",
-                shell=True,
-                check=True,
+        "mmseqs databases Pfam-A.seed data/profiles/mmseqs_dbs/pfam_a/pfam_a_38_seed tmp",
+        shell=True,
+        check=True,
     )
     # TODO: Filter the pfam_A mmseqs db to remove "hypothetical protein" + similar entries?
 
     from rolypoly.utils.bio.alignments import fetchPfamMSA
+
     # fetch Pfam MSAs for these accessions
     pfam_msa_folder = os.path.join(hmmdb_dir, "pfam_msas")
     os.makedirs(pfam_msa_folder, exist_ok=True)
     for acc in [acc.split(".")[0] for acc in RdRps_and_RTs]:
-            fetchPfamMSA(
-                acc=acc,
-                output_folder=pfam_msa_folder,
-                logger=logger,
-            )
-            logger.info(f"Fetched MSA for Pfam accession {acc}")
-        # build mmseqs profile db from these msas
+        fetchPfamMSA(acc=acc, output_folder=pfam_msa_folder, logger=logger)
+        logger.info(f"Fetched MSA for Pfam accession {acc}")
+    # build mmseqs profile db from these msas
     mmseqs_profile_db_from_directory(
         msa_dir=pfam_msa_folder,
-        output=os.path.join(mmseqs_dbs, "pfam_rdrps_and_rts/pfam_rdrps_and_rts"),
+        output=os.path.join(
+            mmseqs_dbs, "pfam_rdrps_and_rts/pfam_rdrps_and_rts"
+        ),
         msa_pattern="*.sth",
-        info_table=None)
-    
+        info_table=None,
+    )
 
     # clean up downloaded gz
     try:
@@ -1096,21 +1119,21 @@ def prepare_pfam_rdrps_rt(data_dir, threads, logger: logging.Logger):
     logger.debug("Finished preparing pfam and pfam rdrps+rts sub-database")
 
 
-def prepare_neordrp_profiles (data_dir, threads, logger: logging.Logger):
-    """Prepare NeoRdRp v2.1 RdRp profile HMM database 
+def prepare_neordrp_profiles(data_dir, threads, logger: logging.Logger):
+    """Prepare NeoRdRp v2.1 RdRp profile HMM database
     NOTE: this is a USING A PRECOMPUTED HMM, not building from MSA! MIGHT NOT BE COMPATIBLE WITH FUTURE VERSIONS OF HMMER!
     """
     logger.info("Preparing NeoRdRp v2.1 HMM database")
     neordrp_url = "https://zenodo.org/records/10851672/files/NeoRdRp.2.1.hmm.xz?download=1"
     neordrp_path = os.path.join(hmmdb_dir, "NeoRdRp.2.1.hmm.xz")
     fetch_and_extract(
-        url=neordrp_url,
-        fetched_to=neordrp_path,
-        extract_to=hmmdb_dir,
+        url=neordrp_url, fetched_to=neordrp_path, extract_to=hmmdb_dir
     )
-    shutil.move(os.path.join(hmmdb_dir, "NeoRdRp.2.1.hmm"), os.path.join(hmmdb_dir, "neordrp2.1.hmm"))
+    shutil.move(
+        os.path.join(hmmdb_dir, "NeoRdRp.2.1.hmm"),
+        os.path.join(hmmdb_dir, "neordrp2.1.hmm"),
+    )
     os.unlink(neordrp_path)
-
 
 
 def prepare_RVMT_profiles(data_dir, threads, logger: logging.Logger):
@@ -1138,7 +1161,8 @@ def prepare_RVMT_profiles(data_dir, threads, logger: logging.Logger):
     )
 
     # now for nvpc
-    fetch_and_extract(url="https://portal.nersc.gov/dna/microbial/prokpubs/Riboviria/RiboV1.4/zenodo/v4/RVMT_Zenodo_V4/Domains_Annotations/NVPC/msaFiles.tar.gz",
+    fetch_and_extract(
+        url="https://portal.nersc.gov/dna/microbial/prokpubs/Riboviria/RiboV1.4/zenodo/v4/RVMT_Zenodo_V4/Domains_Annotations/NVPC/msaFiles.tar.gz",
         fetched_to=os.path.join(hmmdb_dir, "NVPC_msaFiles.tar.gz"),
         extract_to=os.path.join(hmmdb_dir, "RVMT/NVPC/"),
     )
@@ -1157,17 +1181,20 @@ def prepare_RVMT_profiles(data_dir, threads, logger: logging.Logger):
     # #  sort by number of new_name (most duplicates first)
     # nvpc_descriptions.write_csv(os.path.join(hmmdb_dir, "RVMT/NVPC/NVPC_descriptions.csv"),include_header=True)
 
-    info_table=pl.read_csv(os.path.join(profile_dir, "NVPC_descriptions.csv"))
+    info_table = pl.read_csv(os.path.join(profile_dir, "NVPC_descriptions.csv"))
     # remove any msa file that doesn't have a matching profile_accession in the info table
     import glob
+
     msa_files = glob.glob(os.path.join(hmmdb_dir, "RVMT/NVPC/msaFiles/*.afa"))
     valid_accessions = set(info_table["profile_accession"].to_list())
     for msa_file in msa_files:
         base_name = os.path.basename(msa_file)
-        #get the NVPC.NNNn part (first two parts separated by .)
+        # get the NVPC.NNNn part (first two parts separated by .)
         acc = ".".join(os.path.splitext(base_name)[0].split(".")[:2])
         if acc not in valid_accessions:
-            logger.info(f"Removed MSA file without matching accession: {msa_file}")
+            logger.info(
+                f"Removed MSA file without matching accession: {msa_file}"
+            )
             os.remove(msa_file)
 
     hmmdb_from_directory(
@@ -1194,7 +1221,6 @@ def prepare_RVMT_profiles(data_dir, threads, logger: logging.Logger):
         # missing_include=False,
     )
 
-    
     # clean up
     shutil.rmtree(os.path.join(hmmdb_dir, "RVMT/"))
     os.remove(os.path.join(hmmdb_dir, "zip.ali.220515.tgz"))
@@ -1227,9 +1253,7 @@ def prepare_vfam(data_dir, logger: logging.Logger):
     #     ('ConsensusFunctionalDescription', String)])
 
     vfam_df.write_csv(
-        os.path.join(
-            data_dir, "profiles", "hmmdbs", "vfam.annotations.tsv.gz"
-        )
+        os.path.join(data_dir, "profiles", "hmmdbs", "vfam.annotations.tsv.gz")
     )
     version = requests.get(
         "https://fileshare.lisc.univie.ac.at/vog/latest/release.txt"
@@ -1246,35 +1270,41 @@ def prepare_vfam(data_dir, logger: logging.Logger):
     )
 
     import glob
+
     # remove GroupNames and msa files that only have 2 or less sequences, or that have "hypothetical" in the description
-    msa_files = glob.glob(os.path.join(os.path.join(data_dir, "profiles", "hmmdbs", "vfam"), "msa/*.msa"))
-    valid_accessions = set(vfam_df.filter(
-        (~pl.col("ConsensusFunctionalDescription").str.contains("hypothetical")) & 
-        (pl.col("SpeciesCount") > 2)
-    )["#GroupName"].to_list())
+    msa_files = glob.glob(
+        os.path.join(
+            os.path.join(data_dir, "profiles", "hmmdbs", "vfam"), "msa/*.msa"
+        )
+    )
+    valid_accessions = set(
+        vfam_df.filter(
+            (
+                ~pl.col("ConsensusFunctionalDescription").str.contains(
+                    "hypothetical"
+                )
+            )
+            & (pl.col("SpeciesCount") > 2)
+        )["#GroupName"].to_list()
+    )
     for msa_file in msa_files:
         base_name = os.path.basename(msa_file)
-        #get the NVPC.NNNn part (first two parts separated by .)
+        # get the NVPC.NNNn part (first two parts separated by .)
         acc = ".".join(os.path.splitext(base_name)[0].split(".")[:2])
         if acc not in valid_accessions:
             # logger.info(f"Removed MSA file without matching accession: {msa_file}")
             os.remove(msa_file)
 
-
     output_hmm = os.path.join(
         os.path.join(data_dir, "profiles/hmmdbs"), "vfam.hmm"
     )
-    
+
     hmmdb_from_directory(
         os.path.join(data_dir, "profiles", "hmmdbs", "vfam", "msa"),
         output_hmm,
         msa_pattern="*.msa",
         info_table=(
-            os.path.join(
-                data_dir,
-                "profiles",
-                "vfam.annotations.tsv.gz",
-            )
+            os.path.join(data_dir, "profiles", "vfam.annotations.tsv.gz")
         ),
         name_col="#GroupName",
         accs_col="#GroupName",
@@ -1288,11 +1318,7 @@ def prepare_vfam(data_dir, logger: logging.Logger):
         output=os.path.join(mmseqs_dbs, "vfam/vfam"),
         msa_pattern="*.msa",
         info_table=(
-            os.path.join(
-                data_dir,
-                "profiles",
-                "vfam.annotations.tsv.gz",
-            )
+            os.path.join(data_dir, "profiles", "vfam.annotations.tsv.gz")
         ),
         name_col="#GroupName",
         accs_col="#GroupName",
@@ -1304,6 +1330,7 @@ def prepare_vfam(data_dir, logger: logging.Logger):
     logger.info(
         f"Created VFAM HMM database at {os.path.join(data_dir, 'hmmdbs', 'vfam.hmm')}"
     )
+
 
 def prepare_ncbi_ribovirus(data_dir, threads, logger: logging.Logger):
     """Download and prepare NCBI ribovirus reference sequences (RefSeq only).
@@ -1726,7 +1753,7 @@ def prepare_contamination_seqs(data_dir, threads, logger):
     deduplicated_fasta = os.path.join(
         masking_dir, "combined_deduplicated_orfs.faa"
     )
-    
+
     logger.info(
         f"Deduplicating sequences from {len([rvmt_fasta_path, ncbi_ribovirus_fasta_path])} files"
     )
@@ -1739,7 +1766,6 @@ def prepare_contamination_seqs(data_dir, threads, logger):
         return_stats=True,
         logger=logger,
     )
-
 
     # clean up intermediate files
     try:
@@ -1868,7 +1894,9 @@ def prepare_contamination_seqs(data_dir, threads, logger):
         on=["primaryAccession"],
         how="inner",
     )
-    silva_df.write_parquet(os.path.join(rrna_dir, "silva_rrna_sequences.parquet"))
+    silva_df.write_parquet(
+        os.path.join(rrna_dir, "silva_rrna_sequences.parquet")
+    )
     # silva_df.height
     # silva_df["ncbi_taxonid"].null_count()
 
@@ -1900,6 +1928,7 @@ def prepare_contamination_seqs(data_dir, threads, logger):
     # has_header=True)
     # polars failed me, so using line by line iterator
     from gzip import open as gz_open
+
     with gz_open(
         os.path.join(rrna_dir, "assembly_summary_genbank.txt.gz"), "r"
     ) as f:
@@ -1920,7 +1949,7 @@ def prepare_contamination_seqs(data_dir, threads, logger):
             records.append(record)
     genbank_summary = pl.from_records(records).rename({"taxid": "ncbi_taxonid"})
     genbank_summary.collect_schema()
-        # Schema([('assembly_accession', String),
+    # Schema([('assembly_accession', String),
     #         ('bioproject', String),
     #         ('biosample', String),
     #         ('wgs_master', String),
@@ -1971,7 +2000,7 @@ def prepare_contamination_seqs(data_dir, threads, logger):
         has_header=True,
     )
     # In [91]: genbank_summary.collect_schema()
-    # Out[91]: 
+    # Out[91]:
     # Schema([('assembly_accession', String),
     #         ('bioproject', String),
     #         ('biosample', String),
@@ -2017,7 +2046,7 @@ def prepare_contamination_seqs(data_dir, threads, logger):
     genbank_summary.write_csv(
         os.path.join(rrna_dir, "genbank_assembly_summary.tsv"), separator="\t"
     )
-    
+
     # next, for every unique ncbi_taxonid, we select the one that has the most protein_coding_gene_count, then refseq_category, then tie breaking with non_coding_gene_count, tie breaking by latest assembly (by seq_rel_date).
     temp_genbank = genbank_summary.sort(
         by=[
@@ -2030,10 +2059,13 @@ def prepare_contamination_seqs(data_dir, threads, logger):
     logger.info(
         f"Filtered GenBank summary to {temp_genbank.height} unique taxid entries for SILVA sequences"
     )
-    temp_genbank = temp_genbank.filter(pl.col("ncbi_taxonid").is_in(unique_taxids)).unique()
+    temp_genbank = temp_genbank.filter(
+        pl.col("ncbi_taxonid").is_in(unique_taxids)
+    ).unique()
     temp_genbank.height
     # only 30482 out ok ~100k?
-    fetch_and_extract( url="http://ftp.ncbi.nlm.nih.gov/gene/DATA/gene2accession.gz",
+    fetch_and_extract(
+        url="http://ftp.ncbi.nlm.nih.gov/gene/DATA/gene2accession.gz",
         fetched_to=os.path.join(rrna_dir, "gene2accession.gz"),
         extract=False,
     )
@@ -2047,7 +2079,9 @@ def prepare_contamination_seqs(data_dir, threads, logger):
         has_header=True,
         # n_rows=100
     )
-    gene2accession.write_parquet(os.path.join(rrna_dir, "gene2accession.parquet"))
+    gene2accession.write_parquet(
+        os.path.join(rrna_dir, "gene2accession.parquet")
+    )
     # gene2accession = pl.read_parquet(os.path.join(rrna_dir, "gene2accession.parquet"))
     # gene2accession.collect_schema()
     # Schema([('#tax_id', Int64),
@@ -2068,9 +2102,9 @@ def prepare_contamination_seqs(data_dir, threads, logger):
     #     ('Symbol', String)])
     gene2accession = gene2accession.rename({"#tax_id": "ncbi_taxonid"})
     test_df = gene2accession.filter(pl.col("ncbi_taxonid").is_in(unique_taxids))
-    test_df.height # 148449745
-    test_df2 = gene2accession.select(["ncbi_taxonid","assembly"]).unique()
-    test_df2.height # 52548
+    test_df.height  # 148449745
+    test_df2 = gene2accession.select(["ncbi_taxonid", "assembly"]).unique()
+    test_df2.height  # 52548
 
     silva_df = silva_df.with_columns(
         ncbi_taxonid=pl.col("ncbi_taxonid").cast(pl.String)
@@ -2152,36 +2186,42 @@ def prepare_trna_data(data_dir, logger):
     file_url = "https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/fasta_files/RF00005.fa.gz"
     trna_seqs = os.path.join(trna_dir, "tRNA_sequences.fasta")
     gz_filename = "RF00005.fa.gz"
-    deduplicated_fasta = os.path.join(trna_dir, "tRNA_sequences_deduplicated.fasta")
+    deduplicated_fasta = os.path.join(
+        trna_dir, "tRNA_sequences_deduplicated.fasta"
+    )
 
     fetch_and_extract(
-                    url=file_url,
-                    fetched_to=os.path.join(trna_dir, gz_filename),
-                    extract_to=trna_dir,
-                    expected_file=trna_seqs,
-                )
+        url=file_url,
+        fetched_to=os.path.join(trna_dir, gz_filename),
+        extract_to=trna_dir,
+        expected_file=trna_seqs,
+    )
     logger.info(f"Downloaded tRNA sequences to {trna_seqs}")
     # remove duplicates
     remove_duplicates(
         input_file=trna_seqs,
         output_file=deduplicated_fasta,
         return_stats=True,
-        by = "seq"
+        by="seq",
     )
     from rolypoly.utils.bio.polars_fastx import fasta_stats
     from rolypoly.utils.bio.sequences import write_fasta_file
+
     info_table = fasta_stats(deduplicated_fasta)
     info_table = info_table.filter(
-    pl.col("length").is_between(60,250),
-    pl.col("gc_content") >= 0.01,
+        pl.col("length").is_between(60, 250), pl.col("gc_content") >= 0.01
     )
 
     write_fasta_file(
-    seqs=info_table["sequence"].to_list(),
-    headers=info_table["header"].to_list(),
-    output_file=os.path.join(trna_dir, "tRNA_sequences_deduplicated_filtered.fasta"),
+        seqs=info_table["sequence"].to_list(),
+        headers=info_table["header"].to_list(),
+        output_file=os.path.join(
+            trna_dir, "tRNA_sequences_deduplicated_filtered.fasta"
+        ),
     )
-    logger.info(f"Wrote filtered tRNA sequences to {os.path.join(trna_dir, 'tRNA_sequences_deduplicated_filtered.fasta')}")
+    logger.info(
+        f"Wrote filtered tRNA sequences to {os.path.join(trna_dir, 'tRNA_sequences_deduplicated_filtered.fasta')}"
+    )
 
 
 def prepare_plastid_data(data_dir, logger):
@@ -2197,23 +2237,23 @@ def prepare_plastid_data(data_dir, logger):
     """
     plastid_dir = os.path.join(data_dir, "reference_seqs", "plastid_refseq")
     os.makedirs(plastid_dir, exist_ok=True)
-    
+
     logger.info("Downloading NCBI RefSeq plastid sequences")
-    
+
     base_url = "https://ftp.ncbi.nlm.nih.gov/refseq/release/plastid/plastid."
     suffix = ".genomic.fna.gz"
     files_to_get = ["1.1", "1.2", "2.1", "2.2", "3.1"]
-    
-    all_files =[]
+
+    all_files = []
     downloaded_files = []
-    
+
     for version in files_to_get:
         file_url = f"{base_url}{version}{suffix}"
         gz_filename = f"plastid.{version}.genomic.fna.gz"
         fasta_filename = f"plastid.{version}.genomic.fna"
-        
+
         logger.info(f"Downloading plastid version {version}")
-        
+
         # Download and extract the file
         try:
             extracted_path = fetch_and_extract(
@@ -2226,19 +2266,23 @@ def prepare_plastid_data(data_dir, logger):
             downloaded_files.append(extracted_path)
             all_files.append(extracted_path)
             all_files.append(os.path.join(plastid_dir, gz_filename))
-            logger.info(f"Successfully downloaded and extracted {fasta_filename}")
+            logger.info(
+                f"Successfully downloaded and extracted {fasta_filename}"
+            )
         except Exception as e:
             logger.error(f"Failed to download plastid version {version}: {e}")
             continue
-    
+
     if not downloaded_files:
         logger.error("No plastid files were successfully downloaded")
         return
-    
+
     # Combine and deduplicate the sequences
     combined_fasta = os.path.join(plastid_dir, "combined_plastid_refseq.fasta")
-    logger.info(f"Combining and deduplicating {len(downloaded_files)} plastid files")
-    
+    logger.info(
+        f"Combining and deduplicating {len(downloaded_files)} plastid files"
+    )
+
     stats = remove_duplicates(
         input_file=downloaded_files,
         output_file=combined_fasta,
@@ -2247,21 +2291,23 @@ def prepare_plastid_data(data_dir, logger):
         return_stats=True,
         logger=logger,
     )
-    
+
     if stats:
         logger.info(
             f"Plastid deduplication stats: {stats['unique_records']} unique sequences from {stats['total_records']} total, {stats['duplicates_removed']} duplicates removed"
         )
-    
+
     # Clean up individual files
     try:
         for file_path in all_files:
             if os.path.exists(file_path):
                 os.remove(file_path)
-                logger.debug(f"Removed intermediate file: {os.path.basename(file_path)}")
+                logger.debug(
+                    f"Removed intermediate file: {os.path.basename(file_path)}"
+                )
     except Exception as e:
         logger.warning(f"Could not remove intermediate plastid files: {e}")
-    
+
     logger.info(f"Plastid sequences prepared in {plastid_dir}")
 
 
@@ -2278,23 +2324,23 @@ def prepare_mito_data(data_dir, logger):
     """
     mito_dir = os.path.join(data_dir, "reference_seqs", "mito_refseq")
     os.makedirs(mito_dir, exist_ok=True)
-    
+
     logger.info("Downloading NCBI RefSeq mito sequences")
-    
+
     base_url = "https://ftp.ncbi.nlm.nih.gov/refseq/release/mitochondrion/mitochondrion."
     suffix = ".genomic.fna.gz"
-    files_to_get = ["1.1"] #
-    
-    all_files =[]
+    files_to_get = ["1.1"]  #
+
+    all_files = []
     downloaded_files = []
-    
+
     for version in files_to_get:
         file_url = f"{base_url}{version}{suffix}"
         gz_filename = f"mito.{version}.genomic.fna.gz"
         fasta_filename = f"mito.{version}.genomic.fna"
-        
+
         logger.info(f"Downloading mito version {version}")
-        
+
         # Download and extract the file
         try:
             extracted_path = fetch_and_extract(
@@ -2307,19 +2353,23 @@ def prepare_mito_data(data_dir, logger):
             downloaded_files.append(extracted_path)
             all_files.append(extracted_path)
             all_files.append(os.path.join(mito_dir, gz_filename))
-            logger.info(f"Successfully downloaded and extracted {fasta_filename}")
+            logger.info(
+                f"Successfully downloaded and extracted {fasta_filename}"
+            )
         except Exception as e:
             logger.error(f"Failed to download mito version {version}: {e}")
             continue
-    
+
     if not downloaded_files:
         logger.error("No mito files were successfully downloaded")
         return
-    
+
     # Combine and deduplicate the sequences
     combined_fasta = os.path.join(mito_dir, "combined_mito_refseq.fasta")
-    logger.info(f"Combining and deduplicating {len(downloaded_files)} mito files")
-    
+    logger.info(
+        f"Combining and deduplicating {len(downloaded_files)} mito files"
+    )
+
     stats = remove_duplicates(
         input_file=downloaded_files,
         output_file=combined_fasta,
@@ -2328,23 +2378,24 @@ def prepare_mito_data(data_dir, logger):
         return_stats=True,
         logger=logger,
     )
-    
+
     if stats:
         logger.info(
             f"mito deduplication stats: {stats['unique_records']} unique sequences from {stats['total_records']} total, {stats['duplicates_removed']} duplicates removed"
         )
-    
+
     # Clean up individual files to save space (optional)
     try:
         for file_path in all_files:
             if os.path.exists(file_path):
                 os.remove(file_path)
-                logger.debug(f"Removed intermediate file: {os.path.basename(file_path)}")
+                logger.debug(
+                    f"Removed intermediate file: {os.path.basename(file_path)}"
+                )
     except Exception as e:
         logger.warning(f"Could not remove intermediate mito files: {e}")
-    
-    logger.info(f"mito sequences prepared in {mito_dir}")
 
+    logger.info(f"mito sequences prepared in {mito_dir}")
 
 
 if __name__ == "__main__":

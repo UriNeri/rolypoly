@@ -873,8 +873,16 @@ def hmmdb_from_directory(
             else:
                 try:
                     # use msa.name if available, else generate from first sequence name
-                    fallback_acc = msa.name if getattr(msa, "name", None) is not None else None
-                    if fallback_acc is None and hasattr(msa, "names") and len(msa.names) > 0:
+                    fallback_acc = (
+                        msa.name
+                        if getattr(msa, "name", None) is not None
+                        else None
+                    )
+                    if (
+                        fallback_acc is None
+                        and hasattr(msa, "names")
+                        and len(msa.names) > 0
+                    ):
                         fallback_acc = msa.names[0]
                     if fallback_acc is None:
                         fallback_acc = b"unknown_acc"
@@ -895,7 +903,9 @@ def hmmdb_from_directory(
                             desc_set = True
                     else:
                         if str(msa.description).strip():
-                            hmm.description = str(msa.description).encode("utf-8")
+                            hmm.description = str(msa.description).encode(
+                                "utf-8"
+                            )
                             desc_set = True
                 except Exception:
                     desc_set = False
@@ -903,7 +913,9 @@ def hmmdb_from_directory(
                 # Fallback description for consistency (avoid empty DESC lines)
                 try:
                     name_text = (
-                        msa.name.decode("utf-8") if isinstance(msa.name, bytes) else str(msa.name)
+                        msa.name.decode("utf-8")
+                        if isinstance(msa.name, bytes)
+                        else str(msa.name)
                     )
                 except Exception:
                     name_text = "unknown"
@@ -1370,7 +1382,11 @@ def fetchPfamMSA(
             resp = requests.get(url, verify=False, timeout=timeout)
             resp.raise_for_status()
             response = resp.content
-            json_metadata = json.loads(requests.get(f"{PREFIX}pfam/{acc}", verify=False, timeout=timeout).content)
+            json_metadata = json.loads(
+                requests.get(
+                    f"{PREFIX}pfam/{acc}", verify=False, timeout=timeout
+                ).content
+            )
             break
         except requests.exceptions.RequestException as e:
             if attempt < max_retries - 1:
@@ -1427,6 +1443,7 @@ def prettify_alignment_gap_affine(
     """Return parasail NW traceback strings in query/comp/ref style."""
     try:
         import parasail as ps  # type: ignore[import-not-found]
+
         ali = ps.nw_trace(
             query_seq,
             ref_seq,
@@ -1447,13 +1464,19 @@ def prettify_alignment_gap_affine(
         if return_query_region:
             return query_seq
         if return_comp_str:
-            return "".join("|" if a == b else "." for a, b in zip(query_seq, ref_seq))
-        comp = "".join("|" if a == b else "." for a, b in zip(query_seq, ref_seq))
+            return "".join(
+                "|" if a == b else "." for a, b in zip(query_seq, ref_seq)
+            )
+        comp = "".join(
+            "|" if a == b else "." for a, b in zip(query_seq, ref_seq)
+        )
         return f"{query_seq}\n{comp}\n{ref_seq}"
 
 
 def hamming_distance(seq_a: str, seq_b: str) -> int:
     """Hamming distance between two equal-length sequences."""
     if len(seq_a) != len(seq_b):
-        raise ValueError("Cannot compare sequences of different lengths with the hamming metric")
+        raise ValueError(
+            "Cannot compare sequences of different lengths with the hamming metric"
+        )
     return sum(ch_a != ch_b for ch_a, ch_b in zip(seq_a, seq_b))

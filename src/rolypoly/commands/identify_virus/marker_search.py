@@ -213,7 +213,7 @@ def marker_search(
     • geNomad \n
         RNA virus marker genes from geNomad v1.9 --- https://zenodo.org/records/14886553
     For custom path, either an .hmm file, a directory with .hmm files, or a folder with MSA files (which would be used to build an HMM DB).
-    Please cite accordingly based on the DBs you select. 
+    Please cite accordingly based on the DBs you select.
     """
     import json
 

@@ -35,13 +35,7 @@ INFO_TABLE_SPECS = {
         "relative_path": Path("profiles") / "NVPC_descriptions.csv",
         "join_column": "profile_accession",
         "prefix": "nvpc_meta",
-        "columns": [
-            "profile_accession",
-            "Name",
-            "Description",
-            "neff",
-            "nseq",
-        ],
+        "columns": ["profile_accession", "Name", "Description", "neff", "nseq"],
         "read_csv_kwargs": {"separator": ",", "has_header": True},
     },
     "genomad": {
@@ -172,7 +166,9 @@ def stage_protein_input_as_orfs(config) -> bool:
                 "db": ["input"],
                 "tool": ["input_protein"],
                 "params": ["{}"],
-                "command": [f"copy input protein FASTA: {input_path} -> {output_file}"],
+                "command": [
+                    f"copy input protein FASTA: {input_path} -> {output_file}"
+                ],
             }
         )
     )
@@ -518,7 +514,7 @@ def get_database_paths(config, tool_name):
     mmseqs2_dbdir = (
         Path(os.environ["ROLYPOLY_DATA"]) / "profiles" / "mmseqs_dbs"
     )
-    reference_seqs_dir = Path(os.environ["ROLYPOLY_DATA"] ) / "reference_seqs"
+    reference_seqs_dir = Path(os.environ["ROLYPOLY_DATA"]) / "reference_seqs"
     # diamond_dbdir = Path(os.environ["ROLYPOLY_DATA"]) / "profiles" / "diamond" # not needed really , will just use the fasta as input cause diamond accepts fasta directly
 
     # Database paths for different tools
@@ -527,7 +523,7 @@ def get_database_paths(config, tool_name):
             "NVPC".lower(): hmmdbdir / "nvpc.hmm",
             "RVMT".lower(): hmmdbdir / "rvmt.hmm",
             "Pfam".lower(): hmmdbdir / "Pfam-A.hmm",
-            "Pfam_filtered".lower(): hmmdbdir / "pfam_filtered.hmm", 
+            "Pfam_filtered".lower(): hmmdbdir / "pfam_filtered.hmm",
             "genomad".lower(): hmmdbdir / "genomad_rna_viral_markers.hmm",
             "vfam".lower(): hmmdbdir / "vfam.hmm",
         },
@@ -765,7 +761,7 @@ def predict_orfs_with_orffinder(config):
         # lazy = input(
         #     "Do you want to install ORFfinder for you (i.e. ran the above commands)? [yes/no]  "
         # )
-        lazy="yes" # most people don't care
+        lazy = "yes"  # most people don't care
         if lazy.lower() == "yes":
             os.system(
                 "wget ftp://ftp.ncbi.nlm.nih.gov/genomes/TOOLS/ORFfinder/linux-i64/ORFfinder.gz; gunzip ORFfinder.gz; chmod a+x ORFfinder; mv ORFfinder $CONDA_PREFIX/bin"
@@ -879,18 +875,15 @@ def search_protein_domains_mmseqs2(config):
             ]
             suffix_pattern = r"(?:\.faa\.msa\.Cons\.msa|\.msa\.Cons\.msa|\.Cons\.msa|\.faa\.msa|\.msa)$"
             try:
-                cleaned = (
-                    pl.read_csv(
-                        output_file,
-                        separator="\t",
-                        has_header=False,
-                        new_columns=mmseqs_columns,
-                    )
-                    .with_columns(
-                        pl.col("sseqid")
-                        .str.replace_all(suffix_pattern, "", literal=False)
-                        .alias("sseqid"),
-                    )
+                cleaned = pl.read_csv(
+                    output_file,
+                    separator="\t",
+                    has_header=False,
+                    new_columns=mmseqs_columns,
+                ).with_columns(
+                    pl.col("sseqid")
+                    .str.replace_all(suffix_pattern, "", literal=False)
+                    .alias("sseqid")
                 )
                 cleaned.write_csv(
                     output_file, separator="\t", include_header=False
@@ -1255,7 +1248,10 @@ def combine_results(config):
 def enrich_with_info_tables(dataframe: pl.DataFrame, logger: logging.Logger):
     """Join domain metadata from known info tables onto combined annotations."""
 
-    if "database" not in dataframe.columns or "profile_accession" not in dataframe.columns:
+    if (
+        "database" not in dataframe.columns
+        or "profile_accession" not in dataframe.columns
+    ):
         return dataframe
 
     log = logger or logging.getLogger(__name__)
@@ -1266,12 +1262,7 @@ def enrich_with_info_tables(dataframe: pl.DataFrame, logger: logging.Logger):
         log.warning("ROLYPOLY_DATA is not set; skipping metadata enrichment")
         return dataframe
 
-    db_values = (
-        dataframe.get_column("database")
-        .drop_nulls()
-        .unique()
-        .to_list()
-    )
+    db_values = dataframe.get_column("database").drop_nulls().unique().to_list()
     db_keys = {
         str(value).lower() for value in db_values if isinstance(value, str)
     }
@@ -1326,7 +1317,9 @@ def enrich_with_info_tables(dataframe: pl.DataFrame, logger: logging.Logger):
         )
         info_df = info_df.rename({join_column: "profile_accession"})
 
-        meta_cols = [col for col in info_df.columns if col != "profile_accession"]
+        meta_cols = [
+            col for col in info_df.columns if col != "profile_accession"
+        ]
         if not meta_cols:
             continue
 

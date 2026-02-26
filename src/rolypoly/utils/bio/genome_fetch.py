@@ -36,12 +36,7 @@ from urllib.parse import urlparse
 from urllib.request import urlretrieve
 
 import polars as pl
-from rich.progress import (
-    BarColumn,
-    Progress,
-    TextColumn,
-    TimeElapsedColumn,
-)
+from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
 
 from rolypoly.utils.bio.sequences import remove_duplicates
 from rolypoly.utils.logging.loggit import get_logger

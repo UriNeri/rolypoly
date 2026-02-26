@@ -2,7 +2,6 @@
 from collections import defaultdict, deque
 
 
-
 class TaxonomyTree:
     """
     taxonomy tree for finding nearest neighbors with available data.
@@ -300,14 +299,14 @@ class TaxonomyTree:
         return {"leaves": prioritized_leaves, "self_is_leaf_with_data": False}
 
     def find_leaves_with_data_in_subtree(
-        self, root_id, max_depth, priority_cols
+        self, root_id, max_depth=None, priority_cols=None
     ):
         """
         Find all leaves with data in the subtree rooted at root_id.
 
         Args:
             root_id: Root of subtree to search
-            max_depth: Maximum depth to search
+            max_depth: Maximum depth to search. If None, search full subtree.
             priority_cols: Priority columns for sorting
 
         Returns:
@@ -315,6 +314,9 @@ class TaxonomyTree:
         """
         if root_id in self.leaf_nodes and root_id in self.data_available:
             return [self._create_node_info(root_id, 0)]
+
+        if max_depth is None:
+            max_depth = len(self.parent_map)
 
         leaves = []
         queue = deque([(root_id, 0)])
@@ -765,14 +767,14 @@ class TaxonomyTree:
             if max_rank_tax_id and current == max_rank_tax_id:
                 rank_reached = True
                 leaves_here = self.find_leaves_with_data_in_subtree(
-                    current, priority_cols
+                    current, max_depth=None, priority_cols=priority_cols
                 )
                 nearest_leaves.extend(leaves_here)
                 break
 
             # Search descendants for leaves
             leaves_here = self.find_leaves_with_data_in_subtree(
-                current, priority_cols
+                current, max_depth=None, priority_cols=priority_cols
             )
             nearest_leaves.extend(leaves_here)
 
@@ -787,30 +789,6 @@ class TaxonomyTree:
             list(set(nearest_leaves)), priority_cols
         )
         return prioritized_leaves, rank_reached
-
-    def find_leaves_with_data_in_subtree(self, root_id, priority_cols):
-        """
-        Find all leaves with data in the subtree rooted at root_id (optimized BFS).
-        """
-        leaves = []
-        queue = deque([root_id])
-        visited = set()
-
-        while queue:
-            node_id = queue.popleft()
-            if node_id in visited:
-                continue
-            visited.add(node_id)
-
-            if node_id in self.leaf_nodes and node_id in self.data_available:
-                leaves.append(
-                    self._create_node_info(node_id, 0)
-                )  # Distance not used
-
-            if node_id in self.children_map:
-                queue.extend(self.children_map[node_id])
-
-        return leaves
 
     def get_lineage_path(self, tax_id):
         """Get full lineage path from root to tax_id"""
