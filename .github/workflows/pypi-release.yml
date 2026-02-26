@@ -1,0 +1,155 @@
+name: Publish package (TestPyPI -> PyPI)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: Build and smoke-test package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pixi
+        uses: prefix-dev/setup-pixi@v0.8.8
+        with:
+          pixi-version: v0.44.0
+
+      - name: Run CLI help smoke tests
+        run: pixi run -e dev pytest -q src/tests/test_cli_help_smoke.py
+
+      - name: Verify tag matches package version
+        if: github.event_name == 'release'
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          version_file = pyproject["tool"]["hatch"]["version"]["path"]
+          version_text = Path(version_file).read_text(encoding="utf-8")
+          match = re.search(r"__version__\s*=\s*['\"]([^'\"]+)['\"]", version_text)
+          if not match:
+              raise SystemExit(f"Could not parse __version__ from {version_file}")
+
+          package_version = match.group(1)
+          release_tag = os.environ["GITHUB_REF_NAME"]
+          normalized_tag = release_tag[1:] if release_tag.startswith("v") else release_tag
+          if normalized_tag != package_version:
+              raise SystemExit(
+                  f"Release tag ({release_tag}) does not match package version ({package_version})"
+              )
+          print(f"Version check passed: tag={release_tag}, package={package_version}")
+          PY
+
+      - name: Build wheel + sdist
+        run: pixi run -e dev hatch build --clean
+
+      - name: Twine metadata check
+        run: pixi run -e dev twine check dist/*
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist/*
+          if-no-files-found: error
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/rolypoly-tk
+    steps:
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist
+
+      - name: Publish package to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  smoke-install-testpypi:
+    name: Smoke-test install from TestPyPI
+    needs: publish-testpypi
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist
+
+      - name: Determine built version
+        id: version
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          wheel = next(Path('dist').glob('*.whl')).name
+          version = wheel.split('-')[1]
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"version={version}\n")
+          print(f"Built version: {version}")
+          PY
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install from TestPyPI (retry for index lag)
+        env:
+          PKG_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python -m pip install --upgrade pip
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            echo "Attempt ${attempt}: installing rolypoly_tk==${PKG_VERSION} from TestPyPI"
+            if python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple "rolypoly_tk==${PKG_VERSION}"; then
+              break
+            fi
+            if [ "${attempt}" -eq 10 ]; then
+              echo "Failed to install package from TestPyPI after retries"
+              exit 1
+            fi
+            sleep 20
+          done
+
+      - name: Verify import + CLI
+        run: |
+          python -c "import rolypoly; print(rolypoly.__version__)"
+          rolypoly --help >/dev/null
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: smoke-install-testpypi
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/rolypoly-tk
+    steps:
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist
+
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
