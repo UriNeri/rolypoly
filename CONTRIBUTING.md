@@ -87,6 +87,8 @@ Version bumping is **manual** and happens before CI publishing.
 
 Workflow file: `.github/workflows/pypi-release.yml`
 
+The workflow uses concurrency cancellation per ref (`pypi-release-${ref}`), so newer runs automatically cancel older in-progress runs on the same branch/tag.
+
 ### One-time setup (maintainers)
 
 Configure trusted publishers in both PyPI and TestPyPI for project `rolypoly-tk`:
@@ -110,9 +112,10 @@ Use the pixi task:
 - `pixi run -e dev bump-commit-publish`
 
 This task runs `src/setup/bump_commit_publish.sh` and by default:
-- bumps version with `hatch version micro`
+- bumps version in `src/rolypoly/__init__.py` (`micro` by default; or `major`/`minor`/explicit `X.Y.Z`)
+- refreshes `src/setup/env_big.yaml` from `pixi workspace export conda-environment -e complete`, with cleanup for micromamba compatibility
 - runs help-smoke tests locally
-- commits `src/rolypoly/__init__.py`
+- commits `src/rolypoly/__init__.py` and `src/setup/env_big.yaml`
 - pushes to `origin/release` to trigger GitHub Actions publish flow
 
 Common options:
@@ -124,7 +127,7 @@ Common options:
 ### Local fallback (manual upload)
 
 If needed, manual upload with twine is still supported:
-- Build: `pixi run -e dev hatch build --clean`
+- Build: `pixi run -e dev python -m build --sdist --wheel --outdir dist`
 - Check: `pixi run -e dev twine check dist/*`
 - Upload: `pixi run -e dev twine upload dist/* --verbose`
 
