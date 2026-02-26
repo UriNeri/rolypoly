@@ -60,6 +60,16 @@ jobs:
           print(f"Version check passed: tag={release_tag}, package={package_version}")
           PY
 
+      - name: Set CI dev version (non-release runs)
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.publish_pypi)
+        run: |
+          current_version="$(pixi run -e dev hatch version | tr -d '[:space:]')"
+          base_version="${current_version%%+*}"
+          base_version="$(echo "${base_version}" | sed -E 's/\.dev[0-9]+$//')"
+          ci_version="${base_version}.dev${GITHUB_RUN_NUMBER}"
+          echo "Updated version for CI build: ${current_version} -> ${ci_version}"
+          pixi run -e dev hatch version "${ci_version}"
+
       - name: Build wheel + sdist
         run: |
           rm -rf dist build
@@ -149,6 +159,7 @@ jobs:
 
       - name: Verify import + CLI
         run: |
+          python -m pip install --index-url https://pypi.org/simple rich-click
           python -c "import rolypoly; print(rolypoly.__version__)"
           rolypoly --help >/dev/null
 
