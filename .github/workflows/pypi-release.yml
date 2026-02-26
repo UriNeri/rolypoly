@@ -79,7 +79,7 @@ jobs:
   publish-testpypi:
     name: Publish to TestPyPI
     needs: build-and-test
-    if: github.event_name != 'push'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/dev_olive'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
