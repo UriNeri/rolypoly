@@ -4,6 +4,12 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      publish_pypi:
+        description: "Also publish to production PyPI"
+        required: true
+        default: false
+        type: boolean
 
 jobs:
   build-and-test:
@@ -138,6 +144,7 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     needs: smoke-install-testpypi
+    if: github.event_name == 'release' || inputs.publish_pypi
     runs-on: ubuntu-latest
     permissions:
       id-token: write
