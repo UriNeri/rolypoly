@@ -15,7 +15,7 @@ Options:
   -h, --help                                Show this help
 
 Notes:
-  - This command bumps version locally via hatch, refreshes src/setup/env_big.yaml,
+  - This command bumps version locally in src/rolypoly/__init__.py, refreshes src/setup/env_big.yaml,
     commits release files, and pushes to the deployment branch.
   - Pushing to the deployment branch triggers the GitHub Actions publish workflow.
 EOF
@@ -74,11 +74,6 @@ if [[ "${ALLOW_DIRTY}" -eq 0 ]]; then
   fi
 fi
 
-if ! command -v hatch >/dev/null 2>&1; then
-  echo "hatch not found in PATH. Run via pixi: pixi run -e dev bump-commit-publish" >&2
-  exit 1
-fi
-
 CURRENT_BRANCH="$(git branch --show-current)"
 
 git fetch "${REMOTE_NAME}" "${TARGET_BRANCH}" || true
@@ -99,7 +94,60 @@ if [[ "${BUMP_SPEC}" == "patch" ]]; then
   BUMP_SPEC="micro"
 fi
 
-hatch version "${BUMP_SPEC}"
+CURRENT_VERSION="$(grep -Eo "__version__\s*=\s*['\"][^'\"]+['\"]" src/rolypoly/__init__.py | head -n 1 | sed -E "s/.*['\"]([^'\"]+)['\"]/\1/")"
+if [[ -z "${CURRENT_VERSION}" ]]; then
+  echo "Could not parse current __version__ from src/rolypoly/__init__.py" >&2
+  exit 1
+fi
+
+BASE_VERSION="${CURRENT_VERSION%%+*}"
+MAJOR_PART="${BASE_VERSION%%.*}"
+REST_PART="${BASE_VERSION#*.}"
+MINOR_PART="${REST_PART%%.*}"
+PATCH_PART="${REST_PART#*.}"
+
+if [[ -z "${MAJOR_PART}" || -z "${MINOR_PART}" || -z "${PATCH_PART}" || ! "${MAJOR_PART}" =~ ^[0-9]+$ || ! "${MINOR_PART}" =~ ^[0-9]+$ || ! "${PATCH_PART}" =~ ^[0-9]+$ ]]; then
+  echo "Unsupported current version format: ${CURRENT_VERSION}" >&2
+  exit 1
+fi
+
+case "${BUMP_SPEC}" in
+  major)
+    NEW_VERSION="$((MAJOR_PART + 1)).0.0"
+    ;;
+  minor)
+    NEW_VERSION="${MAJOR_PART}.$((MINOR_PART + 1)).0"
+    ;;
+  micro)
+    NEW_VERSION="${MAJOR_PART}.${MINOR_PART}.$((PATCH_PART + 1))"
+    ;;
+  *)
+    if [[ "${BUMP_SPEC}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      NEW_VERSION="${BUMP_SPEC}"
+    else
+      echo "Unsupported --bump value: ${BUMP_SPEC}. Use major|minor|micro|patch|X.Y.Z" >&2
+      exit 1
+    fi
+    ;;
+esac
+
+awk -v new_version="${NEW_VERSION}" '
+  BEGIN { updated = 0 }
+  {
+    if (!updated && $0 ~ /__version__[[:space:]]*=/) {
+      print "__version__ = \"" new_version "\""
+      updated = 1
+      next
+    }
+    print
+  }
+  END {
+    if (!updated) {
+      exit 1
+    }
+  }
+' src/rolypoly/__init__.py > src/rolypoly/__init__.py.tmp
+mv src/rolypoly/__init__.py.tmp src/rolypoly/__init__.py
 
 NEW_VERSION="$(grep -Eo "__version__\s*=\s*['\"][^'\"]+['\"]" src/rolypoly/__init__.py | head -n 1 | sed -E "s/.*['\"]([^'\"]+)['\"]/\1/")"
 if [[ -z "${NEW_VERSION}" ]]; then
