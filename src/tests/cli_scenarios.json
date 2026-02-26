@@ -623,5 +623,52 @@
     "expected_table_min_rows": {
       "{tmp}/extend_demo.clusters.tsv": 1
     }
+  },
+  {
+    "id": "correlate_runtime_smoke",
+    "description": "Runtime smoke test correlate on bundled abundance/presence table",
+    "args": [
+      "correlate",
+      "-i",
+      "testing_folder/inputs/contigs/test_contig_abundance.tsv",
+      "-o",
+      "{tmp}/correlate_demo",
+      "--mode",
+      "both",
+      "--table-type",
+      "auto",
+      "--min-prevalence",
+      "0.0",
+      "--min-correlation",
+      "0.8",
+      "--min-shared-samples",
+      "1"
+    ],
+    "expected_files": [
+      "{tmp}/correlate_demo.correlation_pairs.tsv",
+      "{tmp}/correlate_demo.cooccurrence_pairs.tsv",
+      "{tmp}/correlate_demo.selected_pairs.tsv",
+      "{tmp}/correlate_demo.groups.tsv"
+    ],
+    "expected_table_columns": {
+      "{tmp}/correlate_demo.correlation_pairs.tsv": [
+        "contig_1",
+        "contig_2",
+        "correlation"
+      ],
+      "{tmp}/correlate_demo.cooccurrence_pairs.tsv": [
+        "contig_1",
+        "contig_2",
+        "shared_samples"
+      ],
+      "{tmp}/correlate_demo.groups.tsv": [
+        "group_id",
+        "member_count",
+        "members"
+      ]
+    },
+    "expected_table_min_rows": {
+      "{tmp}/correlate_demo.groups.tsv": 1
+    }
   }
 ]

@@ -59,7 +59,9 @@ coverage.xml
 *.cover
 *.py,cover
 cover/
-testing_folder/
+testing_folder/*
+!testing_folder/inputs/
+!testing_folder/inputs/**
 .cache/
 .ruff_cache/
 .tox/
@@ -132,5 +134,4 @@ package.json
 rolypoly_data_slim_*.tar.gz
 .github/copilot-instructions.md
 benchmarking_outputs/*
-./testing_folder/misc/
 benchmarking_logs/

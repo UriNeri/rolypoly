@@ -7,7 +7,7 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
 
 ## Contribution guidelines
 - **Primary Language**: Python >=3.10
-- **Secondary Languages**: Some system calls to Bash are allowed.
+- **Secondary Languages**: Some system calls to shell/Bash are allowed.
 - **Dependency Management**: via pixi (development)
   - Prefer using existing dependencies over adding new ones.
   - Avoid pandas, and use polars
@@ -28,6 +28,14 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
    - Environment or Global variables: UPPERCASE or CamelCase.
    - Avoid "_" prefix for "private" functions. if somthing is explictly not meant to ever at all be used outside its scope, that should be in a comment or docstring, but in generally we want to avoid these and there shouldn't be "private" breaking stuff.
 
+2.1 **Docstrings**:
+   - Add a docstring to all user-facing command functions (click entry points) and reusable utility functions.
+   - Keep simple helpers concise (one-line docstring is fine).
+   - For non-trivial logic, use a multi-line docstring and include sections like `Args`, `Returns`, `Raises`, and `Note` when useful.
+   - Prefer the same style already used in the codebase (plain-language summary first, then structured sections if needed).
+   - Do not remove existing docstrings unless they are incorrect; update them when behavior or parameters change.
+   - Module-level docstrings are recommended for larger utility modules, especially when they contain multiple related functions.
+
 3. **Temporary Files**:
    - Optionally, create temp directory (hidden argument in some commands `--temp-dir`, if not specified it's within user's output path).  
    - When done, move only final output files to user's output path, or rename the temp-dir if it's easier (same parent path maybe).
@@ -46,6 +54,8 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
 1. **Testing**:
    - Add tests under `src/tests/*`.
    - Prefer `pytest` for new tests, and keep command smoke tests in `src/tests/test_cli_contracts.py` with scenarios in `src/tests/cli_scenarios.json`.
+   - For most (ideally all) click commands, include a hidden log-level option so tests can consistently enable debug logging:
+     - `@click.option("-ll", "--log-level", hidden=True, default="INFO", help="Log level")`
    - Use small/local fixtures from `testing_folder/` when possible.
    - You can also use `/clusterfs/jgi/scratch/science/metagen/neri/tests/rp_tests/` (on dori), which contains larger example data for different commands.
    - **Run standardized CLI tests**: `pixi run -e dev pytest -q src/tests/test_cli_contracts.py`
