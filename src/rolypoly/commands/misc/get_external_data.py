@@ -99,18 +99,15 @@ def get_data(info, rolypoly_data, log_file, log_level):
         for chunk in response.iter_content(chunk_size=1024):
             if chunk:
                 f.write(chunk)
-    
+
     logger.info("Extracting data tarball...")
     # Extract directly to ROLYPOLY_DATA
     # The tarball is created with relative paths (README.md, contam/, profiles/, etc.)
     # so it will extract directly to the target directory without wrapper folders
-    extract(
-        archive_path=str(tar_path),
-        extract_to=str(ROLYPOLY_DATA),
-    )
-    
+    extract(archive_path=str(tar_path), extract_to=str(ROLYPOLY_DATA))
+
     # Clean up the tarball
     tar_path.unlink()
-    
+
     logger.info(f"Finished fetching and extracting data to : {ROLYPOLY_DATA}")
     return 0

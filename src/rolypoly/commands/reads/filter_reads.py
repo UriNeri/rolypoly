@@ -128,7 +128,7 @@ class ReadFilterConfig(BaseConfig):
                 # "k": 93,
                 # "extend2": 80,
                 # "rem": True,
-                "mix": "f",
+                "mix": "f"
             },  # TODO: add explanation somewhere about the (high) memory usage and the potential gains/tradeoffs of merging reads https://bbmap.org/tools/bbmerge#:~:text=When%20NOT%20to%20Use%20BBMerge
             "quality_trim_unmerged": {"qtrim": "rl", "trimq": 5, "minlen": 45},
         }

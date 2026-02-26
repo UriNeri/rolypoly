@@ -126,11 +126,7 @@ def setup_logging(
                 show_time=False,
                 show_path=True,
             )
-        setattr(
-            rolypoly_console_handler,
-            ROLYPOLY_HANDLER_ATTR,
-            "console",
-        )
+        setattr(rolypoly_console_handler, ROLYPOLY_HANDLER_ATTR, "console")
         logger.addHandler(rolypoly_console_handler)
 
     rolypoly_console_handler.setLevel(log_level)
