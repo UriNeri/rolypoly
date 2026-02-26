@@ -7,11 +7,15 @@ import polars as pl
 import rich_click as click
 
 from rolypoly.utils.logging.loggit import log_start_info, setup_logging
-from rolypoly.utils.bio.polars_fastx import frame_to_fastx
-from rolypoly.utils.bio.sequences import read_fasta_df, revcomp
+from rolypoly.utils.bio.polars_fastx import frame_to_fastx, load_sequences
+from rolypoly.utils.bio.alignments import hamming_distance
+from rolypoly.utils.bio.sequences import revcomp
 
 # Ensure the FASTX plugins are registered
 from rolypoly.utils.bio import polars_fastx as _polars_fastx  # noqa: F401
+
+# ANI clustering is shared with the assembly extend command
+from rolypoly.commands.assembly.extend import cluster_contigs_by_ani
 
 
 def parse_length_window(value: str) -> Tuple[int, int]:
@@ -40,19 +44,11 @@ def found_label_expr() -> pl.Expr:
 	)
 
 
-
-
-def load_sequences(fasta_path: Path) -> pl.DataFrame:
-	df = read_fasta_df(str(fasta_path))
+def load_and_orientate_sequences(fasta_path: Path) -> pl.DataFrame:
+	"""Load sequences and add reverse complements for termini analysis."""
+	df = load_sequences(fasta_path)
 	if df.is_empty():
 		return df
-	column_map = {"header": "contig_id"}
-	df = df.rename({k: v for k, v in column_map.items() if k in df.columns})
-	if "contig_id" not in df.columns:
-		df = df.with_row_index("contig_id", offset=1).with_columns(
-		 pl.col("contig_id").cast(pl.Utf8)
-		)
-	df = df.with_columns(pl.col("sequence").seq.length().alias("seq_length"))
 	return orientate_all(df)
 
 
@@ -71,6 +67,56 @@ def orientate_all(df: pl.DataFrame) -> pl.DataFrame:
 	# TODO: implement restranding/orientate_all logic that favors the strand
 	# containing the highest density of forward-encoded coding genes.
 	return df
+
+
+
+def apply_ani_prefilter(
+	seq_df: pl.DataFrame,
+	enabled: bool,
+	min_identity: float,
+	min_af: float,
+	logger,
+) -> pl.DataFrame:
+	"""Cluster contigs by ANI and keep the longest representative per cluster.
+
+	For overlap-based pileup extension of ANI clusters, use the extend
+	command instead (under the assembly group).
+	"""
+	if not enabled or seq_df.is_empty() or seq_df.height < 2:
+		return seq_df
+
+	seq_rows = seq_df.select("contig_id", "sequence", "seq_length").to_dicts()
+	for idx, row in enumerate(seq_rows):
+		row["_order"] = idx
+
+	clusters = cluster_contigs_by_ani(seq_rows, min_identity, min_af, logger)
+	if not clusters:
+		return seq_df
+
+	representatives: list[dict[str, Any]] = []
+	for cluster in clusters:
+		representative = max(
+			cluster,
+			key=lambda row: (int(row["seq_length"]), -int(row["_order"])),
+		)
+		representatives.append({
+			"contig_id": representative["contig_id"],
+			"sequence": representative["sequence"],
+			"seq_length": representative["seq_length"],
+			"_order": representative["_order"],
+		})
+
+	filtered = pl.DataFrame(representatives).sort("_order").drop("_order")
+	removed = seq_df.height - filtered.height
+	if removed > 0:
+		logger.info(
+			"ANI prefilter retained %s/%s representative contigs (removed %s)",
+			filtered.height,
+			seq_df.height,
+			removed,
+		)
+
+	return filtered
 
 
 def create_signature_frame(
@@ -552,12 +598,6 @@ def collapse_groups_by_clipping(
 	return collapsed_df, remapped_assignments
 
 
-def hamming_distance(seq_a: str, seq_b: str) -> int:
-	if len(seq_a) != len(seq_b):
-		raise click.ClickException("Cannot compare motifs of different lengths with the hamming metric")
-	return sum(ch_a != ch_b for ch_a, ch_b in zip(seq_a, seq_b))
-
-
 def consensus_motif(motifs: list[str]) -> str:
 	if not motifs:
 		return ""
@@ -841,130 +881,167 @@ def write_table(
 	logger.info(f"Termini {label} written to {output_path}")
 
 
+
+
 @click.command()
 @click.option(
- "-i",
- "--input",
- required=True,
- type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
- help="Input contig FASTA/FASTQ file",
+	"-i",
+	"--input",
+	required=True,
+	type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+	help="Input contig FASTA/FASTQ file",
 )
 @click.option(
- "-n",
- "--length",
- "length_spec",
- default="40",
- show_default=True,
- help="Terminus length or range (e.g., 30 or 25-40)",
+	"-n",
+	"--length",
+	"length_spec",
+	default="40",
+	show_default=True,
+	help="Terminus length or range (e.g., 30 or 25-40)",
 )
 @click.option(
- "-d",
- "--distance",
- default=0,
- show_default=True,
- type=click.IntRange(0, 1000),
- help="Maximum Hamming mismatches allowed in the first-pass grouping seed",
+	"-d",
+	"--distance",
+	default=0,
+	show_default=True,
+	type=click.IntRange(0, 1000),
+	help="Maximum Hamming mismatches allowed in the first-pass grouping seed",
 )
 @click.option(
- "--max-clipped",
- default=4,
- show_default=True,
- type=click.IntRange(0, 1000),
- help="Second-pass collapse: maximum total clipped bases allowed when one motif is contained in another",
+	"--max-clipped",
+	default=4,
+	show_default=True,
+	type=click.IntRange(0, 1000),
+	help="Second-pass collapse: maximum total clipped bases allowed when one motif is contained in another",
 )
 @click.option(
- "--max-clipped-collapse/--no-max-clipped-collapse",
- default=True,
- show_default=True,
- help="Enable/disable second-pass collapse of groups linked by clipped motif containment",
+	"--max-clipped-collapse/--no-max-clipped-collapse",
+	default=True,
+	show_default=True,
+	help="Enable/disable second-pass collapse of groups linked by clipped motif containment",
 )
 @click.option(
- "--clip-mode",
- default="both",
- show_default=True,
- type=click.Choice(["one-edge", "both"], case_sensitive=False),
- help="Containment mode for second pass: one-edge clipping only, or clipping distributed across both edges",
+	"--clip-mode",
+	default="both",
+	show_default=True,
+	type=click.Choice(["one-edge", "both"], case_sensitive=False),
+	help="Containment mode for second pass: one-edge clipping only, or clipping distributed across both edges",
 )
 @click.option(
- "--strand",
- default="both",
- show_default=True,
- type=click.Choice(["plus", "minus", "both"], case_sensitive=False),
- help="Strand orientation(s) used when building termini signatures",
+	"--strand",
+	default="both",
+	show_default=True,
+	type=click.Choice(["plus", "minus", "both"], case_sensitive=False),
+	help="Strand orientation(s) used when building termini signatures",
 )
 @click.option(
- "-o",
- "--output",
- default="termini_assignments.tsv",
- show_default=True,
- type=click.Path(dir_okay=False, writable=True, path_type=Path),
- help="Output path for per-contig termini assignments",
+	"--ani-prefilter/--no-ani-prefilter",
+	default=True,
+	show_default=True,
+	help="Before termini grouping, collapse highly similar contigs so each ANI cluster contributes one representative (longest). For overlap-based extension, use the extend command.",
 )
 @click.option(
- "--groups-output",
- type=click.Path(dir_okay=False, writable=True, path_type=Path),
- default=None,
- help="Optional output path for grouped motif summary (default: <output>.groups.<ext>)",
+	"--ani-min-identity",
+	default=0.95,
+	show_default=True,
+	type=click.FloatRange(0.0, 1.0),
+	help="Minimum ANI identity (0-1) for contigs to be considered in the same prefilter cluster",
 )
 @click.option(
- "--motifs-fasta",
- type=click.Path(dir_okay=False, writable=True, path_type=Path),
- default=None,
- help="Output path for group motif FASTA entries (defaults to <output>.motifs.fasta)",
+	"--ani-min-af",
+	default=0.80,
+	show_default=True,
+	type=click.FloatRange(0.0, 1.0),
+	help="Minimum aligned fraction (min(query_fraction, reference_fraction), 0-1) for ANI prefilter clustering",
 )
 @click.option(
- "--output-format",
- default="tsv",
- show_default=True,
- type=click.Choice(["tsv", "csv", "parquet", "jsonl"], case_sensitive=False),
- help="Tabular output format for assignments and groups tables",
+	"-o",
+	"--output",
+	default="termini_assignments.tsv",
+	show_default=True,
+	type=click.Path(dir_okay=False, writable=True, path_type=Path),
+	help="Output path for per-contig termini assignments",
 )
 @click.option(
- "--log-file",
- type=click.Path(dir_okay=False, writable=True, path_type=Path),
- default=None,
- help="Optional log file path",
+	"--groups-output",
+	type=click.Path(dir_okay=False, writable=True, path_type=Path),
+	default=None,
+	help="Optional output path for grouped motif summary (default: <output>.groups.<ext>)",
+)
+@click.option(
+	"--motifs-fasta",
+	type=click.Path(dir_okay=False, writable=True, path_type=Path),
+	default=None,
+	help="Output path for group motif FASTA entries (defaults to <output>.motifs.fasta)",
+)
+@click.option(
+	"--output-format",
+	default="tsv",
+	show_default=True,
+	type=click.Choice(["tsv", "csv", "parquet", "jsonl"], case_sensitive=False),
+	help="Tabular output format for assignments and groups tables",
+)
+@click.option(
+	"--log-file",
+	type=click.Path(dir_okay=False, writable=True, path_type=Path),
+	default=None,
+	help="Optional log file path",
 )
 @click.option("-ll", "--log-level", default="INFO", show_default=True, hidden=True)
+@click.option(
+	"-t",
+	"--threads",
+	default=4,
+	show_default=True,
+	type=click.IntRange(1, 1000),
+	help="Number of threads to use for parallel processing IF applicable",
+)
 def termini(
- input: Path,
- length_spec: str,
- distance: int,
- max_clipped: int,
- max_clipped_collapse: bool,
- clip_mode: str,
- strand: str,
- output: Path,
- groups_output: Path | None,
- motifs_fasta: Path | None,
- output_format: str,
- log_file: Path | None,
- log_level: str,
+	input: Path,
+	length_spec: str,
+	distance: int,
+	max_clipped: int,
+	max_clipped_collapse: bool,
+	clip_mode: str,
+	strand: str,
+	ani_prefilter: bool,
+	ani_min_identity: float,
+	ani_min_af: float,
+	output: Path,
+	groups_output: Path | None,
+	motifs_fasta: Path | None,
+	output_format: str,
+	log_file: Path | None,
+	log_level: str,
+	threads: int,
 ) -> None:
 	"""Group contigs that share termini of length *n* (or a range).
 
 	Workflow:
-	1) First pass groups contigs by the minimum-window motif seed (exact when ``--distance 0``,
+	1) Optional ANI pre-pass (on by default) clusters highly similar contigs and keeps
+	   the longest representative per cluster. For overlap pileup extension use the
+	   extend command (under the assembly group).
+	2) First pass groups contigs by the minimum-window motif seed (exact when --distance 0,
 	   Hamming-tolerant otherwise).
-	2) Motifs are then extended up to ``--length`` max while all members share the same added bases.
-	3) Optional second pass (on by default) collapses groups when one motif is contained in another
-	   by clipped containment (``--clip-mode``), up to ``--max-clipped`` bases.
+	3) Motifs are then extended up to --length max while all members share the same added bases.
+	4) Optional second pass (on by default) collapses groups when one motif is contained in another
+	   by clipped containment (--clip-mode), up to --max-clipped bases.
 
 	Outputs:
-	- Assignments table at ``--output``.
-	- Group summary table at ``--groups-output`` (or ``<output>.groups.<ext>`` by default).
-	- Group motifs FASTA at ``--motifs-fasta`` (or ``<output>.motifs.fasta`` by default).
+	- Assignments table at --output.
+	- Group summary table at --groups-output (or <output>.groups.<ext> by default).
+	- Group motifs FASTA at --motifs-fasta (or <output>.motifs.fasta by default).
 
 	Group-output columns:
-	- ``found_in``: orientation-aware labels for member placement (e.g., ``fwd_on_5_end``, ``rev_on_3_end``).
-	- ``source_group_ids``: first-pass group IDs represented in the final row.
-	- ``clip_contains_source_ids``: source groups whose motifs are clipped-contained by this group.
-	- ``clip_contained_by_source_ids``: source groups that clipped-contain this group.
+	- found_in: orientation-aware labels for member placement (e.g., fwd_on_5_end, rev_on_3_end).
+	- source_group_ids: first-pass group IDs represented in the final row.
+	- clip_contains_source_ids: source groups whose motifs are clipped-contained by this group.
+	- clip_contained_by_source_ids: source groups that clipped-contain this group.
 	"""
 
 	logger = setup_logging(log_file, log_level)
 	if output.suffix == "":
-		logger.info("Output path missing suffix; defaulting to '.tsv' and TSV format")
+		logger.debug("Output path missing suffix; defaulting to '.tsv' and TSV format")
 		output = output.with_suffix(".tsv")
 		if output_format.lower() != "tsv":
 			output_format = "tsv"
@@ -974,30 +1051,52 @@ def termini(
 	strand_mode = strand.lower()
 	clip_mode = clip_mode.lower()
 
-	seq_df = load_sequences(input)
+	seq_df = load_and_orientate_sequences(input)
 	if seq_df.is_empty():
 		logger.warning("No sequences found in input file")
+		return
+	try:
+		seq_df = apply_ani_prefilter(
+			seq_df=seq_df,
+			enabled=ani_prefilter,
+			min_identity=ani_min_identity,
+			min_af=ani_min_af,
+			logger=logger,
+		)
+	except click.ClickException:
+		raise
+	except Exception as exc:
+		logger.exception("ANI prefilter failed with an unexpected error")
+		raise click.ClickException(f"ANI prefilter failed: {exc}") from exc
+
+	if seq_df.is_empty():
+		logger.warning("No sequences remain after ANI prefilter")
 		return
 
 	raw_signatures = build_signature_table(seq_df, min_len, max_len, strand_mode)
 	unique_signatures = deduplicate_signatures(raw_signatures)
 	if unique_signatures.is_empty():
 		logger.warning(
-		 "No sequences were long enough to satisfy the minimum window length"
+			"No sequences were long enough to satisfy the minimum window length"
 		)
 		group_df = empty_result_frame()
 		assignment_df = empty_assignment_frame()
 	else:
 		group_df, assignment_df = aggregate_min_range_groups(
-		 unique_signatures, min_len, max_len, distance
+			unique_signatures, min_len, max_len, distance
 		)
 		if group_df.is_empty():
 			logger.warning(
-			 "No shared termini detected with the current min/max window parameters"
+				"No shared termini detected with the current min/max window parameters"
 			)
 		else:
+			singleton_groups = (
+				group_df.filter(pl.col("member_count") == 1).height
+				if "member_count" in group_df.columns
+				else 0
+			)
 			logger.info(
-			 f"Identified {group_df.height} termini-sharing groups with min window {min_len} and max window {max_len}"
+				f"Identified {group_df.height} termini-sharing groups with min window {min_len} and max window {max_len} (singletons: {singleton_groups})"
 			)
 
 	if not group_df.is_empty():
@@ -1005,12 +1104,12 @@ def termini(
 		if max_clipped_collapse:
 			pre_collapse_groups = group_df.height
 			group_df, assignment_df = collapse_groups_by_clipping(
-			 group_df, assignment_df, max_clipped, clip_mode
+				group_df, assignment_df, max_clipped, clip_mode
 			)
 			post_collapse_groups = group_df.height
 			if "source_group_ids" in group_df.columns:
 				source_counts = group_df.select(
-				 pl.col("source_group_ids").list.len().alias("n")
+					pl.col("source_group_ids").list.len().alias("n")
 				).get_column("n")
 				merged_groups = sum(1 for n in source_counts if n > 1)
 				source_total = int(sum(source_counts))
@@ -1019,60 +1118,59 @@ def termini(
 				merged_groups = 0
 				collapsed_away = pre_collapse_groups - post_collapse_groups
 			logger.info(
-			 "Second-pass clipped collapse (--clip-mode %s, --max-clipped %s): %s -> %s groups (%s collapsed across %s merged groups)",
-			 clip_mode,
-			 max_clipped,
-			 pre_collapse_groups,
-			 post_collapse_groups,
-			 collapsed_away,
-			 merged_groups,
+				"Second-pass clipped collapse (--clip-mode %s, --max-clipped %s): %s -> %s groups (%s collapsed across %s merged groups; singletons: %s)",
+				clip_mode,
+				max_clipped,
+				pre_collapse_groups,
+				post_collapse_groups,
+				collapsed_away,
+				merged_groups,
+				group_df.filter(pl.col("member_count") == 1).height,
 			)
 		else:
 			logger.info("Second-pass clipped collapse disabled (--no-max-clipped-collapse)")
 		group_df = annotate_found_in_from_all_signatures(
-		 group_df, assignment_df, raw_signatures
+			group_df, assignment_df, raw_signatures
 		)
-            
 
 	group_df = finalize_group_output(group_df)
 
 	membership_df = build_membership_table(
-	 seq_df, unique_signatures, assignment_df, group_df
+		seq_df, unique_signatures, assignment_df, group_df
 	)
 	write_table(
-	 membership_df,
-	 output,
-	 output_format,
-	 logger,
-	 label="assignments",
+		membership_df,
+		output,
+		output_format,
+		logger,
+		label="assignments",
 	)
 
 	if groups_output is None:
 		groups_output = output.with_name(
-		 f"{output.stem}.groups{output.suffix or ''}"
+			f"{output.stem}.groups{output.suffix or ''}"
 		)
 	write_table(
-	 group_df,
-	 groups_output,
-	 output_format,
-	 logger,
-	 list_columns=[
-	  "members",
-	  "found_in",
-	  "source_group_ids",
-	  "clip_contains_source_ids",
-	  "clip_contained_by_source_ids",
-	 ],
-	 label="groups",
+		group_df,
+		groups_output,
+		output_format,
+		logger,
+		list_columns=[
+			"members",
+			"found_in",
+			"source_group_ids",
+			"clip_contains_source_ids",
+			"clip_contained_by_source_ids",
+		],
+		label="groups",
 	)
 
 	if motifs_fasta is None:
 		motifs_fasta = output.with_name(f"{output.stem}.motifs.fasta")
 	write_group_motifs_fasta(
-	 group_df,
-	 assignment_df,
-	 unique_signatures,
-	 motifs_fasta,
-	 logger,
+		group_df,
+		assignment_df,
+		unique_signatures,
+		motifs_fasta,
+		logger,
 	)
-

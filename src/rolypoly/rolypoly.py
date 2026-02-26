@@ -68,6 +68,7 @@ CONTEXT_SETTINGS = dict(
             "commands": {
                 "assemble": "rolypoly.commands.assembly.assemble.assembly",
                 "filter-contigs": "rolypoly.commands.assembly.filter_contigs.filter_contigs",
+                "extend": "rolypoly.commands.assembly.extend.extend",
                 # Commenting out unimplemented commands
                 # "co-assembly": "rolypoly.commands.assembly.co_assembly.co_assembly",
                 # "refine": "rolypoly.commands.assembly.refinement.refine"
@@ -91,6 +92,7 @@ CONTEXT_SETTINGS = dict(
             "name": "Binning",
             "commands": {
                 "termini": "rolypoly.commands.bining.termini.termini",
+    #         "correlate": "hidden:rolypoly.commands.bining.corrolate.corrolate",
             },
         },
         # "characterise": {
@@ -98,7 +100,6 @@ CONTEXT_SETTINGS = dict(
         #     "commands": {
         #         "characterise": "hidden:rolypoly.commands.virotype.predict_characteristics.predict_characteristics",
         #         "predict-host": "hidden:rolypoly.commands.host.classify.predict_host_range",
-        #         "correlate": "hidden:rolypoly.commands.bining.corrolate.corrolate",
         #         # Commenting out unimplemented/broken commands
         #         # "summarize": "rolypoly.commands.virotype.summarize.summarize"
         #     },

@@ -131,3 +131,6 @@ package.json
 .nfs*
 rolypoly_data_slim_*.tar.gz
 .github/copilot-instructions.md
+benchmarking_outputs/*
+./testing_folder/misc/
+benchmarking_logs/

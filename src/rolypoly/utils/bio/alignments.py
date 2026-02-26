@@ -1413,3 +1413,47 @@ def fetchPfamMSA(
     logger.info(f"Pfam MSA for {acc} written to {filepath}")
 
     return str(filepath)
+
+
+def prettify_alignment_gap_affine(
+    query_seq: str,
+    ref_seq: str,
+    return_ref_region: bool = False,
+    return_query_region: bool = False,
+    return_comp_str: bool = False,
+    gap_cost: int = 3,
+    extend_cost: int = 1,
+) -> str:
+    """Return parasail NW traceback strings in query/comp/ref style."""
+    try:
+        import parasail as ps  # type: ignore[import-not-found]
+        ali = ps.nw_trace(
+            query_seq,
+            ref_seq,
+            open=gap_cost,
+            extend=extend_cost,
+            matrix=ps.nuc44,
+        ).traceback
+        if return_ref_region:
+            return ali.ref
+        if return_query_region:
+            return ali.query
+        if return_comp_str:
+            return ali.comp
+        return f"{ali.query}\n{ali.comp}\n{ali.ref}"
+    except Exception:
+        if return_ref_region:
+            return ref_seq
+        if return_query_region:
+            return query_seq
+        if return_comp_str:
+            return "".join("|" if a == b else "." for a, b in zip(query_seq, ref_seq))
+        comp = "".join("|" if a == b else "." for a, b in zip(query_seq, ref_seq))
+        return f"{query_seq}\n{comp}\n{ref_seq}"
+
+
+def hamming_distance(seq_a: str, seq_b: str) -> int:
+    """Hamming distance between two equal-length sequences."""
+    if len(seq_a) != len(seq_b):
+        raise ValueError("Cannot compare sequences of different lengths with the hamming metric")
+    return sum(ch_a != ch_b for ch_a, ch_b in zip(seq_a, seq_b))

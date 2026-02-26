@@ -903,3 +903,22 @@ def ensure_unified_schema(dataframes):
         unified_dataframes.append(df)
 
     return unified_dataframes
+
+
+def load_sequences(fasta_path: Union[str, Path]) -> pl.DataFrame:
+    """Read a FASTA/FASTQ file into a polars DataFrame with contig_id, sequence, seq_length.
+
+    Convenience wrapper around from_fastx_eager that normalises column names
+    and adds a ``seq_length`` column.
+    """
+    df = from_fastx_eager(fasta_path)
+    if df.is_empty():
+        return df
+    column_map = {"header": "contig_id"}
+    df = df.rename({k: v for k, v in column_map.items() if k in df.columns})
+    if "contig_id" not in df.columns:
+        df = df.with_row_index("contig_id", offset=1).with_columns(
+            pl.col("contig_id").cast(pl.Utf8)
+        )
+    df = df.with_columns(pl.col("sequence").seq.length().alias("seq_length"))
+    return df

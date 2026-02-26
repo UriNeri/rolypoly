@@ -596,5 +596,32 @@
     "expected_files": [
       "{tmp}/virus_mapping_custom_vs_Custom.tab"
     ]
+  },
+  {
+    "id": "extend_demo",
+    "description": "Smoke test extend on bundled segmented demo FASTA",
+    "args": [
+      "extend",
+      "-i",
+      "testing_folder/termini_ncbi/segmented_shared_termini.fasta",
+      "-o",
+      "{tmp}/extend_demo.fasta",
+      "--threads",
+      "1"
+    ],
+    "expected_files": [
+      "{tmp}/extend_demo.fasta",
+      "{tmp}/extend_demo.clusters.tsv"
+    ],
+    "expected_table_columns": {
+      "{tmp}/extend_demo.clusters.tsv": [
+        "cluster_id",
+        "contig_id",
+        "is_representative"
+      ]
+    },
+    "expected_table_min_rows": {
+      "{tmp}/extend_demo.clusters.tsv": 1
+    }
   }
 ]
