@@ -57,6 +57,22 @@ def init_ani_cluster_pileup_worker(
 	parasail_match: int,
 	parasail_mismatch: int,
 ) -> None:
+	"""Initialize global pileup settings for each process-pool worker.
+
+	Args:
+		representative_mode: Representative strategy used by workers.
+		pileup_min_overlap: Minimum overlap length for merge acceptance.
+		pileup_min_identity: Minimum overlap identity for merge acceptance.
+		prefix_kmers_by_idx: Prefix terminal k-mers keyed by row order.
+		suffix_kmers_by_idx: Suffix terminal k-mers keyed by row order.
+		pileup_aligner_backend: Aligner backend (parasail or pyopal).
+		threads: Worker thread/process count setting.
+		parasail_algorithm: Parasail algorithm mode (ov or sw).
+		parasail_gap_open: Gap-open penalty used for parasail.
+		parasail_gap_extend: Gap-extension penalty used for parasail.
+		parasail_match: Match score for parasail overlap matrix.
+		parasail_mismatch: Mismatch score for parasail overlap matrix.
+	"""
 	global ANI_WORKER_REPRESENTATIVE_MODE
 	global ANI_WORKER_PILEUP_MIN_OVERLAP
 	global ANI_WORKER_PILEUP_MIN_IDENTITY
@@ -94,6 +110,19 @@ def terminal_overlap_identity(
 	ext_overlap: str,
 	window: int = 30,
 ) -> float:
+	"""Compute conservative edge identity for two overlap strings.
+
+	The score is the minimum identity across the left and right windows,
+	which penalizes weak overlap boundaries even when internal identity is high.
+
+	Args:
+		repr_overlap: Overlap bases from the representative sequence.
+		ext_overlap: Overlap bases from the extender sequence.
+		window: Number of bases to inspect on each overlap edge.
+
+	Returns:
+		float: Edge identity score in the 0-1 range.
+	"""
 	overlap_span = min(len(repr_overlap), len(ext_overlap))
 	if overlap_span == 0:
 		return 0.0
@@ -126,6 +155,28 @@ def _merge_pair_by_overlap(
 	parasail_match: int = ANI_PILEUP_PARASAIL_MATCH,
 	parasail_mismatch: int = ANI_PILEUP_PARASAIL_MISMATCH,
 ) -> tuple[str, dict[str, Any] | None]:
+	"""Attempt to merge two sequences by terminal overlap in either orientation.
+
+	The function checks containment first, then tries aligner-based overlap merges
+	(using parasail or pyopal), and finally falls back to direct terminal scans.
+
+	Args:
+		base: Current representative sequence.
+		other: Candidate sequence to merge into ``base``.
+		min_overlap: Minimum overlap length required for a merge.
+		min_identity: Minimum identity required for a merge.
+		aligner_backend: Preferred aligner backend (parasail or pyopal).
+		threads: Thread count for aligners that support threading.
+		parasail_algorithm: Parasail mode, overlap (ov) or local (sw).
+		parasail_gap_open: Parasail gap-open penalty.
+		parasail_gap_extend: Parasail gap-extension penalty.
+		parasail_match: Parasail match score.
+		parasail_mismatch: Parasail mismatch score.
+
+	Returns:
+		Tuple of merged sequence and merge metadata. Metadata is ``None`` when no
+		accepted merge is found.
+	"""
 	if not base:
 		return other, None
 	if not other:
@@ -532,7 +583,7 @@ def build_step_alignment_view(
 	return rep_label, rep_display, align_display, ext_label, ext_display
 
 
-# -- Terminal k-mer helpers --------------------------------------------------
+# Terminal k-mer helpers ------
 
 def terminal_kmer_set(sequence: str, side: str, k: int, window: int) -> set[str]:
 	if k <= 0 or window <= 0 or len(sequence) < k:
@@ -570,6 +621,16 @@ def compute_terminal_kmer_maps(
 	seq_rows: list[dict[str, Any]],
 	logger=None,
 ) -> tuple[dict[int, set[str]], dict[int, set[str]]]:
+	"""Precompute prefix/suffix terminal k-mer sets for overlap prefiltering.
+
+	Args:
+		seq_rows: Sequence rows containing ``_order`` and ``sequence``.
+		logger: Optional logger for stage-level timing diagnostics.
+
+	Returns:
+		Tuple of dictionaries keyed by ``_order`` index:
+		(prefix_kmers_by_idx, suffix_kmers_by_idx).
+	"""
 	if not seq_rows:
 		return {}, {}
 	start_time = perf_counter()
@@ -664,6 +725,15 @@ def compute_terminal_kmer_maps(
 
 
 def build_nascent_chain_label(seed_contig_id: str, extension_steps: list[dict[str, Any]]) -> str:
+	"""Build a directional chain label from seed and extension steps.
+
+	Args:
+		seed_contig_id: Initial seed contig identifier.
+		extension_steps: Ordered extension step payloads with placement fields.
+
+	Returns:
+		str: Arrow-joined chain label reflecting left/right insertions.
+	"""
 	chain_tokens: list[str] = [seed_contig_id]
 	for step in extension_steps:
 		contig_id = str(step.get("with_contig_id", ""))
@@ -677,7 +747,7 @@ def build_nascent_chain_label(seed_contig_id: str, extension_steps: list[dict[st
 	return "->".join(chain_tokens)
 
 
-# -- Build pileup sequence --------------------------------------------------
+#  Build pileup sequence 
 
 def build_pileup_sequence(
 	cluster_rows: list[dict[str, Any]],
@@ -693,6 +763,31 @@ def build_pileup_sequence(
 	parasail_match: int = ANI_PILEUP_PARASAIL_MATCH,
 	parasail_mismatch: int = ANI_PILEUP_PARASAIL_MISMATCH,
 ) -> tuple[str, set[str], list[dict[str, Any]], dict[str, Any]]:
+	"""Construct an extended representative by graph-guided pileup within a cluster.
+
+	Workflow:
+	1) Build candidate overlap edges after terminal k-mer prefiltering.
+	2) Assemble chains from possible seeds and keep the best merged sequence.
+	3) Run rescue merges for remaining contributors not captured in chain traversal.
+
+	Args:
+		cluster_rows: Rows for a single ANI cluster.
+		min_overlap: Minimum overlap length required for merges.
+		min_identity: Minimum identity required for merges.
+		prefix_kmers_by_idx: Prefix k-mer sets keyed by ``_order``.
+		suffix_kmers_by_idx: Suffix k-mer sets keyed by ``_order``.
+		aligner_backend: Pairwise backend for overlap checks.
+		threads: Thread count for alignment backends.
+		parasail_algorithm: Parasail mode, overlap (ov) or local (sw).
+		parasail_gap_open: Parasail gap-open penalty.
+		parasail_gap_extend: Parasail gap-extension penalty.
+		parasail_match: Parasail match score.
+		parasail_mismatch: Parasail mismatch score.
+
+	Returns:
+		Tuple containing merged sequence, contributor contig IDs, extension step
+		records, and a metrics dictionary for logging/diagnostics.
+	"""
 	start_time = perf_counter()
 	if not cluster_rows:
 		return "", set(), [], {
@@ -1105,7 +1200,7 @@ def build_pileup_sequence(
 	}
 
 
-# -- ANI clustering ----------------------------------------------------------
+# ANI clustering --------------
 
 def cluster_contigs_by_ani(
 	seq_rows: list[dict[str, Any]],
@@ -1194,11 +1289,19 @@ def cluster_contigs_by_ani(
 	return clusters
 
 
-# -- Process-pool worker for pileup -----------------------------------------
-
+#  Process-pool worker for pileup 
 def process_ani_cluster_pileup_worker(
 	cluster: list[dict[str, Any]],
 ) -> dict[str, Any]:
+	"""Process one ANI cluster inside a worker process.
+
+	Args:
+		cluster: Rows belonging to one ANI cluster.
+
+	Returns:
+		dict[str, Any]: Worker payload containing representative output, optional
+		pileup extension details, and per-cluster summary metadata.
+	"""
 	if (
 		ANI_WORKER_REPRESENTATIVE_MODE is None
 		or ANI_WORKER_PILEUP_MIN_OVERLAP is None
@@ -1278,8 +1381,7 @@ def process_ani_cluster_pileup_worker(
 	}
 
 
-# -- Main extension orchestrator --------------------------------------------
-
+# Main extension orchestrator 
 def run_pileup_extension(
 	seq_df: pl.DataFrame,
 	min_identity: float,
@@ -1595,7 +1697,7 @@ def run_pileup_extension(
 	return extended_df, clusters_df
 
 
-# -- CLI command -------------------------------------------------------------
+# CLI command -----------------
 
 @click.command()
 @click.option(
@@ -1733,14 +1835,15 @@ def extend(
 	"""Extend contigs by ANI-guided overlap pileup.
 
 	Workflow:
-	1) Read input contigs (FASTA/FASTQ).
-	2) Cluster contigs by ANI using pyskani.
+	1) Read input seqs (FASTA/FASTQ).
+	2) Cluster input by ANI using pyskani.
 	3) Within each multi-contig cluster, attempt overlap pileup extension
 	   to produce a longer representative contig.
 	4) Write extended contigs (FASTA) and cluster membership table.
 
 	Use this command to get more complete genomes from fragmented assemblies,
 	for example when combining data from multiple experiments or samples.
+	# TODO: support for multiple input files, e.g. one fiel is contigs from sample A, another file is reads from sample B.
 	"""
 	logger = setup_logging(log_file, log_level)
 	log_start_info(logger, locals())

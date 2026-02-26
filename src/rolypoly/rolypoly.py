@@ -92,7 +92,7 @@ CONTEXT_SETTINGS = dict(
             "name": "Binning",
             "commands": {
                 "termini": "rolypoly.commands.bining.termini.termini",
-    #         "correlate": "hidden:rolypoly.commands.bining.corrolate.corrolate",
+                "correlate": "rolypoly.commands.bining.correlate.correlate",
             },
         },
         # "characterise": {
