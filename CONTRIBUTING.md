@@ -83,6 +83,8 @@ Releases are automated via GitHub Actions using trusted publishing (OIDC), with 
 4. Install from TestPyPI and run import + CLI smoke check
 5. Publish the same artifacts to PyPI
 
+Version bumping is **manual** and happens before CI publishing.
+
 Workflow file: `.github/workflows/pypi-release.yml`
 
 ### One-time setup (maintainers)
@@ -98,8 +100,26 @@ Use environment protection rules in GitHub for safer releases (recommended):
 
 ### Triggering releases
 
-- Preferred: create/publish a GitHub Release (this triggers the workflow automatically)
+- Primary path: push to deployment branch `release` (this triggers build/test/publish workflow)
+- Optional: create/publish a GitHub Release (also triggers workflow)
 - Optional: run the workflow manually (`workflow_dispatch`) for dry-runs/testing
+
+### One-command release prep (manual bump + commit + trigger CI)
+
+Use the pixi task:
+- `pixi run -e dev bump-commit-publish`
+
+This task runs `src/setup/bump_commit_publish.sh` and by default:
+- bumps version with `hatch version micro`
+- runs help-smoke tests locally
+- commits `src/rolypoly/__init__.py`
+- pushes to `origin/release` to trigger GitHub Actions publish flow
+
+Common options:
+- `pixi run -e dev bump-commit-publish -- --bump minor`
+- `pixi run -e dev bump-commit-publish -- --bump 0.7.0`
+- `pixi run -e dev bump-commit-publish -- --branch release --remote origin`
+- `pixi run -e dev bump-commit-publish -- --skip-smoke`
 
 ### Local fallback (manual upload)
 

@@ -3,9 +3,7 @@ name: Publish package (TestPyPI -> PyPI)
 on:
   push:
     branches:
-      - dev_olive
-    paths:
-      - '.github/workflows/pypi-release.yml'
+      - release
   release:
     types: [published]
   workflow_dispatch:
@@ -60,36 +58,6 @@ jobs:
           print(f"Version check passed: tag={release_tag}, package={package_version}")
           PY
 
-      - name: Set CI dev version (non-release runs)
-        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.publish_pypi)
-        run: |
-          python - <<'PY'
-          import os
-          import re
-          from pathlib import Path
-
-          version_file = Path("src/rolypoly/__init__.py")
-          text = version_file.read_text(encoding="utf-8")
-
-          match = re.search(r"(__version__\s*=\s*['\"])([^'\"]+)(['\"])", text)
-          if not match:
-            raise SystemExit(f"Could not parse __version__ from {version_file}")
-
-          current_version = match.group(2)
-          base_version = current_version.split("+", 1)[0]
-          base_version = re.sub(r"\.dev\d+$", "", base_version)
-          ci_version = f"{base_version}.dev{os.environ['GITHUB_RUN_NUMBER']}"
-
-          updated = re.sub(
-            r"(__version__\s*=\s*['\"])([^'\"]+)(['\"])",
-            rf"\1{ci_version}\3",
-            text,
-            count=1,
-          )
-          version_file.write_text(updated, encoding="utf-8")
-          print(f"Updated version for CI build: {current_version} -> {ci_version}")
-          PY
-
       - name: Build wheel + sdist
         run: |
           rm -rf dist build
@@ -109,7 +77,6 @@ jobs:
   publish-testpypi:
     name: Publish to TestPyPI
     needs: build-and-test
-    if: github.event_name != 'push' || github.ref == 'refs/heads/dev_olive'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -165,12 +132,12 @@ jobs:
           PKG_VERSION: ${{ steps.version.outputs.version }}
         run: |
           python -m pip install --upgrade pip
-          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+          for attempt in 1 2 3 4 5 ; do
             echo "Attempt ${attempt}: installing rolypoly_tk==${PKG_VERSION} from TestPyPI"
             if python -m pip install --no-deps --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple "rolypoly_tk==${PKG_VERSION}"; then
               break
             fi
-            if [ "${attempt}" -eq 10 ]; then
+            if [ "${attempt}" -eq 5 ]; then
               echo "Failed to install package from TestPyPI after retries"
               exit 1
             fi
@@ -186,7 +153,7 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     needs: smoke-install-testpypi
-    if: github.event_name == 'release' || (inputs.publish_pypi && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
+    if: github.event_name == 'release' || github.ref == 'refs/heads/release' || (github.event_name == 'workflow_dispatch' && inputs.publish_pypi)
     runs-on: ubuntu-latest
     permissions:
       id-token: write

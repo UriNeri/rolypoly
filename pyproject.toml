@@ -136,10 +136,6 @@ ipykernel = ">=6.30.1,<7"
 blast = ">=2.17.0,<3" # for getting fasta from NCBI blastdbs
 aria2 = ">=1.37.0,<2"
 
-[tool.pixi.tasks]
-gh-push = "src/setup/on_gh.sh push"
-gh-pull = "src/setup/on_gh.sh pull"
-
 [tool.pixi.feature.py39.dependencies]
 python = "~=3.10.0"
 
@@ -208,6 +204,7 @@ build-pypi = "hatch version micro && hatch build --clean"
 [tool.pixi.feature.dev.tasks]
 test-import = "python -c 'import rolypoly; print(rolypoly.__version__)'"
 test-cli = "pytest -q src/tests/test_cli_contracts.py"
+bump-commit-publish = "bash src/setup/bump_commit_publish.sh"
 
 [tool.ruff]
 exclude = [
