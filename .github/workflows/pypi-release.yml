@@ -1,6 +1,11 @@
 name: Publish package (TestPyPI -> PyPI)
 
 on:
+  push:
+    branches:
+      - dev_olive
+    paths:
+      - '.github/workflows/pypi-release.yml'
   release:
     types: [published]
   workflow_dispatch:
