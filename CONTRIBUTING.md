@@ -74,6 +74,40 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
 2. **Benchmarking**:
    - Use `/usr/bin/time` for resource monitoring. Alternatively, hyperfine is great too but. Ideallt - use SLURM and keep track of the job IDs for later analysis with seff/pyseff.
 
+## PyPI / TestPyPI release automation
+
+Releases are automated via GitHub Actions using trusted publishing (OIDC), with this flow:
+1. Build wheel + sdist and run help-smoke tests (`src/tests/test_cli_help_smoke.py`)
+2. Validate package metadata with `twine check`
+3. Publish to TestPyPI
+4. Install from TestPyPI and run import + CLI smoke check
+5. Publish the same artifacts to PyPI
+
+Workflow file: `.github/workflows/pypi-release.yml`
+
+### One-time setup (maintainers)
+
+Configure trusted publishers in both PyPI and TestPyPI for project `rolypoly-tk`:
+- Owner/repo: `UriNeri/rolypoly`
+- Workflow name: `pypi-release.yml`
+- Environment names: `testpypi` and `pypi`
+
+Use environment protection rules in GitHub for safer releases (recommended):
+- `testpypi`: optional reviewers
+- `pypi`: required reviewer(s)
+
+### Triggering releases
+
+- Preferred: create/publish a GitHub Release (this triggers the workflow automatically)
+- Optional: run the workflow manually (`workflow_dispatch`) for dry-runs/testing
+
+### Local fallback (manual upload)
+
+If needed, manual upload with twine is still supported:
+- Build: `pixi run -e dev hatch build --clean`
+- Check: `pixi run -e dev twine check dist/*`
+- Upload: `pixi run -e dev twine upload dist/* --verbose`
+
 ## Example Workflow: Adding a New Command
 
 Here's a high-level workflow for adding a new command to RolyPoly:
