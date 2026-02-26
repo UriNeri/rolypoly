@@ -257,8 +257,8 @@ skip-magic-trailing-comma = true
 
 [tool.pytest.ini_options]
 testpaths = ["src/tests"]
-addopts = "-ra"
-log_file = "src/tests/pytest.log"
+addopts = "-ra --basetemp=testing_folder/outputs/pytest_tmp"
+log_file = "testing_folder/pytest.log"
 log_file_level = "DEBUG"
 filterwarnings = [
     "ignore:`use_rich_markup=` will be deprecated.*:PendingDeprecationWarning",

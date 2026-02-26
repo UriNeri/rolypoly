@@ -5,7 +5,7 @@
     "args": [
       "termini",
       "-i",
-      "testing_folder/termini_ncbi/segmented_shared_termini.fasta",
+      "testing_folder/inputs/contigs/segmented_shared_termini.fasta",
       "-n",
       "4-2000",
       "-d",
@@ -49,7 +49,7 @@
     "args": [
       "fastx-calc",
       "-i",
-      "testing_folder/test_contigs.fasta",
+      "testing_folder/inputs/contigs/test_contigs.fasta",
       "-o",
       "{tmp}/fastx_calc.tsv",
       "--format",
@@ -82,7 +82,7 @@
     "args": [
       "fastx-stats",
       "-i",
-      "testing_folder/test_contigs.fasta",
+      "testing_folder/inputs/contigs/test_contigs.fasta",
       "-o",
       "{tmp}/fastx_stats.tsv",
       "--format",
@@ -113,7 +113,7 @@
     "args": [
       "rename-seqs",
       "-i",
-      "testing_folder/test_contigs.fasta",
+      "testing_folder/inputs/contigs/test_contigs.fasta",
       "-o",
       "{tmp}/renamed.fasta",
       "-m",
@@ -146,7 +146,7 @@
     "args": [
       "annotate-rna",
       "-i",
-      "testing_folder/test_contigs.fasta",
+      "testing_folder/inputs/contigs/test_contigs.fasta",
       "-o",
       "{tmp}/annotate_rna",
       "--skip-steps",
@@ -164,7 +164,7 @@
     "args": [
       "annotate",
       "-i",
-      "testing_folder/test_contigs.fasta",
+      "testing_folder/inputs/contigs/test_contigs.fasta",
       "-o",
       "{tmp}/annotate_wrapper",
       "--skip-steps",
@@ -187,7 +187,7 @@
     "args": [
       "annotate-prot",
       "-i",
-      "testing_folder/test_contigs.fasta",
+      "testing_folder/inputs/contigs/test_contigs.fasta",
       "-o",
       "{tmp}/annotate_prot_hmm_dna",
       "-gp",
@@ -291,7 +291,7 @@
     "args": [
       "annotate-prot",
       "-i",
-      "testing_folder/test_contigs.fasta",
+      "testing_folder/inputs/contigs/test_contigs.fasta",
       "-o",
       "{tmp}/annotate_prot_mmseqs_genomad",
       "-gp",
@@ -341,7 +341,7 @@
     "args": [
       "annotate-prot",
       "-i",
-      "testing_folder/test_contigs.fasta",
+      "testing_folder/inputs/contigs/test_contigs.fasta",
       "-o",
       "{tmp}/annotate_prot_mmseqs_nvpc",
       "-gp",
@@ -380,7 +380,7 @@
     "args": [
       "annotate-prot",
       "-i",
-      "testing_folder/test_contigs.fasta",
+      "testing_folder/inputs/contigs/test_contigs.fasta",
       "-o",
       "{tmp}/annotate_prot_diamond_rvmt",
       "-gp",
@@ -416,7 +416,7 @@
       "{tmp}/assemble_out",
       "--single-end",
       "1",
-      "testing_folder/some_soil_shrinked.fq",
+      "testing_folder/inputs/reads/some_soil_shrinked.fq",
       "-A",
       "megahit",
       "-p",
@@ -460,9 +460,9 @@
     "args": [
       "filter-contigs",
       "-i",
-      "testing_folder/test_contigs.fasta",
+      "testing_folder/inputs/contigs/test_contigs.fasta",
       "-d",
-      "testing_folder/test_fasta_for_masking.fasta",
+      "testing_folder/inputs/contigs/test_fasta_for_masking.fasta",
       "-o",
       "{tmp}/filter_contigs_out.fasta",
       "-m",
@@ -481,7 +481,7 @@
     "args": [
       "filter-reads",
       "-i",
-      "testing_folder/some_soil_shrinked.fq",
+      "testing_folder/inputs/reads/some_soil_shrinked.fq",
       "-o",
       "{tmp}/filter_reads_out",
       "--skip-steps",
@@ -510,7 +510,7 @@
     "args": [
       "marker-search",
       "-i",
-      "testing_folder/test_contigs.fasta",
+      "testing_folder/inputs/contigs/test_contigs.fasta",
       "-o",
       "{tmp}/marker_search_out",
       "-db",
@@ -552,7 +552,7 @@
     "args": [
       "shrink-reads",
       "-i",
-      "testing_folder/some_soil_shrinked.fq",
+      "testing_folder/inputs/reads/some_soil_shrinked.fq",
       "-out",
       "{tmp}",
       "-st",
@@ -583,13 +583,13 @@
     "args": [
       "virus-mapping",
       "-i",
-      "testing_folder/test_contigs.fasta",
+      "testing_folder/inputs/contigs/test_contigs.fasta",
       "-o",
       "{tmp}/virus_mapping_custom.tab",
       "--db",
       "other",
       "--db-path",
-      "testing_folder/test_fasta_for_masking.fasta",
+      "testing_folder/inputs/contigs/test_fasta_for_masking.fasta",
       "-t",
       "1"
     ],
@@ -603,11 +603,11 @@
     "args": [
       "extend",
       "-i",
-      "testing_folder/termini_ncbi/segmented_shared_termini.fasta",
+      "testing_folder/inputs/contigs/segmented_shared_termini.fasta",
       "-o",
       "{tmp}/extend_demo.fasta",
       "--threads",
-      "1"
+      "4"
     ],
     "expected_files": [
       "{tmp}/extend_demo.fasta",

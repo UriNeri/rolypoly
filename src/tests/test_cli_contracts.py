@@ -31,6 +31,40 @@ def render_values(values: list[str], tmp_path: Path) -> list[str]:
     return [render(str(value), tmp_path) for value in values]
 
 
+def pick_log_file_option(command_name: str) -> str | None:
+    ctx = click.Context(rolypoly)
+    command = rolypoly.get_command(ctx, command_name)
+    if command is None:
+        return None
+
+    for parameter in command.params:
+        if not isinstance(parameter, click.Option):
+            continue
+        if "--log-file" in parameter.opts:
+            return "--log-file"
+    return None
+
+
+def inject_log_file_arg(
+    args: list[str],
+    tmp_path: Path,
+    scenario_id: str,
+) -> list[str]:
+    if not args:
+        return args
+
+    command_name = args[0]
+    if "--log-file" in args:
+        return args
+
+    log_option = pick_log_file_option(command_name)
+    if not log_option:
+        return args
+
+    log_file_path = tmp_path / f"{command_name}_{scenario_id}.log"
+    return args + [log_option, str(log_file_path)]
+
+
 def inject_debug_log_level(args: list[str]) -> list[str]:
     if not args:
         return args
@@ -208,6 +242,7 @@ def test_cli_scenarios(
     apply_preconditions(scenario, tmp_path)
 
     args = render_values(scenario["args"], tmp_path)
+    args = inject_log_file_arg(args, tmp_path, str(scenario.get("id", "scenario")))
     args = inject_debug_log_level(args)
 
     result = runner.invoke(rolypoly, args, catch_exceptions=False)
