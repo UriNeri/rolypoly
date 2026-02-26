@@ -61,7 +61,10 @@ jobs:
           PY
 
       - name: Build wheel + sdist
-        run: pixi run -e dev hatch build --clean
+        run: |
+          rm -rf dist build
+          pixi run -e dev python -m pip install --upgrade build
+          pixi run -e dev python -m build --sdist --wheel --outdir dist
 
       - name: Twine metadata check
         run: pixi run -e dev twine check dist/*
