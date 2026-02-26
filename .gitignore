@@ -62,6 +62,7 @@ cover/
 testing_folder/*
 !testing_folder/inputs/
 !testing_folder/inputs/**
+!testing_folder/pytest.log
 .cache/
 .ruff_cache/
 .tox/
