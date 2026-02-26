@@ -172,6 +172,7 @@ TMP_PIP="$(mktemp)"
 TMP_TOP_OUT="$(mktemp)"
 TMP_PIP_OUT="$(mktemp)"
 trap 'rm -f "${TMP_CONDA_EXPORT}" "${TMP_HEADER}" "${TMP_TOP}" "${TMP_PIP}" "${TMP_TOP_OUT}" "${TMP_PIP_OUT}"' EXIT
+export TMP_HEADER TMP_TOP TMP_PIP
 
 pixi workspace export conda-environment -e complete -n rolypoly-tk "${TMP_CONDA_EXPORT}"
 
