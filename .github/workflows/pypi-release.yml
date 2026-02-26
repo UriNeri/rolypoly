@@ -30,7 +30,9 @@ jobs:
           pixi-version: v0.44.0
 
       - name: Run CLI help smoke tests
-        run: pixi run -e dev pytest -q src/tests/test_cli_help_smoke.py
+        run: |
+          mkdir -p testing_folder/outputs
+          pixi run -e dev pytest -q src/tests/test_cli_help_smoke.py
 
       - name: Verify tag matches package version
         if: github.event_name == 'release'
@@ -74,6 +76,7 @@ jobs:
   publish-testpypi:
     name: Publish to TestPyPI
     needs: build-and-test
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -131,7 +134,7 @@ jobs:
           python -m pip install --upgrade pip
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
             echo "Attempt ${attempt}: installing rolypoly_tk==${PKG_VERSION} from TestPyPI"
-            if python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple "rolypoly_tk==${PKG_VERSION}"; then
+            if python -m pip install --no-deps --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple "rolypoly_tk==${PKG_VERSION}"; then
               break
             fi
             if [ "${attempt}" -eq 10 ]; then
@@ -149,7 +152,7 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     needs: smoke-install-testpypi
-    if: github.event_name == 'release' || inputs.publish_pypi
+    if: github.event_name == 'release' || (inputs.publish_pypi && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
     runs-on: ubuntu-latest
     permissions:
       id-token: write
