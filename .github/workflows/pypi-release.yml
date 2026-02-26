@@ -63,12 +63,32 @@ jobs:
       - name: Set CI dev version (non-release runs)
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.publish_pypi)
         run: |
-          current_version="$(pixi run -e dev hatch version | tr -d '[:space:]')"
-          base_version="${current_version%%+*}"
-          base_version="$(echo "${base_version}" | sed -E 's/\.dev[0-9]+$//')"
-          ci_version="${base_version}.dev${GITHUB_RUN_NUMBER}"
-          echo "Updated version for CI build: ${current_version} -> ${ci_version}"
-          pixi run -e dev hatch version "${ci_version}"
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          version_file = Path("src/rolypoly/__init__.py")
+          text = version_file.read_text(encoding="utf-8")
+
+          match = re.search(r"(__version__\s*=\s*['\"])([^'\"]+)(['\"])", text)
+          if not match:
+            raise SystemExit(f"Could not parse __version__ from {version_file}")
+
+          current_version = match.group(2)
+          base_version = current_version.split("+", 1)[0]
+          base_version = re.sub(r"\.dev\d+$", "", base_version)
+          ci_version = f"{base_version}.dev{os.environ['GITHUB_RUN_NUMBER']}"
+
+          updated = re.sub(
+            r"(__version__\s*=\s*['\"])([^'\"]+)(['\"])",
+            rf"\1{ci_version}\3",
+            text,
+            count=1,
+          )
+          version_file.write_text(updated, encoding="utf-8")
+          print(f"Updated version for CI build: {current_version} -> {ci_version}")
+          PY
 
       - name: Build wheel + sdist
         run: |
