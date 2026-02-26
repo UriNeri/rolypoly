@@ -19,6 +19,17 @@ from rolypoly.commands.assembly.extend import cluster_contigs_by_ani
 
 
 def parse_length_window(value: str) -> Tuple[int, int]:
+	"""Parse a fixed length or inclusive length range specification.
+
+	Args:
+		value: Length string such as ``40`` or ``25-40``.
+
+	Returns:
+		Tuple[int, int]: Minimum and maximum motif lengths.
+
+	Raises:
+		click.BadParameter: If values are non-positive or range is invalid.
+	"""
 	cleaned = value.replace(" ", "")
 	if "-" in cleaned:
 		start_str, end_str = cleaned.split("-", 1)
@@ -53,6 +64,14 @@ def load_and_orientate_sequences(fasta_path: Path) -> pl.DataFrame:
 
 
 def ensure_rc_column(df: pl.DataFrame) -> pl.DataFrame:
+	"""Ensure a reverse-complement sequence column exists.
+
+	Args:
+		df: Input sequence table with at least a ``sequence`` column.
+
+	Returns:
+		pl.DataFrame: Original table with ``sequence_rc`` present.
+	"""
 	if "sequence_rc" in df.columns:
 		return df
 	return df.with_columns(
@@ -127,6 +146,19 @@ def create_signature_frame(
  label: str,
  is_plus: bool,
 ) -> pl.DataFrame:
+	"""Build termini signature rows for one strand orientation.
+
+	Args:
+		df: Sequence table with contig IDs and lengths.
+		sequence_col: Column to slice for motif extraction.
+		min_len: Seed motif length used for grouping.
+		max_len: Maximum motif length retained for later extension.
+		label: Strand label prefix used in ``terminus`` naming.
+		is_plus: Whether current orientation is plus strand.
+
+	Returns:
+		pl.DataFrame: Signature rows for 5' and 3' termini in this orientation.
+	"""
 	filtered = df.filter(pl.col("seq_length") >= min_len)
 	if filtered.is_empty():
 		return pl.DataFrame()
@@ -179,6 +211,17 @@ def create_signature_frame(
 def build_signature_table(
  df: pl.DataFrame, min_len: int, max_len: int, strand: str
 ) -> pl.DataFrame:
+	"""Build the complete termini signature table for selected strands.
+
+	Args:
+		df: Input sequence table.
+		min_len: Minimum motif length for grouping seeds.
+		max_len: Maximum motif length for extension candidates.
+		strand: Strand mode (plus, minus, or both).
+
+	Returns:
+		pl.DataFrame: Combined signature rows across requested orientations.
+	"""
 	frames: list[pl.DataFrame] = []
 	if strand in {"plus", "both"}:
 		frames.append(
@@ -210,6 +253,14 @@ def build_signature_table(
 
 
 def deduplicate_signatures(signatures: pl.DataFrame) -> pl.DataFrame:
+	"""Keep one signature per contig/end, preferring plus-strand records.
+
+	Args:
+		signatures: Raw signature table that may contain strand duplicates.
+
+	Returns:
+		pl.DataFrame: Deduplicated signatures keyed by contig and end label.
+	"""
 	if signatures.is_empty():
 		return signatures
 	return (
@@ -231,6 +282,17 @@ def aggregate_min_range_groups(
  max_len: int,
  distance: int,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
+	"""Group signatures by seed motif identity or Hamming distance.
+
+	Args:
+		signatures: Deduplicated termini signature table.
+		min_len: Seed motif length used for grouping.
+		max_len: Maximum motif length configured by user.
+		distance: Allowed Hamming distance for seed clustering.
+
+	Returns:
+		Tuple of group summary table and per-contig assignment table.
+	"""
 	if signatures.is_empty():
 		return empty_result_frame(), empty_assignment_frame()
 	if distance == 0:
@@ -327,6 +389,16 @@ def extend_group_motifs(
  assignment_df: pl.DataFrame,
  signatures: pl.DataFrame,
 ) -> pl.DataFrame:
+	"""Extend each group motif while all assigned members agree by position.
+
+	Args:
+		group_df: Group summary table from first-pass clustering.
+		assignment_df: Per-signature mapping from contigs to groups.
+		signatures: Signature table including full-window motif strings.
+
+	Returns:
+		pl.DataFrame: Group table with possibly extended motif sequences.
+	"""
 	if group_df.is_empty() or assignment_df.is_empty():
 		return group_df
 	available = signatures.select("contig_id", "end_label", "motif_full")
@@ -410,6 +482,14 @@ def annotate_found_in_from_all_signatures(
 
 
 def finalize_group_output(group_df: pl.DataFrame) -> pl.DataFrame:
+	"""Normalize and reorder group summary columns for final export.
+
+	Args:
+		group_df: Group table from extension/collapse steps.
+
+	Returns:
+		pl.DataFrame: Finalized group summary with stable output columns.
+	"""
 	if group_df.is_empty():
 		return pl.DataFrame(
 		 {
@@ -456,6 +536,7 @@ def finalize_group_output(group_df: pl.DataFrame) -> pl.DataFrame:
 
 
 def is_one_edge_clipped_containment(shorter: str, longer: str, max_clipped: int) -> bool:
+	"""Check if ``shorter`` is contained in ``longer`` by single-edge clipping."""
 	delta = len(longer) - len(shorter)
 	if delta <= 0 or delta > max_clipped:
 		return False
@@ -463,6 +544,7 @@ def is_one_edge_clipped_containment(shorter: str, longer: str, max_clipped: int)
 
 
 def is_both_edge_clipped_containment(shorter: str, longer: str, max_clipped: int) -> bool:
+	"""Check if ``shorter`` is contained in ``longer`` with clipping on both edges."""
 	delta = len(longer) - len(shorter)
 	if delta <= 0 or delta > max_clipped:
 		return False
@@ -599,6 +681,7 @@ def collapse_groups_by_clipping(
 
 
 def consensus_motif(motifs: list[str]) -> str:
+	"""Build a position-wise consensus motif using majority vote ties by symbol."""
 	if not motifs:
 		return ""
 	length = len(motifs[0])
@@ -619,6 +702,17 @@ def cluster_distance_groups(
  max_len: int,
  max_distance: int,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+	"""Cluster signatures by Hamming distance and emit group/assignment records.
+
+	Args:
+		signatures: Signature table with minimum-window motifs.
+		min_len: Minimum motif window length.
+		max_len: Maximum motif window length.
+		max_distance: Maximum pairwise Hamming distance for connectivity.
+
+	Returns:
+		Tuple of Python records for grouped motifs and contig assignments.
+	"""
 	rows = signatures.select(
 	 "contig_id", "end_label", "strand_label", "found_label", "motif_min"
 	).to_dicts()
@@ -708,6 +802,17 @@ def build_membership_table(
  assignments: pl.DataFrame,
  group_df: pl.DataFrame,
 ) -> pl.DataFrame:
+	"""Build per-contig termini membership columns for output.
+
+	Args:
+		seq_df: Input contig table.
+		signatures: Signature rows for contigs and ends.
+		assignments: Mapping of signatures to group IDs.
+		group_df: Final group summary table with consensus motifs.
+
+	Returns:
+		pl.DataFrame: One row per contig with 5' and 3' group annotations.
+	"""
 	base = seq_df.select(pl.col("contig_id"), pl.col("seq_length"))
 	if signatures.is_empty():
 		return base.with_columns(
