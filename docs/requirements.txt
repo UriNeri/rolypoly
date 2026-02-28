@@ -1,0 +1,5 @@
+mkdocs # type: ignore
+mkdocs-mermaid2-plugin # type: ignore
+mkdocstrings
+mkdocstrings[python]
+mkdocs-material
