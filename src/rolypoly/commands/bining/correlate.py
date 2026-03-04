@@ -7,17 +7,7 @@ import polars as pl
 import rich_click as click
 
 from rolypoly.utils.logging.loggit import log_start_info, setup_logging
-
-
-def infer_separator(input_path: Path, separator: str) -> str:
-    """Infer separator from file extension when requested."""
-    if separator != "auto":
-        return separator
-    suffix = input_path.suffix.lower()
-    if suffix in {".tsv", ".tab", ".txt"}:
-        return "\t"
-    return ","
-
+from rolypoly.utils.various import infer_separator
 
 def parse_abundance_table(
     input_path: Path, separator: str, logger
@@ -135,6 +125,26 @@ def build_pair_frame(
             metric_column: matrix_values[row_idx, col_idx],
         }
     ).sort(["contig_1", "contig_2"])
+
+
+def compute_correlation_matrix(
+    values: np.ndarray,
+    presence_matrix: np.ndarray,
+    inferred_table_type: str,
+    method: str,
+) -> np.ndarray:
+    """Compute pairwise correlation matrix used by correlate outputs."""
+    corr_input = values
+    if inferred_table_type == "presence-absence":
+        corr_input = presence_matrix
+
+    if method == "spearman":
+        corr_input = rank_matrix_rows(corr_input)
+
+    correlation_matrix = np.corrcoef(corr_input)
+    correlation_matrix = np.nan_to_num(correlation_matrix, nan=-1.0)
+    np.fill_diagonal(correlation_matrix, 1.0)
+    return correlation_matrix
 
 
 def build_groups(
@@ -332,6 +342,7 @@ def correlate(
             {
                 "contig_1": pl.Series([], dtype=pl.String),
                 "contig_2": pl.Series([], dtype=pl.String),
+                "correlation": pl.Series([], dtype=pl.Float64),
             }
         )
         empty_groups = pl.DataFrame(
@@ -359,18 +370,15 @@ def correlate(
         df.height,
     )
 
+    correlation_matrix: np.ndarray | None = None
+    if mode in {"correlation", "both", "cooccurrence"}:
+        correlation_matrix = compute_correlation_matrix(
+            values, presence_matrix, inferred_table_type, method
+        )
+
     correlation_pairs = pl.DataFrame()
     if mode in {"correlation", "both"}:
-        corr_input = values
-        if inferred_table_type == "presence-absence":
-            corr_input = presence_matrix
-
-        if method == "spearman":
-            corr_input = rank_matrix_rows(corr_input)
-
-        correlation_matrix = np.corrcoef(corr_input)
-        correlation_matrix = np.nan_to_num(correlation_matrix, nan=-1.0)
-        np.fill_diagonal(correlation_matrix, 1.0)
+        assert correlation_matrix is not None
 
         correlation_pairs = build_pair_frame(
             contig_ids, correlation_matrix, min_correlation, "correlation"
@@ -383,17 +391,52 @@ def correlate(
         )
 
     cooccurrence_pairs = pl.DataFrame()
+    cooccurrence_pairs_with_correlation = pl.DataFrame()
     if mode in {"cooccurrence", "both"}:
         shared_matrix = (
             presence_matrix.astype(np.int32)
             @ presence_matrix.astype(np.int32).T
         )
+        prevalence_counts = presence_matrix.sum(axis=1).astype(np.float64)
+        contig_index = {
+            str(contig_id): idx for idx, contig_id in enumerate(contig_ids)
+        }
+
+        def get_pair_correlation(pair: dict[str, str]) -> float:
+            idx_1 = contig_index[pair["contig_1"]]
+            idx_2 = contig_index[pair["contig_2"]]
+            assert correlation_matrix is not None
+            return float(correlation_matrix[idx_1, idx_2])
+
+        def get_shared_fraction(pair: dict[str, object]) -> float:
+            idx_1 = contig_index[pair["contig_1"]]
+            idx_2 = contig_index[pair["contig_2"]]
+            shared_samples = float(pair["shared_samples"])
+            either_present = (
+                prevalence_counts[idx_1] + prevalence_counts[idx_2] - shared_samples
+            )
+            if either_present <= 0.0:
+                return 0.0
+            return float(shared_samples / either_present)
+
         cooccurrence_pairs = build_pair_frame(
             contig_ids,
             shared_matrix.astype(np.float64),
             float(min_shared_samples),
             "shared_samples",
-        ).with_columns(pl.col("shared_samples").cast(pl.Int64))
+        ).with_columns(
+            pl.col("shared_samples").cast(pl.Int64)
+        )
+        cooccurrence_pairs = cooccurrence_pairs.with_columns(
+            pl.struct(["contig_1", "contig_2", "shared_samples"])
+            .map_elements(get_shared_fraction, return_dtype=pl.Float64)
+            .alias("shared_fraction")
+        )
+        cooccurrence_pairs_with_correlation = cooccurrence_pairs.with_columns(
+            pl.struct(["contig_1", "contig_2"])
+            .map_elements(get_pair_correlation, return_dtype=pl.Float64)
+            .alias("correlation")
+        )
         cooccurrence_pairs.write_csv(
             output_base.with_suffix(".cooccurrence_pairs.tsv"), separator="\t"
         )
@@ -402,17 +445,27 @@ def correlate(
         )
 
     if mode == "correlation":
-        selected_pairs = correlation_pairs
+        selected_pairs = correlation_pairs.select(
+            ["contig_1", "contig_2", "correlation"]
+        )
     elif mode == "cooccurrence":
-        selected_pairs = cooccurrence_pairs
+        selected_pairs = cooccurrence_pairs_with_correlation.select(
+            ["contig_1", "contig_2", "correlation"]
+        )
     else:
         selected_pairs = pl.concat(
             [
-                correlation_pairs.select(["contig_1", "contig_2"]),
-                cooccurrence_pairs.select(["contig_1", "contig_2"]),
+                correlation_pairs.select(
+                    ["contig_1", "contig_2", "correlation"]
+                ),
+                cooccurrence_pairs_with_correlation.select(
+                    ["contig_1", "contig_2", "correlation"]
+                ),
             ],
             how="vertical_relaxed",
-        ).unique()
+        ).group_by(["contig_1", "contig_2"], maintain_order=True).agg(
+            pl.col("correlation").max().alias("correlation")
+        )
 
     selected_pairs.write_csv(
         output_base.with_suffix(".selected_pairs.tsv"), separator="\t"

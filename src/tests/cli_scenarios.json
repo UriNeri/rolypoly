@@ -661,6 +661,11 @@
         "contig_2",
         "shared_samples"
       ],
+      "{tmp}/correlate_demo.selected_pairs.tsv": [
+        "contig_1",
+        "contig_2",
+        "correlation"
+      ],
       "{tmp}/correlate_demo.groups.tsv": [
         "group_id",
         "member_count",

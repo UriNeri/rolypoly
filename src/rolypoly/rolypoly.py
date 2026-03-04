@@ -8,7 +8,6 @@ from .utils.lazy_group import LazyGroup
 from .utils.logging.loggit import get_version_info, setup_logging
 from .utils.various import flat_dict
 
-# click.rich_click.USE_RICH_MARKUP = True
 click.rich_click.TEXT_MARKUP = "rich"
 click.rich_click.GROUP_ARGUMENTS_OPTIONS = True
 click.rich_click.SHOW_ARGUMENTS = True
@@ -93,6 +92,7 @@ CONTEXT_SETTINGS = dict(
             "commands": {
                 "termini": "rolypoly.commands.bining.termini.termini",
                 "correlate": "rolypoly.commands.bining.correlate.correlate",
+                "cluster": "rolypoly.commands.bining.cluster.cluster",
             },
         },
         # "characterise": {

@@ -11,7 +11,7 @@ RolyPoly is an open, still in progress project - I aim to summarise the main fun
 This also means that there are bugs, verbose logging even for non debug mode, and some place holders and TODOs here and there.
 
 ## Docs
-For more detailed information, please refer to the [docs](https://pages.jgi.doe.gov/rolypoly/docs/). While it isn't updated often, it should still be helpful. Most commands support a `--help` flag and that tends to be the most up to date.
+For more detailed information, please refer to the [docs](https://urineri.github.io/rolypoly/). While it isn't updated often, it should still be helpful. Most commands support a `--help` flag and that tends to be the most up to date.
 
 ## Installation
 
@@ -62,10 +62,10 @@ pixi run -e reads-only rolypoly filter-reads --help
 pixi shell -e reads-only
 rolypoly filter-reads --help
 ```  
-For detailed modular installation options, see the [installation documentation](https://pages.jgi.doe.gov/rolypoly/docs/installation).
+For detailed modular installation options, see the [installation documentation](https://urineri.github.io/rolypoly/installation).
 
 ## Usage
-RolyPoly is a command-line tool with subcommands grouped by analysis stage. For a detailed help (in terminal), use `rolypoly --help` or `rolypoly <command> --help`. For more specific help, see the [docs](https://pages.jgi.doe.gov/rolypoly/docs/commands/index.md).
+RolyPoly is a command-line tool with subcommands grouped by analysis stage. For a detailed help (in terminal), use `rolypoly --help` or `rolypoly <command> --help`. For more specific help, see the [docs](https://urineri.github.io/rolypoly/commands/).
 
 ```bash
 rolypoly  <COMMAND> [ARGS]...
@@ -76,35 +76,35 @@ Active development. Command groups and current implementation status are summari
 
 <!-- "groups" are categories to help organize commands; script paths can differ as long as click entry points are correct. -->
 #### data
-- ✅ [`get-data`](https://pages.jgi.doe.gov/rolypoly/docs/commands/prepare_external_data) — Download/setup required data
+- ✅ [`get-data`](https://urineri.github.io/rolypoly/commands/prepare_external_data) — Download/setup required data
 - ✅ `version` — Show code and data version info
 
 #### reads
-- ✅ [`filter-reads`](https://pages.jgi.doe.gov/rolypoly/docs/commands/read_processing) — Host/rRNA/adapters/artifact filtering and QC (bbmap, seqkit, etc.)
-- ✅ [`shrink-reads`](https://pages.jgi.doe.gov/rolypoly/docs/commands/shrink_reads) — Downsample or subsample reads. Useful for testing or normalizing coverage across samples.
-- ✅ [`mask-dna`](https://pages.jgi.doe.gov/rolypoly/docs/commands/mask_dna) — Mask DNA regions in RNA-seq reads (bbmap, seqkit). Useful for avoiding mis-filtering of RNA virus reads in because of potential matches to EVEs.
+- ✅ [`filter-reads`](https://urineri.github.io/rolypoly/commands/read_processing) — Host/rRNA/adapters/artifact filtering and QC (bbmap, seqkit, etc.)
+- ✅ [`shrink-reads`](https://urineri.github.io/rolypoly/commands/shrink_reads) — Downsample or subsample reads. Useful for testing or normalizing coverage across samples.
+- ✅ [`mask-dna`](https://urineri.github.io/rolypoly/commands/mask_dna) — Mask DNA regions in RNA-seq reads (bbmap, seqkit). Useful for avoiding mis-filtering of RNA virus reads in because of potential matches to EVEs.
 
 #### annotation
-- ✅ [`annotate`](https://pages.jgi.doe.gov/rolypoly/docs/commands/annotate) — Genome feature annotation (pyrodigal-rv wraps the rna and prot commands)
-- ✅ [`annotate-rna`](https://pages.jgi.doe.gov/rolypoly/docs/commands/annotate_rna) — RNA secondary structure labelling and ribozyme detection (Infernal, ViennaRNA/linearfold, cmsearch on Rfam...)
-- 🚧 [`annotate-prot`](https://pages.jgi.doe.gov/rolypoly/docs/commands/annotate_prot) — Protein domain annotation and functional prediction (HMMER, Pfam, custom); mostly done, more DB/tool checks pending.
+- ✅ [`annotate`](https://urineri.github.io/rolypoly/commands/annotate) — Genome feature annotation (pyrodigal-rv wraps the rna and prot commands)
+- ✅ [`annotate-rna`](https://urineri.github.io/rolypoly/commands/annotate_rna) — RNA secondary structure labelling and ribozyme detection (Infernal, ViennaRNA/linearfold, cmsearch on Rfam...)
+- 🚧 [`annotate-prot`](https://urineri.github.io/rolypoly/commands/annotate_prot) — Protein domain annotation and functional prediction (HMMER, Pfam, custom); mostly done, more DB/tool checks pending.
 
 #### assembly (Meta/Genome Assembly)
-- ✅ [`assemble`](https://pages.jgi.doe.gov/rolypoly/docs/commands/assembly) — Assemble reads into contigs (SPAdes, MEGAHIT, penguin)
-- ✅ [`filter-contigs`](https://pages.jgi.doe.gov/rolypoly/docs/commands/filter_assembly) — Filter sequences based on user-supplied host/contamination references (nucleotide and amino acid modes).
+- ✅ [`assemble`](https://urineri.github.io/rolypoly/commands/assembly) — Assemble reads into contigs (SPAdes, MEGAHIT, penguin)
+- ✅ [`filter-contigs`](https://urineri.github.io/rolypoly/commands/filter_assembly) — Filter sequences based on user-supplied host/contamination references (nucleotide and amino acid modes).
 
 #### identify (RNA Virus Identification)
-- ✅ [`marker-search`](https://pages.jgi.doe.gov/rolypoly/docs/commands/marker_search) — Search for viral markers (mainly RdRps, genomad VVs, or user-provided)
-- ✅ [`virus-mapping`](https://pages.jgi.doe.gov/rolypoly/docs/commands/search_viruses) — Map and identify viruses
+- ✅ [`marker-search`](https://urineri.github.io/rolypoly/commands/marker_search) — Search for viral markers (mainly RdRps, genomad VVs, or user-provided)
+- ✅ [`virus-mapping`](https://urineri.github.io/rolypoly/commands/search_viruses) — Map and identify viruses
 - ✅ `rdrp-motif-search` — Search RdRp motifs (A/B/C/D) in nucleotide or amino acid sequences.
 
 #### misc (Miscellaneous)
 - ✅ `end2end` — Run end-to-end pipeline
 - ✅ `fetch-sra` — Download SRA fastq files
-- ✅ `fastx-stats` — Calculate aggregate statistics for sequences (min, max, mean, median, ...) (input is file/s)
 - ✅ `fastx-calc` — Calculate per-sequence metrics (length, GC content, hash, ...)
-- ✅ `rename-seqs` — Rename sequences
-- ✅ `quick-taxonomy` — Quick taxonomy assignment
+- ✅ `fastx-stats` — Calculate (-->aggregate) statistics for sequences (min, max, mean, median, ...) (input is file/s)
+- ✅ `rename-seqs` — Rename sequences (add a prefix, suffix, hash, running number, etc.)
+- 🚧 `quick-taxonomy` — Quick taxonomy assignment
 
 #### bining
 - 🧪 `termini` (experimental) — Shared termini grouping and motif reporting. Writes assignments + groups tables (TSV/CSV/Parquet/JSONL) and motif FASTA by default.

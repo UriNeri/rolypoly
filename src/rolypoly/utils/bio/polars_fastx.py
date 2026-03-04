@@ -197,12 +197,34 @@ def count_kmers_df_explicit(
     id_col: str = "seqid",
     k: int = 3,
     relative: bool = False,
+    canonical: bool = False,
 ) -> pl.DataFrame:
-    """Calculate ALL k-mers counts for all sequences in a DataFrame. all possible k-mers are counted, not just the complete ones."""
-    # Split sequences into characters
+    """Calculate ALL k-mers counts for all sequences in a DataFrame.
+
+    All possible k-mers are counted, not just the complete ones.
+
+    Args:
+        df: Input DataFrame with sequence and ID columns.
+        seq_col: Column containing sequences.
+        id_col: Column containing sequence identifiers.
+        k: K-mer length.
+        relative: Normalise counts.
+        canonical: When True, each extracted k-mer is reduced to its
+            canonical form ``min(kmer, revcomp(kmer))`` before counting.
+            This makes the counts strand-agnostic.
+    """
     import itertools
 
-    all_kmers = ["".join(p) for p in itertools.product("ATCG", repeat=k)]
+    all_kmers = ["" .join(p) for p in itertools.product("ATCG", repeat=k)]
+
+    # Build a mapping from k-mer -> canonical form (plain str replace_strict)
+    if canonical:
+        _comp = str.maketrans("ACGT", "TGCA")
+        canon_map: dict[str, str] = {}
+        for km in all_kmers:
+            rc = km.translate(_comp)[::-1]
+            canon_map[km] = km if km <= rc else rc
+
     count_df = (
         df.with_columns(
             pl.col(seq_col)
@@ -211,6 +233,17 @@ def count_kmers_df_explicit(
             )
             .alias("kmers")
         )
+    )
+
+    if canonical:
+        count_df = count_df.with_columns(
+            pl.col("kmers").list.eval(
+                pl.element().replace_strict(canon_map, return_dtype=pl.String)
+            )
+        )
+
+    count_df = (
+        count_df
         .group_by(id_col)
         .agg(
             pl.col("kmers")
@@ -228,8 +261,20 @@ def count_kmers_df(
     id_col: str = "seqid",
     k: int = 3,
     relative: bool = False,
+    canonical: bool = False,
 ) -> pl.DataFrame:
-    """Calculate k-mer counts for all sequences in a DataFrame"""
+    """Calculate k-mer counts for all sequences in a DataFrame.
+
+    Args:
+        df: Input DataFrame with sequence and ID columns.
+        seq_col: Column containing sequences.
+        id_col: Column containing sequence identifiers.
+        k: K-mer length.
+        relative: Normalise counts.
+        canonical: When True, each k-mer is reduced to its canonical
+            form ``min(kmer, revcomp(kmer))`` before counting, making
+            the result strand-agnostic.
+    """
     # Split sequences into characters
     split_chars_expr = pl.col(seq_col).str.split("").alias("chars")
 
@@ -240,6 +285,29 @@ def count_kmers_df(
 
     # Filter for complete k-mers only
     filter_complete_kmers_expr = pl.col("substrings").str.len_chars() == k
+
+    base_df = (
+        df.with_columns(split_chars_expr)
+        .explode("chars")
+        .with_columns(create_kmers_expr)
+        .filter(filter_complete_kmers_expr)
+    )
+
+    # Apply canonical transformation if requested
+    if canonical:
+        _comp = str.maketrans("ACGT", "TGCA")
+        # Build the full look-up in Python once, then use replace_strict
+        import itertools
+        all_possible = ["" .join(p) for p in itertools.product("ATCG", repeat=k)]
+        canon_map: dict[str, str] = {}
+        for km in all_possible:
+            rc = km.translate(_comp)[::-1]
+            canon_map[km] = km if km <= rc else rc
+        base_df = base_df.with_columns(
+            pl.col("substrings")
+            .str.to_uppercase()
+            .replace_strict(canon_map, default=pl.col("substrings"), return_dtype=pl.String)
+        )
 
     # Aggregate expressions
     agg_exprs = [
@@ -253,10 +321,7 @@ def count_kmers_df(
     ]
 
     return (
-        df.with_columns(split_chars_expr)
-        .explode("chars")
-        .with_columns(create_kmers_expr)
-        .filter(filter_complete_kmers_expr)
+        base_df
         .group_by(id_col, maintain_order=True)
         .agg(*agg_exprs)
     )

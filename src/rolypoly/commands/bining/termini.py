@@ -733,13 +733,14 @@ def consensus_motif(motifs: list[str]) -> str:
 def cluster_distance_groups(
     signatures: pl.DataFrame, min_len: int, max_len: int, max_distance: int
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-    """Cluster signatures by Hamming distance and emit group/assignment records.
+    """Cluster signatures by non-transitive Hamming distance to seed motifs.
 
     Args:
             signatures: Signature table with minimum-window motifs.
             min_len: Minimum motif window length.
             max_len: Maximum motif window length.
-            max_distance: Maximum pairwise Hamming distance for connectivity.
+                max_distance: Maximum Hamming distance from a member to the cluster
+                    seed motif.
 
     Returns:
             Tuple of Python records for grouped motifs and contig assignments.
@@ -751,39 +752,38 @@ def cluster_distance_groups(
     if n < 2:
         return [], []
 
-    parent = list(range(n))
-
-    def find(idx: int) -> int:
-        while parent[idx] != idx:
-            parent[idx] = parent[parent[idx]]
-            idx = parent[idx]
-        return idx
-
-    def union(a: int, b: int) -> None:
-        root_a = find(a)
-        root_b = find(b)
-        if root_a != root_b:
-            parent[root_b] = root_a
-
-    for i in range(n):
-        motif_i = rows[i]["motif_min"]
-        for j in range(i + 1, n):
-            motif_j = rows[j]["motif_min"]
-            if hamming_distance(motif_i, motif_j) <= max_distance:
-                union(i, j)
-
-    clusters: dict[int, dict[str, Any]] = {}
-    for idx, row in enumerate(rows):
-        root = find(idx)
-        cluster = clusters.setdefault(root, {"records": [], "motifs": []})
-        cluster["records"].append(
-            (row["contig_id"], row["end_label"], row["found_label"])
-        )
-        cluster["motifs"].append(row["motif_min"])
+    # NOTE:
+    # We intentionally avoid transitive graph/union-find connectivity here.
+    # With short seeds (e.g. 7-mers) and max_distance >= 1, transitive edges can
+    # create one giant connected component even when most motifs are not directly
+    # similar. We instead assign each record to the first compatible cluster seed.
+    # This keeps distance semantics local to cluster seeds and avoids mega-clusters.
+    clusters: list[dict[str, Any]] = []
+    for row in rows:
+        motif = row["motif_min"]
+        assigned = False
+        for cluster in clusters:
+            if hamming_distance(motif, cluster["seed_motif"]) <= max_distance:
+                cluster["records"].append(
+                    (row["contig_id"], row["end_label"], row["found_label"])
+                )
+                cluster["motifs"].append(motif)
+                assigned = True
+                break
+        if not assigned:
+            clusters.append(
+                {
+                    "seed_motif": motif,
+                    "records": [
+                        (row["contig_id"], row["end_label"], row["found_label"])
+                    ],
+                    "motifs": [motif],
+                }
+            )
 
     results: list[dict[str, object]] = []
     assignments: list[dict[str, object]] = []
-    for cluster in clusters.values():
+    for cluster in clusters:
         records = list(cluster["records"])
         if len(records) < 2:
             continue
@@ -830,6 +830,7 @@ def build_membership_table(
     signatures: pl.DataFrame,
     assignments: pl.DataFrame,
     group_df: pl.DataFrame,
+    min_len: int,
 ) -> pl.DataFrame:
     """Build per-contig termini membership columns for output.
 
@@ -842,9 +843,13 @@ def build_membership_table(
     Returns:
             pl.DataFrame: One row per contig with 5' and 3' group annotations.
     """
-    base = seq_df.select(pl.col("contig_id"), pl.col("seq_length"))
+    base = seq_df.select(
+        pl.col("contig_id"),
+        pl.col("seq_length"),
+        pl.col("sequence"),
+    )
     if signatures.is_empty():
-        return base.with_columns(
+        membership = base.with_columns(
             pl.lit(None, dtype=pl.Int64).alias("termini_group_1"),
             pl.lit(None, dtype=pl.Utf8).alias("termini_group_1_end"),
             pl.lit(None, dtype=pl.Utf8).alias("termini_group_1_motif"),
@@ -859,6 +864,75 @@ def build_membership_table(
             pl.lit(None, dtype=pl.Int64).alias("termini_group_2_stop"),
             pl.lit(None, dtype=pl.Utf8).alias("termini_group_2_strand"),
             pl.lit(None, dtype=pl.Utf8).alias("termini_group_2_source"),
+        )
+        return (
+            membership.with_row_index("_fallback_idx", offset=1)
+            .with_columns(
+                pl.when(pl.col("termini_group_1_motif").is_null())
+                .then(pl.col("sequence").str.slice(0, min_len))
+                .otherwise(pl.col("termini_group_1_motif"))
+                .alias("termini_group_1_motif"),
+                pl.when(pl.col("termini_group_1").is_null())
+                .then((pl.col("_fallback_idx") * 2 - 1) * -1)
+                .otherwise(pl.col("termini_group_1"))
+                .cast(pl.Int64)
+                .alias("termini_group_1"),
+                pl.when(pl.col("termini_group_1_end").is_null())
+                .then(pl.lit("5prime"))
+                .otherwise(pl.col("termini_group_1_end"))
+                .alias("termini_group_1_end"),
+                pl.when(pl.col("termini_group_1_start").is_null())
+                .then(pl.lit(1))
+                .otherwise(pl.col("termini_group_1_start"))
+                .alias("termini_group_1_start"),
+                pl.when(pl.col("termini_group_1_stop").is_null())
+                .then(pl.min_horizontal(pl.col("seq_length"), pl.lit(min_len)))
+                .otherwise(pl.col("termini_group_1_stop"))
+                .alias("termini_group_1_stop"),
+                pl.when(pl.col("termini_group_1_strand").is_null())
+                .then(pl.lit("+"))
+                .otherwise(pl.col("termini_group_1_strand"))
+                .alias("termini_group_1_strand"),
+                pl.when(pl.col("termini_group_1_source").is_null())
+                .then(pl.lit("fallback_raw_5prime"))
+                .otherwise(pl.col("termini_group_1_source"))
+                .alias("termini_group_1_source"),
+                pl.when(pl.col("termini_group_2_motif").is_null())
+                .then(pl.col("sequence").str.slice(-min_len, min_len))
+                .otherwise(pl.col("termini_group_2_motif"))
+                .alias("termini_group_2_motif"),
+                pl.when(pl.col("termini_group_2").is_null())
+                .then((pl.col("_fallback_idx") * 2) * -1)
+                .otherwise(pl.col("termini_group_2"))
+                .cast(pl.Int64)
+                .alias("termini_group_2"),
+                pl.when(pl.col("termini_group_2_end").is_null())
+                .then(pl.lit("3prime"))
+                .otherwise(pl.col("termini_group_2_end"))
+                .alias("termini_group_2_end"),
+                pl.when(pl.col("termini_group_2_start").is_null())
+                .then(
+                    pl.max_horizontal(
+                        pl.lit(1),
+                        pl.col("seq_length") - pl.lit(min_len) + pl.lit(1),
+                    )
+                )
+                .otherwise(pl.col("termini_group_2_start"))
+                .alias("termini_group_2_start"),
+                pl.when(pl.col("termini_group_2_stop").is_null())
+                .then(pl.col("seq_length"))
+                .otherwise(pl.col("termini_group_2_stop"))
+                .alias("termini_group_2_stop"),
+                pl.when(pl.col("termini_group_2_strand").is_null())
+                .then(pl.lit("+"))
+                .otherwise(pl.col("termini_group_2_strand"))
+                .alias("termini_group_2_strand"),
+                pl.when(pl.col("termini_group_2_source").is_null())
+                .then(pl.lit("fallback_raw_3prime"))
+                .otherwise(pl.col("termini_group_2_source"))
+                .alias("termini_group_2_source"),
+            )
+            .drop("sequence", "_fallback_idx")
         )
 
     annotated = signatures.join(
@@ -904,7 +978,75 @@ def build_membership_table(
 
     membership = base.join(five_prime, on="contig_id", how="left")
     membership = membership.join(three_prime, on="contig_id", how="left")
-    return membership
+    return (
+        membership.with_row_index("_fallback_idx", offset=1)
+        .with_columns(
+            pl.when(pl.col("termini_group_1_motif").is_null())
+            .then(pl.col("sequence").str.slice(0, min_len))
+            .otherwise(pl.col("termini_group_1_motif"))
+            .alias("termini_group_1_motif"),
+            pl.when(pl.col("termini_group_1").is_null())
+            .then((pl.col("_fallback_idx") * 2 - 1) * -1)
+            .otherwise(pl.col("termini_group_1"))
+            .cast(pl.Int64)
+            .alias("termini_group_1"),
+            pl.when(pl.col("termini_group_1_end").is_null())
+            .then(pl.lit("5prime"))
+            .otherwise(pl.col("termini_group_1_end"))
+            .alias("termini_group_1_end"),
+            pl.when(pl.col("termini_group_1_start").is_null())
+            .then(pl.lit(1))
+            .otherwise(pl.col("termini_group_1_start"))
+            .alias("termini_group_1_start"),
+            pl.when(pl.col("termini_group_1_stop").is_null())
+            .then(pl.min_horizontal(pl.col("seq_length"), pl.lit(min_len)))
+            .otherwise(pl.col("termini_group_1_stop"))
+            .alias("termini_group_1_stop"),
+            pl.when(pl.col("termini_group_1_strand").is_null())
+            .then(pl.lit("+"))
+            .otherwise(pl.col("termini_group_1_strand"))
+            .alias("termini_group_1_strand"),
+            pl.when(pl.col("termini_group_1_source").is_null())
+            .then(pl.lit("fallback_raw_5prime"))
+            .otherwise(pl.col("termini_group_1_source"))
+            .alias("termini_group_1_source"),
+            pl.when(pl.col("termini_group_2_motif").is_null())
+            .then(pl.col("sequence").str.slice(-min_len, min_len))
+            .otherwise(pl.col("termini_group_2_motif"))
+            .alias("termini_group_2_motif"),
+            pl.when(pl.col("termini_group_2").is_null())
+            .then((pl.col("_fallback_idx") * 2) * -1)
+            .otherwise(pl.col("termini_group_2"))
+            .cast(pl.Int64)
+            .alias("termini_group_2"),
+            pl.when(pl.col("termini_group_2_end").is_null())
+            .then(pl.lit("3prime"))
+            .otherwise(pl.col("termini_group_2_end"))
+            .alias("termini_group_2_end"),
+            pl.when(pl.col("termini_group_2_start").is_null())
+            .then(
+                pl.max_horizontal(
+                    pl.lit(1),
+                    pl.col("seq_length") - pl.lit(min_len) + pl.lit(1),
+                )
+            )
+            .otherwise(pl.col("termini_group_2_start"))
+            .alias("termini_group_2_start"),
+            pl.when(pl.col("termini_group_2_stop").is_null())
+            .then(pl.col("seq_length"))
+            .otherwise(pl.col("termini_group_2_stop"))
+            .alias("termini_group_2_stop"),
+            pl.when(pl.col("termini_group_2_strand").is_null())
+            .then(pl.lit("+"))
+            .otherwise(pl.col("termini_group_2_strand"))
+            .alias("termini_group_2_strand"),
+            pl.when(pl.col("termini_group_2_source").is_null())
+            .then(pl.lit("fallback_raw_3prime"))
+            .otherwise(pl.col("termini_group_2_source"))
+            .alias("termini_group_2_source"),
+        )
+        .drop("sequence", "_fallback_idx")
+    )
 
 
 def write_group_motifs_fasta(
@@ -1282,7 +1424,7 @@ def termini(
     group_df = finalize_group_output(group_df)
 
     membership_df = build_membership_table(
-        seq_df, unique_signatures, assignment_df, group_df
+        seq_df, unique_signatures, assignment_df, group_df, min_len
     )
     write_table(
         membership_df, output, output_format, logger, label="assignments"

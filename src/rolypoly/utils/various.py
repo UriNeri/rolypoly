@@ -700,6 +700,16 @@ def parse_filter(filter_str):
     return parsed_conditions, operators
 
 
+def infer_separator(input_path: Path, separator: str) -> str:
+    """Infer separator from file extension when requested."""
+    if separator != "auto":
+        return separator
+    suffix = input_path.suffix.lower()
+    if suffix in {".tsv", ".tab", ".txt"}:
+        return "\t"
+    return ","
+
+
 def apply_filter(df, filter_str):
     import polars as pl
 
