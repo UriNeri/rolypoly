@@ -43,4 +43,4 @@ dependencies:
   - pyskani>=0.2.0, <0.3
   - parasail>=1.3.4, <2
   - pyopal>=0.7.3, <0.8
-  - rolypoly-tk>=0.6.24,<0.7.0
+  - rolypoly-tk>=0.7.0,<0.8.0
