@@ -430,10 +430,10 @@
     ]
   },
   {
-    "id": "end2end_help_smoke",
-    "description": "Smoke test end2end command wiring via help",
+    "id": "roll_help_smoke",
+    "description": "Smoke test roll command wiring via help",
     "args": [
-      "end2end",
+      "roll",
       "--help"
     ]
   },

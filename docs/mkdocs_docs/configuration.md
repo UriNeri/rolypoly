@@ -15,7 +15,7 @@ To view or modify the configuration:
 Example configuration:
 
     {
-            "ROLYPOLY_DATA": "/REDACTED_HPC_PATH/projects/rolypoly/data/"
+            "ROLYPOLY_DATA": "/home/neri/projects/rolypoly/data/"
     }
 
 Note: It's recommended to use the `get-data` command to set

@@ -38,8 +38,7 @@ MEMORY = "15g"
 # MEMORY_nsuffix=$(echo $MEMORY | sed 's|g||g')
 MEMORY_BYTES = int(float(MEMORY[:-1]) * 1e9)
 
-# rolypoly_dir=/REDACTED_HPC_PATH/rolypoly/
-rolypoly_dir = Path("/REDACTED_HPC_PATH/rolypoly/")
+rolypoly_dir = os.environ.get("RP_DIR")
 # export rolypoly_dir=$rolypoly_dir
 # source "$rolypoly_dir"/rolypoly/utils/load_bins.sh
 # source "$rolypoly_dir"/rolypoly/utils/bash_functions.sh
@@ -48,11 +47,9 @@ datadir = rolypoly_dir / "data"
 
 ##################################################################################################
 ##### Main #####
-# mkdir /REDACTED_HPC_PATH/rolypoly/bench/gen_data
-# cd /REDACTED_HPC_PATH/rolypoly/bench/gen_data
 # mkdir dsRNA_data mock_data synt_data VANA_data
 output_dir = Path(
-    "/REDACTED_HPC_PATH/rolypoly/bench/gen_data"
+    "./bench/gen_data"
 )
 output_dir.mkdir(parents=True, exist_ok=True)
 os.chdir(output_dir)

@@ -1,6 +1,6 @@
 # End to End Pipeline
 
-`end2end` executes the complete RolyPoly workflow from raw reads to virus identification.
+`roll` executes the complete RolyPoly workflow from raw reads to virus identification.
 
 ## Options
 

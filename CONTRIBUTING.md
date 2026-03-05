@@ -57,7 +57,6 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
    - For most (ideally all) click commands, include a hidden log-level option so tests can consistently enable debug logging:
      - `@click.option("-ll", "--log-level", hidden=True, default="INFO", help="Log level")`
    - Use small/local fixtures from `testing_folder/` when possible.
-   - You can also use `/REDACTED_HPC_PATH/tests/rp_tests/` (on dori), which contains larger example data for different commands.
    - **Run standardized CLI tests**: `pixi run -e dev pytest -q src/tests/test_cli_contracts.py`
    - **Run fast help-only smoke tests** (just `--help` for top-level + each command): `pixi run -e dev pytest -q src/tests/test_cli_help_smoke.py`
    - **Run one command's scenarios**: `pixi run -e dev pytest -q src/tests/test_cli_contracts.py --cli-commands fetch-sra`

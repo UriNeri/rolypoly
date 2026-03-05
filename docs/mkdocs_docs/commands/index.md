@@ -16,7 +16,7 @@ rolypoly --help
 - [Version](prepare_external_data.md#version): Display version and data information (`rolypoly version`)
 
 ### Core Pipeline
-- [End to End](end_to_end.md): Run the complete pipeline with default settings (`rolypoly end2end`)
+- [End to End](end_to_end.md): Run the complete pipeline with default settings (`rolypoly roll`)
 - [Read Processing](read_processing.md): Filter and process raw RNA-seq reads (`rolypoly filter-reads`)
 - [Assembly](assembly.md): Perform assembly of filtered reads (`rolypoly assemble`)
 - [Assembly Filtering](filter_assembly.md): Remove potential host or contamination sequences (`rolypoly filter-contigs`)

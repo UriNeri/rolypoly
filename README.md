@@ -10,9 +10,6 @@ RolyPoly is an RNA virus analysis toolkit, meant to be a "swiss-army knife" for 
 RolyPoly is an open, still in progress project - I aim to summarise the main functionality into a manuscript ~early 2026. Pull requests and contributions are welcome and will be considered (see [CONTRIBUTING.md](CONTRIBUTING.md)).  
 This also means that there are bugs, verbose logging even for non debug mode, and some place holders and TODOs here and there.
 
-## Docs
-For more detailed information, please refer to the [docs](https://urineri.github.io/rolypoly/). While it isn't updated often, it should still be helpful. Most commands support a `--help` flag and that tends to be the most up to date.
-
 ## Installation
 
 ### Quick and Easy - One Conda/Mamba Environment
@@ -65,72 +62,72 @@ rolypoly filter-reads --help
 For detailed modular installation options, see the [installation documentation](https://urineri.github.io/rolypoly/installation).
 
 ## Usage
-RolyPoly is a command-line tool with subcommands grouped by analysis stage. For a detailed help (in terminal), use `rolypoly --help` or `rolypoly <command> --help`. For more specific help, see the [docs](https://urineri.github.io/rolypoly/commands/).
+RolyPoly is a command-line tool with subcommands grouped by analysis stage. 
+Use `rolypoly --help` or `rolypoly <command> --help` for most up to date details. Some additional information is in the [docs](https://urineri.github.io/rolypoly/commands/).
 
 ```bash
 rolypoly  <COMMAND> [ARGS]...
 ```
 
 ## Commands and Project Status
-Active development. Command groups and current implementation status are summarized below.
+Active development. Command groups and current implementation status are summarized below.  
 
-<!-- "groups" are categories to help organize commands; script paths can differ as long as click entry points are correct. -->
-#### data
+Legend: 
+- ✅ - Available (on pypi and has tests). Command default parameters are unlikely to change much. 
+- 🧪 - Experimental, might not be on pypi / have tests. Default parameters may change. Code might be in a seperate dev branch.
+- 🚧 - Under active development.
+- 🤔/TBD - Planned / under consideration.
+
+#### Data
 - ✅ [`get-data`](https://urineri.github.io/rolypoly/commands/prepare_external_data) — Download/setup required data
 - ✅ `version` — Show code and data version info
 
-#### reads
-- ✅ [`filter-reads`](https://urineri.github.io/rolypoly/commands/read_processing) — Host/rRNA/adapters/artifact filtering and QC (bbmap, seqkit, etc.)
+#### Raw-Reads
+- ✅ [`filter-reads`](https://urineri.github.io/rolypoly/commands/read_processing) — Host/rRNA/adapters/artifact filtering and QC (bbmap, falco, etc.)
 - ✅ [`shrink-reads`](https://urineri.github.io/rolypoly/commands/shrink_reads) — Downsample or subsample reads. Useful for testing or normalizing coverage across samples.
 - ✅ [`mask-dna`](https://urineri.github.io/rolypoly/commands/mask_dna) — Mask DNA regions in RNA-seq reads (bbmap, seqkit). Useful for avoiding mis-filtering of RNA virus reads in because of potential matches to EVEs.
 
-#### annotation
-- ✅ [`annotate`](https://urineri.github.io/rolypoly/commands/annotate) — Genome feature annotation (pyrodigal-rv wraps the rna and prot commands)
+#### Annotation
+- ✅ [`annotate`](https://urineri.github.io/rolypoly/commands/annotate) — Genome feature annotation (wraps the rna and prot commands)
 - ✅ [`annotate-rna`](https://urineri.github.io/rolypoly/commands/annotate_rna) — RNA secondary structure labelling and ribozyme detection (Infernal, ViennaRNA/linearfold, cmsearch on Rfam...)
-- 🚧 [`annotate-prot`](https://urineri.github.io/rolypoly/commands/annotate_prot) — Protein domain annotation and functional prediction (HMMER, Pfam, custom); mostly done, more DB/tool checks pending.
+- 🧪 [`annotate-prot`](https://urineri.github.io/rolypoly/commands/annotate_prot) — Gene calling and Protein domain annotation and functional prediction (HMMER, Pfam, custom).
 
-#### assembly (Meta/Genome Assembly)
+#### Meta/Genome Assembly
 - ✅ [`assemble`](https://urineri.github.io/rolypoly/commands/assembly) — Assemble reads into contigs (SPAdes, MEGAHIT, penguin)
 - ✅ [`filter-contigs`](https://urineri.github.io/rolypoly/commands/filter_assembly) — Filter sequences based on user-supplied host/contamination references (nucleotide and amino acid modes).
 
-#### identify (RNA Virus Identification)
-- ✅ [`marker-search`](https://urineri.github.io/rolypoly/commands/marker_search) — Search for viral markers (mainly RdRps, genomad VVs, or user-provided)
-- ✅ [`virus-mapping`](https://urineri.github.io/rolypoly/commands/search_viruses) — Map and identify viruses
+#### RNA Virus Identification
+- ✅ [`marker-search`](https://urineri.github.io/rolypoly/commands/marker_search) — Search for viral markers (mainly RdRps, genomad VVs, or user-provided), using profile-based methods (HMMER / MMseqs2). 
+- ✅ [`virus-mapping`](https://urineri.github.io/rolypoly/commands/search_viruses) — Map and identify viruses using nucleic acid search (MMseqs2).
 - ✅ `rdrp-motif-search` — Search RdRp motifs (A/B/C/D) in nucleotide or amino acid sequences.
 
-#### misc (Miscellaneous)
-- ✅ `end2end` — Run end-to-end pipeline
-- ✅ `fetch-sra` — Download SRA fastq files
+#### Bining / Clustering
+- 🧪 `cluster` — Average Nucleic identity (ANI) based contig gropuing. Supports several common backends and methods.
+- 🧪 `extend` — Extend sequences by pile-up/assembly. Useful for combining assemblies of with low abundance viruses, or those with high microdiversity, at the cost of worse strain/sub-species resolution (i.e. can condense to a consenus). 
+- 🧪 `termini` — Shared termini grouping and motif reporting. Writes assignments + groups tables (TSV/CSV/Parquet/JSONL) and motif FASTA by default.
+- 🧪 `correlate` — group contigs based on co-occurence, co-abundance, minimal correlation (Spearman's) of these, or both.
+- 🤔 `binit` — Combines the above commands with sample information and genome attributes (e.g. require a shared termini AND protein complementarity, like CP + RdRp). See [notebooks/Exprimental/partiti_usecase/partiti_segment_workflow_experimental.ipynb](notebooks/Exprimental/partiti_usecase/partiti_segment_workflow_experimental.ipynb) for candidate workflow.
+
+#### Miscellaneous
+- ✅ `roll` — Run an end-to-end pipeline (before v0.7.1, named `end2end`).
+- ✅ `fetch-sra` — Download SRA fastq files (from ENA)
 - ✅ `fastx-calc` — Calculate per-sequence metrics (length, GC content, hash, ...)
 - ✅ `fastx-stats` — Calculate (-->aggregate) statistics for sequences (min, max, mean, median, ...) (input is file/s)
 - ✅ `rename-seqs` — Rename sequences (add a prefix, suffix, hash, running number, etc.)
-- 🚧 `quick-taxonomy` — Quick taxonomy assignment
+- 🚧 `quick-taxonomy` — Quick taxonomy assignment. Candidate workflows are [github.com/UriNeri/ictv-mmseqs2-protein-database](https://github.com/UriNeri/ictv-mmseqs2-protein-database) and [github.com/apcamargo/ictv-mmseqs2-protein-database](https://github.com/apcamargo/ictv-mmseqs2-protein-database) 
+- 🤔 support for [genotate](https://github.com/deprekate/genotate) for gene prediction.
+- 🤔 Genome refinement / strain de-entalgement / variant calling?
+- 🤔 Virus feature prediction (+/-ssRNA/dsRNA, circular/linear, mono/poly-segmented, capsid type, etc.)
+- 🤔 Host prediction 
+- 🤔 protein structural prediction support (and reseek search xyz dbs)
 
-#### bining
-- 🧪 `termini` (experimental) — Shared termini grouping and motif reporting. Writes assignments + groups tables (TSV/CSV/Parquet/JSONL) and motif FASTA by default.
-- 🧪 `correlate` (experimental) — Binning-related command under active development (not currently exposed in the main CLI entry point).
-
-**Notes:**
-- Commands marked with ✅ above are currently exposed via the CLI. Experimental items (🧪) may exist only in dev branches or as not-yet-registered modules.
-- For help on any command, use: `rolypoly <command> <options> --help`
-- Some commands (e.g., `co-assembly`, `refine`, `visualize`, `characterise`, etc.) are not currently available or are commented out in the CLI.
-
-Planned/under consideration features (but not yet started):
-- 🚧 Genome binning and refinement (`TBD`)
-- 🚧 Virus taxonomic classification (`TBD`)
-- 🚧 Virus feature prediction (+/-ssRNA/dsRNA, circular/linear, mono/poly-segmented, capsid type, etc.) (`TBD`)
-- 🚧 Cross-sample analysis (`TBD`)
-- 🚧 Host prediction (`TBD`)
-- 🚧 protein structural prediction support (and reseek search xyz dbs)
-- 🚧 support for [genotate](https://github.com/deprekate/genotate) for gene prediction.
-
-For more details about the implementation status and roadmap please contact us directly or open an issue.
+If you have suggestions for additional commands or features, or want to implement some of these - please let us know, and consider contributing :-) 
 
 ## Dependencies
 
-**📦 Modular Installation Available**: RolyPoly supports both quick setup (one environment for all tools) and modular installation (command-specific environments). The modular approach is particularly useful for software developers who want to integrate specific rolypoly features with minimal dependency conflicts. See the [installation documentation](./docs/docs/mkdocs_docs/installation.md) for details.
+**📦 Modular Installation Available**: RolyPoly supports both quick setup (one environment with all dependecies for all commands) and modular installation (command-specific environments). The modular approach is particularly useful for software developers who want to integrate specific rolypoly features with minimal dependency conflicts. See the [installation documentation](./docs/docs/mkdocs_docs/installation.md) for details.
 
-Not all 3rd party software is used by all the different commands. RolyPoly includes a "citation reminder" that will try to list all the external software used by a command. The "reminded citations" are pretty printed to console (stdout) but are also written to a logfile. The bibtex file rolypoly uses for this is included in the codebase.
+Not all 3rd party software is used by all the different commands. RolyPoly includes a "citation reminder" that will try to list all the external software used by a command. The "reminded citations" are pretty printed to console (stdout) and to a logfile. To shut off the terminal citation reminder printing, set `ROLYPOLY_REMIND_CITATIONS` to false in your `rpconfig.json` file.
 
 <details><summary>Click to show dependencies</summary>  
 

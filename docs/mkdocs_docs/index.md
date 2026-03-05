@@ -95,7 +95,7 @@ graph TB
         HOSTCL["host-classify<br><i>Not yet implemented</i>"]
   end
  subgraph E2E["<b>End-to-End Pipeline</b>"]
-      END2END["end2end<br><i>Full workflow: reads to virus</i>"]
+      roll["roll<br><i>Full workflow: reads to virus</i>"]
   end
     RAWREADS --> READPROC & SHRINK & MASKDNA & RENSEQ & FASTXSTATS
     EXTDB --> GETDATA
@@ -111,7 +111,7 @@ graph TB
     ANRNA --> SEARCHV
     MARKER --> SEARCHV
     SEARCHV --> BINCORR & BINTERM & HOSTCL
-    END2END --> READPROC & ASSEMBLY & FILTASM & ANPROT & ANRNA & MARKER & SEARCHV
+    roll --> READPROC & ASSEMBLY & FILTASM & ANPROT & ANRNA & MARKER & SEARCHV
      RAWREADS:::inputStyle
      EXTDB:::inputStyle
      HOSTFA:::inputStyle
@@ -134,7 +134,7 @@ graph TB
      BINCORR:::binStyle
      BINTERM:::binStyle
      HOSTCL:::binStyle
-     END2END:::e2eStyle
+     roll:::e2eStyle
     classDef inputStyle fill:#f0f9ff,stroke:#0366d6,color:#03396c
     classDef preStyle fill:#e6f7ff,stroke:#2b5f8a,color:#0b3d91
     classDef asmStyle fill:#f7f7f7,stroke:#2b5f8a,color:#0b3d91

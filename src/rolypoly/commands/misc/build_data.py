@@ -37,7 +37,7 @@ tools = []
 ### DEBUG ARGS (for manually building, not entering via CLI):
 threads = 6
 log_file = "rolypoly_build_data.log"
-data_dir = "<REPO_PATH>/data"
+data_dir = os.environ.get("RP_DIR") + "data"
 
 
 @command()
@@ -323,7 +323,7 @@ def download_and_extract_rfam(data_dir, logger):
         logger.error(f"Error downloading Rfam database: {e}")
 
 
-def tar_everything_and_upload_to_NERSC(data_dir, version=""):
+def tar_everything(data_dir, version=""):
     """Package and upload prepared data to NERSC.
 
     Creates a tarball of all prepared databases and reference data,
@@ -372,15 +372,6 @@ def tar_everything_and_upload_to_NERSC(data_dir, version=""):
     tar_command = f"tar --use-compress-program='pigz -p 8 --best' -cf rpdb.tar.gz {data_dir}"  # threads
 
     subprocess.run(tar_command, shell=True)
-
-    # check which .py files use files/stuff from datadir/data_dir
-    # sp.run(f"find src/rolypoly -name '*.py' -exec grep  data_dir|datadir \;", shell=True)
-
-    # # On NERSC
-    # scp uneri@xfer.jgi.lbl.gov:<REPO_PATH>/data/rolypoly_data_slim_20251230.tar.gz /REDACTED_NERSC_PATH/prokpubs/www/rolypoly/data/data.tar.gz
-    # chmod +777 -R /REDACTED_NERSC_PATH/prokpubs/www/rolypoly/data/
-    # upload_command = f"gsutil cp {data_dir}.tar.gz gs://rolypoly-data/"
-    # subprocess.run(upload_command, shell=True)
 
 
 def analyze_data_dependencies(src_dir="src/rolypoly", data_dir=None):
@@ -1677,10 +1668,10 @@ def prepare_contamination_seqs(data_dir, threads, logger):
         return_stats=True,
         logger=logger,
     )
-    #     (rolypoly_tk) ➜  rolypoly git:(main) ✗ time seqkit rmdup -i  -s <REPO_PATH>/data/reference_seqs/RVMT/RVMT_cleaned_contigs.fasta   <REPO_PATH>/data/reference_seqs/ncbi_ribovirus/refseq_ribovirus_genomes.fasta > /dev/null
+    #     (rolypoly_tk) ➜  rolypoly git:(main) ✗ time seqkit rmdup -i  -s code/rolypoly/data/reference_seqs/RVMT/RVMT_cleaned_contigs.fasta   code/rolypoly/data/reference_seqs/ncbi_ribovirus/refseq_ribovirus_genomes.fasta > /dev/null
     # [INFO] 5399 duplicated records removed
     # seqkit rmdup -i -s   > /dev/null  14.70s user 0.53s system 75% cpu 20.095 total
-    #     #(rolypoly_tk) ➜  rolypoly git:(main) ✗ time seqkit rmdup --quiet <REPO_PATH>/data/reference_seqs/RVMT/RVMT_cleaned_contigs.fasta   <REPO_PATH>/data/reference_seqs/ncbi_ribovirus/refseq_ribovirus_genomes.fasta --quiet | seqkit stats
+    #     #(rolypoly_tk) ➜  rolypoly git:(main) ✗ time seqkit rmdup --quiet code/rolypoly/data/reference_seqs/RVMT/RVMT_cleaned_contigs.fasta   code/rolypoly/data/reference_seqs/ncbi_ribovirus/refseq_ribovirus_genomes.fasta --quiet | seqkit stats
     # file  format  type  num_seqs        sum_len  min_len  avg_len    max_len
     # -     FASTA   DNA    397,135  1,582,230,847      136  3,984.1  2,473,870
     # seqkit rmdup --quiet   --quiet  0.85s user 0.58s system 10% cpu 13.454 total
@@ -2404,7 +2395,6 @@ if __name__ == "__main__":
 
 # source ~/.bashrc
 # conda activate crispy
-# export PATH=$PATH:<HOME_PATH>/code/mmseqs/bin/
 
 # THREADS=24
 
@@ -2428,7 +2418,7 @@ if __name__ == "__main__":
 # extract RiboV1.6_Contigs.fasta.gz
 # seqkit grep  -f ./chimeras_RVMT.lst RiboV1.6_Contigs.fasta --invert-match  > tmp_nochimeras.fasta
 # mmseqs createdb  tmp_nochimeras.fasta  mmdb/RVMT_mmseqs_db2 --dbtype 2
-# RVMTdb=/REDACTED_HPC_PATH/rolypoly/data/RVMT/mmdb/RVMT_mmseqs_db2
+# RVMTdb=rolypoly/data/RVMT/mmdb/RVMT_mmseqs_db2
 # kcompress.sh in=tmp_nochimeras.fasta out=RiboV1.6_Contigs_flat.fasta fuse=2000 k=31  prealloc=true  threads=$THREADS # prefilter=true
 
 # cd ../
@@ -2443,8 +2433,8 @@ if __name__ == "__main__":
 # # Test #
 # THREADS=4
 # MEMORY=40g
-# fetched_genomes /REDACTED_HPC_PATH/rolypoly/bench/test_sampled_005_bb_metaTs_spiced_RVMT/temp_dir_sampled_005_bb_metaTs_spiced_RVMT/stats_rRNA_filt_sampled_005_bb_metaTs_spiced_RVMT.txt output.fasta
-# input_file=/REDACTED_HPC_PATH/rolypoly/data/output.fasta
+# fetched_genomes rolypoly/bench/test_sampled_005_bb_metaTs_spiced_RVMT/temp_dir_sampled_005_bb_metaTs_spiced_RVMT/stats_rRNA_filt_sampled_005_bb_metaTs_spiced_RVMT.txt output.fasta
+# input_file=rolypoly/data/output.fasta
 # bbduk.sh ref=$input_file sam=mapped.sam k=21 maskmiddle=t in=tmp_target.fas overwrite=true threads=$THREADS  -Xmx"$MEMORY"
 
 

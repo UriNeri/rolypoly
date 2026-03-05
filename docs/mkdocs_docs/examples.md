@@ -29,5 +29,5 @@ rolypoly virus-mapping -i assembly_out/final_assembly.fasta -o virus_hits.tab --
 ## End-to-End
 
 ```bash
-rolypoly end2end -i reads_R1.fq,reads_R2.fq -o rp_e2e_out/
+rolypoly roll -i reads_R1.fq,reads_R2.fq -o rp_e2e_out/
 ```

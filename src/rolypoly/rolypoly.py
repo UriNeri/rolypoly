@@ -19,6 +19,8 @@ click.rich_click.STYLE_COMMANDS_TABLE_PADDING = (0, 2)
 with resources.files("rolypoly").joinpath("rpconfig.json").open("r") as conff:
     config = load(conff)
 data_dir = config["ROLYPOLY_DATA"]
+if data_dir.startswith("$RP_DIR"):
+    data_dir = data_dir.replace("$RP_DIR", os.environ.get("RP_DIR", ""))
 os.environ["ROLYPOLY_DATA"] = data_dir  # export to env just in case
 os.environ["ROLYPOLY_DATA_DIR"] = data_dir  # export to env just in case x2
 ROLYPOLY_REMIND_CITATIONS = config["ROLYPOLY_REMIND_CITATIONS"]
@@ -76,7 +78,7 @@ CONTEXT_SETTINGS = dict(
         "misc": {
             "name": "Miscellaneous",
             "commands": {
-                "end2end": "rolypoly.commands.misc.end_2_end.run_pipeline",
+                "roll": "rolypoly.commands.misc.end_2_end.run_pipeline",
                 # "add-command": "hidden:rolypoly.commands.misc.add_command.add_command",
                 "fetch-sra": "rolypoly.commands.misc.fetch_sra_fastq.fetch_sra",  # Not  a click command (yet?)
                 "fastx-stats": "rolypoly.commands.misc.fastx_stats.fastx_stats",

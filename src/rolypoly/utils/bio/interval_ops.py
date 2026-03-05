@@ -1023,35 +1023,3 @@ def main(**kwargs):
 
 if __name__ == "__main__":
     main()
-    # Debug arguments
-    # debug = False
-    # if debug:
-    #     input = pl.read_csv(
-    #         "/REDACTED_HPC_PATH/tests/rp_tests/inputs/tables/hit_table.tsv",
-    #         separator="\t",
-    #     )
-    #     output = "/REDACTED_HPC_PATH/tests/rp_tests/inputs/tables/consolidated_output.tsv"
-    #     best = False
-    #     rank_columns = "-score,+evalue"
-    #     column_specs = "qseqid,sseqid"
-    #     culling_mode = "one_per_range"
-    #     env_mode = "envelope"
-    #     # max_overlap_fraction=0.1
-    #     min_overlap_positions = 10
-    #     clip = True
-    #     drop_contained = True
-    #     one_per_query = False
-    #     one_per_range = False
-    #     merge = False
-    #     consolidate_hits(
-    #         input,
-    #         None,
-    #         best,
-    #         rank_columns,
-    #         culling_mode,
-    #         min_overlap_positions,
-    #         clip,
-    #         drop_contained,
-    #         merge,
-    #         column_specs,
-    #     )
