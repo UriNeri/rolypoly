@@ -95,6 +95,7 @@ CONTEXT_SETTINGS = dict(
                 "termini": "rolypoly.commands.bining.termini.termini",
                 "correlate": "rolypoly.commands.bining.correlate.correlate",
                 "cluster": "rolypoly.commands.bining.cluster.cluster",
+                "binit": "rolypoly.commands.bining.binit.binit",
             },
         },
         # "characterise": {

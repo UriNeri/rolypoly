@@ -76,7 +76,7 @@ from __future__ import annotations
 import logging
 import tempfile
 from pathlib import Path
-from typing import Any, Sequence, Union
+from typing import Any, Union
 
 import igraph as ig
 import leidenalg
@@ -127,9 +127,7 @@ CLUSTER_COLUMNS = [
 ]
 
 
-# ── Edge table helpers ──────────────────────────────────────────────
-
-
+# Edge table helpers
 def empty_edge_frame() -> pl.DataFrame:
     """Return an empty polars DataFrame with the standard edge schema."""
     return pl.DataFrame(
@@ -157,10 +155,7 @@ def empty_cluster_frame() -> pl.DataFrame:
         }
     )
 
-
-# ── Derived metrics ────────────────────────────────────────────────
-
-
+# Derived metrics 
 def enrich_edges_with_derived_metrics(
     edges: pl.DataFrame,
     seq_lengths: dict[str, int] | None = None,
@@ -245,43 +240,21 @@ def enrich_edges_with_derived_metrics(
     return enriched
 
 
-# ── BLAST outfmt 6 ANI calculation (anicalc-style) ─────────────────
+# BLAST outfmt 6 ANI calculation (anicalc-style)
 
 
-def merge_intervals(intervals: Sequence[Sequence[int]]) -> list[list[int]]:
-    """Merge overlapping or adjacent intervals.
-
-    Args:
-        intervals: Sequence of (start, end) pairs (1-based, inclusive).
-            Accepts both lists and tuples (e.g. from polars ``.rows()``).
-
-    Returns:
-        Non-overlapping merged intervals sorted by start.
-    """
-    if not intervals:
-        return []
-    sorted_iv = sorted(intervals, key=lambda x: x[0])
-    merged = [list(sorted_iv[0])]
-    for start, stop in sorted_iv[1:]:
-        if start <= merged[-1][1] + 1:
-            merged[-1][1] = max(merged[-1][1], stop)
-        else:
-            merged.append([start, stop])
-    return merged
-
-
-# Column names for the BLAST outfmt 6 (+ qlen slen) format
-_BLAST6_COLUMNS = [
-    "qname", "tname", "pident", "alen", "mismatch", "gapopen",
+# Shared HSP schema used by BLAST6 and MMseqs tabular outputs
+HSP_COLUMNS = [
+    "query_id", "target_id", "pident", "length", "mismatch", "gapopen",
     "qstart", "qend", "sstart", "send", "evalue", "bitscore",
-    "qlen", "tlen",
+    "qlen", "slen",
 ]
 
-_BLAST6_DTYPES = {
-    "qname": pl.String,
-    "tname": pl.String,
+HSP_DTYPES = {
+    "query_id": pl.String,
+    "target_id": pl.String,
     "pident": pl.Float64,
-    "alen": pl.Float64,
+    "length": pl.Float64,
     "mismatch": pl.Int64,
     "gapopen": pl.Int64,
     "qstart": pl.Int64,
@@ -291,8 +264,157 @@ _BLAST6_DTYPES = {
     "evalue": pl.Float64,
     "bitscore": pl.Float64,
     "qlen": pl.Int64,
-    "tlen": pl.Int64,
+    "slen": pl.Int64,
 }
+
+
+# Column names for the MMseqs2 14-column output format
+MMSEQS_COLUMNS_14 = [
+    "query_id", "target_id", "fident", "alnlen", "mismatch", "gapopen",
+    "qstart", "qend", "tstart", "tend", "evalue", "bitscore",
+    "qlen", "tlen",
+]
+
+MMSEQS_COLUMNS_12 = [
+    "query_id", "target_id", "fident", "alnlen", "mismatch", "gapopen",
+    "qstart", "qend", "tstart", "tend", "evalue", "bitscore",
+]
+
+
+def normalise_alignment_coordinates(df: pl.DataFrame) -> pl.DataFrame:
+    """Normalise alignment coordinates so starts are <= ends."""
+    return df.with_columns(
+        pl.min_horizontal("qstart", "qend").alias("qstart"),
+        pl.max_horizontal("qstart", "qend").alias("qend"),
+        pl.min_horizontal("sstart", "send").alias("sstart"),
+        pl.max_horizontal("sstart", "send").alias("send"),
+    )
+
+
+def filter_hsp_rows(
+    hsp_df: pl.DataFrame,
+    min_alignment_length: int = 0,
+    min_evalue: float = 1e-3,
+    apply_pruning: bool = True,
+) -> pl.DataFrame:
+    """Filter/prune HSP rows using vectorised per-pair Polars operations."""
+    if hsp_df.is_empty():
+        return hsp_df
+
+    filtered = hsp_df.with_columns(
+        (pl.col("qend") - pl.col("qstart") + 1).alias("aln_length")
+    ).filter(
+        (pl.col("aln_length") >= min_alignment_length)
+        & (pl.col("evalue") <= min_evalue)
+    )
+    if filtered.is_empty() or not apply_pruning:
+        return filtered
+
+    pair_keys = ["query_id", "target_id"]
+    filtered = filtered.with_columns(
+        pl.col("qlen").first().over(pair_keys).alias("query_length"),
+        (
+            pl.col("aln_length").cum_sum().over(pair_keys)
+            - pl.col("aln_length")
+        ).alias("cum_before"),
+    ).filter(
+        (pl.col("cum_before") < pl.col("query_length"))
+        & (
+            (pl.col("aln_length") + pl.col("cum_before"))
+            < (1.10 * pl.col("query_length"))
+        )
+    )
+    return filtered
+
+
+def hsp_frame_to_edges(
+    hsp_df: pl.DataFrame,
+    min_alignment_length: int = 0,
+    min_evalue: float = 1e-3,
+    apply_pruning: bool = True,
+    min_identity_prefilter: float | None = None,
+) -> pl.DataFrame:
+    """Convert a standardised HSP table into the base edge table schema."""
+    if hsp_df.is_empty():
+        return empty_edge_frame()
+
+    required = ["query_id", "target_id", "pident", "length"]
+    missing = [c for c in required if c not in hsp_df.columns]
+    if missing:
+        raise ValueError(
+            "HSP table missing required columns: " + ", ".join(missing)
+        )
+
+    # Drop self hits / malformed rows first
+    filtered = hsp_df.filter(
+        pl.col("pident").is_not_null()
+        & pl.col("length").is_not_null()
+        & (pl.col("query_id") != pl.col("target_id"))
+    )
+    if filtered.is_empty():
+        return empty_edge_frame()
+
+    # Apply per-HSP filtering and optional CheckV-style cumulative pruning
+    supports_hsp_pruning = {
+        "qstart", "qend", "evalue", "qlen"
+    }.issubset(set(filtered.columns))
+    if supports_hsp_pruning:
+        filtered = filter_hsp_rows(
+            filtered,
+            min_alignment_length=min_alignment_length,
+            min_evalue=min_evalue,
+            apply_pruning=apply_pruning,
+        )
+    if filtered.is_empty():
+        return empty_edge_frame()
+
+    # Vectorised pair-level ANI and count
+    pair_stats = filtered.group_by(["query_id", "target_id"]).agg(
+        (
+            (pl.col("length") * pl.col("pident")).sum()
+            / pl.col("length").sum()
+        )
+        .round(2)
+        .alias("identity"),
+        pl.len().alias("num_alignments"),
+    )
+
+    # Optional fast-path prefilter to avoid coverage work for pairs that
+    # are guaranteed to be dropped by downstream identity filtering.
+    if min_identity_prefilter is not None:
+        pair_stats = pair_stats.filter(
+            pl.col("identity") >= float(min_identity_prefilter)
+        )
+        if pair_stats.is_empty():
+            return empty_edge_frame()
+        filtered = filtered.join(
+            pair_stats.select("query_id", "target_id"),
+            on=["query_id", "target_id"],
+            how="inner",
+        )
+        if filtered.is_empty():
+            return empty_edge_frame()
+
+    # Coverage uses grouped interval union lengths computed in Polars.
+    supports_coverage = {
+        "qstart", "qend", "sstart", "send", "qlen", "slen"
+    }.issubset(set(filtered.columns))
+    if not supports_coverage:
+        return pair_stats.with_columns(
+            pl.lit(0.0).alias("query_coverage"),
+            pl.lit(0.0).alias("target_coverage"),
+        ).select(EDGE_COLUMNS)
+
+    coverage_df = compute_bidirectional_group_coverages(filtered)
+
+    return pair_stats.join(
+        coverage_df,
+        on=["query_id", "target_id"],
+        how="left",
+    ).with_columns(
+        pl.col("query_coverage").fill_null(0.0),
+        pl.col("target_coverage").fill_null(0.0),
+    ).select(EDGE_COLUMNS)
 
 
 def read_blast6(path: Union[str, Path]) -> pl.DataFrame:
@@ -303,7 +425,7 @@ def read_blast6(path: Union[str, Path]) -> pl.DataFrame:
     are supported — tab is tried first.
 
     Returns:
-        DataFrame with typed columns matching _BLAST6_COLUMNS.
+        DataFrame with typed columns matching HSP_COLUMNS.
     """
     path = Path(path)
     try:
@@ -311,8 +433,8 @@ def read_blast6(path: Union[str, Path]) -> pl.DataFrame:
             path,
             separator="\t",
             has_header=False,
-            new_columns=_BLAST6_COLUMNS,
-            schema_overrides=_BLAST6_DTYPES,
+            new_columns=HSP_COLUMNS,
+            schema_overrides=HSP_DTYPES,
             comment_prefix="#",
             truncate_ragged_lines=True,
             ignore_errors=True,
@@ -323,135 +445,122 @@ def read_blast6(path: Union[str, Path]) -> pl.DataFrame:
             path,
             separator=" ",
             has_header=False,
-            new_columns=_BLAST6_COLUMNS,
-            schema_overrides=_BLAST6_DTYPES,
+            new_columns=HSP_COLUMNS,
+            schema_overrides=HSP_DTYPES,
             comment_prefix="#",
             truncate_ragged_lines=True,
             ignore_errors=True,
         )
-    # Ensure coordinate columns are min/max normalised
-    df = df.with_columns(
-        pl.min_horizontal("qstart", "qend").alias("qstart"),
-        pl.max_horizontal("qstart", "qend").alias("qend"),
-        pl.min_horizontal("sstart", "send").alias("sstart"),
-        pl.max_horizontal("sstart", "send").alias("send"),
-    )
-    return df
+    return normalise_alignment_coordinates(df)
 
 
-def prune_alignments(
-    df: pl.DataFrame,
-    min_length: int = 0,
-    min_evalue: float = 1e-3,
-) -> pl.DataFrame:
-    """Remove short or high-evalue alignments and stop after full coverage.
-
-    Following CheckV anicalc logic: discard alignments shorter than
-    *min_length* or with evalue above *min_evalue*, and stop accumulating
-    once the total aligned length reaches 110 pct of the query length.
-
-    Operates on a polars DataFrame with at least: qstart, qend, evalue, qlen.
-    Returns a filtered DataFrame (may include an extra ``aln_length`` column).
-    """
+def compute_bidirectional_group_coverages(df: pl.DataFrame) -> pl.DataFrame:
+    """Compute query and target coverages per pair in one Polars pipeline."""
     if df.is_empty():
-        return df
-    query_length = df["qlen"][0]
+        return pl.DataFrame(
+            schema={
+                "query_id": pl.String,
+                "target_id": pl.String,
+                "query_coverage": pl.Float64,
+                "target_coverage": pl.Float64,
+            }
+        )
 
-    # Compute alignment length and apply basic quality filters
-    df = df.with_columns(
-        (pl.col("qend") - pl.col("qstart") + 1).alias("aln_length")
+    pair_keys = ["query_id", "target_id"]
+    coverage_keys = pair_keys + ["axis"]
+
+    query_intervals = df.select(
+        pl.col("query_id"),
+        pl.col("target_id"),
+        pl.lit("query").alias("axis"),
+        pl.col("qstart").cast(pl.Int64).alias("start"),
+        pl.col("qend").cast(pl.Int64).alias("end"),
+        pl.col("qlen").cast(pl.Float64).alias("seq_len"),
+    )
+    target_intervals = df.select(
+        pl.col("query_id"),
+        pl.col("target_id"),
+        pl.lit("target").alias("axis"),
+        pl.col("sstart").cast(pl.Int64).alias("start"),
+        pl.col("send").cast(pl.Int64).alias("end"),
+        pl.col("slen").cast(pl.Float64).alias("seq_len"),
+    )
+
+    intervals = pl.concat(
+        [query_intervals, target_intervals],
+        how="vertical_relaxed",
     ).filter(
-        (pl.col("aln_length") >= min_length) & (pl.col("evalue") <= min_evalue)
+        pl.col("start").is_not_null() & pl.col("end").is_not_null()
     )
-    if df.is_empty():
-        return df
 
-    # Cumulative stop: keep only rows before the coverage cap.
-    # cum_before is the running aligned length *before* the current row.
-    df = df.with_columns(
-        (pl.col("aln_length").cum_sum() - pl.col("aln_length")).alias("cum_before")
-    ).filter(
-        (pl.col("cum_before") < query_length)
-        & (pl.col("aln_length") + pl.col("cum_before") < 1.10 * query_length)
+    if intervals.is_empty():
+        return pl.DataFrame(
+            schema={
+                "query_id": pl.String,
+                "target_id": pl.String,
+                "query_coverage": pl.Float64,
+                "target_coverage": pl.Float64,
+            }
+        )
+
+    prepared = (
+        intervals.sort(coverage_keys + ["start", "end"])
+        .with_columns(
+            pl.col("end")
+            .cum_max()
+            .shift(1)
+            .over(coverage_keys)
+            .fill_null(pl.col("start") - 1)
+            .alias("prev_max_end"),
+        )
+        .with_columns(
+            pl.max_horizontal("start", pl.col("prev_max_end") + 1)
+            .alias("new_start"),
+        )
+        .with_columns(
+            pl.when(pl.col("end") >= pl.col("new_start"))
+            .then(pl.col("end") - pl.col("new_start") + 1)
+            .otherwise(0)
+            .alias("covered_increment"),
+        )
     )
-    return df
 
-
-def compute_pair_ani(df: pl.DataFrame) -> float:
-    """Compute average nucleotide identity for one query-target pair.
-
-    Weighted by alignment length: sum(alen*pident) / sum(alen).
-    Operates on a polars DataFrame with columns ``alen`` and ``pident``.
-    """
-    if df.is_empty():
-        return 0.0
-    result = df.select(
-        (pl.col("alen") * pl.col("pident")).sum() / pl.col("alen").sum()
+    coverage_long = (
+        prepared.group_by(coverage_keys)
+        .agg(
+            pl.col("covered_increment").sum().cast(pl.Float64).alias("covered_len"),
+            pl.col("seq_len").first().alias("seq_len"),
+        )
+        .with_columns(
+            pl.when((pl.col("seq_len").is_not_null()) & (pl.col("seq_len") > 0))
+            .then((100.0 * pl.col("covered_len") / pl.col("seq_len")).round(2))
+            .otherwise(0.0)
+            .alias("coverage")
+        )
+        .select("query_id", "target_id", "axis", "coverage")
     )
-    return round(result.item(), 2)
 
-
-def compute_pair_coverages(
-    df: pl.DataFrame,
-) -> tuple[float, float]:
-    """Compute query and target coverage for one query-target pair.
-
-    Merges overlapping alignment coordinates before computing the
-    fraction of each sequence covered.
-
-    Operates on a polars DataFrame with columns ``qstart``, ``qend``,
-    ``sstart``, ``send``, ``qlen``, ``tlen``.
-
-    Returns:
-        (query_coverage, target_coverage) as percentages (0-100).
-    """
-    if df.is_empty():
-        return 0.0, 0.0
-
-    qlen = df["qlen"][0]
-    tlen = df["tlen"][0]
-
-    query_coords = merge_intervals(df.select("qstart", "qend").rows())
-    query_aligned = sum(stop - start + 1 for start, stop in query_coords)
-    qcov = round(100.0 * query_aligned / qlen, 2) if qlen > 0 else 0.0
-
-    target_coords = merge_intervals(df.select("sstart", "send").rows())
-    target_aligned = sum(stop - start + 1 for start, stop in target_coords)
-    tcov = round(100.0 * target_aligned / tlen, 2) if tlen > 0 else 0.0
-
-    return qcov, tcov
-
-
-def compute_blast6_pair_edges(
-    group: pl.DataFrame,
-    min_alignment_length: int,
-    min_evalue: float,
-) -> dict[str, Any] | None:
-    """Compute ANI and coverage for one (query, target) group of HSPs.
-
-    Applies pruning, ANI and coverage computation directly on the
-    polars group sub-frame, then returns a single edge row dict or
-    None if the pair should be skipped.
-    """
-    pruned = prune_alignments(group, min_alignment_length, min_evalue)
-    if pruned.is_empty():
-        return None
-    ani = compute_pair_ani(pruned)
-    qcov, tcov = compute_pair_coverages(pruned)
-    return {
-        "query_id": group["qname"][0],
-        "target_id": group["tname"][0],
-        "identity": ani,
-        "query_coverage": qcov,
-        "target_coverage": tcov,
-        "num_alignments": pruned.height,
-    }
+    return coverage_long.group_by(pair_keys).agg(
+        pl.when(pl.col("axis") == "query")
+        .then(pl.col("coverage"))
+        .otherwise(None)
+        .max()
+        .fill_null(0.0)
+        .alias("query_coverage"),
+        pl.when(pl.col("axis") == "target")
+        .then(pl.col("coverage"))
+        .otherwise(None)
+        .max()
+        .fill_null(0.0)
+        .alias("target_coverage"),
+    )
 
 
 def parse_blast6_to_edges(
     blast_path: Union[str, Path],
     min_alignment_length: int = 0,
     min_evalue: float = 1e-3,
+    min_identity_prefilter: float | None = None,
 ) -> pl.DataFrame:
     """Parse BLAST outfmt 6 (with qlen slen) into the standard edge table.
 
@@ -460,7 +569,8 @@ def parse_blast6_to_edges(
     (pruning, interval merging, weighted identity).
 
     Expected BLAST command:
-        blastn -query in.fa -subject in.fa -outfmt '6 std qlen slen'
+        blastn -query in.fa -subject in.fa -outfmt
+        '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen'
 
     Args:
         blast_path: Path to BLAST tabular output file.
@@ -478,28 +588,16 @@ def parse_blast6_to_edges(
     if raw.is_empty():
         return empty_edge_frame()
 
-    # Drop self-hits early
-    raw = raw.filter(pl.col("qname") != pl.col("tname"))
-    if raw.is_empty():
-        return empty_edge_frame()
-
-    # Group by (query, target) and compute per-pair ANI/coverage
-    rows: list[dict[str, Any]] = []
-    for (_qname, _tname), group in raw.group_by(
-        ["qname", "tname"], maintain_order=True
-    ):
-        result = compute_blast6_pair_edges(
-            group, min_alignment_length, min_evalue
-        )
-        if result is not None:
-            rows.append(result)
-
-    if not rows:
-        return empty_edge_frame()
-    return pl.DataFrame(rows).select(EDGE_COLUMNS)
+    return hsp_frame_to_edges(
+        raw,
+        min_alignment_length=min_alignment_length,
+        min_evalue=min_evalue,
+        apply_pruning=True,
+        min_identity_prefilter=min_identity_prefilter,
+    )
 
 
-# ── CheckV-style ANI table parsing ─────────────────────────────────
+#  CheckV-style ANI table parsing 
 
 
 def parse_ani_table(
@@ -570,22 +668,7 @@ def parse_ani_table(
     return df.select(EDGE_COLUMNS)
 
 
-# ── MMseqs2 easy-search output parsing ─────────────────────────────
-
-
-# Column names for the MMseqs2 14-column output format
-_MMSEQS_COLUMNS_14 = [
-    "query_id", "target_id", "fident", "alnlen", "mismatch", "gapopen",
-    "qstart", "qend", "tstart", "tend", "evalue", "bitscore",
-    "qlen", "tlen",
-]
-
-_MMSEQS_COLUMNS_12 = [
-    "query_id", "target_id", "fident", "alnlen", "mismatch", "gapopen",
-    "qstart", "qend", "tstart", "tend", "evalue", "bitscore",
-]
-
-
+#  MMseqs2 easy-search output parsing 
 def parse_mmseqs_table(
     mmseqs_path: Union[str, Path],
 ) -> pl.DataFrame:
@@ -627,7 +710,7 @@ def parse_mmseqs_table(
     ncols = raw.width
     has_lengths = ncols >= 14
 
-    col_names = _MMSEQS_COLUMNS_14 if has_lengths else _MMSEQS_COLUMNS_12
+    col_names = MMSEQS_COLUMNS_14 if has_lengths else MMSEQS_COLUMNS_12
     # Rename only the columns we care about
     rename_map = {
         raw.columns[i]: col_names[i]
@@ -635,89 +718,60 @@ def parse_mmseqs_table(
     }
     raw = raw.rename(rename_map)
 
-    # Cast numeric columns
-    raw = raw.with_columns(
-        pl.col("fident").cast(pl.Float64, strict=False),
-        pl.col("alnlen").cast(pl.Int64, strict=False),
+    # Convert MMseqs names to the shared HSP schema
+    hsp = raw.rename(
+        {
+            "fident": "pident",
+            "alnlen": "length",
+            "tstart": "sstart",
+            "tend": "send",
+        }
+    ).with_columns(
+        pl.col("pident").cast(pl.Float64, strict=False),
+        pl.col("length").cast(pl.Float64, strict=False),
         pl.col("qstart").cast(pl.Int64, strict=False),
         pl.col("qend").cast(pl.Int64, strict=False),
-        pl.col("tstart").cast(pl.Int64, strict=False),
-        pl.col("tend").cast(pl.Int64, strict=False),
+        pl.col("sstart").cast(pl.Int64, strict=False),
+        pl.col("send").cast(pl.Int64, strict=False),
+        pl.col("evalue").cast(pl.Float64, strict=False),
     )
 
-    # Drop self-hits and rows with null fident (e.g. header lines)
-    raw = raw.filter(
-        pl.col("fident").is_not_null()
-        & (pl.col("query_id") != pl.col("target_id"))
-    )
-    if raw.is_empty():
-        return empty_edge_frame()
-
-    # fident from mmseqs is 0-1 by default; convert to 0-100 if needed
-    raw = raw.with_columns(
-        pl.when(pl.col("fident") <= 1.0)
-        .then(pl.col("fident") * 100.0)
-        .otherwise(pl.col("fident"))
+    # fident from mmseqs is commonly 0-1; convert to 0-100 if needed.
+    hsp = hsp.with_columns(
+        pl.when(pl.col("pident") <= 1.0)
+        .then(pl.col("pident") * 100.0)
+        .otherwise(pl.col("pident"))
         .round(2)
-        .alias("identity"),
+        .alias("pident"),
     )
 
-    # Compute per-row coverage from coordinates if qlen/tlen present
+    # Keep qlen/slen when present, otherwise add null placeholders.
     if has_lengths:
-        raw = raw.with_columns(
+        hsp = hsp.rename({"tlen": "slen"}).with_columns(
             pl.col("qlen").cast(pl.Float64, strict=False),
-            pl.col("tlen").cast(pl.Float64, strict=False),
-        )
-        raw = raw.with_columns(
-            pl.when(pl.col("qlen") > 0)
-            .then(
-                (100.0 * (pl.col("qend") - pl.col("qstart") + 1).abs()
-                 / pl.col("qlen"))
-                .round(2)
-            )
-            .otherwise(0.0)
-            .alias("query_coverage"),
-            pl.when(pl.col("tlen") > 0)
-            .then(
-                (100.0 * (pl.col("tend") - pl.col("tstart") + 1).abs()
-                 / pl.col("tlen"))
-                .round(2)
-            )
-            .otherwise(0.0)
-            .alias("target_coverage"),
+            pl.col("slen").cast(pl.Float64, strict=False),
         )
     else:
-        raw = raw.with_columns(
-            pl.lit(0.0).alias("query_coverage"),
-            pl.lit(0.0).alias("target_coverage"),
+        hsp = hsp.with_columns(
+            pl.lit(None).cast(pl.Float64).alias("qlen"),
+            pl.lit(None).cast(pl.Float64).alias("slen"),
         )
 
-    # Aggregate multiple HSPs per pair
-    agg = (
-        raw.group_by(["query_id", "target_id"])
-        .agg(
-            pl.col("identity")
-            .mean()
-            .round(2)
-            .alias("identity"),
-            pl.col("query_coverage")
-            .sum()
-            .clip(0, 100)
-            .round(2)
-            .alias("query_coverage"),
-            pl.col("target_coverage")
-            .sum()
-            .clip(0, 100)
-            .round(2)
-            .alias("target_coverage"),
-            pl.len().alias("num_alignments"),
-        )
-        .select(EDGE_COLUMNS)
+    hsp = normalise_alignment_coordinates(hsp)
+    hsp = hsp.select(
+        [col for col in HSP_COLUMNS if col in hsp.columns]
     )
-    return agg
+
+    # MMseqs is not pre-pruned like CheckV BLAST6 output; keep all rows.
+    return hsp_frame_to_edges(
+        hsp,
+        min_alignment_length=0,
+        min_evalue=float("inf"),
+        apply_pruning=False,
+    )
 
 
-# ── On-the-fly ANI calculation backends ────────────────────────────
+#  On-the-fly ANI calculation backends 
 
 
 def compute_ani_pyskani(
@@ -813,18 +867,19 @@ def compute_ani_pyfastani(
     defaults so that shorter RNA-virus contigs from metatranscriptomic
     assemblies still produce hits.
 
-    Note: FastANI reports only identity and the fraction of k-mer
-    fragments that matched (matches/fragments).  It does not provide
-    explicit target coverage, so ``target_coverage`` is set equal to
-    ``query_coverage`` (symmetric for a one-way search) and the caller
-    should keep this limitation in mind.
+    Note: FastANI reports identity and the fraction of query fragments
+    that matched (matches/fragments) for a directed query. This
+    function uses that as ``query_coverage`` and estimates
+    ``target_coverage`` from the reverse-direction hit when available
+    (falling back to query coverage if the reverse edge is absent).
 
     Args:
         fasta_path: Path to input FASTA/FASTQ file.
         threads: Number of threads for the fragment-mapping step.
-        fragment_length: Fragment length for query splitting.  FastANI
-            default is 3000 (suited for prokaryote genomes). Lowered
-            here to 1000 for shorter viral contigs.
+        fragment_length: Maximum fragment length for query splitting.
+            FastANI default is 3000 (suited for prokaryote genomes).
+            For short viral contigs this function auto-reduces the
+            effective value based on sequence-length quantiles.
         minimum_fraction: Minimum fraction of the smaller genome that
             must be shared for a hit.  FastANI default is 0.2; lowered
             to 0.05 for partial/short assemblies.
@@ -843,6 +898,20 @@ def compute_ani_pyfastani(
     if seq_df.is_empty() or seq_df.height < 2:
         return empty_edge_frame()
 
+    # Auto-tune fragment length for short-contig datasets while keeping
+    # the caller-provided value as an upper bound. This avoids sparse
+    # hits when most contigs are shorter than the nominal fragment size.
+    effective_fragment_length = fragment_length
+    if "seq_length" in seq_df.columns:
+        q25_len = seq_df.select(
+            pl.col("seq_length").quantile(0.25, interpolation="nearest")
+        ).item()
+        if q25_len is not None:
+            effective_fragment_length = min(
+                fragment_length,
+                max(200, int(q25_len)),
+            )
+
     seq_rows = seq_df.to_dicts()
     names: list[str] = []
     sequences: list[str] = []
@@ -853,7 +922,7 @@ def compute_ani_pyfastani(
     # Build sketch with adjusted parameters
     sketch = pyfastani.Sketch(
         k=k,
-        fragment_length=fragment_length,
+        fragment_length=effective_fragment_length,
         minimum_fraction=minimum_fraction,
         percentage_identity=percentage_identity,
     )
@@ -865,7 +934,7 @@ def compute_ani_pyfastani(
     if logger:
         logger.info(
             "pyfastani: indexed %d sequences (k=%d, frag_len=%d, min_frac=%.2f)",
-            len(names), k, fragment_length, minimum_fraction,
+            len(names), k, effective_fragment_length, minimum_fraction,
         )
 
     rows: list[dict[str, Any]] = []
@@ -887,21 +956,43 @@ def compute_ani_pyfastani(
                     "target_id": target_name,
                     "identity": round(identity, 2),
                     "query_coverage": coverage,
-                    "target_coverage": coverage,
-                    "num_alignments": 1,
                 }
             )
 
     if not rows:
         return empty_edge_frame()
 
+    edges = (
+        pl.DataFrame(rows)
+        .group_by(["query_id", "target_id"])
+        .agg(
+            pl.col("identity").mean().round(2).alias("identity"),
+            pl.col("query_coverage").max().round(2).alias("query_coverage"),
+            pl.len().alias("num_alignments"),
+        )
+    )
+
+    reverse_cov = edges.select(
+        pl.col("query_id").alias("target_id"),
+        pl.col("target_id").alias("query_id"),
+        pl.col("query_coverage").alias("target_coverage"),
+    )
+
+    edges = (
+        edges.join(reverse_cov, on=["query_id", "target_id"], how="left")
+        .with_columns(
+            pl.col("target_coverage").fill_null(pl.col("query_coverage")).round(2)
+        )
+        .select(EDGE_COLUMNS)
+    )
+
     if logger:
         logger.info(
             "pyfastani produced %s raw edges from %s sequences",
-            len(rows),
+            edges.height,
             len(seq_rows),
         )
-    return pl.DataFrame(rows).select(EDGE_COLUMNS)
+    return edges
 
 
 def compute_ani_blastn(
@@ -909,6 +1000,7 @@ def compute_ani_blastn(
     threads: int = 1,
     min_alignment_length: int = 0,
     min_evalue: float = 1e-3,
+    min_identity_prefilter: float | None = None,
     logger: logging.Logger | None = None,
 ) -> pl.DataFrame:
     """Compute pairwise ANI by running blastn all-vs-all and parsing results.
@@ -935,34 +1027,41 @@ def compute_ani_blastn(
             "makeblastdb",
             positional_args=[],
             params={
-                "-in": str(fasta_path),
-                "-dbtype": "nucl",
-                "-out": str(Path(tmpdir) / "blastdb"),
+                "in": str(fasta_path),
+                "dbtype": "nucl",
+                "out": str(Path(tmpdir) / "blastdb"),
             },
             logger=logger,
             check_status=True,
+            prefix_style="single",
         )
         # Run all-vs-all blastn
         run_command_comp(
             "blastn",
             positional_args=[],
             params={
-                "-query": str(fasta_path),
-                "-db": str(Path(tmpdir) / "blastdb"),
-                "-outfmt": "6 std qlen slen",
-                "-out": str(outfile),
-                "-num_threads": str(threads),
-                "-max_target_seqs": "25000",
-                "-evalue": str(min_evalue),
+                "query": str(fasta_path),
+                "db": str(Path(tmpdir) / "blastdb"),
+                "out": str(outfile),
+                "num_threads": str(threads),
+                "max_target_seqs": "25000",
+                "evalue": str(min_evalue),
+                "outfmt": str("'6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen'"),
             },
             logger=logger,
             check_status=True,
+            prefix_style="single",
         )
         if not outfile.exists() or outfile.stat().st_size == 0:
             if logger:
                 logger.warning("blastn produced no output")
             return empty_edge_frame()
-        return parse_blast6_to_edges(outfile, min_alignment_length, min_evalue)
+        return parse_blast6_to_edges(
+            outfile,
+            min_alignment_length,
+            min_evalue,
+            min_identity_prefilter=min_identity_prefilter,
+        )
 
 
 def compute_ani_mmseqs(
@@ -1000,12 +1099,12 @@ def compute_ani_mmseqs(
                 str(outfile),
                 str(tmp_subdir),
             ],
-            positional_args_location="end",
+            positional_args_location="start",
             params={
-                "--threads": str(threads),
-                "-s": str(sensitivity),
-                "--search-type": "3",  # nucleotide
-                "--format-output": (
+                "threads": str(threads),
+                "s": str(sensitivity),
+                "search-type": "3",  # nucleotide
+                "format-output": (
                     "query,target,fident,alnlen,mismatch,gapopen,"
                     "qstart,qend,tstart,tend,evalue,bits,qlen,tlen"
                 ),
@@ -1020,7 +1119,7 @@ def compute_ani_mmseqs(
         return parse_mmseqs_table(outfile)
 
 
-# ── K-mer-based identity estimation ───────────────────────────────
+#  K-mer-based identity estimation 
 
 
 # Translation table for complement (DNA only, uppercase)
@@ -1278,7 +1377,7 @@ def kmer_prefilter_pairs(
     return pairs
 
 
-# ── Edge filtering ─────────────────────────────────────────────────
+#  Edge filtering 
 
 
 def filter_edges(
@@ -1342,7 +1441,7 @@ def filter_edges(
     return filtered
 
 
-# ── Repetitive-sequence flagging ───────────────────────────────────
+#  Repetitive-sequence flagging 
 
 
 def flag_repetitive_sequences(
@@ -1403,7 +1502,7 @@ def flag_repetitive_sequences(
     return flagged
 
 
-# ── Clustering algorithms ──────────────────────────────────────────
+#  Clustering algorithms 
 
 
 def cluster_connected_components(
@@ -1455,8 +1554,8 @@ def cluster_connected_components(
             parent[rb] = ra
 
     if not edges.is_empty():
-        for row in edges.select(["query_id", "target_id"]).iter_rows():
-            qi, ti = id_to_idx[row[0]], id_to_idx[row[1]]
+        for qid, tid in edges.select(["query_id", "target_id"]).iter_rows():
+            qi, ti = id_to_idx[qid], id_to_idx[tid]
             union(qi, ti)
 
     # Build components
@@ -1468,12 +1567,13 @@ def cluster_connected_components(
     # Build edge lookup for identity/coverage to representative
     edge_lookup: dict[tuple[str, str], tuple[float, float]] = {}
     if not edges.is_empty():
-        for row in edges.iter_rows(named=True):
-            key_fwd = (row["query_id"], row["target_id"])
-            key_rev = (row["target_id"], row["query_id"])
-            af = min(row["query_coverage"], row["target_coverage"])
-            edge_lookup[key_fwd] = (row["identity"], af)
-            edge_lookup[key_rev] = (row["identity"], af)
+        compact_edges = edges.select(
+            "query_id", "target_id", "identity", "query_coverage", "target_coverage"
+        )
+        for qid, tid, ident, qcov, tcov in compact_edges.iter_rows():
+            af = min(qcov, tcov)
+            edge_lookup[(qid, tid)] = (ident, af)
+            edge_lookup[(tid, qid)] = (ident, af)
 
     return build_cluster_assignment_rows(
         components, edge_lookup, exclude_as_representatives,
@@ -1539,14 +1639,16 @@ def cluster_centroid_greedy(
         sid: {} for sid in sorted_ids
     }
     if not edges.is_empty():
-        for row in edges.iter_rows(named=True):
-            q, t = row["query_id"], row["target_id"]
-            af = min(row["query_coverage"], row["target_coverage"])
+        compact_edges = edges.select(
+            "query_id", "target_id", "identity", "query_coverage", "target_coverage"
+        )
+        for q, t, ident, qcov, tcov in compact_edges.iter_rows():
+            af = min(qcov, tcov)
             # store bidirectional
             if t not in neighbours.get(q, {}):
-                neighbours.setdefault(q, {})[t] = (row["identity"], af)
+                neighbours.setdefault(q, {})[t] = (ident, af)
             if q not in neighbours.get(t, {}):
-                neighbours.setdefault(t, {})[q] = (row["identity"], af)
+                neighbours.setdefault(t, {})[q] = (ident, af)
 
     centroids: list[str] = []
     seq_to_centroid: dict[str, str] = {}
@@ -1637,15 +1739,16 @@ def cluster_leiden(
     weights: list[float] = []
     seen_pairs: set[tuple[int, int]] = set()
     if not edges.is_empty():
-        for row in edges.iter_rows(named=True):
-            qi = id_to_idx[row["query_id"]]
-            ti = id_to_idx[row["target_id"]]
+        compact_edges = edges.select("query_id", "target_id", weight_column)
+        for qid, tid, weight in compact_edges.iter_rows():
+            qi = id_to_idx[qid]
+            ti = id_to_idx[tid]
             pair = (min(qi, ti), max(qi, ti))
             if pair in seen_pairs or qi == ti:
                 continue
             seen_pairs.add(pair)
             edge_list.append(pair)
-            weights.append(float(row.get(weight_column, 1.0)))
+            weights.append(float(weight) if weight is not None else 1.0)
 
     if edge_list:
         graph.add_edges(edge_list)
@@ -1661,16 +1764,13 @@ def cluster_leiden(
     # Build edge lookup
     edge_lookup: dict[tuple[str, str], tuple[float, float]] = {}
     if not edges.is_empty():
-        for row in edges.iter_rows(named=True):
-            af = min(row["query_coverage"], row["target_coverage"])
-            edge_lookup[(row["query_id"], row["target_id"])] = (
-                row["identity"],
-                af,
-            )
-            edge_lookup[(row["target_id"], row["query_id"])] = (
-                row["identity"],
-                af,
-            )
+        compact_edges = edges.select(
+            "query_id", "target_id", "identity", "query_coverage", "target_coverage"
+        )
+        for qid, tid, ident, qcov, tcov in compact_edges.iter_rows():
+            af = min(qcov, tcov)
+            edge_lookup[(qid, tid)] = (ident, af)
+            edge_lookup[(tid, qid)] = (ident, af)
 
     components: dict[int, list[str]] = {}
     for node_idx, community_id in enumerate(partition.membership):
@@ -1681,9 +1781,7 @@ def cluster_leiden(
     )
 
 
-# ── Shared helpers ─────────────────────────────────────────────────
-
-
+#  Shared helpers 
 def build_cluster_assignment_rows(
     components: dict[int, list[str]],
     edge_lookup: dict[tuple[str, str], tuple[float, float]],

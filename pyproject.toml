@@ -138,7 +138,10 @@ pyskani = ">=0.2.0,<0.3"
 pyfastani = ">=0.6.1,<0.7"
 igraph = ">=1.0.0,<2"
 leidenalg = ">=0.11.0,<0.12"
-pyleiden = ">=0.1.2,<0.2"
+
+[tool.pixi.feature.cluster.tasks]
+cluster-help = "rolypoly cluster --help"
+cluster-import-smoke = "python -c 'import igraph, leidenalg, pyskani, pyfastani; print(\"cluster deps ok\")'"
 
 [tool.pixi.feature.misc.dependencies]
 # For miscellaneous commands (fetch-sra, quick-taxonomy, etc.)
@@ -157,16 +160,16 @@ aria2 = ">=1.37.0,<2"
 [tool.pixi.feature.dev.pypi-dependencies]
 lets-plot = ">=4.8.2,<5"
 
-[tool.pixi.feature.py39.dependencies]
+[tool.pixi.feature.py310.dependencies]
 python = "~=3.10.0"
 
 [tool.pixi.environments]
 # Minimal environment with just core Python dependencies
-default = { features = ["py39"] }
+default = { features = ["py310"] }
 
 # Complete environment with all dependencies (for full functionality)
 complete = { features = [
-    "py39",
+    "py310",
     "reads",
     "assembly",
     "annotation-rna",
@@ -178,7 +181,7 @@ complete = { features = [
 
 # Development environment
 dev = { features = [
-    "py39",
+    "py310",
     "reads",
     "assembly",
     "annotation-rna",
@@ -193,19 +196,20 @@ dev = { features = [
 ] }
 
 # Specific command group environments for targeted installations
-reads-only = { features = ["py39", "reads"] }
-assembly-only = { features = ["py39", "assembly"] }
-annotation-only = { features = ["py39", "annotation-rna", "annotation-prot"] }
-annotation-rna-only = { features = ["py39", "annotation-rna"] }
-annotation-prot-only = { features = ["py39", "annotation-prot"] }
-identify-only = { features = ["py39", "identify"] }
-cluster-only = { features = ["py39", "cluster"] }
-misc-only = { features = ["py39", "misc"] }
+reads-only = { features = ["py310", "reads"] }
+assembly-only = { features = ["py310", "assembly"] }
+annotation-only = { features = ["py310", "annotation-rna", "annotation-prot"] }
+annotation-rna-only = { features = ["py310", "annotation-rna"] }
+annotation-prot-only = { features = ["py310", "annotation-prot"] }
+identify-only = { features = ["py310", "identify"] }
+cluster-only = { features = ["py310", "cluster"] }
+cluster = { features = ["py310", "cluster"] }
+misc-only = { features = ["py310", "misc"] }
 
 # Common workflow combinations
-basic-analysis = { features = ["py39", "reads", "assembly", "identify"] }
+basic-analysis = { features = ["py310", "reads", "assembly", "identify"] }
 full-annotation = { features = [
-    "py39",
+    "py310",
     "reads",
     "assembly",
     "annotation-rna",

@@ -35,6 +35,7 @@ from rolypoly.utils.bio.clustering import (
     compute_ani_pyfastani,
     compute_ani_pyskani,
     compute_kmer_overlap_matrix,
+    empty_edge_frame,
     empty_cluster_frame,
     enrich_edges_with_derived_metrics,
     filter_edges,
@@ -53,8 +54,6 @@ from rolypoly.utils.bio import polars_fastx as _polars_fastx  # noqa: F401
 
 
 #  Input loaders 
-
-
 INPUT_TYPE_FASTA = "fasta"
 INPUT_TYPE_BLAST6 = "blast6"
 INPUT_TYPE_ANI_TABLE = "ani-table"
@@ -282,6 +281,8 @@ def load_edges_from_input(
     input_path: Path,
     input_type: str,
     ani_backend: str,
+    similarity_measure: str,
+    min_identity: float,
     threads: int,
     min_alignment_length: int,
     min_evalue: float,
@@ -296,6 +297,8 @@ def load_edges_from_input(
         input_type: One of 'fasta', 'blast6', 'ani-table', 'mmseqs'.
         ani_backend: Backend for on-the-fly computation ('pyskani',
             'blastn', 'mmseqs', 'kmer').
+        similarity_measure: Similarity metric selected by CLI.
+        min_identity: Similarity threshold used for filtering.
         threads: Number of threads.
         min_alignment_length: Min alignment length for blast6 parsing.
         min_evalue: Max evalue for blast6 parsing and blastn runs.
@@ -306,10 +309,17 @@ def load_edges_from_input(
     Returns:
         Polars DataFrame with standard edge columns.
     """
+    identity_prefilter: float | None = None
+    if similarity_measure in ("identity", "ani"):
+        identity_prefilter = min_identity
+
     if input_type == INPUT_TYPE_BLAST6:
         logger.info("Parsing BLAST outfmt 6 edges from %s", input_path)
         return parse_blast6_to_edges(
-            input_path, min_alignment_length, min_evalue
+            input_path,
+            min_alignment_length,
+            min_evalue,
+            min_identity_prefilter=identity_prefilter,
         )
     elif input_type == INPUT_TYPE_ANI_TABLE:
         logger.info("Parsing CheckV-style ANI table from %s", input_path)
@@ -346,6 +356,7 @@ def load_edges_from_input(
                 threads=threads,
                 min_alignment_length=min_alignment_length,
                 min_evalue=min_evalue,
+                min_identity_prefilter=identity_prefilter,
                 logger=logger,
             )
         elif ani_backend == "mmseqs":
@@ -846,6 +857,8 @@ def cluster(
         input_path=input_path,
         input_type=input_type,
         ani_backend=ani_backend,
+        similarity_measure=similarity_measure,
+        min_identity=min_identity,
         threads=threads,
         min_alignment_length=min_alignment_length,
         min_evalue=min_evalue,
@@ -871,12 +884,20 @@ def cluster(
             logger=logger,
         )
         before = edges.height
-        edges = edges.filter(
-            pl.struct(["query_id", "target_id"]).map_elements(
-                lambda row: (row["query_id"], row["target_id"]) in allowed_pairs,
-                return_dtype=pl.Boolean,
+        if allowed_pairs:
+            allowed_df = pl.DataFrame(
+                {
+                    "query_id": [pair[0] for pair in allowed_pairs],
+                    "target_id": [pair[1] for pair in allowed_pairs],
+                }
+            ).unique()
+            edges = edges.join(
+                allowed_df,
+                on=["query_id", "target_id"],
+                how="inner",
             )
-        )
+        else:
+            edges = empty_edge_frame()
         logger.info(
             "K-mer prefilter: %d -> %d edges (%.1f%% removed)",
             before,
@@ -884,11 +905,23 @@ def cluster(
             100.0 * (before - edges.height) / max(before, 1),
         )
 
-    # Step 1c: Load sequence lengths early (needed for tANI enrichment
-    # and centroid clustering)
-    seq_lengths = load_seq_lengths(
-        input_path, input_type, fasta_lengths, logger
-    )
+    # Step 1c: Load sequence metadata early (needed for tANI enrichment,
+    # centroid sorting, repeat checks, and representative FASTA writing).
+    fasta_seq_df: pl.DataFrame | None = None
+    if input_type == INPUT_TYPE_FASTA:
+        logger.info("Loading sequences from %s", input_path)
+        fasta_seq_df = load_sequences(str(input_path))
+        if fasta_seq_df.is_empty():
+            seq_lengths = {}
+        else:
+            seq_lengths = {
+                str(row[0]): int(row[1])
+                for row in fasta_seq_df.select("contig_id", "seq_length").iter_rows()
+            }
+    else:
+        seq_lengths = load_seq_lengths(
+            input_path, input_type, fasta_lengths, logger
+        )
 
     # Step 2a: Enrich edges with derived metrics (global ANI, tANI)
     needs_derived = similarity_measure not in ("identity", "ani")
@@ -949,7 +982,11 @@ def cluster(
             repeat_k,
             repeat_max_fraction,
         )
-        seq_df = load_sequences(str(input_path))
+        seq_df = (
+            fasta_seq_df
+            if fasta_seq_df is not None
+            else load_sequences(str(input_path))
+        )
         if not seq_df.is_empty():
             seq_map: dict[str, str] = {
                 row[0]: row[1]
@@ -1045,10 +1082,11 @@ def cluster(
             fasta_path=fasta_lengths,
             output_fasta=representatives_fasta,
             logger=logger,
+            seq_df_cache=fasta_seq_df,
         )
 
     elapsed = perf_counter() - t0
-    logger.info("Cluster command completed in %.1f seconds", elapsed)
+    logger.debug("Cluster command completed in %.1f seconds", elapsed)
 
 
 #  Representative FASTA writer 
@@ -1059,6 +1097,7 @@ def write_representative_fasta(
     fasta_path: Path | None,
     output_fasta: Path,
     logger,
+    seq_df_cache: pl.DataFrame | None = None,
 ) -> None:
     """Write a FASTA file containing only representative sequences.
 
@@ -1085,7 +1124,7 @@ def write_representative_fasta(
         )
         return
 
-    seq_df = load_sequences(str(source_fasta))
+    seq_df = seq_df_cache if seq_df_cache is not None else load_sequences(str(source_fasta))
     if seq_df.is_empty():
         logger.warning("Source FASTA is empty, skipping representative output")
         return
