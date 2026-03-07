@@ -179,6 +179,54 @@
     ]
   },
   {
+    "id": "annotate_wrapper_protein_rvmt",
+    "description": "Annotate wrapper DNA input running protein annotation (RNA skipped)",
+    "required_paths": [
+      "data/profiles/hmmdbs/rvmt.hmm",
+      "testing_folder/inputs/contigs/test_contigs.fasta"
+    ],
+    "args": [
+      "annotate",
+      "-i",
+      "testing_folder/inputs/contigs/test_contigs.fasta",
+      "-o",
+      "{tmp}/annotate_wrapper_protein",
+      "--skip-steps",
+      "RNA_annotation",
+      "--domain-db",
+      "RVMT",
+      "--search-tool",
+      "hmmsearch",
+      "-t",
+      "1"
+    ],
+    "expected_dirs": [
+      "{tmp}/annotate_wrapper_protein",
+      "{tmp}/annotate_wrapper_protein/rna_annotation",
+      "{tmp}/annotate_wrapper_protein/protein_annotation"
+    ],
+    "expected_files": [
+      "{tmp}/annotate_wrapper_protein/protein_annotation/output_files.tsv"
+    ],
+    "expected_table_columns": {
+      "{tmp}/annotate_wrapper_protein/protein_annotation/output_files.tsv": [
+        "file",
+        "description",
+        "db",
+        "tool"
+      ]
+    },
+    "expected_table_min_rows": {
+      "{tmp}/annotate_wrapper_protein/protein_annotation/output_files.tsv": 1
+    },
+    "expected_contains": {
+      "{tmp}/annotate_wrapper_protein/protein_annotation/output_files.tsv": [
+        "hmmsearch",
+        "RVMT"
+      ]
+    }
+  },
+  {
     "id": "annotate_prot_hmm_dna_nvpc",
     "description": "Annotate-prot DNA input with hmmsearch and NVPC",
     "required_paths": [
