@@ -19,7 +19,35 @@ click.rich_click.STYLE_COMMANDS_TABLE_PADDING = (0, 2)
 # load rolypoly config
 with resources.files("rolypoly").joinpath("rpconfig.json").open("r") as conff:
     config = load(conff)
-data_dir = config["ROLYPOLY_DATA"]
+
+
+def resolve_data_dir(configured_path: str) -> str:
+    """Resolve data dir only when path starts with a leading $ENV_VAR token."""
+    if not configured_path.startswith("$"):
+        return configured_path
+
+    if configured_path.startswith("${"):
+        closing = configured_path.find("}")
+        if closing == -1:
+            return configured_path
+        var_name = configured_path[2:closing]
+        suffix = configured_path[closing + 1 :]
+    else:
+        slash_index = configured_path.find("/")
+        if slash_index == -1:
+            var_name = configured_path[1:]
+            suffix = ""
+        else:
+            var_name = configured_path[1:slash_index]
+            suffix = configured_path[slash_index:]
+
+    env_value = os.environ.get(var_name)
+    if not env_value:
+        return configured_path
+    return f"{env_value}{suffix}"
+
+
+data_dir = resolve_data_dir(config["ROLYPOLY_DATA"])
 os.environ["ROLYPOLY_DATA"] = data_dir  # export to env just in case
 os.environ["ROLYPOLY_DATA_DIR"] = data_dir  # export to env just in case x2
 ROLYPOLY_REMIND_CITATIONS = config["ROLYPOLY_REMIND_CITATIONS"]
@@ -82,9 +110,8 @@ CONTEXT_SETTINGS = dict(
                 "fastx-stats": "rolypoly.commands.misc.fastx_stats.fastx_stats",
                 "fastx-calc": "rolypoly.commands.misc.fastx_calc.fastx_calc",
                 "rename-seqs": "rolypoly.commands.misc.rename_seqs.rename_seqs",
-                # "visualize": "rolypoly.commands.virotype.visualize.visualize",
                 "quick-taxonomy": "rolypoly.commands.misc.quick_taxonomy.quick_taxonomy",
-                # "test": "tests.test_cli_commands.test",
+                "help": "rolypoly.rolypoly.rolypoly",
             },
         },
         "bining": {

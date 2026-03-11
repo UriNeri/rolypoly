@@ -10,6 +10,34 @@ from rich.logging import RichHandler
 ROLYPOLY_HANDLER_ATTR = "rolypoly_handler_type"
 
 
+def resolve_config_path(raw_path: str) -> Path:
+    """Resolve config paths only when they start with a leading $ENV_VAR token."""
+    import os
+
+    if not raw_path.startswith("$"):
+        return Path(raw_path)
+
+    if raw_path.startswith("${"):
+        closing = raw_path.find("}")
+        if closing == -1:
+            return Path(raw_path)
+        var_name = raw_path[2:closing]
+        suffix = raw_path[closing + 1 :]
+    else:
+        slash_index = raw_path.find("/")
+        if slash_index == -1:
+            var_name = raw_path[1:]
+            suffix = ""
+        else:
+            var_name = raw_path[1:slash_index]
+            suffix = raw_path[slash_index:]
+
+    env_value = os.environ.get(var_name)
+    if not env_value:
+        return Path(raw_path)
+    return Path(f"{env_value}{suffix}")
+
+
 def get_version_info() -> dict[str, str]:
     """Get the current version of RolyPoly (code and data).
     Returns a dictionary with the following keys:
@@ -53,7 +81,7 @@ def get_version_info() -> dict[str, str]:
     if config_path.exists():
         with config_path.open("r") as f:
             config = json.load(f)
-        data_dir_path = Path(config["ROLYPOLY_DATA"])
+            data_dir_path = resolve_config_path(config["ROLYPOLY_DATA"])
         if data_dir_path.exists():
             with open(data_dir_path / "README.md", "r") as f:
                 for line in f:
@@ -227,7 +255,7 @@ def resolve_datadir() -> Path:
         if cfg_path.exists():
             with cfg_path.open() as fh:
                 cfg = json.load(fh)
-            data_dir = Path(cfg.get("ROLYPOLY_DATA", ""))
+                data_dir = resolve_config_path(cfg.get("ROLYPOLY_DATA", ""))
             if data_dir and data_dir.exists():
                 return data_dir
     except Exception:
@@ -242,3 +270,4 @@ def resolve_datadir() -> Path:
 
     # final fallback to cwd --- Probably in ipython / creating a data release?
     return Path.cwd()
+
