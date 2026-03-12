@@ -165,36 +165,30 @@ cd "$CODE_PATH" || exit
 logit "$LOGFILE" "Creating conda environment using $mamba_command"
 "$mamba_command" env create -y -p "$MAMBA_ENV_PATH" -f ./src/setup/env_big.yaml --quiet --yes
 
-# Activate environment
-source "$(dirname "$(dirname "$MAMBA_ENV_PATH")")/etc/profile.d/conda.sh"
-"$mamba_command" activate "$MAMBA_ENV_PATH"
-
 # Install RolyPoly
 if [ "$DEV_INSTALL" != "TRUE" ]; then
     logit "$LOGFILE" "Installing rolypoly-tk from PyPI"
-    pip install rolypoly-tk --quiet
+    "$mamba_command" run -p "$MAMBA_ENV_PATH" pip install --upgrade rolypoly-tk --quiet
 else
     logit "$LOGFILE" "Installing RolyPoly in development mode"
-    pip install -e . --quiet
+    "$mamba_command" run -p "$MAMBA_ENV_PATH" pip install -e . --quiet
 fi
 
 # Prepare external data
 logit "$LOGFILE" "Preparing external data"
 export ROLYPOLY_DATA="$DATA_PATH"
-rolypoly prepare-data --ROLYPOLY_DATA "$DATA_PATH" --log-file "$LOGFILE"
+"$mamba_command" run -p "$MAMBA_ENV_PATH" rolypoly get-data --ROLYPOLY_DATA "$DATA_PATH" --log-file "$LOGFILE"
 
 # Final setup and version check
-"$mamba_command" activate "$MAMBA_ENV_PATH"
-
 if [ "$DEV_INSTALL" != "TRUE" ]; then
     # Try uv first, fall back to pip if not available
-    if command -v uv &> /dev/null; then
-        uv pip show rolypoly-tk | grep Version -m1 -B1 | tee -a "$LOGFILE"
+    if "$mamba_command" run -p "$MAMBA_ENV_PATH" command -v uv &> /dev/null; then
+        "$mamba_command" run -p "$MAMBA_ENV_PATH" uv pip show rolypoly-tk | grep Version -m1 -B1 | tee -a "$LOGFILE"
     else
-        pip show rolypoly-tk | grep Version -m1 -B1 | tee -a "$LOGFILE"
+        "$mamba_command" run -p "$MAMBA_ENV_PATH" pip show rolypoly-tk | grep Version -m1 -B1 | tee -a "$LOGFILE"
     fi
 else
-    rolypoly --version | tee -a "$LOGFILE"
+    "$mamba_command" run -p "$MAMBA_ENV_PATH" rolypoly --version | tee -a "$LOGFILE"
 fi
 
 logit "$LOGFILE" "RolyPoly installation complete!"

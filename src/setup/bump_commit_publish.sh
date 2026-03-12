@@ -155,16 +155,6 @@ if [[ -z "${NEW_VERSION}" ]]; then
   exit 1
 fi
 
-MAJOR="${NEW_VERSION%%.*}"
-REST_VERSION="${NEW_VERSION#*.}"
-MINOR="${REST_VERSION%%.*}"
-if [[ -z "${MAJOR}" || -z "${MINOR}" || ! "${MAJOR}" =~ ^[0-9]+$ || ! "${MINOR}" =~ ^[0-9]+$ ]]; then
-  echo "Unexpected version format: ${NEW_VERSION}" >&2
-  exit 1
-fi
-NEXT_MINOR=$((MINOR + 1))
-ROLYPOLY_PIN="rolypoly-tk>=${NEW_VERSION},<${MAJOR}.${NEXT_MINOR}.0"
-
 TMP_CONDA_EXPORT="$(mktemp)"
 TMP_HEADER="$(mktemp)"
 TMP_TOP="$(mktemp)"
@@ -256,7 +246,7 @@ awk '
   }
 ' "${TMP_TOP}" > "${TMP_TOP_OUT}"
 
-awk -v rolypoly_pin="${ROLYPOLY_PIN}" '
+awk '
   {
     dep = $0
     if (dep == "-e .") {
@@ -273,11 +263,6 @@ awk -v rolypoly_pin="${ROLYPOLY_PIN}" '
   }
 
   END {
-    if (!("rolypoly-tk" in dep_map)) {
-      order[++n] = "rolypoly-tk"
-    }
-    dep_map["rolypoly-tk"] = rolypoly_pin
-
     for (i = 1; i <= n; i++) {
       key = order[i]
       if (key in dep_map) {

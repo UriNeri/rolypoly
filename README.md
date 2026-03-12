@@ -18,7 +18,7 @@ This also means that there are bugs, verbose logging even for non debug mode, an
 **Recommended for most users** who want a "just works" solution and primarily intend to use rolypoly as a CLI tool in an independent environment.
 
 We hope to have rolypoly available from bioconda in the near future.  
-In the meantime, it can be installed with the [`quick_setup.sh`](https://raw.githubusercontent.com/UriNeri/rolypoly/main/src/setup/quick_setup.sh) script, which will also fetch the pre-generated data rolypoly requires.
+In the meantime, it can be installed with the [`quick_setup.sh`](https://raw.githubusercontent.com/UriNeri/rolypoly/main/src/setup/quick_setup.sh) script, which is Conda/Mamba-based (uses `mamba` or `micromamba`) and also fetches the pre-generated data rolypoly requires.
 
 ```bash
 curl -O https://raw.githubusercontent.com/UriNeri/rolypoly/main/src/setup/quick_setup.sh && \
@@ -26,15 +26,19 @@ bash quick_setup.sh
 ```
 
 #### Quick Setup - Additional Options
-You can specify custom paths for the code, databases, and conda environment location:
+You can specify custom paths for the code, databases, and Conda/Mamba environment location (this is also how you "name" the environment by choosing its path):
 ```bash
 bash quick_setup.sh /path/to/conda/env /path/to/install/rolypoly_code /path/to/store/databases /path/to/logfile
+```
+Example with an explicit environment path:
+```bash
+bash quick_setup.sh "$HOME/mamba_envs/rolypoly"
 ```
 By default if no positional arguments are supplied, rolypoly is installed into the session current folder (path the quick_setup.sh is called from):   
 - database in `./rolypoly/data/`  
 - code in `./rolypoly/code/ `  
 - conda environment in `./rolypoly/env/`  
-- log file in `./RolyPoly_quick_setup.log`   
+- log file in `./rolypoly/RolyPoly_quick_setup.log`   
 
 
 

@@ -4,7 +4,7 @@ channels:
 - bioconda
 - nodefaults
 dependencies:
-- python >=3.10
+- python >=3.10,<3.14
 - seqkit >=2.10.0,<3
 - bowtie >=1.3.1,<2
 - falco >=1.2.5,<2
@@ -51,4 +51,3 @@ dependencies:
   - pydustmasker>=2.0.0, <3
   - itables>=2.7.0, <3
   - pyarrow>=23.0.1, <24
-  - rolypoly-tk>=0.7.2,<0.8.0
