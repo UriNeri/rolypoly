@@ -109,7 +109,6 @@ CONTEXT_SETTINGS = dict(
                 "fastx-stats": "rolypoly.commands.misc.fastx_stats.fastx_stats",
                 "fastx-calc": "rolypoly.commands.misc.fastx_calc.fastx_calc",
                 "rename-seqs": "rolypoly.commands.misc.rename_seqs.rename_seqs",
-                "quick-taxonomy": "rolypoly.commands.misc.quick_taxonomy.quick_taxonomy",
                 "help": "rolypoly.rolypoly.rolypoly",
             },
         },
@@ -126,7 +125,6 @@ CONTEXT_SETTINGS = dict(
         #     "name": "Characterisation",
         #     "commands": {
         #         "characterise": "hidden:rolypoly.commands.virotype.predict_characteristics.predict_characteristics",
-        #         "predict-host": "hidden:rolypoly.commands.host.classify.predict_host_range",
         #         # Commenting out unimplemented/broken commands
         #         # "summarize": "rolypoly.commands.virotype.summarize.summarize"
         #     },

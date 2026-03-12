@@ -1,7 +1,7 @@
 # Filter Reads
 
-> Auto-generated draft from CLI metadata for `rolypoly filter-reads`.
-> Expand this page with command-specific context, examples, and citations.
+<!-- Auto-generated draft from CLI metadata for `rolypoly filter-reads`. -->
+<!-- Expand this page with command-specific context, examples, and citations. -->
 
 ## Summary
 

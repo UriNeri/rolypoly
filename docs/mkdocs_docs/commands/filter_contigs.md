@@ -1,7 +1,7 @@
 # Filter Contigs
 
-> Auto-generated draft from CLI metadata for `rolypoly filter-contigs`.
-> Expand this page with command-specific context, examples, and citations.
+<!-- Auto-generated draft from CLI metadata for `rolypoly filter-contigs`. -->
+<!-- Expand this page with command-specific context, examples, and citations. -->
 
 ## Summary
 

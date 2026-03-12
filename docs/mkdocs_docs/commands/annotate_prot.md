@@ -1,7 +1,7 @@
 # Annotate Prot
 
-> Auto-generated draft from CLI metadata for `rolypoly annotate-prot`.
-> Expand this page with command-specific context, examples, and citations.
+<!-- Auto-generated draft from CLI metadata for `rolypoly annotate-prot`. -->
+<!-- Expand this page with command-specific context, examples, and citations. -->
 
 ## Summary
 

@@ -1,7 +1,7 @@
 # Virus Mapping
 
-> Auto-generated draft from CLI metadata for `rolypoly virus-mapping`.
-> Expand this page with command-specific context, examples, and citations.
+<!-- Auto-generated draft from CLI metadata for `rolypoly virus-mapping`. -->
+<!-- Expand this page with command-specific context, examples, and citations. -->
 
 ## Summary
 

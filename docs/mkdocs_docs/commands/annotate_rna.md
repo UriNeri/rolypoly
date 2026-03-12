@@ -1,7 +1,7 @@
 # Annotate Rna
 
-> Auto-generated draft from CLI metadata for `rolypoly annotate-rna`.
-> Expand this page with command-specific context, examples, and citations.
+<!-- Auto-generated draft from CLI metadata for `rolypoly annotate-rna`. -->
+<!-- Expand this page with command-specific context, examples, and citations. -->
 
 ## Summary
 

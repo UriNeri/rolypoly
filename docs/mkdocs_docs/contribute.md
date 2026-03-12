@@ -96,7 +96,7 @@ The exporter injects scaffold content into generated pages under **Pinned Sectio
 When adding a new command page:
 1. Add the markdown page in `docs/mkdocs_docs/commands/`.
 2. Add it to `nav` in `docs/mkdocs.yml`.
-3. Add/update links in `README.md` and `docs/mkdocs_docs/commands/index.md`.
+3. Add/update links in `README.md` and relevant command pages under `docs/mkdocs_docs/commands/`.
 
 ## PyPI / TestPyPI release automation
 
@@ -129,6 +129,21 @@ Use environment protection rules in GitHub for safer releases (recommended):
 - Primary path: push to deployment branch `release` (this triggers build/test/publish workflow)
 - Optional: create/publish a GitHub Release (also triggers workflow)
 - Optional: run the workflow manually (`workflow_dispatch`) for dry-runs/testing
+
+## Branch and release flow (recommended)
+
+- Use `main` as the primary development branch (feature work, PR review, docs updates).
+- Keep `release` as a deployment branch used to trigger publish automation.
+- At release time, promote `main` into `release` and push `release` to GitHub.
+- Avoid long-lived drift between `main` and `release`; if a hotfix lands on `release`, merge it back into `main` promptly.
+
+Typical release promotion sequence:
+- `git checkout main && git pull origin main`
+- `git checkout release && git pull origin release`
+- `git merge --ff-only origin/main`
+- `git push origin release`
+
+This keeps branch history cleaner and ensures PyPI publishes reflect reviewed `main` content.
 
 ### One-command release prep (manual bump + commit + trigger CI)
 

@@ -1,7 +1,7 @@
 # Rdrp Motif Search
 
-> Auto-generated draft from CLI metadata for `rolypoly rdrp-motif-search`.
-> Expand this page with command-specific context, examples, and citations.
+<!-- Auto-generated draft from CLI metadata for `rolypoly rdrp-motif-search`. -->
+<!-- Expand this page with command-specific context, examples, and citations. -->
 
 ## Summary
 

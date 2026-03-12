@@ -1,7 +1,7 @@
 # Mask Dna
 
-> Auto-generated draft from CLI metadata for `rolypoly mask-dna`.
-> Expand this page with command-specific context, examples, and citations.
+<!-- Auto-generated draft from CLI metadata for `rolypoly mask-dna`. -->
+<!-- Expand this page with command-specific context, examples, and citations. -->
 
 ## Summary
 

@@ -12,8 +12,8 @@ from rolypoly.rolypoly import rolypoly
 
 DEFAULT_TEMPLATE = """# __TITLE__
 
-> Auto-generated draft from CLI metadata for `rolypoly __COMMAND__`.
-> Expand this page with command-specific context, examples, and citations.
+<!-- Auto-generated draft from CLI metadata for `rolypoly __COMMAND__`. -->
+<!-- Expand this page with command-specific context, examples, and citations. -->
 
 ## Summary
 
@@ -42,6 +42,8 @@ SKIP_COMMANDS = {"help"}
 AUTO_GENERATED_HEADER_PATTERN = re.compile(
     r"Auto-generated draft from CLI metadata for `rolypoly ([a-z0-9][a-z0-9-]*)`\."
 )
+CONTRIBUTING_SOURCE = Path("CONTRIBUTING.md")
+CONTRIBUTING_DOCS_TARGET = Path("docs/mkdocs_docs/contribute.md")
 
 
 def clean_click_text(text: str) -> str:
@@ -280,6 +282,32 @@ def discover_auto_generated_pages(docs_commands_dir: Path) -> dict[str, Path]:
     return discovered
 
 
+def sync_contributing_docs_page(repo_root: Path, dry_run: bool) -> bool:
+    """Sync docs contributing page from root CONTRIBUTING.md.
+
+    Returns True when target would be updated (or was updated), else False.
+    """
+    source_path = repo_root / CONTRIBUTING_SOURCE
+    target_path = repo_root / CONTRIBUTING_DOCS_TARGET
+
+    if not source_path.exists():
+        raise FileNotFoundError(f"Contributing source not found: {source_path}")
+
+    source_content = source_path.read_text(encoding="utf-8")
+    target_content = (
+        target_path.read_text(encoding="utf-8") if target_path.exists() else ""
+    )
+
+    if source_content == target_content:
+        return False
+
+    if not dry_run:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(source_content, encoding="utf-8")
+
+    return True
+
+
 def render_page(
     template_text: str,
     command_name: str,
@@ -443,6 +471,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Analyze and report, but do not write any files",
     )
+    parser.add_argument(
+        "--no-sync-contributing",
+        action="store_true",
+        help="Do not sync docs/mkdocs_docs/contribute.md from root CONTRIBUTING.md",
+    )
     return parser.parse_args()
 
 
@@ -499,6 +532,19 @@ def main() -> None:
 
     print_report(command_names, documented_map, missing_commands)
 
+    contributing_sync_changed = False
+    if not args.no_sync_contributing:
+        contributing_sync_changed = sync_contributing_docs_page(
+            repo_root=repo_root, dry_run=args.dry_run
+        )
+
+        if contributing_sync_changed:
+            status_text = "would be synced" if args.dry_run else "synced"
+            print(
+                f"\nContributing docs page {status_text}: "
+                f"{CONTRIBUTING_DOCS_TARGET} <- {CONTRIBUTING_SOURCE}"
+            )
+
     if args.commands.strip() or args.all_commands or args.overwrite:
         print()
         print("Requested commands to export:")
@@ -523,7 +569,7 @@ def main() -> None:
         print("\nCreated/updated pages:")
         for path in created:
             print(f"  - {path.relative_to(repo_root)}")
-    else:
+    elif not contributing_sync_changed:
         print("\nNo pages created (nothing missing, or files already existed).")
 
 

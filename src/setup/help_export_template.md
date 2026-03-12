@@ -1,7 +1,7 @@
 # __TITLE__
 
-> Auto-generated draft from CLI metadata for `rolypoly __COMMAND__`.
-> Expand this page with command-specific context, examples, and citations.
+<!-- Auto-generated draft from CLI metadata for `rolypoly __COMMAND__`. -->
+<!-- Expand this page with command-specific context, examples, and citations. -->
 
 ## Summary
 

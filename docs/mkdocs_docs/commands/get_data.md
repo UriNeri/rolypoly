@@ -1,7 +1,7 @@
 # Get Data
 
-> Auto-generated draft from CLI metadata for `rolypoly get-data`.
-> Expand this page with command-specific context, examples, and citations.
+<!-- Auto-generated draft from CLI metadata for `rolypoly get-data`. -->
+<!-- Expand this page with command-specific context, examples, and citations. -->
 
 ## Summary
 

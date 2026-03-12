@@ -1,6 +1,6 @@
 site_name: RolyPoly Documentation
-site_url: "https://pages.jgi.doe.gov/rolypoly/docs/"
-repo_url: https://code.jgi.doe.gov/UNeri/rolypoly
+site_url: "https://urineri.github.io/rolypoly/"
+repo_url: https://github.com/UriNeri/rolypoly
 docs_dir: mkdocs_docs
 theme:
   name: material
@@ -97,40 +97,33 @@ nav:
   - Examples: examples.md
   - Resource Usage: resource_usage.md
   - Commands:
-    - Overview: commands/index.md
-    - External Data: commands/prepare_external_data.md
-    - Get Data (Auto Help): commands/get_data.md
-    - Version (Auto Help): commands/version.md
-    - End to End: commands/end_to_end.md
-    - Roll (Auto Help): commands/roll.md
-    - Read Processing: commands/read_processing.md
-    - Filter Reads (Auto Help): commands/filter_reads.md
-    - Shrink Reads (Auto Help): commands/shrink_reads.md
-    - Mask DNA (Auto Help): commands/mask_dna.md
-    - Assembly: commands/assembly.md
-    - Assemble (Auto Help): commands/assemble.md
-    - Extend (Auto Help): commands/extend.md
-    - Marker Gene Search: commands/marker_search.md
-    - RdRp Motif Search (Auto Help): commands/rdrp_motif_search.md
-    - Assembly Filtering: commands/filter_assembly.md
-    - Filter Contigs (Auto Help): commands/filter_contigs.md
-    - Virus Search: commands/search_viruses.md
-    - Virus Mapping (Auto Help): commands/virus_mapping.md
-    - Annotate (Auto Help): commands/annotate.md
-    - RNA Annotation: commands/annotate_rna.md
-    - Protein Annotation: commands/annotate_prot.md
-    - Host Classification: commands/host_classify.md
+    - "get-data": commands/get_data.md
+    - "version": commands/version.md
+    - "roll": commands/roll.md
+    - Read Processing:
+      - "filter-reads": commands/filter_reads.md
+      - "shrink-reads": commands/shrink_reads.md
+      - "mask-dna": commands/mask_dna.md
+    - Assembly:
+      - "assemble": commands/assemble.md
+      - "extend": commands/extend.md
+      - "filter-contigs": commands/filter_contigs.md
+    - Virus Search:
+      - "virus-mapping": commands/virus_mapping.md
+      - "marker-search": commands/marker_search.md
+      - "rdrp-motif-search": commands/rdrp_motif_search.md
+    - Annotation:
+      - "annotate": commands/annotate.md
+      - "annotate-rna": commands/annotate_rna.md
+      - "annotate-prot": commands/annotate_prot.md
     - Binning:
-      - Termini Analysis: commands/binning_termini.md
-      - Correlation Analysis: commands/binning_correlate.md
-      - Correlate (Auto Help): commands/correlate.md
-      - Termini (Auto Help): commands/termini.md
-      - Cluster (Auto Help): commands/cluster.md
-      - Binit (Auto Help): commands/binit.md
-    - Miscellaneous: commands/misc.md
-    - FASTX Calc (Auto Help): commands/fastx_calc.md
-    - FASTX Stats (Auto Help): commands/fastx_stats.md
-    - Fetch SRA (Auto Help): commands/fetch_sra.md
-    - Rename Seqs (Auto Help): commands/rename_seqs.md
-    - Quick Taxonomy (Auto Help): commands/quick_taxonomy.md
+      - "correlate": commands/correlate.md
+      - "termini": commands/termini.md
+      - "cluster": commands/cluster.md
+      - "binit": commands/binit.md
+    - Miscellaneous:
+      - "fastx-calc": commands/fastx_calc.md
+      - "fastx-stats": commands/fastx_stats.md
+      - "fetch-sra": commands/fetch_sra.md
+      - "rename-seqs": commands/rename_seqs.md
 

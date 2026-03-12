@@ -1,7 +1,10 @@
 # Correlate
 
-> Auto-generated draft from CLI metadata for `rolypoly correlate`.
-> Expand this page with command-specific context, examples, and citations.
+<!-- Auto-generated draft from CLI metadata for `rolypoly correlate`. -->
+<!-- Expand this page with command-specific context, examples, and citations. -->
+
+!!! warning "🚧 Under Construction"
+    This command is under active development and behavior or outputs may change.
 
 ## Summary
 
