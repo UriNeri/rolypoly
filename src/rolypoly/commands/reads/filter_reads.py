@@ -463,8 +463,14 @@ def filter_reads(
     temp_dir,
 ):
     """
-    Process RNA-seq (transcriptome, RNA virome, metatranscriptomes) Illumina raw reads.
-    Removes host reads, synthetic artifacts, and unknown DNA, corrects sequencing errors, trims adapters and low quality reads.
+    Process RNA-seq Illumina reads through the read-cleaning pipeline.
+
+    The workflow combines host/contaminant removal, optional fetched-reference
+    filtering, adapter/quality trimming, and optional error correction based on
+    configured steps and speed presets.
+
+    Input can be a single file, paired files, or a directory of FASTQ files.
+    Use `--skip-steps` and `--override-parameters` to tailor the workflow.
     """
     from rolypoly.utils.logging.citation_reminder import remind_citations
     from rolypoly.utils.logging.loggit import log_start_info

@@ -167,7 +167,13 @@ def filter_contigs(
     log_level,
 ):
     """
-    Filter contigs based on user-supplied host sequences. Wrapper for both nucleotide and amino acid filtering.
+    Filter contigs against user-supplied host/contamination references.
+
+    Depending on `--mode`, the command applies nucleotide filtering, protein
+    filtering, or both, using two-stage rule sets (`filter1_*` and
+    `filter2_*`) to retain likely non-host contigs.
+
+    Host references can be masked first (default) unless `--dont-mask` is set.
     """
     from rolypoly.utils.logging.citation_reminder import remind_citations
     from rolypoly.utils.logging.loggit import log_start_info

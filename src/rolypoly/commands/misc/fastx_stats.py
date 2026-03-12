@@ -82,8 +82,10 @@ def fastx_stats(
     """
     Calculate aggregate statistics for sequences (min, max, mean, median, etc.).
 
-    This command computes summary statistics across all sequences in a FASTA/FASTQ file.
-    For per-sequence calculations, use the 'fastx-calc' command instead.
+    This command computes dataset-level summaries across sequences in one or
+    more FASTA/FASTQ inputs, including count, length, and composition fields.
+
+    For per-sequence annotations instead of aggregates, use `fastx-calc`.
     """
     from rolypoly.utils.bio.polars_fastx import (
         compute_aggregate_stats,

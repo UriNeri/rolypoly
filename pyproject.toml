@@ -16,7 +16,7 @@ authors = [
 
 description = "RNA virus analysis toolkit"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.14"
 license = { file = "LICENSE" }
 # License-File = "license"
 dependencies = [
@@ -47,7 +47,7 @@ dependencies = [
 
 [project.urls]
 Source = "https://github.com/UriNeri/rolypoly"
-Documentation = "https://pages.jgi.doe.gov/rolypoly/docs/"
+Documentation = "https://urineri.github.io/rolypoly/"
 pypi = "https://pypi.org/project/rolypoly-tk/"
 
 [project.scripts]
@@ -160,6 +160,13 @@ aria2 = ">=1.37.0,<2"
 [tool.pixi.feature.dev.pypi-dependencies]
 lets-plot = ">=4.8.2,<5"
 
+[tool.pixi.feature.docs.pypi-dependencies]
+mkdocs = "*"
+mkdocs-material = "*"
+mkdocs-mermaid2-plugin = "*"
+mkdocstrings = "*"
+mkdocstrings-python = "*"
+
 [tool.pixi.feature.py310.dependencies]
 python = "~=3.10.0"
 
@@ -193,6 +200,7 @@ dev = { features = [
     "format",
     "publish",
     "dev",
+    "docs",
 ] }
 
 # Specific command group environments for targeted installations
@@ -233,6 +241,10 @@ build-pypi = "hatch version micro && hatch build --clean"
 test-import = "python -c 'import rolypoly; print(rolypoly.__version__)'"
 test-cli = "pytest -q src/tests/test_cli_contracts.py"
 bump-commit-publish = "bash src/setup/bump_commit_publish.sh"
+
+[tool.pixi.feature.docs.tasks]
+docs-serve = "mkdocs serve -f docs/mkdocs.yml"
+docs-build = "mkdocs build -f docs/mkdocs.yml"
 
 [tool.ruff]
 exclude = [

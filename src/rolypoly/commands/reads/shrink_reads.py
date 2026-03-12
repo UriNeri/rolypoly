@@ -65,11 +65,13 @@ def shrink_reads(
     log_level,
 ):
     """
-    Subsets data from an input FASTQ file(s) based on the provided options.
-    Supports random sampling (when sample_size < 1) and fixed number read sampling
-    (i.e. first n reads)
-    NOTE: UNLESS --keep-matching-pairs is used, the output may not be very useful in practice.
-    TODO: no real threading support yet, maybe will have it if multiple input files are used (one per thread)
+    Subset FASTQ reads by count or fraction for lightweight test datasets.
+
+    Supports deterministic head-style subsampling (`first_n`) and random
+    sampling (`random`) for single-end, interleaved, and paired-end layouts.
+
+    This command is intended for quick dry runs and resource-reduced tests,
+    not as a full read-normalization strategy.
     """
     # Initialise logger
     logger = setup_logging(log_file=log_file, log_level=log_level)

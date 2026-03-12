@@ -48,7 +48,13 @@ tools = []
 def virus_mapping(
     threads, memory, output, keep_tmp, db, db_path, log_file, log_level, input
 ):
-    """MMseqs2 Virus mapping/search wrapper - takes in reads/contigs (i.e. nucs), and search them against precompiled virus databases OR user-supplied databases."""
+    """Search nucleotide reads/contigs against virus reference databases.
+
+    Input can be FASTA/FASTQ or an existing MMseqs2 database. The command
+    converts sequence inputs to MMseqs2 format as needed and runs searches
+    against built-in viral databases (`RVMT`, `NCBI_Ribovirus`, or `all`) or a
+    user-supplied target via `--db other --db-path`.
+    """
     import shutil
     import subprocess
 

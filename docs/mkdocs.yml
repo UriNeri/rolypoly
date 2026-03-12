@@ -99,17 +99,38 @@ nav:
   - Commands:
     - Overview: commands/index.md
     - External Data: commands/prepare_external_data.md
+    - Get Data (Auto Help): commands/get_data.md
+    - Version (Auto Help): commands/version.md
     - End to End: commands/end_to_end.md
+    - Roll (Auto Help): commands/roll.md
     - Read Processing: commands/read_processing.md
+    - Filter Reads (Auto Help): commands/filter_reads.md
+    - Shrink Reads (Auto Help): commands/shrink_reads.md
+    - Mask DNA (Auto Help): commands/mask_dna.md
     - Assembly: commands/assembly.md
+    - Assemble (Auto Help): commands/assemble.md
+    - Extend (Auto Help): commands/extend.md
     - Marker Gene Search: commands/marker_search.md
+    - RdRp Motif Search (Auto Help): commands/rdrp_motif_search.md
     - Assembly Filtering: commands/filter_assembly.md
+    - Filter Contigs (Auto Help): commands/filter_contigs.md
     - Virus Search: commands/search_viruses.md
+    - Virus Mapping (Auto Help): commands/virus_mapping.md
+    - Annotate (Auto Help): commands/annotate.md
     - RNA Annotation: commands/annotate_rna.md
     - Protein Annotation: commands/annotate_prot.md
     - Host Classification: commands/host_classify.md
     - Binning:
       - Termini Analysis: commands/binning_termini.md
       - Correlation Analysis: commands/binning_correlate.md
+      - Correlate (Auto Help): commands/correlate.md
+      - Termini (Auto Help): commands/termini.md
+      - Cluster (Auto Help): commands/cluster.md
+      - Binit (Auto Help): commands/binit.md
     - Miscellaneous: commands/misc.md
+    - FASTX Calc (Auto Help): commands/fastx_calc.md
+    - FASTX Stats (Auto Help): commands/fastx_stats.md
+    - Fetch SRA (Auto Help): commands/fetch_sra.md
+    - Rename Seqs (Auto Help): commands/rename_seqs.md
+    - Quick Taxonomy (Auto Help): commands/quick_taxonomy.md
 

@@ -296,7 +296,14 @@ def correlate(
     log_file,
     log_level,
 ):
-    """Correlate and cluster contigs by cross-sample co-occurrence patterns."""
+    """Group contigs by cross-sample association patterns.
+
+    Supports correlation-based edges, co-occurrence-based edges, or both,
+    with prevalence and shared-sample thresholds to reduce spurious links.
+
+    Writes pairwise edge tables and connected-component style groups using the
+    selected output prefix.
+    """
     logger = setup_logging(log_file, log_level)
     log_start_info(logger, locals())
 

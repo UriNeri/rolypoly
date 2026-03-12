@@ -177,7 +177,15 @@ def annotate(
     log_level,
     search_tool,
 ):
-    """Functionally and structurally annotate RNA viral sequence(s) (Wrapper for annotate_prot, annotate_RNA)"""
+    """Run combined RNA + protein annotation on nucleotide viral sequences.
+
+    This command orchestrates `annotate-rna` and `annotate-prot` into a single
+    workflow and writes results into `rna_annotation/` and
+    `protein_annotation/` subdirectories under the selected output path.
+
+    Use `--skip-steps` to disable specific stages and `--override-parameters`
+    to forward JSON overrides to sub-tools.
+    """
     import json
 
     from rolypoly.utils.logging.loggit import log_start_info

@@ -156,7 +156,10 @@ def rolypoly():
 )
 def version(log_level):
     """
-    Print code version (commit or semvar) and data (date) information.
+    Print RolyPoly code and data version details.
+
+    This is a command-form wrapper around top-level `--version` output, useful
+    in scripted workflows that call `rolypoly version` explicitly.
     """
     setup_logging(None, log_level)
     # click wrapper for version/data information, so it could be called vai rolypoly version (on top of rolypoly --version)

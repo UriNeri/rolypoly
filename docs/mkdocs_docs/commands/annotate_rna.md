@@ -1,169 +1,48 @@
-# RNA Annotation
+# Annotate Rna
 
-!!! warning "🚧 Experimental"
-    This command is implemented but still under active development.
+> Auto-generated draft from CLI metadata for `rolypoly annotate-rna`.
+> Expand this page with command-specific context, examples, and citations.
 
-## Annotate RNA
+## Summary
 
-`annotate-rna` predicts RNA secondary structures and searches for various RNA elements in viral sequences, including:
-- Secondary structure prediction
-- Ribozyme identification
-- IRES (Internal Ribosome Entry Site) detection
-- tRNA prediction
-- Other RNA structural elements
+Annotate RNA structural features and motifs on viral nucleotide inputs.
 
-```mermaid
-flowchart TD
-  subgraph IN["<b>Input</b>"]
-  F["FASTA input<br> (.fasta/.fa/.fna/.faa)"]
-  end
+## Description
 
-  subgraph P["<b>RNA Annotation Pipeline</b>"]
-  S["Predict Secondary Structure<br> (RNAfold / LinearFold)"]
-  R["Search Ribozymes<br> (cmscan)"]
-  I["Detect IRES<br> (IRESfinder / IRESpy)"]
-  T["Predict tRNAs<br> (tRNAscan-SE / aragorn)"]
-  M["Search RNA Motifs<br> (RNAMotif / custom)"]
-  C["Combine Results<br> (format: tsv/csv/gff3/parquet)"]
-  end
+The default pipeline runs secondary-structure prediction, ribozyme/CM
+    search, and tRNA detection, while optional modules can add IRES and motif
+    analyses depending on selected tools and skip settings.
 
-  subgraph OUT["<b>Outputs</b>"]
-    O1["secondary_structure.fold"]
-    O2["ribozymes.out"]
-    O3["ires.out"]
-    O4["trnas.out"]
-    O5["combined_annotations.[tsv/csv/gff3]"]
-  end
-
-  F --> S --> R --> I --> T --> M --> C
-  C --> O1
-  C --> O2
-  C --> O3
-  C --> O4
-  C --> O5
-
-  classDef inputStyle fill:#f0f9ff,stroke:#0366d6,color:#03396c;
-  classDef pipelineStyle fill:#fffaf0,stroke:#c96e00,color:#7a3b00;
-  classDef outputStyle fill:#f0fff4,stroke:#0b8a3e,color:#0b6624;
-
-  class F inputStyle
-  class S,R,I,T,M,C pipelineStyle
-  class O1,O2,O3,O4,O5 outputStyle
-```
+    Use `--skip-steps` to disable modules and `--override-parameters` to pass
+    tool-specific tuning values for individual stages.
 
 ## Usage
 
 ```bash
-rolypoly annotate-rna -i INPUT_FASTA -o OUTPUT_DIR [OPTIONS]
+rolypoly annotate-rna [OPTIONS]
 ```
 
 ## Options
 
-- `-i, --input`: Input nucleotide sequence file (required)
-- `-o, --output-dir`: Output directory path (default: `./annotate_RNA_output`)
-- `-t, --threads`: Number of threads (default: 1)
-- `-g, --log-file`: Path to log file (default: `./annotate_RNA_logfile.txt`)
-- `-l, --log-level`: Log level
-- `-M, --memory`: Memory allocation in GB (default: "4gb")
-- `-op, --override_parameters, --override-parameters`: JSON-like string of parameters to override tool settings
-  - Example: `--override-parameters '{"RNAfold": {"temperature": 37}, "cmscan": {"E": 1e-5}}'`
-- `--skip-steps`: Comma-separated list of steps to skip
-  - Example: `--skip-steps RNAfold,cmsearch`
-- `--secondary-structure-tool`: Tool for secondary structure prediction (default: "LinearFold")
-  - Options: "RNAfold", "LinearFold"
-  - Note: LinearFold is faster but less configurable
-- `--ires-tool`: Tool for IRES identification (default: "IRESfinder")
-  - Options: "IRESfinder", "IRESpy"
-- `--trna-tool`: Tool for tRNA prediction (default: "tRNAscan-SE")
-  - Options: "tRNAscan-SE", "aragorn"
-- `--rnamotif-tool`: Tool for RNA motif identification
-- `--cm-db`: Database for ribozyme search (default: "Rfam")
-  - Options: "Rfam", "custom"
-- `--custom-cm-db`: Path to custom CM database (required if --cm-db=custom)
-- `--output-format`: Output format for combined results (default: "tsv")
-  - Options: "tsv", "csv", "gff3"
-- `--motif-db`: Motif database for RNA motif scanning
-- `-rm, --resolve-mode`: How overlapping hits are resolved
-- `-mo, --min-overlap-positions`: Minimum overlap positions used by resolve logic
+- `-i`, `--input`: Input nucleotide sequence file (fasta, fna, fa, or faa) (type: `PATH`; required; default: `Sentinel.UNSET`)
+- `-o`, `--output-dir`: Output directory path (type: `TEXT`; default: `./annotate_RNA_output`)
+- `-t`, `--threads`: Number of threads (type: `INTEGER`; default: `1`)
+- `-g`, `--log-file`: Path to log file (type: `TEXT`; default: `./annotate_RNA_logfile.txt`)
+- `-l`, `--log-level`: Log level (type: `CHOICE`; default: `INFO`)
+- `-M`, `--memory`: Memory in GB. Example: -M 8gb (type: `TEXT`; default: `4gb`)
+- `-op`, `--override_parameters`, `--override-parameters`: JSON-like string of parameters to override. Example: --override-parameters '{"RNAfold": {"temperature": 37}, "cmscan": {"E": 1e-5}}' (type: `TEXT`; default: `{}`)
+- `--skip-steps`: Comma-separated list of steps to skip. Example: --skip-steps RNAfold,cmsearch (type: `TEXT`; default: ``)
+- `--secondary-structure-tool`: Tool for secondary structure prediction. LinearFold is faster but less configurable. (type: `CHOICE`; default: `LinearFold`)
+- `--ires-tool`: Tool for IRES identification (type: `CHOICE`; default: `IRESfinder`)
+- `--trna-tool`: Tool for tRNA identification (type: `CHOICE`; default: `tRNAscan-SE`)
+- `--rnamotif-tool`: Tool for RNAmotif identification (type: `CHOICE`; default: `RNAMotif`)
+- `--cm-db`: Database for cmscan (type: `CHOICE`; default: `Rfam`)
+- `--custom-cm-db`: Path to a custom cm database in nhmmer/cm format (mandatory to use with --cm-db custom) (type: `TEXT`; default: ``)
+- `--output-format`: Output format for the combined results (type: `CHOICE`; default: `tsv`)
+- `--motif-db`: Database to use for RNA motif scanning - RolyPoly, jaspar_core, or a path to a folder containg a pwm/msa files (type: `TEXT`; default: `RolyPoly`)
+- `-rm`, `--resolve-mode`: How to deal with overlapping RNA element hits in the same sequence. - merge: all overlapping hits are merged into one range - one_per_range: one hit per range is reported - one_per_query: one hit per query sequence is reported - split: each overlapping element is split into a new row - drop_contained: hits that are contained within other hits are dropped - none: no resolution of overlapping hits is performed - simple: heuristic-based approach using drop_contained (type: `CHOICE`; default: `simple`)
+- `-mo`, `--min-overlap-positions`: Minimal number of overlapping positions between two intersecting ranges before they are considered as overlapping (used in some resolve_mode(s)). (type: `INTEGER`; default: `10`)
 
-## Tool Parameters
 
-Default parameters for each tool can be overridden using `--override-parameters`:
 
-```json
-{
-    "RNAfold": {
-        "temperature": 25
-    },
-    "LinearFold": {
-        
-    },
-    "RNAstructure": {
-        "temperature": 25
-    },
-    "cmsearch": {
-        "cut_ga": true,
-        "noali": true
-    },
-    "IRESfinder": {
-        "min_score": 0.5
-    },
-    "IRESpy": {
-        "min_score": 0.6
-    },
-    "tRNAscan-SE": {
-        "forceow": true,
-        "G": true
-    },
-    "RNAMotif": {
-        "min_score": 0.5
-    },
-    "aragorn": {
-        "l": true
-    }
-}
-```
 
-## Output Files
-
-The command generates several output files:
-
-- `secondary_structure.fold`: RNA secondary structure predictions
-- `ribozymes.out`: Identified ribozymes from cmscan
-- `ires.out`: Predicted IRES elements
-- `trnas.out`: Predicted tRNA sequences
-- `rna_elements.out`: Other RNA structural elements
-- `combined_annotations.[tsv/csv/gff3]`: Combined results in the specified format
-
-### GFF3 Output Format
-
-When using GFF3 output format (`--output-format gff3`), the following fields are included:
-
-1. sequence_id: The ID of the input sequence
-2. source: The tool that generated the annotation
-3. type: Feature type (e.g., "tRNA", "IRES", "ribozyme")
-4. start: Feature start position
-5. end: Feature end position
-6. score: Numerical score (if available)
-7. strand: Strand orientation (+/-)
-8. phase: Phase (for CDS features)
-9. attributes: Additional information in key=value format
-
-## Citations
-
-### Secondary Structure Tools
-- **RNAfold**: https://doi.org/10.1186/1748-7188-6-26
-- **LinearFold**: https://doi.org/10.1093/bioinformatics/btz375
-
-### IRES Detection
-- **IRESfinder**: https://doi.org/10.1016/j.jgg.2018.07.006
-- **IRESpy**: https://doi.org/10.1186/s12859-019-2999-7
-
-### tRNA Prediction
-- **tRNAscan-SE**: https://doi.org/10.1007/978-1-4939-9173-0_1
-- **ARAGORN**: https://doi.org/10.1093/nar/gkh152
-
-### RNA Element Search
-- **Infernal/cmscan**: https://doi.org/10.1093/bioinformatics/btw271
-- **Rfam Database**: https://doi.org/10.1093/nar/gkaa1047
-- **RNAMotif**: https://doi.org/10.1093/nar/29.22.4724 

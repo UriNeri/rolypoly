@@ -19,9 +19,11 @@ rolypoly --help
 - [End to End](end_to_end.md): Run the complete pipeline with default settings (`rolypoly roll`)
 - [Read Processing](read_processing.md): Filter and process raw RNA-seq reads (`rolypoly filter-reads`)
 - [Assembly](assembly.md): Perform assembly of filtered reads (`rolypoly assemble`)
+- [Extend](extend.md): Extend sequences by pile-up/assembly (`rolypoly extend`)
 - [Assembly Filtering](filter_assembly.md): Remove potential host or contamination sequences (`rolypoly filter-contigs`)
 - [Marker Gene Search](marker_search.md): Search for RNA virus hallmark genes (RdRp and other markers) in assembled contigs (`rolypoly marker-search`)
 - [Virus Search](search_viruses.md): Search for viral sequences in filtered assemblies (`rolypoly virus-mapping`)
+- [RdRp Motif Search](rdrp_motif_search.md): Search RdRp motif signatures (`rolypoly rdrp-motif-search`)
 
 ### Annotation
 - [Genome Annotation](annotate_rna.md#annotate-rna): Combined RNA and protein annotation 🚧 (`rolypoly annotate`)
@@ -36,12 +38,15 @@ rolypoly --help
   - [Rename Sequences](misc.md#rename-sequences): Standardize sequence IDs (`rolypoly rename-seqs`)
   - [Quick Taxonomy](misc.md#quick-taxonomy): Fast taxonomic assignment 🚧 (`rolypoly quick-taxonomy`)
   - [Fetch SRA](misc.md#fetch-sra): Download SRA data from ENA (`rolypoly fetch-sra`)
+  - [FASTX Calc](fastx_calc.md): Calculate per-sequence metrics (`rolypoly fastx-calc`)
 
 ### Analysis (Experimental)
 - [Host Classification](host_classify.md): Predict potential viral hosts ⚠️
 - [Binning](binning_termini.md):
   - [Termini Analysis](binning_termini.md): Analyze contig termini (`rolypoly termini`) 🚧
   - [Correlation Analysis](binning_correlate.md): Analyze co-occurrence across samples (`rolypoly correlate`) 🚧
+  - [Cluster](cluster.md): Cluster contigs by ANI/AAI (`rolypoly cluster`) 🚧
+  - [Binit](binit.md): Integrated segment binning workflow (`rolypoly binit`) 🚧
 
 Legend:
 - 🚧 Experimental command - implemented but under active development

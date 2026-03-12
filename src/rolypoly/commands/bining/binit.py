@@ -432,7 +432,12 @@ def binit(
 	log_file: Path | None,
 	log_level: str,
 ) -> None:
-	"""Run a first integrated segment-binning workflow over RdRp and CP contigs."""
+	"""Run an integrated segment-binning workflow over RdRp and CP contigs.
+
+	The workflow chains cluster, correlate, extend, and termini steps, then
+	joins their outputs to report candidate segment pairs with supporting
+	evidence from abundance/correlation and termini/motif consistency.
+	"""
 	logger = setup_logging(log_file, log_level)
 	log_start_info(logger, locals())
 

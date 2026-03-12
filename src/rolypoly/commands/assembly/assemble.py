@@ -530,7 +530,16 @@ def assembly(
     overwrite,
     log_level,
 ):
-    """Assembly wrapper - takes in reads, assembles them using one or more assemblers, then performs post-assembly processing."""
+    """Assemble reads/contigs with one or more backends and optional post-processing.
+
+    Inputs can be provided explicitly (`--paired-end`, `--single-end`,
+    `--merged`, `--long-read`, `--raw-fasta`) and/or discovered from
+    `--input-dir`.
+
+    Selected assembler outputs are normalized and optionally post-processed
+    (for example `rmdup` or `linclust`) before writing final contigs and run
+    metadata to the output directory.
+    """
     import shutil
 
     import polars as pl

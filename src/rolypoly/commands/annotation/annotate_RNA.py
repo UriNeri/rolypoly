@@ -228,10 +228,15 @@ def annotate_RNA(
     resolve_mode,
     min_overlap_positions,
 ):
-    """Predict viral sequence RNA secondary structure, search for ribozymes, IRES, tRNAs, and other RNA structural elements.
-    By default, the following steps are run in the following order: predict_secondary_structure (LinearFold), search_ribozymes (Rfam via cmscan), predict_trnas (tRNAscan-SE).
-    Additional steps (detect_ires, search_rna_motifs, search_rna_elements) are currently disabled as they are under development.
-    Use --skip-steps to skip specific steps."""
+    """Annotate RNA structural features and motifs on viral nucleotide inputs.
+
+    The default pipeline runs secondary-structure prediction, ribozyme/CM
+    search, and tRNA detection, while optional modules can add IRES and motif
+    analyses depending on selected tools and skip settings.
+
+    Use `--skip-steps` to disable modules and `--override-parameters` to pass
+    tool-specific tuning values for individual stages.
+    """
     import json
 
     config = RNAAnnotationConfig(

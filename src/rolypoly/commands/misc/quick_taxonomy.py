@@ -220,7 +220,13 @@ def quick_taxonomy(
     summarize,
 ):
     """
-    Rapid taxonomy assignment for viral sequences using marker search results and genomad RNA viral HMMs
+    Assign lightweight taxonomy labels to viral sequences.
+
+    The command combines optional marker-search evidence with geNomad RNA viral
+    HMM matches and writes assignments as text, TSV, or JSON.
+
+    Use `--min_score` to control assignment strictness and `--summarize` to
+    include aggregate summary metrics.
     """
     import json
 

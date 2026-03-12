@@ -73,6 +73,31 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
 2. **Benchmarking**:
    - Use `/usr/bin/time` for resource monitoring. Alternatively, hyperfine is great too but. Ideallt - use SLURM and keep track of the job IDs for later analysis with seff/pyseff.
 
+## Documentation workflow
+
+- Docs source pages are in `docs/mkdocs_docs/`.
+- Docs site navigation is configured in `docs/mkdocs.yml` (`nav:` section).
+- Command docs are under `docs/mkdocs_docs/commands/`.
+- Keep command links in `README.md` aligned with pages listed in `docs/mkdocs.yml`.
+
+Use pixi docs tasks:
+- Serve locally (live reload): `pixi run -e dev docs-serve`
+- Build static docs: `pixi run -e dev docs-build`
+- Auto-generate command help pages:
+   - create missing pages: `pixi run -e dev python src/setup/export_command_help_to_docs.py`
+   - refresh existing auto-generated pages: `pixi run -e dev python src/setup/export_command_help_to_docs.py --overwrite`
+
+For command pages that need rich/static sections (mermaid, tables, links), add a
+per-command scaffold at:
+- `src/setup/help_export_scaffolds/<command_name>.md`
+
+The exporter injects scaffold content into generated pages under **Pinned Sections**.
+
+When adding a new command page:
+1. Add the markdown page in `docs/mkdocs_docs/commands/`.
+2. Add it to `nav` in `docs/mkdocs.yml`.
+3. Add/update links in `README.md` and `docs/mkdocs_docs/commands/index.md`.
+
 ## PyPI / TestPyPI release automation
 
 Releases are automated via GitHub Actions using trusted publishing (OIDC), with this flow:
