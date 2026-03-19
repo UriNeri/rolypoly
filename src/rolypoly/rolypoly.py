@@ -103,7 +103,7 @@ CONTEXT_SETTINGS = dict(
         "misc": {
             "name": "Miscellaneous",
             "commands": {
-                "roll": "rolypoly.commands.misc.end_2_end.run_pipeline",
+                "roll": "rolypoly.commands.misc.end_2_end.roll",
                 # "add-command": "hidden:rolypoly.commands.misc.add_command.add_command",
                 "fetch-sra": "rolypoly.commands.misc.fetch_sra_fastq.fetch_sra",  # Not  a click command (yet?)
                 "fastx-stats": "rolypoly.commands.misc.fastx_stats.fastx_stats",

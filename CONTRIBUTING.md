@@ -7,7 +7,7 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
 
 ## Contribution guidelines
 - **Primary Language**: Python >=3.10
-- **Secondary Languages**: Some system calls to shell/Bash are allowed.
+- **Secondary Languages**: Some system calls to shell/Bash are allowed (via run_command_comp, or at at least logged before execution).
 - **Dependency Management**: via pixi (development)
   - Prefer using existing dependencies over adding new ones.
   - Avoid pandas, and use polars

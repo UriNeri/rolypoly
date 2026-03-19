@@ -4,7 +4,7 @@ from pathlib import Path
 import rich_click as click
 
 
-@click.command()
+@click.command(name="roll")
 @click.option(
     "-i",
     "--input",
@@ -100,7 +100,7 @@ import rich_click as click
 @click.option(
     "--db", default="all", help="Database to use for marker gene search"
 )
-def run_pipeline(
+def roll(
     input,
     output_dir,
     threads,
@@ -302,4 +302,4 @@ def run_pipeline(
 
 
 if __name__ == "__main__":
-    run_pipeline()
+    roll()

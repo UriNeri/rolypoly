@@ -68,29 +68,24 @@ class RdRpMotifSearchConfig(BaseConfig):
         self.name = kwargs.get("name") or Path(self.input).stem
 
         # Database paths
-        self.data_dir = kwargs.get(
-            "data_dir", None
-        )  # if no custom data dir provided, will use default search paths
+        self.data_dir = kwargs.get("data_dir") or os.environ.get("ROLYPOLY_DATA")
+
+        data_dir_path = Path(self.data_dir)
         self.motif_metadata_path = (
-            Path(self.data_dir) / "profiles" / "motif_metadata.json"
+            data_dir_path / "profiles" / "motif_metadata.json"
         )
 
-        if self.data_dir:
-            if self.search_tool == "hmmsearch":
-                self.motif_db_path = (
-                    Path(self.data_dir)
-                    / "profiles"
-                    / "hmmdbs"
-                    / "rvmt_motifs.hmm"
-                )
-            else:
-                self.motif_db_path = (
-                    Path(self.data_dir)
-                    / "profiles"
-                    / "mmseqs_dbs"
-                    / "rvmt_motifs/rvmt_motifs"
-                )
-
+        if self.search_tool == "hmmsearch":
+            self.motif_db_path = (
+                data_dir_path / "profiles" / "hmmdbs" / "rvmt_motifs.hmm"
+            )
+        else:
+            self.motif_db_path = (
+                data_dir_path
+                / "profiles"
+                / "mmseqs_dbs"
+                / "rvmt_motifs/rvmt_motifs"
+            )
 
 @command(
     epilog="""\n\nEXAMPLES:\n\n  # Basic search with default flat TSV output and alignment\n  rolypoly rdrp-motif-search -i sequences.fasta -o results_dir\n\n  # Nested structure for programmatic analysis\n  rolypoly rdrp-motif-search -i sequences.fasta -o results_dir --output-structure nested\n\n  # Parquet output with structured data for analysis\n  rolypoly rdrp-motif-search -i sequences.fasta -o results_dir --output-format parquet\n\n  # Disable alignment to reduce output size\n  rolypoly rdrp-motif-search -i sequences.fasta -o results_dir --no-include-alignment\n\n  # High sensitivity search with custom parameters\n  rolypoly rdrp-motif-search -i sequences.fasta -o results_dir -e 0.1 --max-distance 300\n\nOUTPUT FORMATS:\n\n  flat + tsv: separate columns (motif_a_start, motif_b_start, etc.) - DEFAULT\n  nested + tsv: motif_details column as JSON string\n  flat + parquet: separate columns with native data types\n  nested + parquet: motif_details as structured data types\n"""
@@ -288,6 +283,13 @@ def process_rdrp_motif_search(config: RdRpMotifSearchConfig):
     # Check input file format
     alphabet = guess_fasta_alpha(config.input)
     config.logger.info(f"Detected input alphabet: {alphabet}")
+
+    motif_db_path = Path(config.motif_db_path)
+    if not motif_db_path.exists():
+        raise FileNotFoundError(
+            f"Motif database not found at {motif_db_path}. "
+            "Run 'rolypoly get-data' to install profiles or pass '--data-dir'."
+        )
 
     # Load motif metadata
     motif_metadata = load_motif_metadata(config)
