@@ -115,7 +115,7 @@ Legend:
 - 🤔 [`binit`](https://urineri.github.io/rolypoly/commands/binit) — Combines the above commands with sample information and genome attributes (e.g. require a shared termini AND protein complementarity, like CP + RdRp). See [notebooks/Exprimental/partiti_usecase/partiti_segment_workflow_experimental.ipynb](notebooks/Exprimental/partiti_usecase/partiti_segment_workflow_experimental.ipynb) for candidate workflow.
 
 #### Miscellaneous
-- ✅ [`roll`](https://urineri.github.io/rolypoly/commands/end_to_end) — Run an end-to-end pipeline (before v0.7.1, named `end2end`).
+- ✅ [`roll`](https://urineri.github.io/rolypoly/commands/roll) — Run an end-to-end pipeline (before v0.7.1, named `end2end`).
 - ✅ [`fetch-sra`](https://urineri.github.io/rolypoly/commands/misc) — Download SRA fastq files (from ENA)
 - ✅ [`fastx-calc`](https://urineri.github.io/rolypoly/commands/misc) — Calculate per-sequence metrics (length, GC content, hash, ...)
 - ✅ [`fastx-stats`](https://urineri.github.io/rolypoly/commands/misc) — Calculate (-->aggregate) statistics for sequences (min, max, mean, median, ...) (input is file/s)
