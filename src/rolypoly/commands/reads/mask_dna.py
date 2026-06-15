@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 from pathlib import Path
@@ -84,7 +85,10 @@ def mask_dna(
     Returns:
       None
     """
-    setup_logging(None, log_level)
+    # Reuse existing root logger configuration when invoked from another
+    # rolypoly command (e.g., filter_reads) to avoid switching log files.
+    if not logging.getLogger().handlers:
+        setup_logging(None, log_level)
     logger = get_logger()
     logger.debug(f"datadir used: {datadir}")
 
