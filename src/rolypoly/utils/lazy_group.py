@@ -28,6 +28,7 @@ class LazyGroup(click.RichGroup):
         self.lazy_subcommands = lazy_subcommands or {}
         self._command_groups = {}  # Store group info for help display
         self._lazy_command_group_by_key = {}
+        self._panel_command_mapping = {}
         self.init_command_groups()
 
     def init_command_groups(self):

@@ -172,7 +172,6 @@ Non-Python
 * [viennarna](https://github.com/ViennaRNA/ViennaRNA)
 * [pyranges](https://github.com/biocore-ntnu/pyranges)
 * [intervaltree](https://github.com/chaimleib/intervaltree)
-* [genomicranges](https://github.com/CoreyMSchafer/genomicranges)
 * [lightmotif](https://github.com/dincarnato/LightMotif)
 * [mappy](https://github.com/lh3/minimap2/tree/master/python)
 

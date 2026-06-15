@@ -1,3 +1,9 @@
+"""Optional Click wrapper around consolidate_hits for manual/dev use.
+
+Not registered in the public rolypoly CLI. Overlap resolution is exposed via
+--resolve-mode on marker-search, annotate-prot, and annotate-rna instead.
+"""
+
 from typing import Optional, Union
 
 import polars as pl

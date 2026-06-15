@@ -20,8 +20,6 @@ requires-python = ">=3.10,<3.14"
 license = { file = "LICENSE" }
 # License-File = "license"
 dependencies = [
-    "genomicranges>=0.7.3,<0.8",
-    "iranges>=0.5.1,<0.6",
     "lightmotif>=0.10.0,<0.11",
     "mappy>=2.30,<3",
     "needletail>=0.7.0,<0.8",
