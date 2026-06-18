@@ -137,3 +137,6 @@ rolypoly_data_slim_*.tar.gz
 benchmarking_outputs/*
 benchmarking_logs/
 dev_only/
+
+# config - added so local setups (with hardcoded paths) don't get committed to the repo
+src/rolypoly/rpconfig.json
