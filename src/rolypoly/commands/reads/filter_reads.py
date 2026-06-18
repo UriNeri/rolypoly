@@ -64,6 +64,7 @@ class ReadFilterConfig(BaseConfig):
         # initialize the rest of the parameters (i.e. the ones that are not in the BaseConfig class)
         self.skip_existing = kwargs.get("skip_existing") or False
         self.zip_reports = kwargs.get("zip_reports") or False
+        self.trim_polya = kwargs.get("trim_polya") or False
         # self.override_parameters = self.override_parameters if isinstance(self.override_parameters, dict) else eval(self.override_parameters) if isinstance(self.override_parameters, str) else {}
         skip_steps_value = kwargs.get("skip_steps", [])
         if isinstance(skip_steps_value, list):
@@ -115,6 +116,11 @@ class ReadFilterConfig(BaseConfig):
                 "tbo": "t",
                 "minlen": 45,
             },
+            "trim_polya_tails": {
+                "trimpolya": 22, # TODO: figure out if this is the right ball park...
+                # "mink": 8,
+                "minlen": 25,
+            },
             "remove_synthetic_artifacts": {"k": 31},
             "entropy_filter": {"entropy": 0.01, "entropywindow": 30},
             "error_correct_1": {"ecco": True, "mix": "t", "ordered": "t"},
@@ -146,6 +152,9 @@ class ReadFilterConfig(BaseConfig):
                     self.logger.warning(
                         f"Warning: Unknown step '{step}' in override_parameters. Ignoring."
                     )
+
+        if not self.trim_polya and "trim_polya_tails" not in self.skip_steps:
+            self.skip_steps.append("trim_polya_tails")
 
 
 def timeout_handler(signum, frame):
@@ -196,6 +205,7 @@ def process_reads(
         filter_identified_dna,  # filters out reads that are likely host (based on the stats file of the previous step)
         dedupe,  # removes duplicates (first round)
         trim_adapters,  # trims adapters (clips off the adapters)
+        trim_polya_tails,  # optional terminal polyA/polyT trimming
         remove_synthetic_artifacts,  # removes synthetic artifacts (phix etc)
         entropy_filter,  # removes reads with low entropy (poor quality)
         error_correct_1,  # error corrects the reads (first round)
@@ -379,11 +389,18 @@ If --input is a directory, all fastq files in the directory will be used - paire
     help="Comma-separated list of steps to skip. Example: --skip-steps filter_by_tile,entropy_filter",
 )
 @click.option(
+    "--trim-polya",
+    "--poly-selection",
+    is_flag=True,
+    default=False,
+    help="Enable optional terminal polyA/polyT tail trimming after adapter trimming. Uses the trim_polya_tails preset and can be customized with --override-parameters.",
+)
+@click.option(
     "-op",
     "-override-params",
     "--override-parameters",
     default=None,
-    help='JSON-like string of parameters to override. Example: --override-parameters \'{"decontaminate_rrna": {"k": 29}, "filter_dna_genomes": {"mincovfraction": 0.8}}\'',
+    help='JSON-like string of parameters to override. Example: --override-parameters \'{"decontaminate_rrna": {"k": 29}, "trim_polya_tails": {"trimpolya": 28, "minlen": 30}}\'',
 )
 @click.option(
     "--config-file",
@@ -452,6 +469,7 @@ def filter_reads(
     speed,
     skip_existing,
     skip_steps,
+    trim_polya,
     override_parameters,
     config_file,
     step_timeout,
@@ -495,6 +513,7 @@ def filter_reads(
             speed=speed,
             skip_existing=skip_existing,
             skip_steps=skip_steps,
+            trim_polya=trim_polya,
             override_parameters=override_parameters,
             config_file=config_file,
             step_timeout=step_timeout,
@@ -1028,6 +1047,45 @@ def remove_synthetic_artifacts(
         return Path(output_file)
     except RuntimeError as e:
         config.logger.error(f"Error in remove_synthetic_artifacts: {str(e)}")
+        exit(1)
+        # return input_file
+
+
+def trim_polya_tails(
+    input_file: Path, config: ReadFilterConfig, output_tracker: OutputTracker
+) -> Path:
+    """Trim terminal polyA/polyT tails from reads using BBduk."""
+    from bbmapy import bbduk
+
+    output_file = config.temp_dir / f"trim_polya_tails_{config.file_name}.fq.gz"
+    try:
+        params = config.step_params["trim_polya_tails"]
+        bb_stdout, bb_stderr = bbduk(
+            in_file=str(input_file),
+            capture_output=True,
+            out=str(output_file),
+            **params,
+            Xmx=config.memory["giga"],
+            threads=str(config.threads),
+            overwrite="t",
+            interleaved="t",
+            stats=config.temp_dir
+            / f"stats_trim_polya_tails_{config.file_name}.txt",
+        )
+        config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
+
+        output_tracker.add_file(
+            str(output_file),
+            "trim_polya_tails",
+            "bbduk.sh",
+            is_merged=False,
+            end_type=None,
+            interleaved=True,
+            is_gz=True,
+        )
+        return Path(output_file)
+    except RuntimeError as e:
+        config.logger.error(f"Error in trim_polya_tails: {str(e)}")
         exit(1)
         # return input_file
 

@@ -542,6 +542,25 @@
     ]
   },
   {
+    "id": "filter_reads_runtime_trim_polya",
+    "description": "Runtime smoke test filter-reads polyA/polyT trimming preset on local fixture",
+    "args": [
+      "filter-reads",
+      "-i",
+      "testing_folder/inputs/reads/some_soil_shrinked.fq",
+      "-o",
+      "{tmp}/filter_reads_polya_out",
+      "--trim-polya",
+      "--skip-steps",
+      "filter_known_dna,decontaminate_rrna,filter_identified_dna,dedupe,remove_synthetic_artifacts,error_correct_1,error_correct_2,merge_reads,quality_trim_unmerged",
+      "-t",
+      "1"
+    ],
+    "expected_files": [
+      "{tmp}/filter_reads_polya_out/dedupe_final_interleaved_some_soil_shrinked.fq.gz"
+    ]
+  },
+  {
     "id": "get_data_info_smoke",
     "description": "Smoke test get-data --info execution path",
     "required_commands": [
