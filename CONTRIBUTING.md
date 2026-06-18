@@ -26,7 +26,7 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
    - Functions and Internal variables: Snake case (e.g., `skip_existing`). Try and reuse variable names from other commands for the same purpose. Long descriptive names are ok.
    - Classes: PascalCase (though use classes sparingly).
    - Environment or Global variables: UPPERCASE or CamelCase.
-   - Avoid "_" prefix for "private" functions. if somthing is explictly not meant to ever at all be used outside its scope, that should be in a comment or docstring, but in generally we want to avoid these and there shouldn't be "private" breaking stuff.
+   - Avoid "_" prefix for functions ("private" or otherwise). if somthing is explictly not meant to ever at all be used outside its scope, that should be in a comment or docstring, but in generally we want to avoid these and there shouldn't be "private" breaking stuff.
 
 2.1 **Docstrings**:
    - Add a docstring to all user-facing command functions (click entry points) and reusable utility functions.

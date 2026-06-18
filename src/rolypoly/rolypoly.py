@@ -1,6 +1,8 @@
 import os as os
+import warnings
 from importlib import resources
 from json import load
+from pathlib import Path
 
 import rich_click as click
 
@@ -15,13 +17,13 @@ click.rich_click.GROUP_ARGUMENTS_OPTIONS = True
 click.rich_click.STYLE_COMMANDS_TABLE_PAD_EDGE = True
 click.rich_click.STYLE_COMMANDS_TABLE_PADDING = (0, 2)
 
-# load rolypoly config
+# load rolypoly config (required runtime file)
 with resources.files("rolypoly").joinpath("rpconfig.json").open("r") as conff:
     config = load(conff)
 
 
 def resolve_data_dir(configured_path: str) -> str:
-    """Resolve data dir only when path starts with a leading $ENV_VAR token."""
+    """Resolve env-based config paths with a script-relative data fallback."""
     if not configured_path.startswith("$"):
         return configured_path
 
@@ -41,9 +43,36 @@ def resolve_data_dir(configured_path: str) -> str:
             suffix = configured_path[slash_index:]
 
     env_value = os.environ.get(var_name)
-    if not env_value:
-        return configured_path
-    return f"{env_value}{suffix}"
+    if env_value:
+        base_path = Path(env_value)
+        if not suffix:
+            return str(base_path.resolve())
+        return str((base_path / suffix.lstrip("/")).resolve())
+
+    script_dir = Path(__file__).resolve().parent
+    expected_repo_root = (script_dir / ".." / "..").resolve()
+    if var_name == "RP_DIR":
+        expected_path = (
+            (expected_repo_root / suffix.lstrip("/")).resolve()
+            if suffix
+            else expected_repo_root
+        )
+        return str(expected_path)
+    else:
+        expected_path = (expected_repo_root / "data").resolve()
+
+    if expected_path.exists():
+        return str(expected_path)
+
+    warnings.warn(
+        (
+            f"Environment variable '{var_name}' is not set and fallback path "
+            f"'{expected_path}' does not exist. Using configured value '{configured_path}'."
+        ),
+        RuntimeWarning,
+    )
+
+    return configured_path
 
 
 data_dir = resolve_data_dir(config["ROLYPOLY_DATA"])

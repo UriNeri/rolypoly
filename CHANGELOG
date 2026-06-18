@@ -3,11 +3,11 @@
 ## 18.06.2026 [v0.7.6]
 
 ### Added
-- filter-reads: added `--trim-poly-at` to remove polyA/polyT tails after adapter trimming.
+- filter-reads: added `--trim-polya` to remove polyA/polyT tails after adapter trimming.
 
 ### Changed
 - Removed genomicranges/iranges dependencies and updated related docs/TODOs.
-- Updated `.gitignore` to avoid committing local `rpconfig.json` path edits.
+- Restored required tracked `rpconfig.json` runtime config for CLI startup.
 
 ### Fixed
 - interval operations: fixed half-open interval handling.
