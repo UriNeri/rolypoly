@@ -581,11 +581,11 @@ def _label_overlap_clusters(
             parent[root_right] = root_left
 
     tree = itree.IntervalTree()
-    for uid, start, end in zip(uids, starts, ends):
-        for ovl in tree.overlap(start, end):
-            if ovl.overlap_size(start, end) >= min_overlap_positions:
-                union(uid, ovl.data)
-        tree.addi(start, end, uid)
+for uid, start, end in zip(uids, starts, ends):
+    for ovl in tree.overlap(start, end + 1):
+        if ovl.overlap_size(start, end + 1) >= min_overlap_positions:
+            union(uid, ovl.data)
+    tree.addi(start, end + 1, uid)
 
     root_min_uid: dict[int, int] = {}
     for uid in uids:
