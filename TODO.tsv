@@ -22,7 +22,7 @@ filter-reads	Add preconfigured memory options 	To Do	Higest (v1 mvp)		i.e. "--lo
 Main Commands	Coherce outputs to GFF	In Progress	Higest (v1 mvp)		Add \n//FASTA with sequence at the end of each record	commands/annotation/annotate.py	2024-09-14 16:47:29
 Main Commands	Filter reads - add support for non illumina PE data (single end, pacbio, ONT).	To Do	High			commands/reads/filter_reads.py	
 Main Commands	Modify filter_reads workflow	To Do	Medium		Add option to keep files in memory/RAM disk	commands/assembly/search_viruses.py	
-Marker Search	Validate and implement remaining hit-consoldation and interval ops functionality	To Do	Higest (v1 mvp)		currently it's a combination of several packages annd custom code, because no single one had all the options needed. THis might change as some bug reports in genomicranges and iranges have been addressed	rolypoly/utils/interval_ops.py	
+Marker Search	Validate and implement remaining hit-consoldation and interval ops functionality	To Do	Higest (v1 mvp)		merge mode now uses native polars/intervaltree clustering; remaining modes may still need tests/examples	rolypoly/utils/interval_ops.py	
 Packaging	bioconda	To Do	High		on pypi, currently quick_setup.sh installs everything.	misc/quick_setup.sh and misc/envs/env_big.yaml	
 Packaging	Finalizing the database and contents	To Do	Higest (v1 mvp)	Uri Neri	Eventually archive on zenodo.	 is:open 	
 Packaging	Documentation	To Do	Higest (v1 mvp)		Need to clean and add use-cases.		

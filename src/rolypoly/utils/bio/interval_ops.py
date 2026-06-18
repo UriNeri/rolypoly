@@ -8,8 +8,6 @@ warnings.filterwarnings(
 from typing import List, Optional, Tuple, Union
 
 import intervaltree as itree
-from genomicranges import GenomicRanges
-from iranges import IRanges
 
 from rolypoly.utils.logging.loggit import get_logger
 from rolypoly.utils.various import vstack_easy
@@ -342,86 +340,18 @@ def consolidate_hits(
 
     # merge overlapping hits into one
     if merge:
-        # negate the values of a rank column who's ordered for descending columns
-        for col_indx, is_descending in enumerate(rank_order):
-            if is_descending:
-                work_table = work_table.with_columns(
-                    (pl.col(rank_list_renamed[col_indx]) * -1).alias(
-                        rank_list_renamed[col_indx]
-                    )
-                )
-
-        # Sort the dataframe by query, position, and rank columns
-        sort_columns = [query_id_col, q1_col, q2_col] + rank_list_renamed
-        sort_descending = [False, False, False] + [
-            False for _ in range(len(rank_order))
-        ]
-        work_table = work_table.sort(sort_columns, descending=sort_descending)
-
-        work_table = work_table.select(
-            pl.col(query_id_col).cast(pl.Utf8).alias("seqnames"),
-            pl.col(target_id_col).cast(pl.Utf8),
-            pl.col(q1_col).cast(pl.Int64).alias("start"),
-            pl.col(q2_col).cast(pl.Int64).alias("end"),
-            *[pl.col(rank_col) for rank_col in rank_list_renamed],
+        logger.info("Merging overlapping hits")
+        return _merge_overlapping_hits(
+            work_table=work_table,
+            og_cols=og_cols,
+            query_id_col=query_id_col,
+            q1_col=q1_col,
+            q2_col=q2_col,
+            rank_list=rank_list,
+            rank_list_renamed=rank_list_renamed,
+            rank_order=rank_order,
+            min_overlap_positions=min_overlap_positions,
         )
-
-        # Convert to GenomicRanges for merging
-        gr_hits = GenomicRanges(
-            seqnames=work_table.get_column("seqnames").to_list(),
-            ranges=IRanges(
-                start=work_table.get_column("start").to_list(),
-                width=(
-                    work_table.get_column("end")
-                    - work_table.get_column("start")
-                    + 1
-                ).to_list(),
-            ),
-        )
-
-        # Merge overlapping intervals
-        merged_ranges = gr_hits.find_overlaps(
-            query=gr_hits, min_overlap=min_overlap_positions
-        ).to_polars()
-
-        # Process merged intervals
-        results = []
-        for row in merged_ranges.iter_rows():
-            hits_in_cluster = work_table.filter(
-                pl.col("seqnames") == row[0],
-                pl.col("start") >= row[1],
-                pl.col("end") <= row[2],
-            )
-            merged_hit = hits_in_cluster.group_by(["seqnames"]).agg(
-                pl.col(target_id_col).first().alias(target_id_col),
-                pl.col("start").cast(pl.Int64).min().alias("start"),
-                pl.col("end").cast(pl.Int64).max().alias("end"),
-                *[pl.col(rank_col).first() for rank_col in rank_list_renamed],
-            )
-            merged_hit = merged_hit.select(
-                pl.col(col) for col in merged_hit.columns
-            )
-            results.append(merged_hit)
-
-        resolved_hits = pl.concat(results)
-        resolved_hits = convert_back_columns(
-            resolved_hits,
-            rank_list,
-            rank_list_renamed,
-            rank_order,
-            query_id_col,
-            q1_col,
-            q2_col,
-        )
-        resolved_hits = resolved_hits.join(
-            hit_table.drop(rank_list),
-            on=[query_id_col, target_id_col, q1_col, q2_col],
-            how="left",
-        )
-        return resolved_hits.select(og_cols).unique()
-
-
-# TODO: finish implementing functionaliy, write tests and examples.
 
 
 def interval_tree_from_df(
@@ -623,6 +553,107 @@ def get_all_overlaps_pl(
     )
 
 
+def _label_overlap_clusters(
+    uids: List[int],
+    starts: List[int],
+    ends: List[int],
+    min_overlap_positions: int,
+) -> List[int]:
+    """Assign each uid a cluster label (min uid in its overlap component).
+
+    Uses a single-pass interval-tree sweep plus union-find. Rows are processed
+    in rank order (lowest uid first), matching consolidate_hits sort order.
+    """
+    if len(uids) <= 1:
+        return list(uids)
+
+    parent = {uid: uid for uid in uids}
+
+    def find(node: int) -> int:
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    def union(left: int, right: int) -> None:
+        root_left, root_right = find(left), find(right)
+        if root_left != root_right:
+            parent[root_right] = root_left
+
+    tree = itree.IntervalTree()
+for uid, start, end in zip(uids, starts, ends):
+    for ovl in tree.overlap(start, end + 1):
+        if ovl.overlap_size(start, end + 1) >= min_overlap_positions:
+            union(uid, ovl.data)
+    tree.addi(start, end + 1, uid)
+
+    root_min_uid: dict[int, int] = {}
+    for uid in uids:
+        root = find(uid)
+        current = root_min_uid.get(root)
+        if current is None or uid < current:
+            root_min_uid[root] = uid
+
+    return [root_min_uid[find(uid)] for uid in uids]
+
+
+def _merge_overlapping_hits(
+    work_table: pl.DataFrame,
+    og_cols: List[str],
+    query_id_col: str,
+    q1_col: str,
+    q2_col: str,
+    rank_list: List[str],
+    rank_list_renamed: List[str],
+    rank_order: List[bool],
+    min_overlap_positions: int,
+) -> pl.DataFrame:
+    """Merge overlapping hits per query into one row per overlap cluster."""
+    merged_parts: list[pl.DataFrame] = []
+    internal_cols = {"uid", "width", "_cluster_id"}
+    merge_output_cols = [c for c in work_table.columns if c not in internal_cols]
+
+    for _, subdf in work_table.group_by(query_id_col, maintain_order=True):
+        if subdf.is_empty():
+            continue
+        if subdf.height == 1:
+            merged_parts.append(subdf.select(merge_output_cols))
+            continue
+
+        cluster_labels = _label_overlap_clusters(
+            uids=subdf.get_column("uid").to_list(),
+            starts=subdf.get_column(q1_col).to_list(),
+            ends=subdf.get_column(q2_col).to_list(),
+            min_overlap_positions=min_overlap_positions,
+        )
+        labeled = subdf.with_columns(
+            pl.Series("_cluster_id", cluster_labels)
+        ).sort("uid")
+
+        value_cols = [
+            col
+            for col in merge_output_cols
+            if col not in {q1_col, q2_col}
+        ]
+        agg_exprs = [pl.col(q1_col).min(), pl.col(q2_col).max()]
+        agg_exprs.extend(pl.col(col).first() for col in value_cols)
+
+        merged_parts.append(
+            labeled.group_by("_cluster_id", maintain_order=True)
+            .agg(agg_exprs)
+            .select(merge_output_cols)
+        )
+
+    if not merged_parts:
+        return work_table.head(0).select(og_cols)
+
+    result = pl.concat(merged_parts)
+    result = result.rename(
+        {rank_list_renamed[i]: rank_list[i] for i in range(len(rank_list))}
+    )
+    return result.select(og_cols).unique()
+
+
 def return_or_write(df: pl.DataFrame, output: Optional[str]):
     """Write output or return dataframe."""
     if isinstance(output, str):
@@ -650,29 +681,6 @@ def rename_rank_columns(
     return df.rename(rename_dict), rank_list_renamed
 
 
-def convert_back_columns(
-    df: pl.DataFrame,
-    rank_list: List[str],
-    rank_list_renamed: List[str],
-    rank_order: List[bool],
-    query_id_col: str,
-    q1_col: str,
-    q2_col: str,
-) -> pl.DataFrame:
-    """Rename the rank columns back to the original names."""
-    rename_dict = {old: new for old, new in zip(rank_list_renamed, rank_list)}
-    rename_dict["Chromosome"] = query_id_col
-    rename_dict["Start"] = q1_col
-    rename_dict["End"] = q2_col
-    df = df.rename(rename_dict)
-    for col_indx, is_descending in enumerate(rank_order):
-        if not is_descending:
-            df = df.with_columns(
-                (pl.col(rank_list[col_indx]) * -1).alias(rank_list[col_indx])
-            )
-    return df
-
-
 def sort_hit_table(
     input_df: pl.DataFrame,
     query_id_col: str,
@@ -683,23 +691,6 @@ def sort_hit_table(
     sort_columns = [query_id_col] + rank_list_renamed  # q1_col, q2_col
     sort_descending = [False] + rank_order
     return input_df.sort(by=sort_columns, descending=sort_descending)
-
-
-def name_cols_for_gr(
-    df: pl.DataFrame, q1_col: str, q2_col: str, query_id_col: str
-) -> pl.DataFrame:
-    """Name columns for use with genomicranges."""
-    rename_dict = {q1_col: "start", q2_col: "end", query_id_col: "seqnames"}
-    df = df.with_columns(pl.col(q2_col) - pl.col(q1_col).alias("width"))
-    return df.rename(rename_dict)
-
-
-def revert_names_from_gr(
-    df: pl.DataFrame, q1_col: str, q2_col: str, query_id_col: str
-) -> pl.DataFrame:
-    """Revert columns to original names."""
-    rename_dict = {"starts": q1_col, "ends": q2_col, "seqnames": query_id_col}
-    return df.rename(rename_dict)
 
 
 def get_column_names(df: pl.DataFrame) -> Tuple[str, str]:
