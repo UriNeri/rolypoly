@@ -1,5 +1,19 @@
 # Changelog
 
+## 18.06.2026 [v0.7.6]
+
+### Added
+- filter-reads: added `--trim-poly-at` to remove polyA/polyT tails after adapter trimming.
+
+### Changed
+- Removed genomicranges/iranges dependencies and updated related docs/TODOs.
+- Updated `.gitignore` to avoid committing local `rpconfig.json` path edits.
+
+### Fixed
+- interval operations: fixed half-open interval handling.
+- mask-dna: logger setup now reuses existing logger configuration.
+- README: fixed docs link for `roll` and removed duplicated modular explanation.
+
 ## 16.07.2025 [Unreleased]
 - Renamed pypi package from rolypoly-bio to rolypoly-tk
 - Restructured utils and functions into multiple subject specific scripts and folders (fax.py --> bioseqs/*py)
