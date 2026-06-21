@@ -85,26 +85,26 @@ Legend:
 - 🤔/TBD - Planned / under consideration.
 
 #### Data
-- ✅ [`get-data`](https://urineri.github.io/rolypoly/commands/prepare_external_data) — Download/setup required data
-- ✅ `version` — Show code and data version info
+- ✅ [`get-data`](https://urineri.github.io/rolypoly/commands/get_data) — Download/setup required data
+- ✅ [`version`](https://urineri.github.io/rolypoly/commands/version/) — Show code and data version info
 
 #### Raw-Reads
-- ✅ [`filter-reads`](https://urineri.github.io/rolypoly/commands/read_processing) — Host/rRNA/adapters/artifact filtering and QC (bbmap, falco, etc.)
-- ✅ [`shrink-reads`](https://urineri.github.io/rolypoly/commands/read_processing) — Downsample or subsample reads. Useful for testing or normalizing coverage across samples.
-- ✅ [`mask-dna`](https://urineri.github.io/rolypoly/commands/read_processing) — Mask DNA regions in RNA-seq reads (bbmap, seqkit). Useful for avoiding mis-filtering of RNA virus reads in because of potential matches to EVEs.
+- ✅ [`filter-reads`](https://urineri.github.io/rolypoly/commands/filter_reads) — Host/rRNA/adapters/artifact filtering and QC (bbmap, falco, etc.)
+- ✅ [`shrink-reads`](https://urineri.github.io/rolypoly/commands/shrink_reads) — Downsample or subsample reads. Useful for testing or normalizing coverage across samples.
+- ✅ [`mask-dna`](https://urineri.github.io/rolypoly/commands/mask_dna) — Mask DNA regions in RNA-seq reads (bbmap, seqkit). Useful for avoiding mis-filtering of RNA virus reads in because of potential matches to EVEs.
 
 #### Annotation
-- ✅ [`annotate`](https://urineri.github.io/rolypoly/commands/annotate_rna/#annotate-rna) — Genome feature annotation (wraps the rna and prot commands)
+- ✅ [`annotate`](https://urineri.github.io/rolypoly/commands/annotate) — Genome feature annotation (wraps the rna and prot commands)
 - ✅ [`annotate-rna`](https://urineri.github.io/rolypoly/commands/annotate_rna) — RNA secondary structure labelling and ribozyme detection (Infernal, ViennaRNA/linearfold, cmsearch on Rfam...)
 - 🧪 [`annotate-prot`](https://urineri.github.io/rolypoly/commands/annotate_prot) — Gene calling and Protein domain annotation and functional prediction (HMMER, Pfam, custom).
 
 #### Meta/Genome Assembly
-- ✅ [`assemble`](https://urineri.github.io/rolypoly/commands/assembly) — Assemble reads into contigs (SPAdes, MEGAHIT, penguin)
-- ✅ [`filter-contigs`](https://urineri.github.io/rolypoly/commands/filter_assembly) — Filter sequences based on user-supplied host/contamination references (nucleotide and amino acid modes).
+- ✅ [`assemble`](https://urineri.github.io/rolypoly/commands/assemble) — Assemble reads into contigs (SPAdes, MEGAHIT, penguin)
+- ✅ [`filter-contigs`](https://urineri.github.io/rolypoly/commands/filter_contigs) — Filter sequences based on user-supplied host/contamination references (nucleotide and amino acid modes).
 
 #### RNA Virus Identification
 - ✅ [`marker-search`](https://urineri.github.io/rolypoly/commands/marker_search) — Search for viral markers (mainly RdRps, genomad VVs, or user-provided), using profile-based methods (HMMER / MMseqs2). 
-- ✅ [`virus-mapping`](https://urineri.github.io/rolypoly/commands/search_viruses) — Map and identify viruses using nucleic acid search (MMseqs2).
+- ✅ [`virus-mapping`](https://urineri.github.io/rolypoly/commands/virus_mapping) — Map and identify viruses using nucleic acid search (MMseqs2).
 - ✅ [`rdrp-motif-search`](https://urineri.github.io/rolypoly/commands/rdrp_motif_search) — Search RdRp motifs (A/B/C/D) in nucleotide or amino acid sequences.
 
 #### Bining / Clustering
