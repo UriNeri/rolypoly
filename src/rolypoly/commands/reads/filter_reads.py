@@ -98,15 +98,27 @@ class ReadFilterConfig(BaseConfig):
         )  # this is the base name of the output files, if not provided, it will be "rp_filtered_reads"
 
         self.step_params = {  # these are the default parameters for each step, if not overridden by the user
-            # "filter_by_tile": {"nullifybrokenquality": "t"},
-            "filter_known_dna": {"k": 31, "mincovfraction": 0.7, "hdist": 0},
-            "decontaminate_rrna": {"k": 31, "mincovfraction": 0.5, "hdist": 0},
+            # "filter_by_tile": {"nullifybrokenquality": "t"}, # filter tile is disabled until we verify we can get tile/xy information from the fastq headers in all the different scenarios (single/interleaved/paired and concated files), as well as the potential impacts of concatenating multiple samples on the tile filtering step.
+            "filter_known_dna": {
+                "k": 31,
+                "mincovfraction": 0.7,
+                "hdist": 0
+            },
+            "decontaminate_rrna": {
+                "k": 31,
+                "mincovfraction": 0.5,
+                "hdist": 0
+            },
             "filter_identified_dna": {
                 "k": 31,
                 "mincovfraction": 0.7,
                 "hdist": 0,
             },
-            "dedupe": {"dedupe": True, "passes": 1, "s": 0},
+            "dedupe": {
+                "dedupe": True,
+                "passes": 1,
+                "s": 0
+            },
             "trim_adapters": {
                 "ktrim": "r",
                 "k": 23,
@@ -114,16 +126,25 @@ class ReadFilterConfig(BaseConfig):
                 "hdist": 1,
                 "tpe": "t",
                 "tbo": "t",
-                "minlen": 45,
+                "minlen": 25,
             },
             "trim_polya_tails": {
                 "trimpolya": 22, # TODO: figure out if this is the right ball park...
                 # "mink": 8,
                 "minlen": 25,
             },
-            "remove_synthetic_artifacts": {"k": 31},
-            "entropy_filter": {"entropy": 0.01, "entropywindow": 30},
-            "error_correct_1": {"ecco": True, "mix": "t", "ordered": "t"},
+            "remove_synthetic_artifacts": {
+                "k": 31
+                },
+            "entropy_filter": {
+                "entropy": 0.01,
+                "entropywindow": 30
+            },
+            "error_correct_1": {
+                "ecco": True,
+                "mix": "t",
+                "ordered": "t"
+            },
             "error_correct_2": {
                 "ecc": True,
                 "reorder": True,
@@ -136,7 +157,11 @@ class ReadFilterConfig(BaseConfig):
                 # "rem": True,
                 "mix": "f"
             },  # TODO: add explanation somewhere about the (high) memory usage and the potential gains/tradeoffs of merging reads https://bbmap.org/tools/bbmerge#:~:text=When%20NOT%20to%20Use%20BBMerge
-            "quality_trim_unmerged": {"qtrim": "rl", "trimq": 5, "minlen": 45},
+            "quality_trim_unmerged": {
+                "qtrim": "rl",
+                "trimq": 5,
+                "minlen": 25
+            },
         }
         self.max_genomes = (
             kwargs.get("max_genomes") or 5
