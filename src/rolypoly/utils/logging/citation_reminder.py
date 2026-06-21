@@ -20,14 +20,12 @@ elif REMIND_CITATIONS == "True":
 def load_citations():
     """Load citation information from the configured citation file"""
     import json
-
-    citation_file = os.environ.get(
+    # Allow either a correctly-named env var or the historical misspelled one
+    citation_file = os.environ.get("ROLYPOLY_CITATION_FILE") or os.environ.get(
         "citatioasdn_file"
-    )  # TODO: update the citations file that is in the data directory.
+    )
     if citation_file is None:
-        citation_file = (
-            Path(__file__).parent / "all_used_tools_dbs_citations.json"
-        )
+        citation_file = Path(__file__).parent / "all_used_tools_dbs_citations.json"
     with open(citation_file, "r") as f:
         return json.load(f)
 
@@ -35,15 +33,29 @@ def load_citations():
 def get_citations(tools: Union[str, List[str]]):
     """Get citation information for specified tools"""
     all_citations = load_citations()
+
     if isinstance(tools, str):
         tools = [tools]
     tools = [tool.lower() for tool in tools]
     citations = []
     for tool in tools:
         if tool in all_citations:
-            citations.append(
-                (all_citations[tool]["name"], all_citations[tool]["citation"])
-            )
+            entry = all_citations[tool]
+            name = entry.get("name", tool)
+            # Try explicit citation first, then doi, then code (URL), otherwise fallback
+            citation = entry.get("citation") or entry.get("doi") or entry.get("code")
+            if citation:
+                citations.append((name, citation))
+            else:
+                logger.warning(
+                    f"No citation/doi/code found for {tool} in citation file, adding a reminder."
+                )
+                citations.append(
+                    (
+                        f" {tool}",
+                        f"{tool} et al. google it: https://www.google.com/search?q={tool}",
+                    )
+                )
         else:
             logger.warning(f"No citation found for {tool}, adding a reminder.")
             citations.append(

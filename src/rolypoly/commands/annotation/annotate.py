@@ -251,7 +251,11 @@ def annotate(
 
     if "protein_annotation" not in config.skip_steps:
         process_protein_annotations(config.protein_config)
-        tools.append(config.protein_config.search_tool)
+        if config.protein_config.search_tool == "hmmsearch":
+            tools.append("HMMER")
+        else:
+            tools.append(config.protein_config.search_tool)
+
         tools.append(str(config.protein_config.min_orf_length))
         tools.append(config.protein_config.domain_db)
     else:
