@@ -1,5 +1,10 @@
 # Changelog
 
+## 21.06.2026 [v0.7.6 / e9bbd4e]
+
+### Fixed
+- data bundle: added the missing `cmpress` outputs for `data/profiles/cm/Rfam.cm` so the packaged `data.tar.gz` includes the full Infernal index set.
+
 ## 18.06.2026 [v0.7.6]
 
 ### Added

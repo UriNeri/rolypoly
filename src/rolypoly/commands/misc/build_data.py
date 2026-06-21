@@ -298,7 +298,7 @@ def prepare_rvmt_mmseqs(data_dir, threads, logger: logging.Logger):
 def download_and_extract_rfam(data_dir, logger):
     """Download and process Rfam database files.
 
-    Retrieves Rfam database files and processes them for use in RNA
+    Retrieves Rfam database files and processes them for use in RNA (structural)
     family identification and annotation.
 
     Args:
@@ -321,6 +321,14 @@ def download_and_extract_rfam(data_dir, logger):
         logger.info("Rfam database downloaded and extracted successfully.")
     except requests.exceptions.RequestException as e:
         logger.error(f"Error downloading Rfam database: {e}")
+
+    #press the cm file
+    run_command_comp(
+        base_cmd="cmpress",
+        positional_args_location="start",
+        positional_args=[os.path.join(rfam_extract_path, "Rfam.cm")],
+        logger=logger,
+    )
 
 
 def tar_everything(data_dir, version=""):
