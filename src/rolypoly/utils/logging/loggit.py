@@ -92,12 +92,16 @@ def get_version_info() -> dict[str, str]:
             .strip()
         )
         version_info["code"] = git_hash
-    except subprocess.CalledProcessError:
-        # If git fails, try to get installed package version assuming it was installed via pip
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
         try:
-            version_info["code"] = version("rolypoly")
-        except:
-            version_info["code"] = "Unknown"
+            version_info["code"] = version("rolypoly_tk")
+        except Exception:
+            try:
+                from rolypoly import __version__
+
+                version_info["code"] = __version__
+            except Exception:
+                version_info["code"] = "Unknown"
     finally:
         os.chdir(cwd)
 
@@ -109,8 +113,9 @@ def get_version_info() -> dict[str, str]:
         with config_path.open("r") as f:
             config = json.load(f)
             data_dir_path = resolve_config_path(config["ROLYPOLY_DATA"])
-        if data_dir_path.exists():
-            with open(data_dir_path / "README.md", "r") as f:
+        readme_path = data_dir_path / "README.md"
+        if readme_path.exists():
+            with readme_path.open("r") as f:
                 for line in f:
                     if "Date:" in line:
                         version_info["data"] = line.split("Date:")[1].strip()
