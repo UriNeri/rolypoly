@@ -1119,6 +1119,134 @@ def compute_ani_mmseqs(
         return parse_mmseqs_table(outfile)
 
 
+def compute_ani_linclust(
+    fasta_path: Union[str, Path],
+    threads: int = 1,
+    min_identity: float = 99.0,
+    min_target_coverage: float = 99.0,
+    min_query_coverage: float = 99.0,
+    cluster_mode: int = 2,
+    logger: logging.Logger | None = None,
+) -> pl.DataFrame:
+    """Cluster sequences with MMseqs2 easy-linclust and return assignments.
+
+    Unlike the other ANI backends, this directly runs the external MMseqs
+    clustering tool rather than computing an all-vs-all edge table first.
+    The output is converted into the standard cluster assignment schema so
+    the rest of the pipeline can keep writing the same files.
+    """
+    from rolypoly.utils.bio.polars_fastx import frame_to_fastx, load_sequences
+    from rolypoly.utils.various import run_command_comp
+
+    fasta_path = Path(fasta_path)
+    seq_df = load_sequences(str(fasta_path))
+    if seq_df.is_empty():
+        return empty_cluster_frame()
+
+    seq_df = seq_df.select(
+        pl.col("contig_id").alias("header"),
+        pl.col("sequence"),
+    )
+    if seq_df.height == 1:
+        single_id = str(seq_df[0, "header"])
+        return pl.DataFrame(
+            [
+                {
+                    "seq_id": single_id,
+                    "cluster_id": "cluster_0",
+                    "representative_id": single_id,
+                    "is_representative": True,
+                    "identity_to_representative": 100.0,
+                    "coverage_to_representative": 100.0,
+                }
+            ]
+        ).select(CLUSTER_COLUMNS)
+
+    coverage_threshold = max(min_target_coverage, min_query_coverage) / 100.0
+    identity_threshold = min_identity / 100.0
+
+    with tempfile.TemporaryDirectory(prefix="rolypoly_linclust_") as tmpdir:
+        tmpdir_path = Path(tmpdir)
+        query_fasta = tmpdir_path / "query.fasta"
+        cluster_prefix = tmpdir_path / "linclust"
+        tmp_subdir = tmpdir_path / "tmp"
+        tmp_subdir.mkdir(parents=True, exist_ok=True)
+
+        frame_to_fastx(seq_df, query_fasta)
+
+        run_command_comp(
+            "mmseqs",
+            positional_args=[
+                "easy-linclust",
+                str(query_fasta),
+                str(cluster_prefix),
+                str(tmp_subdir),
+            ],
+            positional_args_location="start",
+            params={
+                "threads": str(threads),
+                "dbtype": "2",
+                "cluster-mode": str(cluster_mode),
+                "min-seq-id": str(identity_threshold),
+                "cov-mode": "0",
+                "c": str(coverage_threshold),
+            },
+            logger=logger,
+            check_status=True,
+        )
+
+        cluster_tsv = Path(f"{cluster_prefix}_cluster.tsv")
+        if not cluster_tsv.exists() or cluster_tsv.stat().st_size == 0:
+            if logger:
+                logger.warning("mmseqs easy-linclust produced no output")
+            return empty_cluster_frame()
+
+        raw = pl.read_csv(
+            cluster_tsv,
+            separator="\t",
+            has_header=False,
+            comment_prefix="#",
+            truncate_ragged_lines=True,
+            ignore_errors=True,
+            infer_schema_length=0,
+        )
+        if raw.is_empty():
+            return empty_cluster_frame()
+
+        if raw.width < 2:
+            raise ValueError(
+                f"Unexpected MMseqs linclust output format: {cluster_tsv}"
+            )
+
+        representative_col, member_col = raw.columns[:2]
+        components: dict[str, list[str]] = {}
+        for representative_id, member_id in raw.select(
+            representative_col, member_col
+        ).iter_rows():
+            rep = str(representative_id)
+            member = str(member_id)
+            members = components.setdefault(rep, [])
+            if rep not in members:
+                members.append(rep)
+            if member not in members:
+                members.append(member)
+
+        edge_lookup: dict[tuple[str, str], tuple[float, float]] = {}
+        for rep, members in components.items():
+            for member in members:
+                if member == rep:
+                    continue
+                edge_lookup[(member, rep)] = (
+                    round(identity_threshold * 100.0, 2),
+                    round(coverage_threshold * 100.0, 2),
+                )
+
+        return build_cluster_assignment_rows(
+            components={idx: members for idx, members in enumerate(components.values())},
+            edge_lookup=edge_lookup,
+        )
+
+
 #  K-mer-based identity estimation 
 
 
