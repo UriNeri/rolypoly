@@ -84,7 +84,7 @@ def detect_polyprotein_pattern(
         return False
 
     # Get query length
-    qlen = query_hits.select(pl.col("qlen").max()).item()
+    qlen = query_hits.select(pl.col("qlen").cast(pl.Int64).max()).item()
     if qlen < 200:  # Short sequences unlikely to be polyproteins
         return False
 
@@ -268,9 +268,10 @@ def consolidate_hits(
     # drop contained hits
     if drop_contained:
         logger.info("Dropping contained hits")
-        grouped_by_query = work_table.group_by(query_id_col)
+        # partition_by(maintain_order=True) preserves the score-descending sort
+        # that sort_hit_table applied; group_by does NOT preserve row order.
         subdfs = []
-        for _, subdf in grouped_by_query:
+        for subdf in work_table.partition_by(query_id_col, maintain_order=True):
             subdf = subdf.select(query_id_col, q1_col, q2_col, "uid").rename(
                 {q1_col: "start", q2_col: "end"}
             )
@@ -289,11 +290,13 @@ def consolidate_hits(
     if one_per_range:
         logger.info("Dropping to best hit per range")
 
-        # Group by query and use interval tree to find non-overlapping hits
-        grouped_by_query = work_table.group_by(query_id_col)
+        # partition_by(maintain_order=True) preserves the score-descending sort
+        # that sort_hit_table applied; group_by does NOT preserve row order.
+        # The interval tree processes hits in rank order so the first hit
+        # inserted per overlapping region is always the highest-scoring one.
         subdfs = []
 
-        for _, subdf in grouped_by_query:
+        for subdf in work_table.partition_by(query_id_col, maintain_order=True):
             if len(subdf) == 0:
                 continue
 
@@ -301,7 +304,6 @@ def consolidate_hits(
             tree = itree.IntervalTree()
             kept_uids = []
 
-            # Sort by rank (already sorted in work_table)
             for row in subdf.iter_rows(named=True):
                 start = row[q1_col]
                 end = row[q2_col]
