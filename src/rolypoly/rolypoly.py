@@ -108,6 +108,7 @@ CONTEXT_SETTINGS = dict(
                 "filter-reads": "rolypoly.commands.reads.filter_reads.filter_reads",
                 "shrink-reads": "rolypoly.commands.reads.shrink_reads.shrink_reads",
                 "mask-dna": "rolypoly.commands.reads.mask_dna.mask_dna",
+                "map": "rolypoly.commands.reads.map.map",
             },
         },
         "annotation": {
