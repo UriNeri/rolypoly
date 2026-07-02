@@ -1,8 +1,6 @@
 import os
 import re
 from pathlib import Path
-from typing import Optional
-
 from rich.console import Console
 from rich_click import Choice, command, option
 
@@ -29,7 +27,7 @@ class RVirusSearchConfig(BaseConfig):
             temp_dir=kwargs.get("temp_dir", "marker_search_tmp/"),
         )  # initialize the BaseConfig class
         # initialize the rest of the parameters (i.e. the ones that are not in the BaseConfig class)
-        self.database = kwargs.get("database", "NeoRdRp_v2.1,genomad")
+        self.database = kwargs.get("database", "RVMT,genomad")
         self.inc_evalue = kwargs.get("inc_evalue", 0.05)
         self.score = kwargs.get("score", 20)
         self.aa_method = kwargs.get("aa_method", "six_frame")
@@ -46,20 +44,11 @@ class RVirusSearchConfig(BaseConfig):
         self.include_alignment_string = kwargs.get(
             "include_alignment_string", False
         )
+        self.write_matched_input_seqs = kwargs.get("write_matched_input_seqs", False)
+        self.matched_input_seqs_output = kwargs.get("matched_input_seqs_output") or None
 
 
-def _pick_region_output_path(
-    output_dir: str, explicit_path: Optional[str]
-) -> Path:
-    """Resolve the output path for matched-region FASTA sequences."""
-    if explicit_path:
-        out_path = Path(explicit_path)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        return out_path
-    return Path(output_dir) / "marker_search_matched_regions.faa"
-
-
-def _write_matched_regions_fasta(
+def write_matched_regions_fasta(
     hit_df, output_path: Path, include_aligned_region: bool
 ) -> None:
     """Write matched query regions from search hits to FASTA."""
@@ -123,6 +112,65 @@ def _write_matched_regions_fasta(
                 f"{query_token}{frame_suffix}{orf_suffix}|hit={hmm_name}|coords={q1}-{q2}"
             )
             fout.write(f">{region_id}\n{region_seq}\n")
+
+
+def write_matched_input_seqs_fasta(
+    hit_df, input_file: str, output_path: Path, input_alpha: str, aa_method: str
+) -> None:
+    """Write full original input sequences that had marker hits to FASTA.
+
+    For protein input the query IDs match the input FASTA headers directly.
+    For nucleotide input the query IDs come from the translated ORF/frame file
+    and are mapped back to the original contig IDs.  The exact suffix that must
+    be stripped depends on the translation tool:
+
+    - six_frame (seqkit --append-frame): appends a frame suffix (e.g. ``_frame:+1``)
+      to each sequence ID; strip it to recover the contig name.
+    - pyrodigal / bbmap: append a numeric ORF ordinal (e.g. ``_1``, ``_2``);
+      strip the trailing ``_<digits>`` to recover the contig name.
+
+    Note:
+        The exact suffix formats should be confirmed experimentally; see inline
+        TODO comments.
+    """
+    import re as _re
+
+    from rolypoly.utils.bio.sequences import filter_fasta_by_headers
+
+    if hit_df.is_empty():
+        output_path.touch()
+        return
+
+    if "query_full_name" not in hit_df.columns:
+        output_path.touch()
+        return
+
+    raw_ids = (
+        hit_df["query_full_name"]
+        .str.extract(r"^([^|\s]+)")
+        .drop_nulls()
+        .unique()
+        .to_list()
+    )
+    if not raw_ids:
+        output_path.touch()
+        return
+
+    if input_alpha == "aa":
+        matched_ids = raw_ids
+    elif aa_method in ("pyrodigal", "bbmap"):
+        # pyrodigal: <contig>_<orf_ordinal>
+        # TODO: confirm bbmap callgenes.sh follows the same <contig>_<N> convention.
+        matched_ids = list({_re.sub(r"_\d+$", "", sid) for sid in raw_ids})
+    else:  # six_frame (seqkit)
+        # seqkit --append-frame: <contig>_frame=<N> 
+        matched_ids = list({_re.sub(r"_frame=[+-]?\d+$", "", sid) for sid in raw_ids})
+
+    filter_fasta_by_headers(
+        fasta_file=input_file,
+        headers=matched_ids,
+        output_file=str(output_path),
+    )
 
 
 global tools
@@ -198,7 +246,7 @@ console = Console(width=150)
     "-db",
     "--database",
     type=str,
-    default="NeoRdRp_v2.1,genomad",
+    default="RVMT,genomad",
     help="""comma separated list of databases to search against (or `all`), or path to a custom database. \n
         options: NeoRdRp_v2.1, RdRp-scan, RVMT, TSA_2018, Pfam_RTs_RdRp, genomad, all, \n
         For custom path, either an .hmm file, a directory with .hmm files, or a folder with MSA files (which would be used to build an HMM DB)""",
@@ -283,6 +331,17 @@ console = Console(width=150)
     default=False,
     help="Include alignment identity string in marker_search_results.tsv (disabled by default)",
 )
+@option(
+    "--write-matched-input-seqs/--no-write-matched-input-seqs",
+    default=False,
+    help="Write full original input sequences (contigs for nucleotide input, whole proteins for AA input) that had at least one marker hit to FASTA (disabled by default)",
+)
+@option(
+    "-miso",
+    "--matched-input-seqs-output",
+    default=None,
+    help="Output FASTA path for matched input sequences (default: <output>/marker_search_matched_input_seqs.fna|faa)",
+)
 def marker_search(
     input,
     output,
@@ -305,6 +364,8 @@ def marker_search(
     matched_regions_output,
     include_aligned_region,
     include_alignment_string,
+    write_matched_input_seqs,
+    matched_input_seqs_output,
 ):
     """RNA virus marker protein search - using pre-made/user-supplied DBs.
     Most pre-made DBs are based on RdRp domain (except for geNomad).
@@ -386,6 +447,8 @@ def marker_search(
             matched_regions_output=matched_regions_output,
             include_aligned_region=include_aligned_region,
             include_alignment_string=include_alignment_string,
+            write_matched_input_seqs=write_matched_input_seqs,
+            matched_input_seqs_output=matched_input_seqs_output,
         )
 
     # Logging
@@ -521,7 +584,8 @@ def marker_search(
     for db_name, db_path in database_paths.items():
         # Search translated sequences against viral marker databases
         config.logger.info(f"Searching {db_name}")
-        tools.append(f"{db_name}")
+        tools.append(f"{db_name}") if db_name != "Custom" else None
+
         tmp_output = config.temp_dir / f"raw_{config.name}_vs_{db_name}.tsv"
         search_hmmdb(
             amino_file=amino_file,
@@ -608,16 +672,38 @@ def marker_search(
 
     # Write optional matched regions before dropping helper columns.
     if config.write_matched_regions:
-        matched_region_output = _pick_region_output_path(
-            output, config.matched_regions_output
+        matched_region_output = (
+            Path(config.matched_regions_output)
+            if config.matched_regions_output
+            else Path(output) / "marker_search_matched_regions.faa"
         )
-        _write_matched_regions_fasta(
+        matched_region_output.parent.mkdir(parents=True, exist_ok=True)
+        write_matched_regions_fasta(
             hit_df=testdf,
             output_path=matched_region_output,
             include_aligned_region=config.include_aligned_region,
         )
         config.logger.info(
             f"Matched regions written to {matched_region_output.absolute()}"
+        )
+
+    if config.write_matched_input_seqs:
+        ext = "faa" if input_alpha == "aa" else "fna"
+        input_seqs_output = (
+            Path(config.matched_input_seqs_output)
+            if config.matched_input_seqs_output
+            else Path(output) / f"marker_search_matched_input_seqs.{ext}"
+        )
+        input_seqs_output.parent.mkdir(parents=True, exist_ok=True)
+        write_matched_input_seqs_fasta(
+            hit_df=testdf,
+            input_file=input,
+            output_path=input_seqs_output,
+            input_alpha=input_alpha,
+            aa_method=config.aa_method,
+        )
+        config.logger.info(
+            f"Matched input sequences written to {input_seqs_output.absolute()}"
         )
 
     if "full_qseq" in testdf.columns and not config.write_matched_regions:
@@ -628,24 +714,42 @@ def marker_search(
         testdf = testdf.drop("full_qseq")
 
     # Add explicit trace columns for downstream joins/provenance.
+    # Naming conventions:
+    #   six_frame (seqkit --append-frame): <contig>_frame=<N>
+    #   pyrodigal:                         <contig>_<orf_ordinal>  (e.g. _1, _2)
+    #   bbmap callgenes.sh:                assumed same as pyrodigal (TODO: confirm)
+    #   aa input:                          query ID = original protein FASTA header
+    # Note: query_full_name = "<hit_name> <hit_description>" (joined them),
+    # so the ID token is only the part before the first space.
     if "query_full_name" in testdf.columns:
-        testdf = testdf.with_columns(
-            pl.col("query_full_name")
-            .str.extract(r"^([^|\s]+)", group_index=1)
-            .alias("source_seq_id"),
-            pl.col("query_full_name")
-            .str.extract(r"^[^|\s]+\|([^|\s]+)", group_index=1)
-            .alias("query_tag"),
-            pl.col("query_full_name")
-            .str.extract(
-                r"(?:^|[\s;|,_])(?:frame|rf)[:=]([+-]?[1-3])",
-                group_index=1,
+        if input_alpha == "nucl":
+            if aa_method in ("pyrodigal", "bbmap"):
+                testdf = testdf.with_columns(
+                    pl.col("query_full_name")
+                    .str.extract(r"^([^\s]+)", group_index=1)
+                    .str.replace(r"_\d+$", "")
+                    .alias("source_seq_id"),
+                    pl.col("query_full_name")
+                    .str.extract(r"^([^\s]+)", group_index=1)
+                    .str.extract(r"_(\d+)$", group_index=1)
+                    .alias("orf_id"),
+                )
+            else:  # six_frame (seqkit)
+                testdf = testdf.with_columns(
+                    pl.col("query_full_name")
+                    .str.extract(r"^([^\s]+)", group_index=1)
+                    .str.replace(r"_frame=[+-]?\d+$", "")
+                    .alias("source_seq_id"),
+                    pl.col("query_full_name")
+                    .str.extract(r"_frame=([+-]?\d+)", group_index=1)
+                    .alias("frame_id"),
+                )
+        else:  # aa input
+            testdf = testdf.with_columns(
+                pl.col("query_full_name")
+                .str.extract(r"^([^\s]+)", group_index=1)
+                .alias("source_seq_id"),
             )
-            .alias("frame_id"),
-            pl.col("query_full_name")
-            .str.extract(r"^[^|\s]+\|[^|\s]+\|([0-9]+)(?:$|\s)", group_index=1)
-            .alias("orf_id"),
-        )
 
     # Write to a file in the output directory instead of the directory itself
     testdf.write_csv(results_file, separator="\t")
