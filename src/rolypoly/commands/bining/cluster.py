@@ -5,7 +5,7 @@ Supports computing pairwise identities on the fly from FASTA files
 tables (BLAST outfmt 6, CheckV ANI table, MMseqs2 easy-search output).
 
 Clustering algorithms:
-    - centroid : Greedy incremental (CD-HIT / CheckV aniclust style).
+    - centroid : Greedy incremental (CD-HIT / CheckV(-like) aniclust style).
                  Sequences sorted by length; each assigned to the first
                  centroid passing thresholds, or becomes a new centroid.
     - connected-components : Union-find connected components.
@@ -26,11 +26,13 @@ import rich_click as click
 
 from rolypoly.utils.logging.loggit import log_start_info, setup_logging
 from rolypoly.utils.bio.clustering import (
+    EDGE_COLUMNS,
     SIMILARITY_COLUMNS,
     cluster_centroid_greedy,
     cluster_connected_components,
     cluster_leiden,
     compute_ani_blastn,
+    compute_ani_linclust,
     compute_ani_mmseqs,
     compute_ani_pyfastani,
     compute_ani_pyskani,
@@ -59,7 +61,7 @@ INPUT_TYPE_BLAST6 = "blast6"
 INPUT_TYPE_ANI_TABLE = "ani-table"
 INPUT_TYPE_MMSEQS = "mmseqs"
 
-ANI_BACKENDS = ["pyskani", "pyfastani", "blastn", "mmseqs", "kmer"]
+ANI_BACKENDS = ["pyskani", "pyfastani", "blastn", "mmseqs", "linclust", "kmer"]
 CLUSTERING_METHODS = ["centroid", "connected-components", "leiden"]
 OUTPUT_FORMATS = ["tsv", "csv", "parquet", "jsonl"]
 SIMILARITY_MEASURES = sorted(SIMILARITY_COLUMNS.keys())
@@ -142,6 +144,17 @@ PRESETS: dict[str, dict[str, object]] = {
         "min_target_coverage": 85.0,
         "mmseqs_sensitivity": 7.5,
     },
+    "linclust": {
+        # High-identity representative clustering for assembly post-processing.
+        "ani_backend": "mmseqs",
+        "clustering_method": "centroid",
+        "similarity_measure": "identity",
+        "min_identity": 99.0,
+        "min_target_coverage": 99.0,
+        "min_query_coverage": 0.0,
+        "min_alignment_fraction": 0.0,
+        "mmseqs_sensitivity": 7.5,
+    },
     "kmer-fast": {
         # Kmer-db 2 style (inspired...): approximate k-mer overlap only, no alignment.
         # Fast for very large datasets or as a preliminary screen.
@@ -202,6 +215,9 @@ _PRESET_DESCRIPTIONS = {
     ),
     "mmseqs-cluster": (
         "MMseqs2 easy-cluster-style (mmseqs backend, 95% ANI, 85% AF)"
+    ),
+    "linclust": (
+        "High-identity representative clustering (mmseqs backend, 99% ANI, 99% AF)"
     ),
     "kmer-fast": (
         "Kmer-db 2-style (k-mer overlap only, fast approximate, 90% identity)"
@@ -296,7 +312,7 @@ def load_edges_from_input(
         input_path: Path to input FASTA or pre-computed table.
         input_type: One of 'fasta', 'blast6', 'ani-table', 'mmseqs'.
         ani_backend: Backend for on-the-fly computation ('pyskani',
-            'blastn', 'mmseqs', 'kmer').
+            'blastn', 'mmseqs', 'kmer', "linclust").
         similarity_measure: Similarity metric selected by CLI.
         min_identity: Similarity threshold used for filtering.
         threads: Number of threads.
@@ -390,6 +406,36 @@ def load_edges_from_input(
         raise click.ClickException(f"Unknown input type: {input_type}")
 
 
+def assignments_to_star_edges(assignments: pl.DataFrame) -> pl.DataFrame:
+    """Convert cluster assignments into a lightweight representative edge table.
+
+    Our "Linclust" backend does not compute all-vs-all pairwise alignments, but directly sources the representative sequences, so this
+    synthetic table keeps downstream `--edges-output` behaviour alive
+    without pretending the backend produced a dense similarity matrix.
+    """
+    if assignments.is_empty():
+        return empty_edge_frame()
+
+    rows: list[dict[str, object]] = []
+    for row in assignments.iter_rows(named=True):
+        if row.get("is_representative"):
+            continue
+        rows.append(
+            {
+                "query_id": row["seq_id"],
+                "target_id": row["representative_id"],
+                "identity": row.get("identity_to_representative", 99.0),
+                "query_coverage": row.get("coverage_to_representative", 99.0),
+                "target_coverage": row.get("coverage_to_representative", 99.0),
+                "num_alignments": 1,
+            }
+        )
+
+    if not rows:
+        return empty_edge_frame()
+    return pl.DataFrame(rows).select(EDGE_COLUMNS)
+
+
 def load_seq_lengths(
     input_path: Path,
     input_type: str,
@@ -445,7 +491,6 @@ def write_output(
 
 #  CLI command 
 
-
 @click.command(
     short_help="Cluster sequences by ANI/AAI (centroid, connected-components, leiden)",
     epilog=COMMAND_EPILOG,
@@ -497,6 +542,7 @@ def write_output(
         "'pyskani' is fast and suitable for most use cases. "
         "'blastn' uses NCBI BLAST (requires blastn on PATH). "
         "'mmseqs' uses MMseqs2 easy-search (requires mmseqs on PATH). "
+        "'linclust' runs MMseqs2 easy-linclust directly and returns clustered representatives. "
         "'kmer' uses k-mer overlap coefficient (fast, approximate)."
     ),
 )
@@ -718,6 +764,15 @@ def write_output(
     show_default=True,
     hidden=True,
 )
+@click.option(
+    "--temp-dir",
+    type=click.Path(dir_okay=True, writable=True, path_type=Path),
+    default=None,
+    help=(
+        "Optional temporary directory for intermediate files. "
+        "NOT USED HERE (YET)"
+    ),
+)
 def cluster(
     input_path,
     preset_name,
@@ -748,6 +803,7 @@ def cluster(
     repeat_max_fraction,
     log_file,
     log_level,
+    temp_dir=None,
 ):
     """Cluster sequences by pairwise ANI/AAI identity and coverage.
 
@@ -844,12 +900,65 @@ def cluster(
         )
     log_start_info(logger, locals())
 
-    # Resolve output paths
     output_path = Path(output_path)
     ext_map = {"tsv": ".tsv", "csv": ".csv", "parquet": ".parquet", "jsonl": ".jsonl"}
     ext = ext_map.get(output_format, ".tsv")
     if summary_output is None:
         summary_output = output_path.with_suffix(f".summary{ext}")
+
+    if ani_backend == "linclust":
+        if input_type != INPUT_TYPE_FASTA:
+            raise click.ClickException(
+                "linclust backend currently requires FASTA input"
+            )
+
+        logger.info("Step 1: Clustering with MMseqs2 easy-linclust")
+        assignments = compute_ani_linclust(
+            input_path,
+            threads=threads,
+            min_identity=min_identity,
+            min_target_coverage=min_target_coverage,
+            min_query_coverage=min_query_coverage,
+            cluster_mode=2,
+            logger=logger,
+        )
+
+        if assignments.is_empty():
+            logger.warning("No clusters produced")
+            assignments = empty_cluster_frame()
+
+        if edges_output:
+            write_output(
+                assignments_to_star_edges(assignments),
+                Path(edges_output),
+                output_format,
+                logger,
+                label="filtered edges",
+            )
+
+        write_output(
+            assignments, output_path, output_format, logger, label="cluster assignments"
+        )
+
+        summary = summarise_clusters(assignments)
+        write_output(
+            summary, summary_output, output_format, logger, label="cluster summary"
+        )
+
+        if representatives_fasta:
+            write_representative_fasta(
+                assignments=assignments,
+                input_path=input_path,
+                input_type=INPUT_TYPE_FASTA,
+                fasta_path=fasta_lengths,
+                output_fasta=representatives_fasta,
+                logger=logger,
+                seq_df_cache=load_sequences(str(input_path)),
+            )
+
+        elapsed = perf_counter() - t0
+        logger.debug("Cluster command completed in %.1f seconds", elapsed)
+        return
 
     # Step 1: Load or compute pairwise edges
     logger.info("Step 1: Loading/computing pairwise edges")
