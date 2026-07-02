@@ -27,7 +27,7 @@ class RNAAnnotationConfig(BaseConfig):
         memory: str,
         override_parameters: dict[str, object] = {},
         skip_steps: list[str] = [],
-        rnamotif_tool=None,
+        rnamotif_tool="lightmotif",
         secondary_structure_tool: str = "RNAfold",
         ires_tool: str = "IRESfinder",
         trna_tool: str = "tRNAscan-SE",
@@ -37,6 +37,8 @@ class RNAAnnotationConfig(BaseConfig):
         motif_db: str = "jaspar_rna",
         resolve_mode: str = "simple",
         min_overlap_positions: int = 10,
+        temp_dir: Union[Path, str, None] = None,
+        keep_tmp: bool = False,
         **kwargs,  # TODO: decide if this is really needed.
     ):
         # Extract BaseConfig parameters
@@ -47,6 +49,8 @@ class RNAAnnotationConfig(BaseConfig):
             "log_file": log_file,
             "log_level": log_level,
             "memory": memory,
+            "temp_dir": temp_dir,
+            "keep_tmp": keep_tmp,
         }
         super().__init__(**base_config_params)
 
@@ -151,9 +155,9 @@ class RNAAnnotationConfig(BaseConfig):
 )
 @click.option(
     "--rnamotif-tool",
-    default="RNAMotif",
-    type=click.Choice(["RNAMotif", "aragorn"], case_sensitive=False),
-    help="Tool for RNAmotif identification",
+    default="lightmotif",
+    type=click.Choice(["lightmotif", "pymeme"], case_sensitive=False),
+    help="Tool for RNAmotif identification (PSSM search). Not fully supported yet.",
 )
 @click.option(
     "--cm-db",
@@ -303,6 +307,15 @@ def process_RNA_annotations(config):
             config.logger.info(f"Skipping step: {step_name}")
 
     combine_results(config)
+
+    if not config.keep_tmp and hasattr(config, "temp_dir") and config.temp_dir.exists():
+        import shutil
+
+        try:
+            shutil.rmtree(config.temp_dir)
+            config.logger.info(f"Cleaned up temporary directory: {config.temp_dir}")
+        except Exception as e:
+            config.logger.warning(f"Could not remove temp_dir: {e}")
 
     config.logger.info("RNA annotation process completed successfully")
 
@@ -968,7 +981,7 @@ def process_ribozymes_data(config, ribozymes_file):
     """
     import polars as pl
 
-    from rolypoly.utils.various import read_fwf
+    # from rolypoly.utils.various import read_fwf
 
     if (
         not os.path.exists(ribozymes_file)
@@ -992,68 +1005,126 @@ def process_ribozymes_data(config, ribozymes_file):
             )
             return pl.DataFrame()
 
-        fwf = "------------------- --------- -------------------- --------- --- -------- -------- -------- -------- ------ ----- ---- ---- ----- ------ --------- --- ---------------------"
-        # Convert fixed-width format to list of (start, width) tuples
-        widths = []
-        start = 0
-        for segment in fwf.split(" "):
-            width = len(segment)
-            widths.append((start, width + 1))
-            start += width + 1  # +1 for the space between columns
+        # fwf = "------------------- --------- -------------------- --------- --- -------- -------- -------- -------- ------ ----- ---- ---- ----- ------ --------- --- ---------------------"
+        # # Convert fixed-width format to list of (start, width) tuples
+        # widths = []
+        # start = 0
+        # for segment in fwf.split(" "):
+        #     width = len(segment)
+        #     widths.append((start, width + 1))
+        #     start += width + 1  # +1 for the space between columns
 
-        columns = [
-            "profile_name",
-            "rfam_id",
-            "sequence_ID",
-            "qaccession",
-            "mdl",
-            "mdl_from",
-            "mdl_to",
-            "seq_from",
-            "seq_to",
-            "strand",
-            "trunc",
-            "pass",
-            "gc",
-            "bias",
-            "score",
-            "evalue",
-            "inc",
-            "ribozyme_description",
-        ]
-        dtypes = [
-            pl.Utf8,
-            pl.Utf8,
-            pl.Utf8,
-            pl.Utf8,
-            pl.Utf8,
-            pl.Int64,
-            pl.Int64,
-            pl.Int64,
-            pl.Int64,
-            pl.Utf8,
-            pl.Utf8,
-            pl.Utf8,
-            pl.Utf8,
-            pl.Utf8,
-            pl.Float64,
-            pl.Float64,
-            pl.Utf8,
-            pl.Utf8,
-        ]
+        # columns = [
+        #     "profile_name",
+        #     "rfam_id",
+        #     "sequence_ID",
+        #     "qaccession",
+        #     "mdl",
+        #     "mdl_from",
+        #     "mdl_to",
+        #     "seq_from",
+        #     "seq_to",
+        #     "strand",
+        #     "trunc",
+        #     "pass",
+        #     "gc",
+        #     "bias",
+        #     "score",
+        #     "evalue",
+        #     "inc",
+        #     "ribozyme_description",
+        # ]
+        # dtypes = [
+        #     pl.Utf8,
+        #     pl.Utf8,
+        #     pl.Utf8,
+        #     pl.Utf8,
+        #     pl.Utf8,
+        #     pl.Int64,
+        #     pl.Int64,
+        #     pl.Int64,
+        #     pl.Int64,
+        #     pl.Utf8,
+        #     pl.Utf8,
+        #     pl.Utf8,
+        #     pl.Utf8,
+        #     pl.Utf8,
+        #     pl.Float64,
+        #     pl.Float64,
+        #     pl.Utf8,
+        #     pl.Utf8,
+        # ]
 
-        raw_data = read_fwf(
-            ribozymes_file,
-            widths=widths,
-            columns=columns,
-            dtypes=dtypes,
-            comment_prefix="#",
-        )
+        # raw_data = read_fwf(
+        #     ribozymes_file,
+        #     widths=widths,
+        #     columns=columns,
+        #     dtypes=dtypes,
+        #     comment_prefix="#",
+        # )
+        rows = []
+        with open(ribozymes_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+
+                # cmscan --tblout uses whitespace-delimited fields; description is the trailing remainder.
+                parts = line.split(maxsplit=17)
+                if len(parts) < 18:
+                    continue
+
+                rows.append(
+                    {
+                        "profile_name": parts[0],
+                        "rfam_id": parts[1],
+                        "sequence_ID": parts[2],
+                        "qaccession": parts[3],
+                        "mdl": parts[4],
+                        "mdl_from": parts[5],
+                        "mdl_to": parts[6],
+                        "seq_from": parts[7],
+                        "seq_to": parts[8],
+                        "strand": parts[9],
+                        "trunc": parts[10],
+                        "pass": parts[11],
+                        "gc": parts[12],
+                        "bias": parts[13],
+                        "score": parts[14],
+                        "evalue": parts[15],
+                        "inc": parts[16],
+                        "ribozyme_description": parts[17],
+                    }
+                )
+
+        raw_data = pl.DataFrame(rows) if rows else pl.DataFrame()
+
         if raw_data.is_empty():
             config.logger.warning(
                 f"No valid data found in ribozymes file {ribozymes_file}"
             )
             return pl.DataFrame()
+
+        # Prefer Polars-native nullable casting over custom per-field parsers.
+        raw_data = raw_data.with_columns(
+            pl.col("mdl_from").cast(pl.Int64, strict=False),
+            pl.col("mdl_to").cast(pl.Int64, strict=False),
+            pl.col("seq_from").cast(pl.Int64, strict=False),
+            pl.col("seq_to").cast(pl.Int64, strict=False),
+            pl.col("gc").cast(pl.Float64, strict=False),
+            pl.col("bias").cast(pl.Float64, strict=False),
+            pl.col("score").cast(pl.Float64, strict=False),
+            pl.col("evalue").cast(pl.Float64, strict=False),
+        )
+
+        malformed_coord_rows = raw_data.filter(
+            pl.col("seq_from").is_null() | pl.col("seq_to").is_null()
+        ).height
+        if malformed_coord_rows > 0:
+            config.logger.warning(
+                "Detected %d cmscan rows with malformed seq_from/seq_to values",
+                malformed_coord_rows,
+            )
 
         config.logger.debug(
             f"Raw ribozymes data from {ribozymes_file}: {raw_data}"
@@ -1074,6 +1145,31 @@ def process_ribozymes_data(config, ribozymes_file):
                 "ribozyme_description",
             ],
         )
+
+        # cmscan tblout reports seq_from/seq_to in hit orientation, so
+        # reverse-strand hits may have start > end. Normalize coordinates
+        # for interval operations that require start <= end.
+        data = data.with_columns(
+            pl.col("start").alias("_start_raw"),
+            pl.col("end").alias("_end_raw"),
+        ).with_columns(
+            pl.min_horizontal(["_start_raw", "_end_raw"]).alias("start"),
+            pl.max_horizontal(["_start_raw", "_end_raw"]).alias("end"),
+        ).drop(["_start_raw", "_end_raw"])
+
+        before_rows = data.height
+        data = data.filter(
+            pl.col("start").is_not_null()
+            & pl.col("end").is_not_null()
+            & (pl.col("end") >= pl.col("start"))
+        )
+        dropped_rows = before_rows - data.height
+        if dropped_rows > 0:
+            config.logger.warning(
+                "Dropped %d ribozyme hits with invalid coordinates during normalization",
+                dropped_rows,
+            )
+
         return data
     except Exception as e:
         config.logger.error(f"Error processing ribozymes data: {str(e)}")
@@ -1350,10 +1446,8 @@ def resolve_rna_element_overlaps(config):
         config.logger.info(f"Resolving overlaps in {element_file.name}")
 
         try:
-            # Read element hits
-            element_df = pl.read_csv(
-                element_file, separator="\t", comment_prefix="#"
-            )
+            # Parse and normalize cmscan --tblout first.
+            element_df = process_ribozymes_data(config, element_file)
 
             if element_df.height == 0:
                 config.logger.info(f"No hits in {element_file.name}, skipping")
@@ -1361,19 +1455,21 @@ def resolve_rna_element_overlaps(config):
 
             # Resolve overlaps based on user-specified mode
             if config.resolve_mode == "simple":
-                # Use 'simple' mode for RNA elements (no adaptive overlap for nucleotides)
+                # Use one_per_range: keep the highest-scoring hit per overlapping region.
+                # NOTE: do NOT also pass drop_contained=True here — consolidate_hits checks
+                # drop_contained first and returns early, preventing one_per_range from running.
                 resolved_df = consolidate_hits(
                     input=element_df,
-                    column_specs="target_name,query_name",
-                    rank_columns="-score,+e_value",
+                    column_specs="sequence_id,profile_name",
+                    rank_columns="-score,+evalue",
                     one_per_query=False,
                     one_per_range=True,
                     min_overlap_positions=config.min_overlap_positions,
                     merge=False,
                     split=False,
-                    drop_contained=True,
+                    drop_contained=False,
                     alphabet="nucl",
-                    adaptive_overlap=False,  # No polyprotein detection for RNA
+                    adaptive_overlap=False,
                 )
             elif config.resolve_mode != "none":
                 # Use specified resolve mode
@@ -1388,8 +1484,8 @@ def resolve_rna_element_overlaps(config):
                 resolved_df = consolidate_hits(
                     input=element_df,
                     min_overlap_positions=config.min_overlap_positions,
-                    column_specs="target_name,query_name",
-                    rank_columns="-score,+e_value",
+                    column_specs="sequence_id,type",
+                    rank_columns="-score,+evalue",
                     alphabet="nucl",
                     **resolve_mode_dict,
                 )
@@ -1427,10 +1523,23 @@ def combine_results(config):
     all_results = []
 
     try:
-        # Process ribozymes
+        # Process ribozymes - prefer the overlap-resolved table (written by
+        # resolve_rna_element_overlaps) over the raw cmscan tblout, since the
+        # raw file still contains overlapping/redundant hits.
         if "search_ribozymes" not in config.skip_steps:
+            ribozymes_resolved_file = config.output_dir / "ribozymes_resolved.out"
             ribozymes_file = config.output_dir / "ribozymes.out"
             if (
+                os.path.exists(ribozymes_resolved_file)
+                and os.path.getsize(ribozymes_resolved_file) > 0
+            ):
+                ribozymes_data = pl.read_csv(ribozymes_resolved_file, separator="\t")
+                if not ribozymes_data.is_empty():
+                    all_results.append(("ribozyme", ribozymes_data))
+                    config.logger.debug(
+                        f"Added resolved ribozyme data:\n{ribozymes_data.head()}"
+                    )
+            elif (
                 os.path.exists(ribozymes_file)
                 and os.path.getsize(ribozymes_file) > 0
             ):

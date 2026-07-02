@@ -98,14 +98,15 @@ class AnnotationConfig(BaseConfig):
 @click.option(
     "--trna-tool",
     default="tRNAscan-SE",
-    type=click.Choice(["tRNAscan-SE", "RNAmotif"]),
-    help="Tool for tRNA identification",
+    type=click.Choice(["tRNAscan-SE", "ARAGORN"]),
+    help="Tool for tRNA identification. ARAGORN NOT FULLY SUPPORTED YET",
 )
 @click.option(
     "--rnamotif-tool",
+    hidden=True,
     default="lightmotif",
-    type=click.Choice(["lightmotif", "aragorn"]),
-    help="Tool for RNA sequence motif identification",
+    type=click.Choice(["lightmotif", "pymeme"], case_sensitive=False),
+    help="Tool for RNA sequence motif identification (PSSM search). Not fully supported yet.",
 )
 @click.option(
     "--gene-prediction-tool",
@@ -122,15 +123,16 @@ class AnnotationConfig(BaseConfig):
         [
             "Pfam",
             "Vfam",
-            "InterPro",
-            "Phrogs",
+            # "InterPro",
+            # "Phrogs",
             "RVMT",
             "genomad",
             "all",
             "custom",
         ]
     ),
-    help="Database for domain detection (NOTE: currently packaged with rolypoly data: Pfam, genomad, RVMT)",
+    multiple=True,
+    help="Database for domain detection",
 )
 @click.option(
     "--custom-domain-db",
@@ -158,6 +160,18 @@ class AnnotationConfig(BaseConfig):
     ),
     help="Tool/command for protein domain detection. hmmer commands are via pyhmmer bindings. ",
 )
+@click.option(
+    "--temp-dir",
+    default=None,
+    type=click.Path(),
+    help="Base temporary directory for intermediate files. If not specified, a timestamped temp directory is created inside each sub-step's output directory.",
+)
+@click.option(
+    "--keep-tmp",
+    is_flag=True,
+    default=False,
+    help="Keep temporary files instead of removing them after each sub-step completes.",
+)
 def annotate(
     input,
     output,
@@ -176,6 +190,8 @@ def annotate(
     min_orf_length,
     log_level,
     search_tool,
+    temp_dir=None,
+    keep_tmp=False,
 ):
     """Run combined RNA + protein annotation on nucleotide viral sequences.
 
@@ -195,6 +211,7 @@ def annotate(
     )
     skip_steps_list = skip_steps.split(",") if skip_steps else []
     output_path = Path(output).resolve()
+    temp_dir_path = Path(temp_dir).resolve() if temp_dir else None
 
     # Create main config first
     config = AnnotationConfig(
@@ -222,6 +239,8 @@ def annotate(
         trna_tool=trna_tool,
         rnamotif_tool=rnamotif_tool,
         overwrite=True,  # Prevent directory checks
+        temp_dir=str(temp_dir_path / "rna_annotation") if temp_dir_path else None,
+        keep_tmp=keep_tmp,
     )
 
     # Create protein config
@@ -240,6 +259,8 @@ def annotate(
         min_orf_length=min_orf_length,
         genetic_code=11,  # Default genetic code
         overwrite=True,  # Prevent directory checks
+        temp_dir=str(temp_dir_path / "protein_annotation") if temp_dir_path else None,
+        keep_tmp=keep_tmp,
     )
 
     # Attach sub-configs to main config
@@ -256,7 +277,6 @@ def annotate(
         else:
             tools.append(config.protein_config.search_tool)
 
-        tools.append(str(config.protein_config.min_orf_length))
         tools.append(config.protein_config.domain_db)
     else:
         config.logger.info("Skipping protein annotation")

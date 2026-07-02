@@ -62,7 +62,11 @@ cover/
 testing_folder/*
 !testing_folder/inputs/
 !testing_folder/inputs/**
+!testing_folder/bbtools_behavior_tests/
+testing_folder/bbtools_behavior_tests/*
+!testing_folder/bbtools_behavior_tests/*.sh
 !testing_folder/pytest.log
+ref/
 .cache/
 .ruff_cache/
 .tox/
@@ -118,7 +122,7 @@ log.txt
 *_logfile.txt
 **/tmp/
 **/tmp**
-
+testtt1/
 # PyBuilder outputs
 .pybuilder/ 
 target/
@@ -137,3 +141,10 @@ rolypoly_data_slim_*.tar.gz
 benchmarking_outputs/*
 benchmarking_logs/
 dev_only/
+
+#llms
+.github/agents
+.github/hooks
+.github/*.md
+AGENTS.md
+scripts/*

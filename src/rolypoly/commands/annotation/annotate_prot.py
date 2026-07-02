@@ -91,6 +91,8 @@ class ProteinAnnotationConfig(BaseConfig):
         resolve_mode: str = "simple",
         min_overlap_positions: int = 10,
         include_alignment_strings: bool = True,
+        temp_dir: Union[Path, str, None] = None,
+        keep_tmp: bool = False,
         **kwargs,
     ):
         # Extract BaseConfig parameters
@@ -101,6 +103,8 @@ class ProteinAnnotationConfig(BaseConfig):
             "log_file": log_file,
             "log_level": log_level,
             "memory": memory,
+            "temp_dir": temp_dir,
+            "keep_tmp": keep_tmp,
         }
         super().__init__(**base_config_params)
 
@@ -1223,7 +1227,7 @@ def combine_results(config):
             config.logger.warning(f"Could not remove tmp directory: {e}")
 
     # Clean up rolypoly temp_dir (created by BaseConfig)
-    if hasattr(config, "temp_dir") and config.temp_dir.exists():
+    if not config.keep_tmp and hasattr(config, "temp_dir") and config.temp_dir.exists():
         try:
             shutil.rmtree(config.temp_dir)
             config.logger.info(
