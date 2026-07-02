@@ -33,6 +33,7 @@ class FilterContigsConfig(BaseConfig):
             memory=kwargs.get("memory", "6gb"),
             config_file=kwargs.get("config_file", None),
             overwrite=kwargs.get("overwrite", False),
+            temp_dir=kwargs.get("temp_dir", None),
             log_level=kwargs.get("log_level", "INFO"),
         )
 
@@ -147,6 +148,11 @@ class FilterContigsConfig(BaseConfig):
     hidden=True,
     help="Log level. Options: debug, info, warning, error, critical",
 )
+@click.option(
+    "--temp-dir",
+    default=None,
+    help="Optional base directory for temporary files.",
+)
 def filter_contigs(
     input,
     known_dna,
@@ -165,6 +171,7 @@ def filter_contigs(
     diamond_args,
     overwrite,
     log_level,
+    temp_dir,
 ):
     """
     Filter contigs against user-supplied host/contamination references.
@@ -204,6 +211,7 @@ def filter_contigs(
         filter1_aa=filter1_aa,
         filter2_aa=filter2_aa,
         diamond_args=diamond_args,
+        temp_dir=Path(temp_dir).absolute().resolve() if temp_dir else None,
     )
 
     log_start_info(config.logger, config.__dict__)
@@ -262,6 +270,7 @@ def filter_contigs_nuc(config: FilterContigsConfig):
     ensure_faidx(str(config.host))
 
     # Create folders for MMseqs2 to use
+    
     tmpdir = config.temp_dir / "tmp_nuc"
     resdb = config.temp_dir / "filter_assembly_mmdb"
     tmpdir.mkdir(parents=True, exist_ok=True)
