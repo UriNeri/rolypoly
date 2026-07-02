@@ -107,6 +107,7 @@ def mask_dna(
         tmpdir = output_file.parent / "tmp_mask_dna"
     tmpdir = Path(tmpdir).absolute().resolve()
     Path.mkdir(Path(tmpdir), exist_ok=True)
+    sam_output = Path(tmpdir) / "tmp_mapped.sam"
 
     if aligner == "minimap2":
         logger.info("Using minimap2 (low memory mode)")
@@ -140,7 +141,6 @@ def mask_dna(
         logger.info(
             f"Masking completed. Output saved to {tmpdir}/tmp_masked.fasta"
         )
-        shutil.rmtree(f"{tmpdir}", ignore_errors=True)
     elif aligner == "bowtie1":
         import subprocess as sp
 
@@ -173,35 +173,57 @@ def mask_dna(
         # v=1
         v = 3 if logger.level == "DEBUG" or logger.level == 10 else 1
         # v=3
-        run_command_comp(
-            assign_operator=" ",
-            base_cmd="mmseqs easy-linsearch",
-            check_output=True,
-            output_file=f"{tmpdir}/tmp_mapped.sam",
-            positional_args=[
-                str(reference),
-                str(input_file),
-                f"{tmpdir}/tmp_mapped.sam",
-                f"{tmpdir}",
-            ],
-            positional_args_location="start",
-            param_sep=" ",
-            params={
-                "min-seq-id": str(0.7),
-                "min-aln-len": str(80),
-                # "subject-cover": "40",
-                "threads": threads,
-                "format-mode": 1,
-                # "headers-split-mode": "1",
-                # "alt-ali":123123123,
-                "search-type": "3",
-                "v": v,
-                "max-accept": "1231",
-                # "max-seqs": "1231",
-                # "dbtype": 2,
-                "a": "",
-            },
-        )
+        mmseqs_ok = True
+        try:
+            run_command_comp(
+                assign_operator=" ",
+                base_cmd="mmseqs easy-linsearch",
+                check_output=True,
+                output_file=str(sam_output),
+                positional_args=[
+                    str(reference),
+                    str(input_file),
+                    str(sam_output),
+                    f"{tmpdir}",
+                ],
+                positional_args_location="start",
+                param_sep=" ",
+                params={
+                    "min-seq-id": str(0.7),
+                    "min-aln-len": str(80),
+                    # "subject-cover": "40",
+                    "threads": threads,
+                    "format-mode": 1,
+                    # "headers-split-mode": "1",
+                    # "alt-ali":123123123,
+                    "search-type": "3",
+                    "v": v,
+                    "max-accept": "1231",
+                    # "max-seqs": "1231",
+                    # "dbtype": 2,
+                    "a": "",
+                },
+            )
+        except Exception as e:
+            mmseqs_ok = False
+            logger.warning("mmseqs2 mapping failed: %s", str(e))
+
+        if not mmseqs_ok or (not sam_output.exists()) or sam_output.stat().st_size == 0:
+            logger.warning(
+                "mmseqs2 did not produce a SAM file, falling back to bbmap for masking input"
+            )
+            from bbmapy import bbmap
+
+            bbmap(
+                ref=reference,
+                in_file=input_file,
+                outm=str(sam_output),
+                minid=0.7,
+                overwrite="true",
+                threads=threads,
+                Xmx=memory,
+                simd="true",
+            )
     elif aligner == "diamond":
         logger.info(
             "Note! using diamond blastx - NOTE - SWITCHING TO A PROTEIN SEQ instead of default REFERENCE"
@@ -244,9 +266,9 @@ def mask_dna(
         from bbmapy import bbmap
 
         bbmap(
-            ref=input_file,
-            in_file=reference,
-            outm=f"{tmpdir}/tmp_mapped.sam",
+            ref=reference,
+            in_file=input_file,
+            outm=str(sam_output),
             minid=0.7,
             overwrite="true",
             threads=threads,
@@ -258,17 +280,22 @@ def mask_dna(
     logger.info("beginning bbmask (masking + entropy) step")
 
     if needs_bbmask_only:
+        if not sam_output.exists() or sam_output.stat().st_size == 0:
+            raise click.ClickException(
+                f"Expected SAM file for bbmask was not produced: {sam_output}"
+            )
+
         # Mask using the sam files, for aligners that need it...
         # approximate to bbmask.sh in=input.fasta out=output.fasta sam=mapped.sam overwrite=true threads=8 Xmx=16g
         logger.debug(
-            f"equivalent to bbmask.sh in={input_file} out={tmpdir}/tmp_masked.fasta sam={tmpdir}/tmp_mapped.sam overwrite=true threads={threads} Xmx={memory}"
+            f"equivalent to bbmask.sh in={input_file} out={tmpdir}/tmp_masked.fasta sam={sam_output} overwrite=true threads={threads} Xmx={memory}"
         )
         from bbmapy import bbmask
 
         bbmask(
             in_file=input_file,
             out=f"{tmpdir}/tmp_masked.fasta",
-            sam=f"{tmpdir}/tmp_mapped.sam",
+            sam=str(sam_output),
             overwrite="true",
             threads=threads,
             Xmx=memory,
