@@ -5,7 +5,8 @@ import rich_click as click
 
 global tools
 tools = []
-
+global matched_tabb
+matched_tabb = []
 
 @click.command(name="virus-mapping")
 @click.option("-t", "--threads", default=1, help="Threads (all) [1]")
@@ -21,6 +22,7 @@ tools = []
 )
 @click.option(
     "--db",
+    "--database",
     type=click.Choice(["RVMT", "NCBI_Ribovirus", "all", "other"]),
     default="all",
     help="""Select the database to search against.""",
@@ -45,8 +47,31 @@ tools = []
     required=True,
     help="Input path to nucl fasta file OR preformatted mmseqs db",
 )
+@click.option(
+    "-mo",
+    "--matched-output",
+    default=lambda: f"{os.getcwd()}/matched_virus_contigs.fasta",
+    help="Output path for matched virus contigs. set to 'no' to skip writing matched contigs",
+)
+@click.option(
+    "-e",
+    "--mmseqs-evalue",
+    default=1e-5,
+    help="E-value threshold for MMseqs2 search)",
+)
+@click.option(
+    "-id",
+    "--mmseqs-identity",
+    default=0.7,
+    help="minimum Identity threshold for MMseqs2 search)",
+)
+@click.option(
+    "--temp-dir",
+    default=None,
+    help="Optional temp directory for mmseqs2 to use",
+)
 def virus_mapping(
-    threads, memory, output, keep_tmp, db, db_path, log_file, log_level, input
+    threads, memory, output, keep_tmp, db, db_path, log_file, log_level, input, matched_output, mmseqs_evalue, mmseqs_identity, temp_dir
 ):
     """Search nucleotide reads/contigs against virus reference databases.
 
@@ -58,6 +83,7 @@ def virus_mapping(
     import shutil
     import subprocess
 
+    from rolypoly.utils.bio.sequences import filter_fasta_by_headers
     from rolypoly.utils.logging.citation_reminder import remind_citations
     from rolypoly.utils.logging.loggit import log_start_info, setup_logging
 
@@ -80,6 +106,7 @@ def virus_mapping(
             "keep_tmp": keep_tmp,
             "log_file": log_file,
             "log_level": log_level,
+            "temp_dir": temp_dir,
         },
     )
     logger.info(f"Input : {input}")
@@ -102,17 +129,18 @@ def virus_mapping(
     output_format = output.suffix
     logger.info(f"Started virus mapping for: {input}")
 
-    # TODO: functionalize / use wrappers for mmseqs2.
-
     # Create folders for MMseqs2 to use
-    tmpdir = output_path / "tmp"
-    os.makedirs(tmpdir, exist_ok=True)
+    if temp_dir:
+        tmpdir = pt(temp_dir).absolute().resolve()
+        os.makedirs(tmpdir, exist_ok=True)
+    else:
+        tmpdir = output_path / "tmp"
+        os.makedirs(tmpdir, exist_ok=True)
     res_path = tmpdir / "results_virus_mmdb/"
     shutil.rmtree(res_path, ignore_errors=True)
     os.makedirs(res_path, exist_ok=True)
 
-    # if the input is fasta Convert the input  into an mmseqs DB
-    if pt(input).suffix in [
+    seq_input_suffixes = [
         ".faa",
         ".fasta",
         ".fas",
@@ -127,7 +155,11 @@ def virus_mapping(
         ".fa.gz",
         ".fas.gz",
         ".faa.gz",
-    ]:
+    ]
+    input_is_sequence_file = str(input).endswith(tuple(seq_input_suffixes))
+
+    # if the input is fasta/fastq convert the input into an mmseqs DB
+    if input_is_sequence_file:
         logger.info("Converting input to mmseqs DB")
         tmp = pt(tmpdir) / "pl_sv_contig_db"
         os.makedirs(tmp, exist_ok=True)
@@ -138,11 +170,11 @@ def virus_mapping(
         input = (
             tmp / "mmdb"
         )  # Ensure the path is updated correctly after creation
-
+    db = db.lower()  # Normalize db_name to lowercase for comparison
     DB_PATHS = {
-        "NCBI_Ribovirus": datadir
+        "ncbi_ribovirus": datadir
         / "reference_seqs/ncbi_ribovirus/mmseqs/ncbi_ribovirus_cleaned",
-        "RVMT": datadir / "reference_seqs/RVMT/mmseqs/RVMT_cleaned",
+        "rvmt": datadir / "reference_seqs/RVMT/mmseqs/RVMT_cleaned",
     }
 
     # Determine the databases to use
@@ -177,7 +209,8 @@ def virus_mapping(
         # Perform the MMseqs2 search
         mmseqs_search_cmd = (
             f"mmseqs search {input} {db_path} {this_resdb}/res {tmpdir} "
-            f"--min-seq-id 0.5 --threads {threads} -a --search-type 3 -s 8 --strand 2"
+            f"--min-seq-id {mmseqs_identity} --threads {threads} -a --search-type 3 -s 8 --strand 2"
+            f" --max-seqs 10000 -e {mmseqs_evalue} --cov-mode 0 --min-aln-len 50"
         )
         subprocess.run(mmseqs_search_cmd, shell=True, check=True)
 
@@ -201,7 +234,81 @@ def virus_mapping(
                 f"{output.with_suffix('')}_vs_{db_name}.html --format-mode 3 --search-type 3"
             )
             subprocess.run(mmseqs_convertalis_cmd, shell=True, check=True)
+        matched_tabb.append(f"{output.with_suffix('')}_vs_{db_name}.{output_format.lstrip('.')}")
+        
+    if matched_output != "no":
+        logger.info(f"Writing matched virus contigs to {matched_output}")
+        matched_output = pt(matched_output).absolute().resolve()
+        matched_output.parent.mkdir(parents=True, exist_ok=True)
 
+        if input_is_sequence_file:
+            # Preferred path: get matched query headers then reuse shared FASTA filter util.
+            matched_ids = set()
+            for db_name, db_path in db_paths.items():
+                this_resdb = res_path / db_name
+                header_tsv = tmpdir / f"matched_query_headers_{db_name}.tsv"
+                mmseqs_headers_cmd = (
+                    f"mmseqs convertalis {input} {db_path} {this_resdb}/res "
+                    f"{header_tsv} --format-output qheader"
+                )
+                subprocess.run(mmseqs_headers_cmd, shell=True, check=True)
+
+                if header_tsv.exists():
+                    with open(header_tsv, "r") as fin:
+                        for line in fin:
+                            qheader = line.strip().split("\t")[0]
+                            if qheader:
+                                matched_ids.add(qheader.split()[0])
+
+            filter_fasta_by_headers(
+                fasta_file=str(og_input),
+                headers=list(matched_ids),
+                output_file=str(matched_output),
+            )
+            logger.info(
+                f"Wrote {len(matched_ids)} unique matched virus contigs to {matched_output}"
+            )
+        else:
+            logger.warning(
+                "Input appears to be an MMseqs DB; falling back to MMseqs-only matched-output extraction."
+            )
+            matched_fasta_parts = []
+            for db_name in db_paths:
+                this_resdb = res_path / db_name
+                subdb_path = tmpdir / f"matched_contigs_db_{db_name}"
+                part_fasta = tmpdir / f"matched_contigs_{db_name}.fasta"
+
+                mmseqs_extract_cmd = (
+                    f"mmseqs createsubdb {this_resdb}/res {input} {subdb_path}"
+                )
+                subprocess.run(mmseqs_extract_cmd, shell=True, check=True)
+
+                mmseqs_convertdb_cmd = (
+                    f"mmseqs convert2fasta {subdb_path} {part_fasta}"
+                )
+                subprocess.run(mmseqs_convertdb_cmd, shell=True, check=True)
+
+                if part_fasta.exists():
+                    matched_fasta_parts.append(part_fasta)
+
+            seen_headers = set()
+            with open(matched_output, "w") as fout:
+                for fasta_part in matched_fasta_parts:
+                    write_record = False
+                    with open(fasta_part, "r") as fin:
+                        for line in fin:
+                            if line.startswith(">"):
+                                header = line[1:].strip().split()[0]
+                                write_record = header not in seen_headers
+                                if write_record:
+                                    seen_headers.add(header)
+                            if write_record:
+                                fout.write(line)
+
+            logger.info(
+                f"Wrote {len(seen_headers)} unique matched virus contigs to {matched_output}"
+            )
+        
     # Clean up
     # Remove intermediate files
     if not keep_tmp:
@@ -228,7 +335,7 @@ def virus_mapping(
     # subprocess.run(f"bgzip -@{threads} *_virus_mapping_out.tab", shell=True, check=True)
 
     logger.info(f"Finished virus mapping for: {og_input}")
-    logger.info(f"Final output: {output}")
+    logger.info(f"Final output: {matched_tabb}")
     tools.append("mmseqs2")
     # remind_citations(tools)
     if logger.level != 10:  # If not DEBUG level
