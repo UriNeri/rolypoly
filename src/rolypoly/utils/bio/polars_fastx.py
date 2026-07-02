@@ -65,6 +65,15 @@ class SequenceExpr:
 
         return self._expr.map_elements(hash, return_dtype=pl.String)
 
+    def avg_quality(self) -> pl.Expr:
+        """Calculate the mean PHRED quality score for a FASTQ read."""
+        return (
+            self._expr.str.encode("hex")
+            .str.extract_all(r"[0-9a-f]{2}")
+            .list.eval(pl.element().str.to_integer(base=16) - 33)
+            .list.mean()
+        )
+
 
 @pl.api.register_lazyframe_namespace("from_fastx")
 def from_fastx_lazy(input_file: Union[str, Path]) -> pl.LazyFrame:
@@ -454,16 +463,7 @@ def fasta_stats(
                 "Quality scores not found in input file for avg_quality calculation."
             )
         else:
-            # Calculate mean quality score per read from PHRED+33 encoded quality string
-            # Use hex encoding to convert characters to their byte values
-            stats_expr.append(
-                pl.col("quality")
-                .str.encode("hex")
-                .str.extract_all(r"[0-9a-f]{2}")
-                .list.eval(pl.element().str.to_integer(base=16) - 33)
-                .list.mean()
-                .alias("avg_quality")
-            )
+            stats_expr.append(pl.col("quality").seq.avg_quality().alias("avg_quality"))
 
     # if "codon_usage" in selected_fields:
     #     stats_expr.append(pl.col("sequence").seq.codon_usage().alias("codon_usage"))
