@@ -792,7 +792,7 @@ def compute_terminal_repeat_risk_map(
             ) from exc
     if use_dustmasker:
         try:
-            from pydustmasker import (  # type: ignore[import-not-found]
+            from pydustmasker import (  
                 DustMasker,
                 LongdustMasker,
             )
