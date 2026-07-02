@@ -8,10 +8,137 @@ import gzip
 import logging
 import re
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 from rolypoly.utils.logging.loggit import get_logger
 from rolypoly.utils.various import find_files_by_extension, is_gzipped
+
+CASAVA_HEADER_RE = re.compile(
+    r"^(?P<instrument>[^:\s]+):(?P<run_id>[^:\s]+):(?P<flowcell_id>[^:\s]+):"
+    r"(?P<lane>\d+):(?P<tile>\d+):(?P<x_coord>\d+):(?P<y_coord>\d+)"
+    r"(?:\s+(?P<read_num>[12]):(?P<is_filtered>[YN]):(?P<control>\d+):(?P<barcode>[^\s]+))?$"
+)
+SLASH_PAIR_HEADER_RE = re.compile(
+    r"^(?:(?P<accession>[^:\s]+)\s+)?"
+    r"(?P<instrument>[^:\s]+):(?P<run_id>[^:\s]+):(?P<flowcell_id>[^:\s]+):"
+    r"(?P<lane>\d+):(?P<tile>\d+):(?P<x_coord>\d+):(?P<y_coord>\d+)"
+    r"/(?P<read_num>[12])$"
+)
+LEGACY_PAIR_RE = re.compile(r"^(?P<base>.+?)(?:\s|/)(?P<mate>[12])$")
+MATE_SUFFIX_RE = re.compile(r"([_\.-])(R?[12])$")
+READ_EXT_SUFFIX_RE = re.compile(r"\.(?:f(?:ast)?q|fq|fa|fasta|fna)(?:_[A-Za-z0-9]+)?$", re.IGNORECASE)
+
+
+def _append_unique(values: list[str], value: str, limit: int = 5) -> None:
+    #TODO: is this really needed? maybe use set and get first n instead? but then we lose order, which I'm not sure is important. 
+    if value and value not in values and len(values) < limit:
+        values.append(value)
+
+
+def normalize_fastq_sample_name(name: str) -> str:
+    """Strip paired-read and FASTQ-style suffixes from a sample basename."""
+    normalized = str(name)
+    changed = True
+    while changed:
+        changed = False
+        mate_match = MATE_SUFFIX_RE.search(normalized)
+        if mate_match:
+            normalized = normalized[: mate_match.start()]
+            changed = True
+            continue
+        ext_match = READ_EXT_SUFFIX_RE.search(normalized)
+        if ext_match:
+            normalized = normalized[: ext_match.start()]
+            changed = True
+    return normalized
+
+
+def analyze_fastq_header_metadata(
+    headers: list[str],
+) -> Dict[str, Any]:
+    """Summarize header-derived metadata from a small read sample."""
+    summary: Dict[str, Any] = {
+        "sample_size": len(headers),
+        "format": "unknown",
+        "has_sequencer": False,
+        "sequencers": [],
+        "has_tile": False,
+        "tiles": [],
+        "has_xy_coordinates": False,
+        "xy_coordinates": [],
+        "has_barcode": False,
+        "barcodes": [],
+        "has_pair_mate": False,
+        "pair_mates": {"1": 0, "2": 0},
+        "casava_count": 0,
+        "slash_pair_count": 0,
+        "legacy_pair_count": 0,
+        "example_headers": headers[:3],
+    }
+
+    for raw_header in headers:
+        header = str(raw_header).lstrip("@").strip()
+        if not header:
+            continue
+
+        casava_match = CASAVA_HEADER_RE.match(header)
+        header_format = "casava"
+        if casava_match:
+            summary["casava_count"] += 1
+        else:
+            slash_pair_match = SLASH_PAIR_HEADER_RE.match(header)
+            if slash_pair_match:
+                casava_match = slash_pair_match
+                summary["slash_pair_count"] += 1
+                header_format = (
+                    "prefixed_slash_pair"
+                    if slash_pair_match.group("accession")
+                    else "slash_pair"
+                )
+        if casava_match:
+            summary["format"] = (
+                header_format if summary["format"] == "unknown" else summary["format"]
+            )
+            summary["has_sequencer"] = True
+            summary["has_tile"] = True
+            summary["has_xy_coordinates"] = True
+            summary["has_pair_mate"] = True
+            instrument = casava_match.group("instrument")
+            tile = casava_match.group("tile")
+            x_coord = casava_match.group("x_coord")
+            y_coord = casava_match.group("y_coord")
+            barcode = (
+                casava_match.group("barcode")
+                if "barcode" in casava_match.re.groupindex
+                else None
+            )
+            read_num = casava_match.group("read_num")
+            _append_unique(summary["sequencers"], instrument)
+            _append_unique(summary["tiles"], tile)
+            _append_unique(summary["xy_coordinates"], f"{x_coord},{y_coord}")
+            if barcode and barcode not in {"0", "N", "NN", "N:N"}:
+                summary["has_barcode"] = True
+                _append_unique(summary["barcodes"], barcode)
+            if read_num in {"1", "2"}:
+                summary["pair_mates"][read_num] += 1
+            continue
+
+        legacy_match = LEGACY_PAIR_RE.match(header)
+        if legacy_match:
+            summary["legacy_pair_count"] += 1
+            summary["has_pair_mate"] = True
+            mate = legacy_match.group("mate")
+            if mate in {"1", "2"}:
+                summary["pair_mates"][mate] += 1
+
+    if summary["casava_count"] > 0 and summary["format"] == "unknown":
+        summary["format"] = "casava"
+    elif summary["slash_pair_count"] > 0 and summary["format"] == "unknown":
+        summary["format"] = "prefixed_slash_pair"
+    elif summary["legacy_pair_count"] > 0 and summary["format"] == "unknown":
+        summary["format"] = "legacy_pair_suffix"
+
+    return summary
 
 
 def create_sample_file(
@@ -19,6 +146,9 @@ def create_sample_file(
     subset_type: str = "top_reads",
     sample_size: Union[int, float] = 1000,
     output_file: str = "sample.fastq.gz",
+    threads: int = 1,
+    bbnorm_min_depth: int = 2,
+    interleaved: Optional[bool] = None,
     logger: Optional[logging.Logger] = None,
 ) -> str:
     """Create a temporary sample file from a FASTQ file for analysis.
@@ -29,6 +159,9 @@ def create_sample_file(
         sample_size: if top_reads than how many reads (from the top) to sample, if random than fracton of reads to sample randomly (0.0-1.0)
         # keep_pairs: Keep paired-end reads - if true input file is assumed to be paired end AND interleaved. all R1 reads in the output will have matching R2. (EDIT- I'm just going to sneakily take half the sample size, get that many random items, then take 2 consecutive reads at a time lol)
         output_file: path to output file - if ending in .gz then will be compressed. If input is 2 paired end files, will assume output also has 2 files in it (R1 and R2) separated by comma.
+        threads: Threads for bbnorm mode.
+        bbnorm_min_depth: Minimum depth threshold for bbnorm mode.
+        interleaved: Explicitly force single-file paired interleaving for bbnorm.
         logger: Logger instance
 
     Returns:
@@ -36,7 +169,7 @@ def create_sample_file(
     Note:
         - If sample type is random, the total number of reads in the file will have to be computed and that coudl be slow.
         - Generally adivsory to use gzipped output file
-        - ..,, to provice an even number for sample_size, if subset_type is top_reads. Otherwise if your input file is interleaved, the last read will lose its pair.
+        - ..,, to provide an even number for sample_size, if subset_type is top_reads. Otherwise if your input file is interleaved, the last read will lose its pair.
         -
     """
     logger = get_logger(logger)
@@ -73,6 +206,57 @@ def create_sample_file(
     ):
         need_total_reads = True
     logger.debug(f"need_total_reads: {need_total_reads}")
+
+    if subset_type == "bbnorm":
+        from bbmapy import bbnorm
+
+        target = max(1, int(sample_size))
+        logger.debug(f"Normalizing with bbnorm target={target} for {file_path}")
+        try:
+            if is_paired_files:
+                r1_path, r2_path = str(file_path).split(",")
+                out1, out2 = output_file.split(",")
+                bb_stdout, bb_stderr = bbnorm(
+                    **{
+                        "in1": str(Path(r1_path)),
+                        "in2": str(Path(r2_path)),
+                        "out1": str(Path(out1)),
+                        "out2": str(Path(out2)),
+                        "target": target,
+                        "min": bbnorm_min_depth,
+                        "threads": threads,
+                        "capture_output": True,
+                    }
+                )
+            else:
+                bbnorm_kwargs: Dict[str, Any] = {
+                    "in": str(file_path),
+                    "out": str(output_file),
+                    "target": target,
+                    "min": bbnorm_min_depth,
+                    "threads": threads,
+                    "capture_output": True,
+                }
+                if interleaved is not None:
+                    bbnorm_kwargs["interleaved"] = "t" if interleaved else "f"
+                bb_stdout, bb_stderr = bbnorm(**bbnorm_kwargs)
+
+            if bb_stdout or bb_stderr:
+                logger.info(
+                    "%s",
+                    "\n".join(
+                        part
+                        for part in [
+                            str(bb_stderr).strip() if bb_stderr else "",
+                            str(bb_stdout).strip() if bb_stdout else "",
+                        ]
+                        if part
+                    ),
+                )
+            return str(output_file)
+        except Exception as e:
+            logger.error(f"Error creating bbnorm sample file from {file_path}: {e}")
+            raise
 
     if not is_paired_files:
         is_gz = is_gzipped(file_path)
@@ -187,7 +371,45 @@ def create_sample_file(
             if subset_type == "top_reads":
                 sample_size_int = int(sample_size)
                 sample_size_int = sample_size_int - (sample_size_int % 2)
-                lines_2_get = [i for i in range(0, sample_size_int * 2, 4)]
+                n_lines = sample_size_int * 4
+
+                # For paired top-read sampling, copy complete FASTQ records from
+                # both files directly. This keeps R1/R2 synchronized and avoids
+                # header-only output when selecting line indices.
+                f_in_r1 = (
+                    gzip.open(r1_path, "rt", encoding="utf-8", errors="ignore")
+                    if is_gz
+                    else open(r1_path, "r", encoding="utf-8", errors="ignore")
+                )
+                f_out_r1 = (
+                    gzip.open(r1_output_file, "wt", encoding="utf-8")
+                    if is_gz_output
+                    else open(r1_output_file, "w", encoding="utf-8")
+                )
+                for i, line in enumerate(f_in_r1):
+                    if i >= n_lines:
+                        break
+                    f_out_r1.write(line)
+                f_in_r1.close()
+                f_out_r1.close()
+
+                f_in_r2 = (
+                    gzip.open(r2_path, "rt", encoding="utf-8", errors="ignore")
+                    if is_gz
+                    else open(r2_path, "r", encoding="utf-8", errors="ignore")
+                )
+                f_out_r2 = (
+                    gzip.open(r2_output_file, "wt", encoding="utf-8")
+                    if is_gz_output
+                    else open(r2_output_file, "w", encoding="utf-8")
+                )
+                for i, line in enumerate(f_in_r2):
+                    if i >= n_lines:
+                        break
+                    f_out_r2.write(line)
+                f_in_r2.close()
+                f_out_r2.close()
+                return str(output_file)
             else:
                 import itertools
                 from random import sample
@@ -286,16 +508,90 @@ def create_sample_file(
             logger.error(f"Error creating sample file from {file_path}: {e}")
 
 
+def probe_fastq_inputs(
+    input_path: Union[str, Path],
+    output_dir: Union[str, Path],
+    sample_size: int = 100000,
+    subset_type: str = "top_reads",
+    include_single_end: bool = True,
+    logger: Optional[logging.Logger] = None,
+) -> Dict[str, Any]:
+    """Create sampled FASTQ subsets for lightweight downstream probing.
+
+    This is intended for preflight analysis such as adapter discovery or
+    lightweight scan commands. It reuses the standard input classification path,
+    writes sampled subsets to ``output_dir``, and returns fresh file_info for the
+    probe subset.
+    """
+    logger = get_logger(logger)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    source_info = handle_input_fastq(input_path, logger=logger)
+
+    for file_path in source_info.get("interleaved_files", []):
+        file_path = Path(file_path)
+        output_file = output_dir / f"{file_path.stem}_probe.fq.gz"
+        create_sample_file(
+            file_path=file_path,
+            subset_type=subset_type,
+            sample_size=sample_size,
+            output_file=str(output_file),
+            interleaved=True,
+            logger=logger,
+        )
+
+    for r1_path, r2_path in source_info.get("R1_R2_pairs", []):
+        r1_path = Path(r1_path)
+        r2_path = Path(r2_path)
+        output_r1 = output_dir / f"{r1_path.stem}_probe_R1.fq.gz"
+        output_r2 = output_dir / f"{r2_path.stem}_probe_R2.fq.gz"
+        create_sample_file(
+            file_path=f"{r1_path},{r2_path}",
+            subset_type=subset_type,
+            sample_size=sample_size,
+            output_file=f"{output_r1},{output_r2}",
+            logger=logger,
+        )
+
+    if include_single_end:
+        for file_path in source_info.get("single_end_files", []):
+            file_path = Path(file_path)
+            output_file = output_dir / f"{file_path.stem}_probe.fq.gz"
+            create_sample_file(
+                file_path=file_path,
+                subset_type=subset_type,
+                sample_size=sample_size,
+                output_file=str(output_file),
+                interleaved=False,
+                logger=logger,
+            )
+
+    probe_info = handle_input_fastq(output_dir, logger=logger)
+    logger.info(
+        "Prepared FASTQ probe subset in %s using %s reads per input.",
+        output_dir,
+        sample_size,
+    )
+    return {
+        "source_file_info": source_info,
+        "probe_dir": output_dir,
+        "probe_file_info": probe_info,
+    }
+
+
 def determine_fastq_type(
     file_path: Union[str, Path],
     sample_size: int = 1000,  # Increased from whenever. should be consisent as long as the number is even..
+    header_sample_size: int = 100,
     logger: Optional[logging.Logger] = None,
 ) -> Dict:
     """Analyze FASTQ headers to determine file characteristics.
 
     Args:
         file_path: Path to FASTQ file or sample file
-        sample_size: Number of reads (from the top of file) to use
+        sample_size: Number of reads (from the top of file) to use for read stats
+        header_sample_size: Number of reads to use for header metadata analysis
         logger: Logger instance
 
     Returns:
@@ -304,10 +600,6 @@ def determine_fastq_type(
     import polars as pl
 
     logger = get_logger(logger)
-    from needletail import (
-        decode_phred,  # could be cool to add a mean quality score calculation here.
-    )
-
     from rolypoly.utils.bio.polars_fastx import from_fastx_lazy as read_fastx
 
     results = {
@@ -317,11 +609,17 @@ def determine_fastq_type(
         "pair_2_count": 0,
         "average_read_length": 0,
         "average_read_quality": 0,
+        "header_analysis": {},
     }
     try:
         file_path = Path(file_path)
-        fastq_df = read_fastx(file_path)
-        fastq_df = fastq_df.head(sample_size).collect()
+        header_df = read_fastx(file_path).head(header_sample_size).collect()
+        header_analysis = analyze_fastq_header_metadata(
+            header_df.select(pl.col("header")).to_series().to_list()
+        )
+        results["header_analysis"] = header_analysis
+
+        fastq_df = read_fastx(file_path).head(sample_size).collect()
         header_count = fastq_df.select(
             pl.col("header").str.tail(2).value_counts()
         ).unnest("header")
@@ -366,19 +664,18 @@ def determine_fastq_type(
                         "Detected Casava paired-end format in headers - treating as interleaved paired-end reads... this could be wrong..."
                     )
 
-        # total_length = fastq_df.select(pl.col("sequence").str.len_chars()).sum().item() # could have just
-        average_read_length = (
-            fastq_df.select(pl.col("sequence").str.len_chars()).mean().item()
-        )
-        from numpy import mean
-
-        average_read_quality = fastq_df.select(
-            pl.col("sequence")
-            .map_elements(
-                lambda x: mean(decode_phred(x)), return_dtype=pl.Float64
-            )
-            .mean()
+        average_read_length = fastq_df.select(
+            pl.col("sequence").seq.length().mean().alias("average_read_length")
         ).item()
+        average_read_quality = (
+            fastq_df.select(
+                pl.col("quality").seq.avg_quality().mean().alias(
+                    "average_read_quality"
+                )
+            ).item()
+            if "quality" in fastq_df.columns
+            else 0.0
+        )
 
         # add to results dict
         results["average_read_length"] = average_read_length
@@ -393,6 +690,25 @@ def determine_fastq_type(
             results["file_type"] = "paired_R2"
         elif pair_1_count == 0 and pair_2_count == 0:
             results["file_type"] = "single"  # this is a guess
+
+        if (
+            header_analysis.get("has_sequencer")
+            or header_analysis.get("has_tile")
+            or header_analysis.get("has_xy_coordinates")
+            or header_analysis.get("has_barcode")
+            or header_analysis.get("has_pair_mate")
+        ):
+            logger.info(
+                "Header metadata for %s (first %s reads): format=%s sequencer=%s tile=%s xy=%s barcode=%s pair_mates=%s",
+                file_path,
+                header_sample_size,
+                header_analysis.get("format", "unknown"),
+                ", ".join(header_analysis.get("sequencers", [])) or "none",
+                ", ".join(header_analysis.get("tiles", [])) or "none",
+                ", ".join(header_analysis.get("xy_coordinates", [])) or "none",
+                ", ".join(header_analysis.get("barcodes", [])) or "none",
+                header_analysis.get("pair_mates", {}),
+            )
         logger.debug(f"Header analysis for {file_path}: {results}")
 
     except Exception as e:
@@ -415,6 +731,8 @@ def is_paired_filename(
     logger = get_logger(logger)
 
     patterns = [
+        (r"(.*)([_\.-])R1([._-].*)$", r"\g<1>\g<2>R2\3"),
+        (r"(.*)([_\.-])1([._-].*)$", r"\g<1>\g<2>2\3"),
         (r"(.*)_R1([._].*)$", r"\1_R2\2"),  # _R1/_R2
         (r"(.*)_1([._].*)$", r"\1_2\2"),  # _1/_2
         (
@@ -591,6 +909,27 @@ def identify_fastq_files(
 
     return file_info
 
+def identify_fasta_files(
+    input_path: Union[str, Path],
+    logger: Optional[logging.Logger] = None,
+) -> Dict:
+    """Identify FASTA files from input path. for consistency with the FASTQ detection, in cases where a flat/no-quality containing fasta migth be used (e.g. to use as --trusted-contigs)
+
+    Args:
+        input_path: Path to input directory or file
+        logger: Logger instance
+    """
+    logger = get_logger(logger)
+    input_path = Path(input_path)
+
+    logger.info(f"Identifying FASTA files in: {input_path}")
+
+    fasta_files = find_files_by_extension(
+        input_path,
+        ["*.fa", "*.fasta", "*.fa.gz", "*.fasta.gz","*.fna", "*.fna.gz"],
+    )
+    return {"fasta_files": fasta_files}
+
 
 def handle_input_fastq(
     input_path: Union[str, Path], logger: Optional[logging.Logger] = None
@@ -615,6 +954,25 @@ def handle_input_fastq(
     logger = get_logger(logger)
     input_path = Path(input_path)
 
+    def aggregate_read_stats(file_details: Dict[str, Dict]) -> Tuple[float, float]:
+        lengths = [
+            float(details.get("average_read_length", 0))
+            for details in file_details.values()
+            if float(details.get("average_read_length", 0)) > 0
+        ]
+        qualities = [
+            float(details.get("average_read_quality", 0))
+            for details in file_details.values()
+            if float(details.get("average_read_quality", 0)) > 0
+        ]
+        avg_len = sum(lengths) / len(lengths) if lengths else 0.0
+        avg_qual = sum(qualities) / len(qualities) if qualities else 0.0
+        return avg_len, avg_qual
+
+    def derive_file_name(path: Path) -> str:
+        stem = path.stem
+        return normalize_fastq_sample_name(stem)
+
     # Handle comma-separated file inputs (common in filter_reads usage)
     if isinstance(input_path, (str, Path)) and "," in str(input_path):
         # Split comma-separated files
@@ -625,37 +983,50 @@ def handle_input_fastq(
             r1_path, r2_path = file_paths
 
             # Generate file name from R1
-            file_name = r1_path.stem
-            if file_name.endswith(".fq") or file_name.endswith(".fastq"):
-                file_name = file_name.rsplit(".", 1)[0]
-            # Remove R1/R2 indicators
-            for pattern in ["_R1", "_1", ".1"]:
-                if pattern in file_name:
-                    file_name = file_name.replace(pattern, "")
-                    break
+            file_name = derive_file_name(r1_path)
 
             logger.info(f"Detected paired files: {r1_path} and {r2_path}")
+            file_details = {
+                str(r1_path): determine_fastq_type(r1_path, logger=logger),
+                str(r2_path): determine_fastq_type(r2_path, logger=logger),
+            }
+            average_read_length, average_read_quality = aggregate_read_stats(
+                file_details
+            )
 
             return {
                 "R1_R2_pairs": [(r1_path, r2_path)],
                 "interleaved_files": [],
                 "single_end_files": [],
                 "file_name": file_name,
+                "file_details": file_details,
+                "average_read_length": average_read_length,
+                "average_read_quality": average_read_quality,
+                "is_single_end_only": False,
             }
         else:
             # Multiple single files
             logger.info(f"Detected {len(file_paths)} individual files")
 
             # Use first file for naming
-            file_name = file_paths[0].stem
-            if file_name.endswith(".fq") or file_name.endswith(".fastq"):
-                file_name = file_name.rsplit(".", 1)[0]
+            file_name = derive_file_name(file_paths[0])
+            file_details = {
+                str(path): determine_fastq_type(path, logger=logger)
+                for path in file_paths
+            }
+            average_read_length, average_read_quality = aggregate_read_stats(
+                file_details
+            )
 
             return {
                 "R1_R2_pairs": [],
                 "interleaved_files": [],
                 "single_end_files": file_paths,
                 "file_name": file_name,
+                "file_details": file_details,
+                "average_read_length": average_read_length,
+                "average_read_quality": average_read_quality,
+                "is_single_end_only": True,
             }
 
     # Use consolidated file detection for directory or single file
@@ -668,14 +1039,7 @@ def handle_input_fastq(
 
     if input_path.is_file():
         # Single file input
-        file_name = input_path.stem
-        if file_name.endswith(".fq") or file_name.endswith(".fastq"):
-            file_name = file_name.rsplit(".", 1)[0]
-        # Remove R1/R2 indicators
-        for pattern in ["_R1", "_1", ".1", "_R2", "_2", ".2"]:
-            if pattern in file_name:
-                file_name = file_name.replace(pattern, "")
-                break
+        file_name = derive_file_name(input_path)
     elif input_path.is_dir():
         # Use directory name as base
         file_name = input_path.name
@@ -686,7 +1050,18 @@ def handle_input_fastq(
         "interleaved_files": file_info["interleaved_files"],
         "single_end_files": file_info["single_end"],  # Note: different key name
         "file_name": file_name,
+        "file_details": file_info["file_details"],
     }
+    average_read_length, average_read_quality = aggregate_read_stats(
+        file_info["file_details"]
+    )
+    result["average_read_length"] = average_read_length
+    result["average_read_quality"] = average_read_quality
+    result["is_single_end_only"] = (
+        len(result["single_end_files"]) > 0
+        and len(result["R1_R2_pairs"]) == 0
+        and len(result["interleaved_files"]) == 0
+    )
 
     # Add rolypoly data if present
     if file_info["rolypoly_data"]:
@@ -697,5 +1072,10 @@ def handle_input_fastq(
     logger.info(f"  - R1/R2 pairs: {len(result['R1_R2_pairs'])}")
     logger.info(f"  - Interleaved files: {len(result['interleaved_files'])}")
     logger.info(f"  - Single-end files: {len(result['single_end_files'])}")
+    logger.info(
+        "  - Avg read length / quality: %.2f / %.2f",
+        result["average_read_length"],
+        result["average_read_quality"],
+    )
 
     return result
