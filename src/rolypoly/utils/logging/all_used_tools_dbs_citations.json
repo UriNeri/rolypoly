@@ -71,6 +71,12 @@
     "citation": "https://doi.org/10.1089/cmb.2012.0021",
     "code": "https://github.com/ablab/spades"
   },
+  "rna_spades": {
+    "name": "rna_spades",
+    "citation": "http://dx.doi.org/10.1093/bioinformatics/btab597",
+    "code": "https://github.com/ablab/spades"
+  },
+  
   "megahit": {
     "name": "MEGAHIT",
     "citation": "https://doi.org/10.1093/bioinformatics/btv033"
