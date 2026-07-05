@@ -1,12 +1,15 @@
 import os
 import shutil
 from pathlib import Path
-from typing import Tuple, Union
+from typing import Any, Tuple, Union
 
 import rich_click as click
 from rich.console import Console
 
-from rolypoly.utils.bio.library_detection import handle_input_fastq
+from rolypoly.utils.bio.library_detection import (
+    handle_input_fastq,
+    probe_fastq_inputs,
+)
 from rolypoly.utils.logging.config import BaseConfig
 from rolypoly.utils.logging.output_tracker import OutputTracker
 from rolypoly.utils.various import ensure_memory, run_command_comp
@@ -19,6 +22,197 @@ output_tracker = OutputTracker()
 
 console = Console()
 config = None
+
+
+FILTER_READS_PRESETS: dict[str, dict[str, Any]] = {
+    "rna_virus_metat": {
+        "step_params": {
+            "quality_trim_unmerged": {"trimq": 5, "minlen": 25},
+            "trim_adapters": {"minlen": 20},
+            "decontaminate_rrna": {"mincovfraction": 0.6},
+        },
+        "skip_steps": [],
+        "flags": {"trim_polya": False},
+        "description": "RNA virus metatranscriptome: rRNA removal (mincovfraction=0.6), known-DNA + identified-DNA filtering, adapter trim, lenient quality trim (trimq=5 minlen=25); no polyA trimming",
+    },
+    "total_rna_ribodepleted": {
+        "step_params": {
+            "quality_trim_unmerged": {"trimq": 5, "minlen": 20},
+            "trim_adapters": {"minlen": 20},
+            "decontaminate_rrna": {"mincovfraction": 0.7},
+        },
+        "skip_steps": [],
+        "flags": {"trim_polya": False},
+        "description": "Total RNA ribo-depleted: stricter rRNA removal (mincovfraction=0.7), known-DNA + identified-DNA filtering, adapter trim, lenient quality trim (trimq=5 minlen=20); no polyA trimming",
+    },
+    "poly_a_selected": {
+        "step_params": {
+            "quality_trim_unmerged": {"trimq": 12, "minlen": 20},
+            "trim_polya_tails": {"trimpolya": 18, "minlen": 20},
+        },
+        "skip_steps": [],
+        "flags": {"trim_polya": True},
+        "description": "Poly-A selected mRNA: polyA tail trimming enabled (trimpolya=18), stricter quality trim (trimq=12 minlen=20); rRNA and DNA filtering still applied",
+    },
+    "fast": {
+        "step_params": {},
+        "skip_steps": ["error_correct_1", "error_correct_2", "filter_identified_dna"],
+        "flags": {},
+        "description": "Fast: skips overlap error correction (error_correct_1/2) and identified-DNA filtering; all other steps run at default parameters",
+    },
+    "strict": {
+        "step_params": {
+            "quality_trim_unmerged": {"trimq": 20, "minlen": 20},
+            "dedupe": {"passes": 2},
+        },
+        "skip_steps": [],
+        "flags": {},
+        "description": "Strict: aggressive quality trim (trimq=20 minlen=20), two-pass deduplication; all filtering steps enabled",
+    },
+    "all_virus_metat": {
+        "step_params": {
+            "quality_trim_unmerged": {"trimq": 10, "minlen": 20},
+            "decontaminate_rrna": {"mincovfraction": 0.5},
+        },
+        "skip_steps": ["filter_identified_dna"],
+        "flags": {"trim_polya": False},
+        "description": "All-virus metatranscriptome: relaxed rRNA removal (mincovfraction=0.5), skips identified-DNA filter, moderate quality trim (trimq=10 minlen=20); known-DNA filtering still applied",
+    },
+    "all_virus_metag": {
+        "step_params": {"quality_trim_unmerged": {"trimq": 10, "minlen": 20}},
+        "skip_steps": ["decontaminate_rrna", "filter_identified_dna"],
+        "flags": {"trim_polya": False},
+        "description": "All-virus metagenomics: skips rRNA and identified-DNA filtering entirely, moderate quality trim (trimq=10 minlen=20); known-DNA (host) filtering still applied if --known-dna is provided",
+    },
+    "rna_virome": {
+        "not_implemented": True,
+        "description": "VLP-extracted RNA virome (not yet implemented)",
+    },
+}
+
+
+def sync_trim_polya_step(config: "ReadFilterConfig") -> None:
+    if config.trim_polya:
+        config.skip_steps = [
+            step for step in config.skip_steps if step != "trim_polya_tails"
+        ]
+    elif "trim_polya_tails" not in config.skip_steps:
+        config.skip_steps.append("trim_polya_tails")
+
+
+def collect_protected_step_params(
+    override_parameters: dict[str, Any],
+) -> set[tuple[str, str]]:
+    protected: set[tuple[str, str]] = set()
+    for step_name, params in override_parameters.items():
+        if isinstance(params, dict):
+            for param_name in params:
+                protected.add((step_name, str(param_name)))
+    return protected
+
+
+def apply_filter_reads_preset(
+    preset_name: str | None,
+    ctx: click.Context,
+    config: "ReadFilterConfig",
+) -> set[tuple[str, str]]:
+    if not preset_name:
+        return set()
+
+    preset = FILTER_READS_PRESETS.get(preset_name)
+    if preset is None:
+        raise click.BadParameter(
+            f"Unknown preset '{preset_name}'. "
+            f"Choose from: {', '.join(sorted(FILTER_READS_PRESETS.keys()))}",
+            param_hint="--preset",
+        )
+    if preset.get("not_implemented"):
+        raise click.BadParameter(
+            f"Preset '{preset_name}' is not yet implemented.",
+            param_hint="--preset",
+        )
+
+    explicit: set[str] = set()
+    if ctx.params:
+        for param in ctx.command.params:
+            source = ctx.get_parameter_source(param.name)
+            if source == click.core.ParameterSource.COMMANDLINE:
+                explicit.add(param.name)
+
+    applied_flags: list[str] = []
+    for flag_name, value in preset.get("flags", {}).items():
+        if flag_name not in explicit:
+            setattr(config, flag_name, value)
+            applied_flags.append(f"{flag_name}={value}")
+    sync_trim_polya_step(config)
+
+    applied_skips: list[str] = []
+    for step_name in preset.get("skip_steps", []):
+        if step_name not in config.skip_steps:
+            config.skip_steps.append(step_name)
+            applied_skips.append(step_name)
+
+    protected_from_preset: set[tuple[str, str]] = set()
+    applied_step_params: list[str] = []
+    for step_name, overrides in preset.get("step_params", {}).items():
+        if step_name not in config.step_params:
+            config.step_params[step_name] = {}
+        if isinstance(overrides, dict):
+            for param_name, value in overrides.items():
+                config.step_params[step_name][param_name] = value
+                protected_from_preset.add((step_name, str(param_name)))
+            applied_step_params.append(step_name)
+
+    config.logger.info(
+        "Applied filter_reads preset '%s' (%s). flags=%s skip_steps=%s step_params=%s",
+        preset_name,
+        preset.get("description", "no description"),
+        ", ".join(applied_flags) if applied_flags else "none",
+        ", ".join(applied_skips) if applied_skips else "none",
+        ", ".join(applied_step_params) if applied_step_params else "none",
+    )
+    return protected_from_preset
+
+
+def auto_tune_params(
+    file_info: dict[str, Any],
+    config: "ReadFilterConfig",
+    protected_step_params: set[tuple[str, str]],
+) -> None:
+    avg_read_length = float(file_info.get("average_read_length") or 0)
+    avg_quality = float(file_info.get("average_read_quality") or 0)
+
+    minlen = 20
+    if avg_quality >= 30:
+        trimq = 20
+    elif avg_quality >= 25:
+        trimq = 15
+    else:
+        trimq = 10
+
+    if (
+        "quality_trim_unmerged" in config.step_params
+        and ("quality_trim_unmerged", "trimq") not in protected_step_params
+    ):
+        config.step_params["quality_trim_unmerged"]["trimq"] = trimq
+    if (
+        "quality_trim_unmerged" in config.step_params
+        and ("quality_trim_unmerged", "minlen") not in protected_step_params
+    ):
+        config.step_params["quality_trim_unmerged"]["minlen"] = minlen
+    if (
+        "trim_adapters" in config.step_params
+        and ("trim_adapters", "minlen") not in protected_step_params
+    ):
+        config.step_params["trim_adapters"]["minlen"] = minlen
+
+    config.logger.info(
+        "Auto-detected avg_read_length=%s, avg_quality=%s → adjusting trimq=%s, minlen=%s",
+        round(avg_read_length, 2),
+        round(avg_quality, 2),
+        trimq,
+        minlen,
+    )
 
 
 def format_bbmapy_output(stdout_obj, stderr_obj) -> str:
@@ -40,6 +234,101 @@ def format_bbmapy_output(stdout_obj, stderr_obj) -> str:
         if text:
             parts.append(text)
     return "\n".join(parts)
+
+
+def validate_adapter_fasta(adapter_path: Path, min_non_n_bases: int = 25) -> Path | None:
+    if not adapter_path.exists() or adapter_path.stat().st_size == 0:
+        return None
+
+    validated_records: list[tuple[str, str]] = []
+    current_header: str | None = None
+    current_sequence: list[str] = []
+
+    def flush_record() -> None:
+        nonlocal current_header, current_sequence
+        if current_header is None:
+            return
+        sequence = "".join(current_sequence).strip()
+        if  sequence.__len__() - sequence.upper().count("N") >= min_non_n_bases:
+            validated_records.append((current_header, sequence))
+        current_header = None
+        current_sequence = []
+
+    with open(adapter_path) as handle:
+        for line in handle:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith(">"):
+                flush_record()
+                current_header = stripped[1:].strip() or "adapter"
+                continue
+            current_sequence.append(stripped)
+        flush_record()
+
+    if not validated_records:
+        return None
+
+    validated_path = adapter_path.with_name(
+        f"validated_{adapter_path.stem}.fa"
+    )
+    with open(validated_path, "w") as handle:
+        for header, sequence in validated_records:
+            handle.write(f">{header}\n{sequence}\n")
+    return validated_path
+
+
+def discover_merge_adapters(
+    input_file: Path, config: "ReadFilterConfig", output_tracker: OutputTracker
+) -> Path:
+    """Discover adapter consensus sequences with BBMerge and retain only valid ones."""
+    from bbmapy import bbmerge
+
+    if str(getattr(config, "adapters", "")) != resolve_builtin_adapters(config):
+        config.logger.info(
+            "Adapter discovery skipped because adapters were provided explicitly."
+        )
+        return input_file
+
+    discovery_output = config.temp_dir / f"bbmerge_discovered_{config.file_name}.fa"
+    try:
+        bb_stdout, bb_stderr = bbmerge(
+            in_file=str(input_file),
+            capture_output=True,
+            outadapter=str(discovery_output),
+            merge=False,
+            Xmx=config.memory["giga"],
+            threads=str(config.threads),
+            overwrite="t",
+            interleaved="t",
+        )
+        config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
+
+        validated_adapter_ref = validate_adapter_fasta(discovery_output)
+        if validated_adapter_ref is None:
+            config.logger.info(
+                "BBMerge adapter discovery produced no validated adapter FASTA; using built-in adapter references."
+            )
+            return input_file
+
+        config.adapters = str(validated_adapter_ref)
+        config.logger.info(
+            "Using BBMerge-discovered adapter reference %s",
+            validated_adapter_ref,
+        )
+    except RuntimeError as e:
+        config.logger.warning(
+            f"BBMerge adapter discovery failed; falling back to built-in adapters: {str(e)}"
+        )
+    return input_file
+
+
+def resolve_builtin_adapters(config: "ReadFilterConfig") -> str:
+    adapters_new = (
+        Path(config.datadir) / "contam/adapters/AFire_illuminatetritis1223.fa"
+    )
+    adapters_bb = Path(config.datadir) / "contam/adapters/bbmap_adapters.fa"
+    return f"{adapters_bb},{adapters_new}"
 
 
 class ReadFilterConfig(BaseConfig):
@@ -65,6 +354,31 @@ class ReadFilterConfig(BaseConfig):
         self.skip_existing = kwargs.get("skip_existing") or False
         self.zip_reports = kwargs.get("zip_reports") or False
         self.trim_polya = kwargs.get("trim_polya") or False
+        self.disable_auto = kwargs.get("disable_auto") or False
+        self.preset = kwargs.get("preset")
+        self.user_provided_adapters: Path | None = (
+            Path(kwargs.get("adapters") or "").resolve()
+            if kwargs.get("adapters") is not None
+            else None
+        )
+        self.adapters = (
+            str(self.user_provided_adapters)
+            if self.user_provided_adapters is not None
+            else resolve_builtin_adapters(self)
+        )
+        self.user_provided_artifacts: Path | None = (
+            Path(kwargs.get("artifacts") or "").resolve()
+            if kwargs.get("artifacts") is not None
+            else None
+        )
+        self.remove_synthetic_artifacts_enabled = (
+            kwargs.get("remove_synthetic_artifacts") or False
+        )
+        self.artifacts = (
+            str(self.user_provided_artifacts)
+            if self.user_provided_artifacts is not None
+            else "artifacts"
+        )
         # self.override_parameters = self.override_parameters if isinstance(self.override_parameters, dict) else eval(self.override_parameters) if isinstance(self.override_parameters, str) else {}
         skip_steps_value = kwargs.get("skip_steps", [])
         if isinstance(skip_steps_value, list):
@@ -106,7 +420,7 @@ class ReadFilterConfig(BaseConfig):
             },
             "decontaminate_rrna": {
                 "k": 31,
-                "mincovfraction": 0.5,
+                "mincovfraction": 0.6,
                 "hdist": 0
             },
             "filter_identified_dna": {
@@ -134,7 +448,8 @@ class ReadFilterConfig(BaseConfig):
                 "minlen": 25,
             },
             "remove_synthetic_artifacts": {
-                "k": 31
+                "k": 31,
+                "ref": "artifacts"
                 },
             "entropy_filter": {
                 "entropy": 0.01,
@@ -155,17 +470,20 @@ class ReadFilterConfig(BaseConfig):
                 # "k": 93,
                 # "extend2": 80,
                 # "rem": True,
-                "mix": "f"
+                "mix": "f" # DO NOT Output both the merged (or mergable) and unmerged reads
             },  # TODO: add explanation somewhere about the (high) memory usage and the potential gains/tradeoffs of merging reads https://bbmap.org/tools/bbmerge#:~:text=When%20NOT%20to%20Use%20BBMerge
             "quality_trim_unmerged": {
                 "qtrim": "rl",
-                "trimq": 5,
+                "trimq": 5, # For now, keeping this very low.
                 "minlen": 25
             },
         }
         self.max_genomes = (
             kwargs.get("max_genomes") or 5
         )  # maximum number of potential host genomes to fetch
+        self.protected_step_params: set[tuple[str, str]] = set(
+            collect_protected_step_params(self.override_parameters)
+        )
         if kwargs.get("override_parameters") is not None:
             self.logger.info(
                 f"override_parameters: {kwargs.get('override_parameters')}"
@@ -178,8 +496,7 @@ class ReadFilterConfig(BaseConfig):
                         f"Warning: Unknown step '{step}' in override_parameters. Ignoring."
                     )
 
-        if not self.trim_polya and "trim_polya_tails" not in self.skip_steps:
-            self.skip_steps.append("trim_polya_tails")
+        sync_trim_polya_step(self)
 
 
 def timeout_handler(signum, frame):
@@ -202,15 +519,17 @@ def process_reads(
     config.save(output_path=base_dir / "rp_filter_reads_config.json")  # type: ignore
 
     # actual processing start here
-    fastq_file, config.file_name = process_input_fastq(config)
+    fastq_file, config.file_name, file_info = process_input_fastq(config)
+    config.file_info = file_info
 
     config.logger.info(f"file_name: {config.file_name}")
     config.logger.info(f"fastq_file: {fastq_file}")
+    original_input = str(config.input).split(",", 1)[0].strip()
     # config.logger.info(f"remind citation is {os.environ.get('ROLYPOLY_REMIND_CITATION', 'not_set')}    ")
     # exit()
     # breakpoint()
     output_tracker.add_file(
-        filename=str(config.input),
+        filename=original_input,
         command="handle_input_fastq",
         command_name="reformat",
         is_merged=False,
@@ -220,8 +539,38 @@ def process_reads(
     )  # retroactive addition
 
     config.memory = ensure_memory(config.memory, fastq_file)  # type: ignore ------ this second ensure is because we now have the fastq file to check its size.
+    if not config.disable_auto:
+        auto_tune_params(file_info, config, config.protected_step_params)
+
+    has_paired_input = bool(file_info.get("R1_R2_pairs")) or bool(
+        file_info.get("interleaved_files")
+    )
+    has_single_ends = bool(file_info.get("single_end_files"))
+    has_mixed_input = has_paired_input and has_single_ends
+    if file_info.get("is_single_end_only") or has_mixed_input or not has_paired_input:
+        for step_name in (
+            "discover_merge_adapters",
+            "error_correct_1",
+            "error_correct_2",
+            "merge_reads",
+        ):
+            if step_name not in config.skip_steps:
+                config.skip_steps.append(step_name)
+        config.logger.info(
+            "Detected input without a clean paired-end-only library; skipping pair-aware steps: discover_merge_adapters, error_correct_1, error_correct_2, merge_reads."
+        )
+    if not (
+        str(getattr(config, "artifacts", "artifacts")) != "artifacts"
+        or getattr(config, "remove_synthetic_artifacts_enabled", False)
+    ):
+        if "remove_synthetic_artifacts" not in config.skip_steps:
+            config.skip_steps.append("remove_synthetic_artifacts")
+        config.logger.info(
+            "Skipping remove_synthetic_artifacts unless --artifacts is provided or --remove-synthetic-artifacts is set."
+        )
+
     steps = [
-        # handle_input_fastq, # moved to outside of the steps to avoid ensures the input is interleaved by moving it through rename or reformat
+        # handle_input_fastq, # moved to outside of the steps to avoid ensures the input is "interleaved" by moving it through rename or reformat
         # filter_by_tile, # filters out reads by tile # dropped - breaks when the fastq headers are not pristine, and should not be used if multiple libraries are merged/concated
         # TODO: add a subsample read and seal.sh against rrnas for better host composition than the rrna filtering with bbduk.
         # TODO: THE TODO ABOVE THIS, PUTTING THIS SECOND TODO CAUSE IS KINDA HIGH PRIORITY.
@@ -229,15 +578,16 @@ def process_reads(
         decontaminate_rrna,  # decontaminates rRNA sequences
         filter_identified_dna,  # filters out reads that are likely host (based on the stats file of the previous step)
         dedupe,  # removes duplicates (first round)
+        discover_merge_adapters,  # discovers adapters for paired data when built-in adapters are active
         trim_adapters,  # trims adapters (clips off the adapters)
-        trim_polya_tails,  # optional terminal polyA/polyT trimming
+        trim_polya_tails,  # (optional) terminal polyA/polyT trimming
         remove_synthetic_artifacts,  # removes synthetic artifacts (phix etc)
-        entropy_filter,  # removes reads with low entropy (poor quality)
-        error_correct_1,  # error corrects the reads (first round)
-        error_correct_2,  # error corrects the reads (second round)
-        merge_reads,  # merges reads with negative insert size (i.e. overlapping)
+        entropy_filter,  # removes reads with VERY low entropy (i.e. MOSTLY homopolymers).
+        error_correct_1,  # error corrects the reads (first round - based on overlapping pairs, if applicable - ecco)
+        error_correct_2,  # error corrects the reads (second round - based on ???, ecc)
+        merge_reads,  # merges reads with insert size smaller than 2xread length (i.e. overlapping) # DONE: investigate if remaining adapters need to  also removed here... (UPDATE Brian says merged reads never retain adapter seq).
         quality_trim_unmerged,  # quality trims the unmerged reads
-        # dedupe, # removes duplicates (second round - after the above processing some reads may have been "corrected"/modified and are now duplicates)
+        # dedupe, # removes duplicates (second round - after the above processing some reads may have been "corrected"/modified and are now duplicates) NOTE! this is now done as part of process_reads_final_deduplication() at the end of the pipeline.
     ]
 
     current_input = fastq_file
@@ -414,11 +764,52 @@ If --input is a directory, all fastq files in the directory will be used - paire
     help="Comma-separated list of steps to skip. Example: --skip-steps filter_by_tile,entropy_filter",
 )
 @click.option(
+    "--preset",
+    type=click.Choice(sorted(FILTER_READS_PRESETS.keys())),
+    default=None,
+    help=(
+        "Apply a named read-filtering preset (overrides individual step parameters unless "
+        "those are given explicitly via --override-parameters). "
+        + "  ".join(
+            f"'{name}': {p['description']}"
+            for name, p in FILTER_READS_PRESETS.items()
+            if not p.get("not_implemented")
+        )
+    ),
+)
+@click.option(
+    "--disable-auto",
+    is_flag=True,
+    default=False,
+    help="Disable automatic trim/minlen tuning from detected read stats.",
+)
+@click.option(
     "--trim-polya",
     "--poly-selection",
     is_flag=True,
     default=False,
     help="Enable optional terminal polyA/polyT tail trimming after adapter trimming. Uses the trim_polya_tails preset and can be customized with --override-parameters.",
+)
+@click.option(
+    "--adapters",
+    required=False,
+    type=click.Path(exists=True),
+    default=None,
+    help="Optional adapter FASTA to use instead of built-in (or discovered via bbmerge) adapters.",
+)
+@click.option(
+    "--artifacts",
+    required=False,
+    type=click.Path(exists=True),
+    default=None,
+    help="Optional synthetic-artifact FASTA to use. Turns on --remove-synthetic-artifacts.",
+)
+@click.option(
+    "--remove-synthetic-artifacts",
+    "remove_synthetic_artifacts_enabled",
+    is_flag=True,
+    default=False,
+    help="Enable the synthetic-artifact removal step using the built-in artifacts reference unless --artifacts is provided.",
 )
 @click.option(
     "-op",
@@ -492,9 +883,14 @@ def filter_reads(
     input,
     known_dna,
     speed,
+    preset,
+    disable_auto,
     skip_existing,
     skip_steps,
     trim_polya,
+    adapters,
+    artifacts,
+    remove_synthetic_artifacts_enabled,
     override_parameters,
     config_file,
     step_timeout,
@@ -536,9 +932,14 @@ def filter_reads(
             input=os.path.abspath(input),
             known_dna=known_dna,
             speed=speed,
+            preset=preset,
+            disable_auto=disable_auto,
             skip_existing=skip_existing,
             skip_steps=skip_steps,
             trim_polya=trim_polya,
+            adapters=adapters,
+            artifacts=artifacts,
+            remove_synthetic_artifacts=remove_synthetic_artifacts_enabled,
             override_parameters=override_parameters,
             config_file=config_file,
             step_timeout=step_timeout,
@@ -554,6 +955,29 @@ def filter_reads(
         config.logger.warning(
             "No known DNA file provided, known DNA filtering step will be skipped."
         )
+
+    if not hasattr(config, "protected_step_params"):
+        config.protected_step_params = collect_protected_step_params(
+            getattr(config, "override_parameters", {})
+        )
+    if not hasattr(config, "disable_auto"):
+        config.disable_auto = False
+    if not hasattr(config, "user_provided_adapters"):
+        config.user_provided_adapters = None
+    if not hasattr(config, "adapters"):
+        config.adapters = resolve_builtin_adapters(config)
+    if not hasattr(config, "user_provided_artifacts"):
+        config.user_provided_artifacts = None
+    if not hasattr(config, "remove_synthetic_artifacts_enabled"):
+        config.remove_synthetic_artifacts_enabled = False
+    if not hasattr(config, "artifacts"):
+        config.artifacts = "artifacts"
+
+    active_preset = preset or getattr(config, "preset", None)
+    config.preset = active_preset
+    ctx = click.get_current_context()
+    preset_protected = apply_filter_reads_preset(active_preset, ctx, config)
+    config.protected_step_params.update(preset_protected)
 
     log_start_info(config.logger, config.__dict__)
     try:
@@ -575,6 +999,18 @@ def filter_reads(
         with open(f"{config.log_file}", "a") as f_out:
             f_out.write(remind_citations(tools, return_bibtex=True) or "")
 
+
+def probe_inputs(config: ReadFilterConfig) -> dict[str, Any]:
+    """Create a reusable sampled probe subset for lightweight preflight analysis."""
+    probe_dir = config.temp_dir / "probe_input"
+    return probe_fastq_inputs(
+        input_path=config.input,
+        output_dir=probe_dir,
+        sample_size=100000,
+        subset_type="top_reads",
+        include_single_end=False,
+        logger=config.logger,
+    )
 
 def generate_reports(file_name: str, threads: int, skip_existing: bool, logger):
     import glob
@@ -609,10 +1045,10 @@ def generate_reports(file_name: str, threads: int, skip_existing: bool, logger):
 
 
 # Using the file_detection module instead of local implementation, below takes the library detection from there.
-def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
+def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str, dict[str, Any]]:
     """Process input FASTQ files and prepare them for filtering."""
     from bbmapy import reformat
-    from bbmapy.update import ensure_java_availability
+    from bbmapy.update import ensure_java_availability # eventually will need to make sure (upsteream in bbmappy) to get a JRE even if there is java on path but of version <17...
 
     ensure_java_availability()
 
@@ -708,7 +1144,7 @@ def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str]:
             "Tile filtering and Error correction steps will be skipped as we concatenated fastq files from (cowardly assuming) multiple samples."
         )
 
-    return final_interleaved, file_name
+    return final_interleaved, file_name, file_info
 
 
 def filter_known_dna(
@@ -780,7 +1216,7 @@ def decontaminate_rrna(
     )  # type: ignore
     rrna_fas2 = (
         Path(config.datadir)
-        / "contam/rrna/silva_rRNA_all_sequences_masked_entropy.fasta"
+        / "contam/rrna/silva_rRNA_all_sequences_masked_entropy.fasta"   
     )  # type: ignore
     try:
         params = config.step_params["decontaminate_rrna"]
@@ -998,17 +1434,13 @@ def trim_adapters(
     from bbmapy import bbduk
 
     output_file = config.temp_dir / f"trim_adapters_{config.file_name}.fq.gz"
-    adapters_new = (
-        Path(config.datadir) / "contam/adapters/AFire_illuminatetritis1223.fa"
-    )
-    adapters_bb = Path(config.datadir) / "contam/adapters/bbmap_adapters.fa"
     try:
         params = config.step_params["trim_adapters"]
         bb_stdout, bb_stderr = bbduk(
             in_file=str(input_file),
             capture_output=True,
             out=str(output_file),
-            ref=f"{adapters_bb},{adapters_new}",
+            ref=config.adapters,
             **params,
             Xmx=config.memory["giga"],
             threads=str(config.threads),
@@ -1041,11 +1473,18 @@ def remove_synthetic_artifacts(
     """Remove synthetic artifacts (phix etc) from reads."""
     from bbmapy import bbduk
 
+    if not (
+        str(getattr(config, "artifacts", "artifacts")) != "artifacts"
+        or getattr(config, "remove_synthetic_artifacts_enabled", False)
+    ):
+        return input_file
+
     output_file = (
         config.temp_dir / f"remove_synthetic_artifacts_{config.file_name}.fq.gz"
     )
     try:
-        params = config.step_params["remove_synthetic_artifacts"]
+        params = config.step_params["remove_synthetic_artifacts"].copy()
+        params["ref"] = config.artifacts
         bb_stdout, bb_stderr = bbduk(
             in_file=str(input_file),
             capture_output=True,
@@ -1351,7 +1790,7 @@ def cleanup_and_move_files(
                     config.logger.warning(f"Could not move {qc_dir}: {str(e)}")
 
     # Move all stats and adapter files to run_info
-    for pattern in ["stats_*.txt", "out_adapter_*.txt"]:
+    for pattern in ["stats_*.txt", "out_adapter_*.txt", "bbmerge_discovered_*.fa", "validated_bbmerge_discovered_*.fa"]:
         for stat_file in temp_dir.glob(pattern):
             if stat_file.exists():
                 try:
@@ -1419,4 +1858,4 @@ def cleanup_and_move_files(
 
 # TODO: Add option to save specific intermediate files, like the host/rRNA mapped fastqs.
 # TODO: Figure out how to handle --skip-existing + --overwrite (on by default) and --keep-tmp together and --tmp-dir no being provided (maybe look for the most recent temp dir looking folder?)
-# TODO: add unit tests
+# TODO: add unit tests (done for an input paired end interleaved fastq file, need to add for multiple, and for single end, and for combo)

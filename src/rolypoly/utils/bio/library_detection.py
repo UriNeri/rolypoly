@@ -698,7 +698,7 @@ def determine_fastq_type(
             or header_analysis.get("has_barcode")
             or header_analysis.get("has_pair_mate")
         ):
-            logger.info(
+            logger.debug(
                 "Header metadata for %s (first %s reads): format=%s sequencer=%s tile=%s xy=%s barcode=%s pair_mates=%s",
                 file_path,
                 header_sample_size,
@@ -776,7 +776,7 @@ def identify_fastq_files(
     logger = get_logger(logger)
     input_path = Path(input_path)
 
-    logger.info(f"Identifying FASTQ files in: {input_path}")
+    logger.debug(f"Identifying FASTQ files in: {input_path}")
 
     file_info = {
         "rolypoly_data": {},
@@ -1067,12 +1067,12 @@ def handle_input_fastq(
     if file_info["rolypoly_data"]:
         result["rolypoly_data"] = file_info["rolypoly_data"]
 
-    logger.info(f"File handling summary for path '{input_path.absolute()}':")
-    logger.info(f"  - File name: {file_name}")
-    logger.info(f"  - R1/R2 pairs: {len(result['R1_R2_pairs'])}")
-    logger.info(f"  - Interleaved files: {len(result['interleaved_files'])}")
-    logger.info(f"  - Single-end files: {len(result['single_end_files'])}")
-    logger.info(
+    logger.debug(f"File handling summary for path '{input_path.absolute()}':")
+    logger.debug(f"  - File name: {file_name}")
+    logger.debug(f"  - R1/R2 pairs: {len(result['R1_R2_pairs'])}")
+    logger.debug(f"  - Interleaved files: {len(result['interleaved_files'])}")
+    logger.debug(f"  - Single-end files: {len(result['single_end_files'])}")
+    logger.debug(
         "  - Avg read length / quality: %.2f / %.2f",
         result["average_read_length"],
         result["average_read_quality"],

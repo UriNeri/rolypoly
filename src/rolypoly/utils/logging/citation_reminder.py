@@ -176,6 +176,8 @@ def remind_citations(
         )
 
     if return_as_text or return_bibtex:  # controls function return value
+        if os.environ.get("ROLYPOLY_SUPPRESS_CITATIONS_WRITE", "0") == "1":
+            return None  # suppressed when called from within the roll pipeline
         text = ""
         for name, doi in citations:
             citation = get_citation_from_doi(doi, return_bibtex=return_bibtex)

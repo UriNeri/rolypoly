@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import rich_click as click
 
@@ -14,6 +14,154 @@ from rolypoly.utils.logging.config import BaseConfig
 
 global tools
 tools = []
+
+# Keys: preset name → dict with keys:
+#   assembler       – list of assembler IDs to run
+#   spades_mode     – SPAdes mode override (only for the generic 'spades' assembler)
+#   step_params     – per-tool param overrides, merged on top of AssemblyConfig defaults
+#   dereplicate     – whether to deduplicate identical multi-assembler output
+#   description     – human-readable summary shown in --help and logs
+ASSEMBLY_PRESETS: dict[str, dict[str, Any]] = {
+    "rna_virus": {
+        # Recommended for RNA virus metatranscriptomics.
+        # rnaviralSPAdes is tuned for RNA viruses; MEGAHIT provides complementary contigs.
+        "assembler": ["spades_rnaviral", "megahit"],
+        "step_params": {
+            "spades": {"k": "21,33,55,77,99,121,127"},
+            "megahit": {"k-min": 21, "k-max": 127, "k-step": 10},
+        },
+        "dereplicate": True,
+        "description": (
+            "RNA virus-focused: rnaviralSPAdes + MEGAHIT, broad k-mer range. "
+            "Removes duplicate contigs (rmdup). Recommended for viral metatranscriptomes."
+        ),
+    },
+    "metatranscriptome": {
+        # For poly-A selected or mixed transcriptome libraries.
+        # rnaSPAdes handles splice-aware assembly; MEGAHIT catches low-coverage transcripts.
+        "assembler": ["spades", "megahit"],
+        "spades_mode": "rna",
+        "step_params": {"spades": {"k": "21,33,55,77,99,121,127"}},
+        "dereplicate": True,
+        "description": (
+            "Metatranscriptome: rnaSPAdes + MEGAHIT, broad k-mer range. "
+            "Suited for poly-A selected or mixed transcriptome libraries."
+        ),
+    },
+    "fast": {
+        # Optimised for speed: single assembler, narrow k-mer range, larger step size.
+        # Suitable for quick previews and --mini runs in the roll pipeline.
+        "assembler": ["megahit"],
+        "step_params": {"megahit": {"k-min": 21, "k-max": 99, "k-step": 14}},
+        "dereplicate": True,
+        "description": (
+            "Fast: MEGAHIT only, narrow k-mer range and larger step. "
+            "Trades an unknown amount of sensitivity for an unknown amount of speed; suitable for quick previews or roll --mini runs."
+        ),
+    },
+    "complete": {
+        # Maximum sensitivity: all three assembler modes run in parallel.
+        # metaSPAdes covers general metagenomics; rnaviralSPAdes targets RNA viruses;
+        # MEGAHIT provides fast complementary contigs with a thorough k-mer sweep (not sure this is a good idea).
+        "assembler": ["spades", "spades_rnaviral", "megahit"],
+        "step_params": {
+            "spades": {"k": "21,33,55,77,99,121,127"},
+            "megahit": {"k-min": 21, "k-max": 127, "k-step": 11},
+        },
+        "dereplicate": True,
+        "description": (
+            "Complete: metaSPAdes + rnaviralSPAdes + MEGAHIT with thorough k-mer ranges. "
+            "Different assemblers may produce better results - the onus of choice is on the user.  This will increase the runtime and memory usage significantly"
+        ),
+    },
+    "metag": {
+        # For DNA-based or mixed metagenomic libraries.
+        # metaSPAdes only (default meta mode); no RNA-specific tuning, no MEGAHIT.
+        "assembler": ["spades"],
+        "step_params": {
+            "spades": {"k": "21,33,55,77,99,121,127"},
+        },
+        "dereplicate": True,
+        "description": (
+            "Metagenomics: metaSPAdes (meta mode) only, broad k-mer range. "
+            "Suited for DNA-based or mixed metagenomic libraries."
+        ),
+    },
+}
+
+
+def to_odd(values: list[int]) -> list[int]:
+    """Convert a list of integers to odd integers by subtracting 1 from even numbers."""
+    return [value if value % 2 == 1 else value - 1 for value in values]
+
+
+def detect_average_read_length(libraries: dict, logger) -> float:
+    from rolypoly.utils.bio.library_detection import determine_fastq_type
+    # TODO: figure out if only the interleaved (non-merged) reads should be used to select the read length for kmer selection/capping.
+    lengths: list[float] = []
+    seen_paths: set[str] = set()
+    for lib in libraries.values():
+        for key in ("interleaved", "merged"):
+            file_path = lib.get(key)
+            if not file_path:
+                continue
+            path_str = str(file_path)
+            if path_str in seen_paths:
+                continue
+            seen_paths.add(path_str)
+            try:
+                analysis = determine_fastq_type(path_str, logger=logger)
+                read_len = float(analysis.get("average_read_length", 0))
+                if read_len > 0:
+                    lengths.append(read_len)
+            except Exception as error:
+                logger.debug(
+                    "Could not detect read length for %s: %s", path_str, str(error)
+                )
+    if not lengths:
+        return 0.0
+    return sum(lengths) / len(lengths)
+
+
+def apply_assembly_preset(
+    preset_name: str | None,
+    ctx: click.Context,
+    config: "AssemblyConfig",
+) -> None:
+    if not preset_name:
+        return
+    preset = ASSEMBLY_PRESETS.get(preset_name)
+    if preset is None:
+        raise click.BadParameter(
+            f"Unknown preset '{preset_name}'. "
+            f"Choose from: {', '.join(sorted(ASSEMBLY_PRESETS.keys()))}",
+            param_hint="--preset",
+        )
+
+    explicit: set[str] = set()
+    if ctx.params:
+        for param in ctx.command.params:
+            source = ctx.get_parameter_source(param.name)
+            if source == click.core.ParameterSource.COMMANDLINE:
+                explicit.add(param.name)
+
+    if "assembler" in preset and "assembler" not in explicit:
+        config.assembler = list(preset["assembler"])
+    if "dereplicate" in preset and "dereplicate" not in explicit:
+        config.dereplicate = bool(preset["dereplicate"])
+    if "spades_mode" in preset and "spades_mode" not in explicit:
+        config.step_params["spades"]["mode"] = preset["spades_mode"]
+    for step_name, step_overrides in preset.get("step_params", {}).items():
+        if step_name not in config.step_params:
+            config.step_params[step_name] = {}
+        if isinstance(step_overrides, dict):
+            config.step_params[step_name].update(step_overrides)
+
+    config.logger.info(
+        "Applied assembly preset '%s' (%s)",
+        preset_name,
+        preset.get("description", "no description"),
+    )
 
 
 class AssemblyConfig(BaseConfig):
@@ -33,17 +181,20 @@ class AssemblyConfig(BaseConfig):
             threads=kwargs.get("threads", 1),
             memory=kwargs.get("memory", "6gb"),
             config_file=kwargs.get("config_file", None),
+            temp_dir=kwargs.get("temp_dir", None),
             overwrite=kwargs.get("overwrite", False),
             log_level=kwargs.get("log_level", "info"),
         )
         # initialize the command specific stuff parameters
         self.assembler = kwargs.get("assembler", ["spades", "megahit"])
-        self.post_processing = kwargs.get("post_processing")
+        self.dereplicate = kwargs.get("dereplicate", True)
+        self.preset = kwargs.get("preset")
+        self.raw_fasta = kwargs.get("raw_fasta", [])
 
         self.step_params = {
             "spades": {
-                "k": "21,33,45,57,69,83,95,103,115,127",  # TODO: figure out a way to smartly choose which kmers to use prior to main spades call.
-                "mode": "meta",
+                "k": "21,33,45,57,69,83,95,103,115,127",  # DONE: figure out a way to smartly choose which kmers to use prior to main spades call. 
+                "mode": kwargs.get("spades_mode", "meta"),
             },
             "megahit": {
                 "k-min": 21,
@@ -62,13 +213,6 @@ class AssemblyConfig(BaseConfig):
                 "c": 0.99,
                 "kmer-per-seq-scale": 0.4,
             },
-            "bbwrap": {
-                "maxindel": 200,
-                "minid": 90,
-                "untrim": True,
-                "ambig": "all",
-            },
-            "bowtie": {},
         }
         self.skip_steps = (
             kwargs.get("skip_steps", [])
@@ -225,9 +369,9 @@ def handle_input_files(
 
     # Handle raw fasta files (keep existing logic)
     if input_path.is_dir():
-        from rolypoly.utils.bio.library_detection import find_fasta_files
+        from rolypoly.utils.bio.library_detection import identify_fasta_files
 
-        fasta_files = find_fasta_files(input_path, logger=logger)
+        fasta_files = identify_fasta_files(input_path, logger=logger)["fasta_files"]
         for fasta in fasta_files:
             library_info.add_raw_fasta(str(fasta))
             logger.debug(f"Added raw FASTA: {fasta.name}")
@@ -238,16 +382,18 @@ def handle_input_files(
     return libraries, len(libraries)
 
 
-def run_spades(config, libraries):
+def run_spades(config, libraries, mode: str | None = None, output_label: str | None = None):
     import subprocess
 
     from rolypoly.utils.various import ensure_memory
 
+    spades_mode = mode or config.step_params["spades"]["mode"]
+    output_name = output_label or spades_mode
     spades_output = (
         config.output_dir
-        / f"spades_{config.step_params['spades']['mode']}_output"
+        / f"spades_{output_name}_output"
     )
-    spades_cmd = f"spades.py --{config.step_params['spades']['mode']} -o {spades_output} --threads {config.threads} --only-assembler -k {config.step_params['spades']['k']} --phred-offset 33 -m {ensure_memory(config.memory)['bytes'][:-1]}"
+    spades_cmd = f"spades.py --{spades_mode} -o {spades_output} --threads {config.threads} --only-assembler -k {config.step_params['spades']['k']} --phred-offset 33 -m {ensure_memory(config.memory)['bytes'][:-1]}"
 
     if len(libraries) > 9:
         config.logger.info("Running SPAdes on concatenated reads")
@@ -269,7 +415,7 @@ def run_spades(config, libraries):
             if lib["interleaved"]:
                 spades_cmd += f" --pe-12 {i} {lib['interleaved']}"
             if lib["merged"]:
-                if config.step_params["spades"]["mode"] == "meta":
+                if spades_mode == "meta":
                     # metaSPAdes only works with paired-end data, so switch to regular mode
                     # spades_cmd = spades_cmd.replace("--meta", "")
                     spades_cmd += f" --pe-m {i + 1} {lib['merged']}"
@@ -464,7 +610,7 @@ def run_penguin(config, libraries):
     "--assembler",
     default=["spades", "megahit"],
     multiple=True,
-    type=click.Choice(["spades", "megahit", "penguin"]),
+    type=click.Choice(["spades", "spades_rnaviral", "megahit", "penguin"]),
     help="""Assembler choice. For multiple, use multiple -A flags or give a comma-separated list. \n
     SPAdes: iterative de bruijn graph assembler - relatively slow and memory heavy, but potentially more accurate. \n
     MEGAHIT: multiple kmer based de bruijn graph assembler - Fast and memory light, but potentially less accurate. \n
@@ -472,6 +618,25 @@ def run_penguin(config, libraries):
     Note1 : Penguin offers a amino-acid (translation) guided assembly mode, but RolyPoly bypasses it.    \n
     Note2 : SPAdes is the default assembler for RolyPoly.
     """,
+)
+@click.option(
+    "--spades-mode",
+    default="meta",
+    type=click.Choice(["meta", "rna", "rnaviral", "sc"]),
+    help="SPAdes mode for the 'spades' assembler.",
+)
+@click.option(
+    "--preset",
+    default=None,
+    type=click.Choice(sorted(ASSEMBLY_PRESETS.keys())),
+    help=(
+        "Apply a named assembly preset (overrides --assembler and --dereplicate unless "
+        "those flags are given explicitly on the command line).  "
+        + "  ".join(
+            f"'{name}': {p['description']}"
+            for name, p in ASSEMBLY_PRESETS.items()
+        )
+    ),
 )
 @click.option(
     "-op",
@@ -483,9 +648,9 @@ def run_penguin(config, libraries):
     "-ss",
     "--skip-steps",
     default=[],
-    type=click.Choice(["map", "post_processing", "rename_seqs"]),  # , "stats"
+    type=click.Choice(["dereplicate", "rename"]),  # , "stats"
     multiple=True,
-    help="Comma-separated list of steps to skip. Example: --skip-steps post_processing,rename_seqs",
+    help="Comma-separated list of steps to skip. Example: --skip-steps dereplicate,rename_seqs",
 )
 @click.option(
     "-ow",
@@ -502,14 +667,16 @@ def run_penguin(config, libraries):
     help="Log level. Options: debug, info, warning, error, critical",
 )
 @click.option(
-    "-p",
-    "--post-processing",
-    default=["rmdup"],
-    type=click.Choice(["linclust", "rmdup", "none"]),
-    help="""Method for merging or clustering the assembler output(s), options:
-    - linclust: use MMseqs2 linclust to cluster the assembler output at 99% identity and 99% coverage using coverage-mode 1. These parameters mean that most subsequences that are wholly contained within a larger sequence will dropped (use with caution, as a chimeras from one assembler may be merged with a chimera from another assembler may 'engulf' a non-chimeric sequence from the other assembler)
-    - rmdup: use seqkit rmdup to remove identical sequences (same sequence, same length, or its' reverse complement)
-    - none: do not perform any post assembly processing""",
+    "--temp-dir",
+    default=None,
+    help="Directory for temporary files. If not provided, a timestamped temp directory is created in the output directory.",
+)
+@click.option(
+    "--dereplicate/--no-rmdup",
+    default=True,
+    help="""Dereplicate assembler output by default. Disable with --no-rmdup.
+    - dereplicate: remove identical sequences (same sequence, same length, or its' reverse complement)
+    - no-rmdup: do not perform assembler-output dereplication""",
 )
 def assembly(
     input_dir,
@@ -519,7 +686,9 @@ def assembly(
     long_read,
     raw_fasta,
     assembler,
-    post_processing,
+    spades_mode,
+    preset,
+    dereplicate,
     output,
     threads,
     memory,
@@ -529,26 +698,26 @@ def assembly(
     skip_steps,
     overwrite,
     log_level,
+    temp_dir,
 ):
-    """Assemble reads/contigs with one or more backends and optional post-processing.
+    """Assemble reads/contigs with one or more backends and optional dereplication.
 
     Inputs can be provided explicitly (`--paired-end`, `--single-end`,
     `--merged`, `--long-read`, `--raw-fasta`) and/or discovered from
     `--input-dir`.
 
-    Selected assembler outputs are normalized and optionally post-processed
-    (for example `rmdup` or `linclust`) before writing final contigs and run
-    metadata to the output directory.
+    Selected assembler outputs are normalized and optionally dereplicated
+    before writing final contigs and run metadata to the output directory.
     """
     import shutil
 
     import polars as pl
-    from bbmapy import bbmap
 
     from rolypoly.utils.bio.sequences import (
         process_sequences,
         read_fasta_df,
         rename_sequences,
+        write_fasta_file,
     )
     from rolypoly.utils.logging.citation_reminder import remind_citations
     from rolypoly.utils.logging.loggit import log_start_info
@@ -583,16 +752,21 @@ def assembly(
         threads=threads,
         log_file=Path(log_file),
         memory=memory,
+        temp_dir=temp_dir,
         assembler=assembler,
+        spades_mode=spades_mode,
+        preset=preset,
         keep_tmp=keep_tmp,
         override_parameters=override_parameters,
         skip_steps=skip_steps,
         log_level=log_level,
-        post_processing=post_processing,
+        dereplicate=dereplicate,
         overwrite=overwrite,
     )
 
     config.logger.info("Starting assembly process")
+    ctx = click.get_current_context()
+    apply_assembly_preset(preset, ctx, config)
     log_start_info(config.logger, config_dict=config.__dict__)
     config.logger.info(
         f"Saving config to {config.output_dir / 'assembly_config.json'}"
@@ -636,16 +810,78 @@ def assembly(
 
     config.logger.info(f"Found {n_libraries} libraries")
     config.logger.info(f"Libraries: {libraries}")
-    contigs4eval = []
+    observed_read_length = detect_average_read_length(libraries, config.logger)
+    max_k = int(observed_read_length) - 1 if observed_read_length > 1 else None
+    spades_kmers: list[int] = []
+    seen_spades_kmers: set[int] = set()
+    for kmer in to_odd(
+        [
+            int(k.strip())
+            for k in str(config.step_params["spades"]["k"]).split(",")
+            if str(k).strip()
+        ]
+    ):
+        if kmer < 1 or kmer in seen_spades_kmers:
+            continue
+        seen_spades_kmers.add(kmer)
+        if max_k is None or kmer < max_k:
+            spades_kmers.append(kmer)
+    if not spades_kmers and seen_spades_kmers:
+        spades_kmers = [min(seen_spades_kmers)]
+    config.step_params["spades"]["k"] = ",".join(
+        str(kmer) for kmer in spades_kmers
+    )
+    if observed_read_length > 1:
+        megahit_k_min = to_odd([int(config.step_params["megahit"]["k-min"])])[0]
+        megahit_k_max = min(int(config.step_params["megahit"]["k-max"]), max_k - 1)
+        megahit_k_max = max(to_odd([megahit_k_max])[0], megahit_k_min)
+        megahit_k_step = int(config.step_params["megahit"]["k-step"])
+        if megahit_k_step % 2 == 1:
+            megahit_k_step = max(2, megahit_k_step - 1)
+        config.step_params["megahit"]["k-min"] = megahit_k_min
+        config.step_params["megahit"]["k-max"] = megahit_k_max
+        config.step_params["megahit"]["k-step"] = megahit_k_step
+        config.logger.info(
+            "Capped k-mer settings to read length %.2f (max_k=%s): spades_k=%s megahit_kmin=%s megahit_kmax=%s megahit_kstep=%s",
+            observed_read_length,
+            max_k,
+            config.step_params["spades"]["k"],
+            config.step_params["megahit"]["k-min"],
+            config.step_params["megahit"]["k-max"],
+            config.step_params["megahit"]["k-step"],
+        )
+    contigs4eval = []          # list[Path | str]  – one entry per assembler run
+    contigs_asm_labels = []    # list[str]          – parallel assembler name
 
     if "spades" in config.assembler and "spades" not in config.skip_steps:
-        contigs4eval.append(run_spades(config, libraries))
+        contigs4eval.append(
+            run_spades(
+                config,
+                libraries,
+                mode=config.step_params["spades"]["mode"],
+                output_label=config.step_params["spades"]["mode"],
+            )
+        )
+        contigs_asm_labels.append("spades")
         tools.append("spades")
+    if "spades_rnaviral" in config.assembler and "spades_rnaviral" not in config.skip_steps:
+        contigs4eval.append(
+            run_spades(
+                config,
+                libraries,
+                mode="rnaviral",
+                output_label="rnaviral",
+            )
+        )
+        contigs_asm_labels.append("spades_rnaviral")
+        tools.append("spades_rnaviral")
     if "megahit" in config.assembler and "megahit" not in config.skip_steps:
         contigs4eval.append(run_megahit(config, libraries))
+        contigs_asm_labels.append("megahit")
         tools.append("megahit")
     if "penguin" in config.assembler and "penguin" not in config.skip_steps:
         contigs4eval.append(run_penguin(config, libraries))
+        contigs_asm_labels.append("penguin")
         tools.append("penguin")
 
     # First concatenate and rename all contigs
@@ -662,310 +898,120 @@ def assembly(
 
         if "rename" not in config.skip_steps:
             try:
-                # Rename sequences
-                config.logger.info("Reading and parsing FASTA file")
-                df = read_fasta_df(concat_file)
-                config.logger.info(f"Found {len(df)} sequences")
-
-                config.logger.info("Renaming sequences")
-                df_renamed, id_map = rename_sequences(
-                    df, prefix="CID", use_hash=False
+                config.logger.info(
+                    "Renaming contigs from %d assembler output(s)", len(contigs4eval)
                 )
+
+                # Read each assembler output separately and track which rows
+                # belong to which assembler – avoids storing a full text column.
+                assembler_dfs = []
+                assembler_ranges = []  # (label, start_row_inclusive, end_row_exclusive)
+                row_offset = 0
+                for contig_file, asm_label in zip(contigs4eval, contigs_asm_labels):
+                    df_part = read_fasta_df(str(contig_file))
+                    n = len(df_part)
+                    assembler_ranges.append((asm_label, row_offset, row_offset + n))
+                    row_offset += n
+                    assembler_dfs.append(df_part)
+
+                df = pl.concat(assembler_dfs)
+                del assembler_dfs  # release per-assembler frames
+                config.logger.info("Found %d sequences total", len(df))
+
+                # Assign sequential IDs (CID_0001, CID_0002, …)
+                df_renamed, id_map = rename_sequences(df, prefix="CID", use_hash=False)
+
+                # Build an assembler-label column using row-index ranges.
+                # A chained when/then expression covers each assembler's row range;
+                # no full-text source column is stored.
+                df_renamed = df_renamed.with_row_index("_row_nr")
+                asm_expr = pl.lit("")  # fallback (should never fire)
+                for asm_label, start, end in assembler_ranges:
+                    asm_expr = (
+                        pl.when(pl.col("_row_nr").is_between(start, end - 1))
+                        .then(pl.lit(asm_label))
+                        .otherwise(asm_expr)
+                    )
+                df_renamed = df_renamed.with_columns(asm_expr.alias("assembler")).drop("_row_nr")
+
                 config.logger.info("Calculating sequence statistics")
                 df_renamed = process_sequences(df_renamed)
 
-                # Write renamed sequences
-                renamed_file = str(
-                    config.output_dir / "all_contigs_renamed.fasta"
+                # Write renamed sequences using the shared utility
+                renamed_file = str(config.output_dir / "all_contigs_renamed.fasta")
+                config.logger.info("Writing renamed sequences to %s", renamed_file)
+                write_fasta_file(
+                    seqs=df_renamed["sequence"].to_list(),
+                    headers=df_renamed["header"].to_list(),
+                    output_file=renamed_file,
                 )
-                config.logger.info(
-                    f"Writing renamed sequences to {renamed_file}"
-                )
-                with open(renamed_file, "w") as f:
-                    for header, seq in zip(
-                        df_renamed["header"], df_renamed["sequence"]
-                    ):
-                        f.write(f">{header}\n{seq}\n")
 
-                # Update contigs4eval to use renamed file
+                # Update contigs4eval to use the single renamed file
                 contigs4eval = [renamed_file]
 
-                # Save mapping file
+                # Save mapping file (assembler stored as a column, not in the ID)
                 mapping_file = str(config.output_dir / "contigs_id_map.tsv")
-                config.logger.info(f"Saving ID mapping to {mapping_file}")
+                config.logger.info("Saving ID mapping to %s", mapping_file)
                 mapping_df = pl.DataFrame(
                     {
                         "old_id": list(id_map.keys()),
                         "new_id": list(id_map.values()),
+                        "assembler": df_renamed["assembler"],
                         "length": df_renamed["length"],
                         "gc_content": df_renamed["gc_content"].round(2),
+                        "n_count": df_renamed["n_count"],
                     }
                 )
                 mapping_df.write_csv(mapping_file, separator="\t")
 
             except Exception as e:
-                config.logger.error(f"Error during sequence renaming: {str(e)}")
+                config.logger.error("Error during sequence renaming: %s", str(e))
                 config.logger.warning("Continuing with original contig files")
-                # Keep original contigs4eval if renaming fails
+                # contigs4eval remains a list of paths – no change needed
 
-    # Post-processing step (deduplication or clustering)
-    post_processed_output = None
-    if len(contigs4eval) > 0 and config.post_processing != "none":
-        if config.post_processing == "rmdup":
-            config.logger.info("Starting sequence deduplication with seqkit")
-            tools.append("seqkit")
-            post_processed_output = str(
-                config.output_dir / "post_processed_contigs.fasta"
-            )
+    # Dereplication step (identical sequences only)
+    dereplicated_output = None
+    if len(contigs4eval) > 0 and config.dereplicate:
+        config.logger.info("Starting sequence deduplication with seqkit")
+        tools.append("seqkit")
+        dereplicated_output = str(
+            config.output_dir / "dereplicated_contigs.fasta"
+        )
 
-            run_command_comp(
-                "seqkit rmdup",
-                positional_args=[str(contigs4eval[0])],
-                positional_args_location="end",
-                params={
-                    "by-seq": True,  # Use sequence for deduplication
-                    "line-width": "0",
-                    "threads": str(config.threads),
-                    "out-file": post_processed_output,
-                    "dup-num-file": str(
-                        config.output_dir / "Redundancy_lookup.txt"
-                    ),
-                },
-                logger=config.logger,
-                prefix_style="double",
-            )
-            config.logger.info("Finished sequence deduplication")
+        run_command_comp(
+            "seqkit rmdup",
+            positional_args=[str(contigs4eval[0])],
+            positional_args_location="end",
+            params={
+                "by-seq": True,  # Use sequence for deduplication
+                "line-width": "0",
+                "threads": str(config.threads),
+                "out-file": dereplicated_output,
+                "dup-num-file": str(
+                    config.output_dir / "Redundancy_lookup.txt"
+                ),
+            },
+            logger=config.logger,
+            prefix_style="double",
+        )
+        config.logger.info("Finished sequence deduplication")
 
-        elif config.post_processing == "linclust":
-            config.logger.info(
-                "Starting sequence clustering with MMseqs2 easy-linclust"
-            )
-            tools.append("mmseqs2")
-
-            # Create temporary directory for MMseqs2
-            mmseqs_tmp = str(config.output_dir / "mmseqs_tmp")
-            os.makedirs(mmseqs_tmp, exist_ok=True)
-
-            # Set up output prefix for easy-linclust
-            cluster_prefix = str(config.output_dir / "mmseqs_cluster")
-            post_processed_output = f"{cluster_prefix}_rep_seq.fasta"
-
-            # Run easy-linclust: input_fasta, output_prefix, tmp_dir
-            run_command_comp(
-                "mmseqs easy-linclust",
-                positional_args=[
-                    str(contigs4eval[0]),
-                    cluster_prefix,
-                    mmseqs_tmp,
-                ],
-                params={
-                    "min-seq-id": str(
-                        config.step_params["mmseqs"]["min-seq-id"]
-                    ),
-                    "cov-mode": str(config.step_params["mmseqs"]["cov-mode"]),
-                    "c": str(config.step_params["mmseqs"]["c"]),
-                    "threads": str(config.threads),
-                },
-                logger=config.logger,
-                positional_args_location="end",
-            )
-
-            config.logger.info("Finished sequence clustering")
-            config.logger.info(
-                f"Representative sequences: {post_processed_output}"
-            )
-            config.logger.info(
-                f"Cluster assignments: {cluster_prefix}_cluster.tsv"
-            )
-
-            # Clean up temporary files if not keeping them
-            if not config.keep_tmp:
-                import shutil
-
-                shutil.rmtree(mmseqs_tmp, ignore_errors=True)
-
-        # Verify post-processing output exists before proceeding
-        if post_processed_output and (
-            not os.path.exists(post_processed_output)
-            or os.path.getsize(post_processed_output) == 0
+        # Verify dereplicated output exists before proceeding
+        if dereplicated_output and (
+            not os.path.exists(dereplicated_output)
+            or os.path.getsize(dereplicated_output) == 0
         ):
             config.logger.error(
-                f"Post-processing failed: {post_processed_output} not found or empty"
+                f"Dereplication failed: {dereplicated_output} not found or empty"
             )
             return
-    elif len(contigs4eval) > 0 and config.post_processing == "none":
-        config.logger.info("Skipping post-processing as requested")
-        post_processed_output = str(contigs4eval[0])  # Use original contigs
+    elif len(contigs4eval) > 0 and not config.dereplicate:
+        config.logger.info("Skipping dereplication as requested")
+        dereplicated_output = str(contigs4eval[0])  # Use original contigs
     else:
-        config.logger.warning("No contigs available for post-processing")
+        config.logger.warning("No contigs available for dereplication or further processing")
 
-    # Map reads back to contigs using either bbmap_skimmer (default) or bowtie (low-mem)
-    if post_processed_output and os.path.exists(post_processed_output):
-        interleaved = ",".join(
-            str(lib["interleaved"])
-            for lib in libraries.values()
-            if lib["interleaved"]
-        )
-        merged = ",".join(
-            str(lib["merged"]) for lib in libraries.values() if lib["merged"]
-        )
-
-        # Use bbmap_skimmer by default
-        if "bbmap" not in config.skip_steps:
-            tools.append("bbmap")
-            config.logger.info("Running bbmap_skimmer for read mapping")
-
-            # Combine all input reads
-            input_reads = []
-            if interleaved:
-                input_reads.extend(interleaved.split(","))
-            if merged:
-                input_reads.extend(merged.split(","))
-
-            bbmap(
-                ref=post_processed_output,
-                in_file=",".join(input_reads),
-                out=str(config.output_dir / "assembly_bbmap.sam"),
-                threads=str(config.threads),
-                Xmx=str(config.memory["giga"]),
-                ignorefrequentkmers="f",
-                vslow=True,
-                maxsites="1500",
-                maxsites2="1500",
-                sam="1.4",
-                minid="0.8",
-                nodisk=True,
-                ambiguous="all",
-                overwrite="t",
-                secondary=True,
-            )
-
-            # Compress SAM file
-            if os.path.exists(str(config.output_dir / "assembly_bbmap.sam")):
-                run_command_comp(
-                    "pigz",
-                    params={"p": str(config.threads)},
-                    positional_args=[
-                        str(config.output_dir / "assembly_bbmap.sam")
-                    ],
-                    logger=config.logger,
-                    prefix_style="single",
-                )
-
-        # Use bowtie as low-memory alternative
-        elif "bowtie" not in config.skip_steps:
-            tools.append("bowtie")
-            config.logger.info(
-                "Running bowtie (low-memory mode) for read mapping"
-            )
-
-            bowtie_index = str(config.output_dir / "bowtie_index")
-            os.makedirs(bowtie_index, exist_ok=True)
-
-            # Build bowtie index
-            index_success = run_command_comp(
-                "bowtie-build",
-                positional_args=[
-                    post_processed_output,
-                    str(config.output_dir / "bowtie_index/contigs"),
-                ],
-                params={"threads": str(config.threads)},
-                logger=config.logger,
-                prefix_style="double",
-            )
-
-            if index_success:
-                try:
-                    if len(interleaved) > 0:
-                        # Align paired-end interleaved reads
-                        align_success = run_command_comp(
-                            "bowtie",
-                            params={
-                                "p": str(config.threads),
-                                "S": True,
-                                "x": str(
-                                    config.output_dir / "bowtie_index/contigs"
-                                ),
-                            },
-                            positional_args=[
-                                "--12",
-                                interleaved,
-                                str(
-                                    config.output_dir
-                                    / "assembly_bowtie_interleaved.sam"
-                                ),
-                            ],
-                            logger=config.logger,
-                            prefix_style="single",
-                        )
-                        if align_success and os.path.exists(
-                            str(
-                                config.output_dir
-                                / "assembly_bowtie_interleaved.sam"
-                            )
-                        ):
-                            run_command_comp(
-                                "pigz",
-                                params={"p": str(config.threads)},
-                                positional_args=[
-                                    str(
-                                        config.output_dir
-                                        / "assembly_bowtie_interleaved.sam"
-                                    )
-                                ],
-                                logger=config.logger,
-                                prefix_style="single",
-                            )
-
-                    if len(merged) > 0:
-                        # Align single-end/merged reads
-                        align_success = run_command_comp(
-                            "bowtie",
-                            params={
-                                "p": str(config.threads),
-                                "S": True,
-                                "x": str(
-                                    config.output_dir / "bowtie_index/contigs"
-                                ),
-                            },
-                            positional_args=[
-                                merged,
-                                str(
-                                    config.output_dir
-                                    / "assembly_bowtie_merged_reads.sam"
-                                ),
-                            ],
-                            logger=config.logger,
-                            prefix_style="single",
-                        )
-                        if align_success and os.path.exists(
-                            str(
-                                config.output_dir
-                                / "assembly_bowtie_merged_reads.sam"
-                            )
-                        ):
-                            run_command_comp(
-                                "pigz",
-                                params={"p": str(config.threads)},
-                                positional_args=[
-                                    str(
-                                        config.output_dir
-                                        / "assembly_bowtie_merged_reads.sam"
-                                    )
-                                ],
-                                logger=config.logger,
-                                prefix_style="single",
-                            )
-                except Exception as e:
-                    config.logger.warning(
-                        f"Failed to align reads to contigs: {e}"
-                    )
-            else:
-                config.logger.error(
-                    "Failed to build bowtie index, skipping alignment steps"
-                )
-
-    config.logger.info(f"Finished assembly evaluation on: {contigs4eval}")
+    config.logger.info(f"Finished assembly: {contigs4eval}")
 
     if not config.keep_tmp:
         # Clean up temporary files and directories
@@ -997,33 +1043,18 @@ def assembly(
 
     config.logger.info("Assembly process completed successfully.")
 
-    if post_processed_output:
-        post_processing_method = config.post_processing
-        if post_processing_method == "rmdup":
-            config.logger.info(
-                f"Final deduplicated contigs from the assemblers used are in {post_processed_output}"
-            )
-        elif post_processing_method == "linclust":
-            config.logger.info(
-                f"Final clustered contigs from the assemblers used are in {post_processed_output}"
-            )
-            cluster_prefix = str(config.output_dir / "mmseqs_cluster")
-            config.logger.info(
-                f"Cluster assignments are in {cluster_prefix}_cluster.tsv"
-            )
-        else:
-            config.logger.info(
-                f"Final contigs from the assemblers used are in {post_processed_output}"
-            )
+    if dereplicated_output:
+        final_assembly_symlink = config.output_dir / "final_assembly.fasta"
+        if final_assembly_symlink.exists() or final_assembly_symlink.is_symlink():
+            final_assembly_symlink.unlink()
+        final_assembly_symlink.symlink_to(Path(dereplicated_output).resolve())
+        config.logger.info(
+            "Symlinked final assembly to %s", final_assembly_symlink
+        )
+
     else:
         config.logger.info("No final contigs were produced.")
 
-    config.logger.info(
-        f"Reads unassembled from the assembly are in {config.output_dir}/assembly_bbw_unassembled.fq.gz"
-    )
-    config.logger.info(
-        f"Reads aligned to the assembly (interleaved and merged) are in {config.output_dir}/assembly_bowtie_interleaved.sam.gz and {config.output_dir}/assembly_bowtie_merged_reads.sam.gz"
-    )
     if config.log_level != 10:
         with open(f"{config.log_file}", "a") as f_out:
             f_out.write(remind_citations(tools, return_bibtex=True) or "")
