@@ -148,3 +148,6 @@ dev_only/
 .github/*.md
 AGENTS.md
 scripts/*
+testing_folder/inputs/reads/cotesia_chilonis_jiujiang/
+testing_folder/inputs/reads/saffron*/
+testing_folder/bbtools_behavior_tests/
