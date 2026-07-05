@@ -12,6 +12,7 @@ from rolypoly.utils.bio.sequences import guess_fasta_alpha
 from rolypoly.utils.logging.config import BaseConfig
 from rolypoly.utils.various import run_command_comp
 
+# global tools # TODO: add support for this directly here not just from annotate.py
 
 def init_output_files_table() -> pl.DataFrame:
     return pl.DataFrame(
@@ -63,6 +64,19 @@ INFO_TABLE_SPECS = {
         ],
         "rename_columns": {"#GroupName": "GroupName"},
         "read_csv_kwargs": {"separator": ",", "has_header": True},
+    },
+    "uniref50": {
+        "relative_path": Path("reference_seqs") / "uniref" / "uniref50_viral.tsv",
+        "join_column": "Cluster_ID",
+        "prefix": "uniref50_meta",
+        "columns": [
+            "Cluster_ID",
+            "Cluster Name",
+            "Types",	"Size",	"Organisms",	"Length",	"Identity",	"Cluster members",
+
+        ],
+        "rename_columns": {"Cluster ID": "Cluster_ID"},
+        "read_csv_kwargs": {"separator": "\t", "has_header": True},
     },
 }
 
@@ -523,7 +537,6 @@ def get_database_paths(config, tool_name):
             "NVPC".lower(): hmmdbdir / "nvpc.hmm",
             "RVMT".lower(): hmmdbdir / "rvmt.hmm",
             "Pfam".lower(): hmmdbdir / "Pfam-A.hmm",
-            "Pfam_filtered".lower(): hmmdbdir / "pfam_filtered.hmm",
             "genomad".lower(): hmmdbdir / "genomad_rna_viral_markers.hmm",
             "vfam".lower(): hmmdbdir / "vfam.hmm",
         },
