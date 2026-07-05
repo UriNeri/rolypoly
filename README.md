@@ -71,6 +71,8 @@ For detailed modular installation options, see the [installation documentation](
 RolyPoly is a command-line tool with subcommands grouped by analysis stage. 
 Use `rolypoly --help` or `rolypoly <command> --help` for most up to date details. Some additional information is in the [docs](https://urineri.github.io/rolypoly/commands/).
 
+For scenario-based usage examples (different library types, preset selection, step-by-step modular workflow), see the **[Examples page](https://urineri.github.io/rolypoly/examples)**.
+
 ```bash
 rolypoly  <COMMAND> [ARGS]...
 ```

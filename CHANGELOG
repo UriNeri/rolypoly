@@ -1,5 +1,32 @@
 # Changelog
 
+
+## 05.07.2026 [TBD]
+### Added
+- New command: `map` - wrapper around some popular raw read aligners.
+- `roll`: length-filtering step now implemented — uses pre-computed lengths from `assembly/contigs_id_map.tsv` (intersected with surviving cluster representatives); falls back to computing lengths directly from the FASTA if the map is absent.
+- `assemble`: new `metag` preset — metaSPAdes only (meta mode), broad k-mer range; intended for DNA-based or mixed metagenomic libraries.
+- `assemble`: `contigs_id_map.tsv` now includes an `assembler` column recording which assembler produced each contig; source is tracked via row-range mapping (no suffix added to contig IDs).
+- `roll`: new `DNA_virus` preset — maps to `filter-reads: all_virus_metag` + `assemble: metag`; skips rRNA and identified-DNA filtering, uses metaSPAdes only.
+- `roll`: per-command citation writes suppressed during pipeline execution via `ROLYPOLY_SUPPRESS_CITATIONS_WRITE` env var; citations collected and written once at the end (`citation_reminder.py` checks the var dynamically).
+- `roll`: mini/shrink step now has proper `skip_existing` and `overwrite` handling (skips if output files already present; removes dir on overwrite before re-running).
+
+### Changed
+- `assemble`, `filter-reads` and `roll` now accept presets (`--preset`), which are pre-defined combinations of parameters for some common use cases (e.g. polya, rrna, no-dna filtering etc.).
+- `assemble` does not perform post-assembly read mapping and post-processing is reduced to dereplication only.
+- `filter-reads` if all input for filter-reads is paired-end, an attempt to discover the adapter sequences (based on the mergable reads' overlap) is attempted. If the input contains any single-end reads, the adapter discovery AND error correction steps, are skipped.
+- `roll`: `--preset fast` is now an alias for `--mini` — activates read subsampling, forces `assembly: fast` (MEGAHIT only), and narrows marker/nucleic/annotation databases (`genomad+rvmt`, `ncbi_ribovirus`, `uniref50`).
+- `roll`: `--cluster` / `-d` option removed; use `--cluster-backend none` to skip clustering (`none` is now a valid choice for `--cluster-backend`).
+- `roll`: all `ROLL_PRESET_MAP` descriptions rewritten to accurately reflect the underlying `filter-reads` and `assemble` preset behaviour (parameters, tools used).
+- `roll`: old `all_virus_metag` roll-preset name replaced by `DNA_virus`; `all_virus_metag` remains valid as a direct `filter-reads` preset name.
+- `assemble`: `write_fasta_file` utility now used for writing renamed contigs instead of a manual loop.
+- `library_detection`: per-file header-analysis log, "Identifying FASTQ files in" banner, and `handle_input_fastq` summary block downgraded from INFO → DEBUG to reduce log noise when called repeatedly from within `roll`.
+- docs/examples.md: preset reference table updated (`DNA_virus`, `metag`); all `filter-reads` and `assemble` preset examples now cover all available presets including new ones.
+
+
+
+
+
 ## 21.06.2026 [v0.7.6 / e9bbd4e]
 
 ### Fixed
@@ -77,10 +104,10 @@
 - Development environment setup scripts
 - Benchmarking utilities
 
-### Dependencies
+### Dependencies 
   - BBMap, FastQC, MultiQC
   - MMseqs2, BLAST, Prodigal
-  - Minimap2, Bowtie
+  - Minimap2, Bowtie (dropped)
 
 ### Notes
 - Project under active development
