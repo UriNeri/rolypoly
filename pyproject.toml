@@ -139,7 +139,7 @@ igraph = ">=1.0.0,<2"
 leidenalg = ">=0.11.0,<0.12"
 
 [tool.pixi.feature.misc.dependencies]
-# For miscellaneous commands (fetch-sra, quick-taxonomy, etc.)
+# For miscellaneous commands (fetch-sra, etc.)
 aria2 = ">=1.37.0,<2"
 
 [tool.pixi.feature.dev.dependencies]

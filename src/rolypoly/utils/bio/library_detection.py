@@ -308,9 +308,27 @@ def create_sample_file(
                         f"Requested sample_size {sample_size_int} > total_reads {total_reads}, using all reads."
                     )
                     sample_size_int = total_reads - (total_reads % 2)
-                # Each read = 4 lines, so sample indices of reads
-                read_indices = sample(range(total_reads), sample_size_int)
-                read_indices = np.sort(read_indices)
+                if interleaved:
+                    # Sample by mate-pair index (not individual read index) so
+                    # both mates of an interleaved paired-end file are kept
+                    # together. Sampling individual read indices independently
+                    # would separate mates and break interleaving in the output.
+                    total_pairs = total_reads // 2
+                    num_pairs = sample_size_int // 2
+                    if num_pairs > total_pairs:
+                        num_pairs = total_pairs
+                    pair_indices = sample(range(total_pairs), num_pairs)
+                    read_indices = np.sort(
+                        list(
+                            itertools.chain.from_iterable(
+                                [(2 * p, 2 * p + 1) for p in pair_indices]
+                            )
+                        )
+                    )
+                else:
+                    # Each read = 4 lines, so sample indices of reads
+                    read_indices = sample(range(total_reads), sample_size_int)
+                    read_indices = np.sort(read_indices)
                 # Convert to line numbers
                 lines_2_get = np.sort(
                     list(

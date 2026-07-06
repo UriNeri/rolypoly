@@ -122,7 +122,7 @@ Legend:
 - ✅ [`fastx-calc`](https://urineri.github.io/rolypoly/commands/misc) — Calculate per-sequence metrics (length, GC content, hash, ...)
 - ✅ [`fastx-stats`](https://urineri.github.io/rolypoly/commands/misc) — Calculate (-->aggregate) statistics for sequences (min, max, mean, median, ...) (input is file/s)
 - ✅ [`rename-seqs`](https://urineri.github.io/rolypoly/commands/misc) — Rename sequences (add a prefix, suffix, hash, running number, etc.)
-- 🚧 [`quick-taxonomy`](https://urineri.github.io/rolypoly/commands/misc) — Quick taxonomy assignment. Candidate workflows are [github.com/UriNeri/ictv-mmseqs2-protein-database](https://github.com/UriNeri/ictv-mmseqs2-protein-database) and [github.com/apcamargo/ictv-mmseqs2-protein-database](https://github.com/apcamargo/ictv-mmseqs2-protein-database) 
+- 🤔 [`quick-taxonomy`](https://urineri.github.io/rolypoly/commands/misc) — Quick taxonomy assignment. Candidate workflows are [github.com/UriNeri/ictv-mmseqs2-protein-database](https://github.com/UriNeri/ictv-mmseqs2-protein-database) and [github.com/apcamargo/ictv-mmseqs2-protein-database](https://github.com/apcamargo/ictv-mmseqs2-protein-database) 
 - 🤔 support for [genotate](https://github.com/deprekate/genotate) for gene prediction.
 - 🤔 Genome refinement / strain de-entalgement / variant calling?
 - 🤔 Virus feature prediction (+/-ssRNA/dsRNA, circular/linear, mono/poly-segmented, capsid type, etc.)
