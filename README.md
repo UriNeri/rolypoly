@@ -97,7 +97,7 @@ Legend:
 
 #### Annotation
 - ✅ [`annotate`](https://urineri.github.io/rolypoly/commands/annotate) — Genome feature annotation (wraps the rna and prot commands)
-- ✅ [`annotate-rna`](https://urineri.github.io/rolypoly/commands/annotate_rna) — RNA secondary structure labelling and ribozyme detection (Infernal, ViennaRNA/linearfold, cmsearch on Rfam...)
+- ✅ [`annotate-rna`](https://urineri.github.io/rolypoly/commands/annotate_rna) — RNA secondary structure labelling and ribozyme detection (Infernal, linearfold, cmsearch on Rfam...)
 - 🧪 [`annotate-prot`](https://urineri.github.io/rolypoly/commands/annotate_prot) — Gene calling and Protein domain annotation and functional prediction (HMMER, Pfam, custom).
 
 #### Meta/Genome Assembly
@@ -171,7 +171,7 @@ Non-Python
 * [psutil](https://pypi.org/project/psutil/)
 * [bbmapy](https://github.com/urineri/bbmapy)
 * [pymsaviz](https://github.com/aziele/pymsaviz)
-* [viennarna](https://github.com/ViennaRNA/ViennaRNA)
+<!-- * [viennarna](https://github.com/ViennaRNA/ViennaRNA) -->
 * [pyranges](https://github.com/biocore-ntnu/pyranges)
 * [intervaltree](https://github.com/chaimleib/intervaltree)
 * [lightmotif](https://github.com/dincarnato/LightMotif)

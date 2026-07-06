@@ -36,7 +36,7 @@ datadir = Path(
     "--aligner",
     required=False,
     default="mmseqs2",
-    help="Which tool to use for identifying shared sequence (minimap2, mmseqs2, diamond, bowtie1, bbmap)",
+    help="Which tool to use for identifying shared sequence (minimap2, mmseqs2, diamond,  bbmap)",
 )
 @click.option(
     "-mlc",
@@ -78,7 +78,7 @@ def mask_dna(
       output: (str) Output file name
       flatten: (bool) Attempt to kcompress.sh the masked file
       input: (str) Input fasta file
-      aligner: (str) Which tool to use for identifying shared sequence (minimap2, mmseqs2, diamond, bowtie1, bbmap)
+      aligner: (str) Which tool to use for identifying shared sequence (minimap2, mmseqs2, diamond,  bbmap)
       reference: (str) Provide an input fasta file to be used for masking, instead of the pre-generated collection of RNA viral sequences
       mask_low_complexity: (bool) Whether to mask low complexity regions using bbduks entropy masking
 
@@ -95,12 +95,12 @@ def mask_dna(
     input_file = Path(input).resolve()
     output_file = Path(output).resolve()
     aligner = str(aligner).lower()
-    if aligner not in ["minimap2", "mmseqs2", "diamond", "bowtie1", "bbmap"]:
+    if aligner not in ["minimap2", "mmseqs2", "diamond", "bbmap"]:
         logger.error(
-            f"{aligner} not recognised as one of minimap2, mmseqs2, diamond, bowtie1 or bbmap"
+            f"{aligner} not recognised as one of minimap2, mmseqs2, diamond or bbmap"
         )
         exit
-    needs_bbmask_only = aligner in ["bowtie1", "bbmap", "mmseqs2"]
+    needs_bbmask_only = aligner in ["bbmap", "mmseqs2"]
     memory = ensure_memory(memory)["giga"]
     reference = Path(reference).absolute().resolve()
     if tmpdir is None:
@@ -141,31 +141,6 @@ def mask_dna(
         logger.info(
             f"Masking completed. Output saved to {tmpdir}/tmp_masked.fasta"
         )
-    elif aligner == "bowtie1":
-        import subprocess as sp
-
-        index_command = [
-            "bowtie-build",
-            "--threads",
-            str(threads),
-            reference,
-            f"{tmpdir}/contigs_index",
-        ]
-        sp.run(index_command, check=True)
-        align_command = [
-            "bowtie",
-            "--threads",
-            str(threads),
-            "-f",
-            "-a",
-            "-v",
-            "3",
-            f"{tmpdir}/contigs_index",
-            input_file,
-            "-S",
-            f"{tmpdir}/tmp_mapped.sam",
-        ]
-        sp.run(align_command, check=True)
     elif aligner == "mmseqs2":
         # logger.info(
         #     "Note! using mmseqs2 instead of bbmap is not a tight drop in replacement."

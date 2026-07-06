@@ -143,6 +143,10 @@
     "name": "Bowtie",
     "citation": "https://doi.org/10.1186/gb-2009-10-3-r25"
   },
+  "bwa-mem2": {
+    "name": "BWA-MEM2",
+    "citation": "https://doi.org/10.1109/IPDPS.2019.00041"
+  },
   "neordrp_v2.1": {
     "name": "NeoRdRp_v2.1",
     "citation": "https://doi.org/10.1264/jsme2.ME22001",

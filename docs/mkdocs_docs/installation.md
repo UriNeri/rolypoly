@@ -240,7 +240,7 @@ Non-Python
 * [psutil](https://pypi.org/project/psutil/)
 * [bbmapy](https://github.com/urineri/bbmapy)
 * [pymsaviz](https://github.com/aziele/pymsaviz)
-* [viennarna](https://github.com/ViennaRNA/ViennaRNA)
+<!-- * [viennarna](https://github.com/ViennaRNA/ViennaRNA) -->
 * [pyranges](https://github.com/biocore-ntnu/pyranges)
 * [intervaltree](https://github.com/chaimleib/intervaltree)
 * [lightmotif](https://github.com/dincarnato/LightMotif)

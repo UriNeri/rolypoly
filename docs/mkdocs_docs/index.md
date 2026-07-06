@@ -75,7 +75,7 @@ graph TB
  subgraph ASM["<b>Assembly</b>"]
       ASSEMBLY["assemble<br><i>SPAdes, MEGAHIT, Penguin</i>"]
         DEDUP["deduplication<br><i>seqkit rmdup</i>"]
-        MAPPING["read-mapping<br><i>BBWrap, Bowtie1</i>"]
+        MAPPING["read-mapping<br><i>bbmap/bwa-mem2</i>"]
         UNASSEMBLED["unassembled-reads"]
   end
  subgraph FILTER["<b>Filtering</b>"]
