@@ -425,7 +425,8 @@ def filter_contigs_aa(config: FilterContigsConfig):
 
     import polars as pl
     import pyfastx
-    from bbmapy import callgenes
+    from bbmapy import callgenes # TODO use something that can handle meta/euks better.
+    # from rolypoly.utils.bio.translation import 
 
     from rolypoly.utils.bio.sequences import ensure_faidx
     from rolypoly.utils.bio.sequences import guess_fasta_alpha

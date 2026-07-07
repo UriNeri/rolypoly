@@ -124,7 +124,7 @@ class ProteinAnnotationConfig(BaseConfig):
 
         self.skip_steps = skip_steps or []
         self.search_tool = search_tool
-        self.domain_db = domain_db
+        self.domain_db = normalize_domain_db_value(domain_db)
         self.min_orf_length = min_orf_length
         self.genetic_code = genetic_code
         self.gene_prediction_tool = gene_prediction_tool
@@ -157,6 +157,15 @@ class ProteinAnnotationConfig(BaseConfig):
                     print(
                         f"Warning: Unknown step '{step}' in override_parameters. Ignoring."
                     )
+
+
+def normalize_domain_db_value(domain_db: object) -> str:
+    if isinstance(domain_db, (tuple, list, set)):
+        values = [str(item) for item in domain_db if str(item)]
+        return ",".join(values) if values else "Pfam"
+    if domain_db is None:
+        return "Pfam"
+    return str(domain_db)
 
 
 def stage_protein_input_as_orfs(config) -> bool:
@@ -376,6 +385,8 @@ def annotate_prot(
     import json
 
     from rolypoly.utils.various import ensure_memory
+
+    domain_db = normalize_domain_db_value(domain_db)
 
     config = ProteinAnnotationConfig(
         input=input,

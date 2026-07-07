@@ -51,6 +51,20 @@ datadir = Path(
     help="Provide an input fasta file to be used for masking, instead of the pre-generated collection of RNA viral sequences",
 )
 @click.option(
+    "-drvh",
+    "--dont-remove-viral-headers",
+    is_flag=True,
+    default=False,
+    help="Whether to remove entried from the fasta input with 'virus' sounding headers (sequence names/ids in the fasta input).",
+)
+@click.option(
+    "-dcs",
+    "--dont-clean-spaces-from-input",
+    is_flag=True,
+    default=False,
+    help="removed everything after the first space in the fasta header (sequence name/id). USEFUL AS mmseqs sam output doesn't seem to retain that, and then bbnmask won't find the seqid without the space...",
+)
+@click.option(
     "--tmpdir",
     default=None,
     help="Temporary directory to use (default: output file's parent/tmp - if you have enough RAM, you can set this to /dev/shm/ or /tmp/ for faster I/O)",
@@ -67,6 +81,8 @@ def mask_dna(
     aligner,
     reference,
     mask_low_complexity,
+    dont_remove_viral_headers,
+    dont_clean_spaces_from_input,
     tmpdir,
     log_level,
 ):
@@ -108,6 +124,43 @@ def mask_dna(
     tmpdir = Path(tmpdir).absolute().resolve()
     Path.mkdir(Path(tmpdir), exist_ok=True)
     sam_output = Path(tmpdir) / "tmp_mapped.sam"
+
+    if not dont_remove_viral_headers:
+        from rolypoly.utils.bio.sequences import (
+            filter_fasta_by_headers,
+        )
+        no_viral_headers_file = tmpdir / "tmp_no_viral.fasta"
+
+        counts = filter_fasta_by_headers(
+            str(input_file),
+            ["virus", "viral", "phage"],
+            str(no_viral_headers_file),
+            wrap=True,
+            invert=True,
+            return_counts=True,
+        )
+        logger.info(
+            f"Filtered sequences: removed {counts['records_processed'] - counts['records_written']} sequences; {counts['records_written']} written, {counts['records_processed']} processed"
+        )
+
+        input_file = no_viral_headers_file
+        logger.info(f"New input file after removing viral headers: {input_file}")
+        if not dont_clean_spaces_from_input:
+            logger.info(
+                "Also dropping everything after the first space in fasta headers"
+            )
+            from rolypoly.utils.bio.sequences import clean_fasta_headers
+            headers_cleaned =tmpdir / "tmp_no_viral_cleaned.fasta"
+            clean_fasta_headers(
+                fasta_file=str(no_viral_headers_file),
+                drop_from_space=True,
+                output_file=str(headers_cleaned),
+                strip_prefix="lcl|",
+                strip_suffix="bla bla bla",
+            )
+
+            input_file = headers_cleaned
+            logger.info(f"New input file after cleaning: {input_file}")
 
     if aligner == "minimap2":
         logger.info("Using minimap2 (low memory mode)")
