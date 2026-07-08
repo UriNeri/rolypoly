@@ -236,7 +236,13 @@ def virus_mapping(
             subprocess.run(mmseqs_convertalis_cmd, shell=True, check=True)
         matched_tabb.append(f"{output.with_suffix('')}_vs_{db_name}.{output_format.lstrip('.')}")
         
-    if matched_output != "no":
+    matched_output_opt_out = (
+        matched_output is None
+        or str(matched_output).strip() == ""
+        or str(matched_output).strip().lower() == "no"
+    )
+
+    if not matched_output_opt_out:
         logger.info(f"Writing matched virus contigs to {matched_output}")
         matched_output = pt(matched_output).absolute().resolve()
         matched_output.parent.mkdir(parents=True, exist_ok=True)
