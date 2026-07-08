@@ -127,7 +127,7 @@ pixi run -e complete rolypoly --help
 - **annotation-rna-only** supports: `rolypoly annotate-rna`
 - **annotation-prot-only** supports: `rolypoly annotate-prot`
 - **identify-only** supports: `rolypoly marker-search`, `rolypoly virus-mapping`
-- **misc-only** supports: `rolypoly fetch-sra`, `rolypoly quick-taxonomy`, `rolypoly get-data`
+- **misc-only** supports: `rolypoly fetch-sra`, `rolypoly get-data`
 
 ## Feature-to-Tool Mapping
 
@@ -135,7 +135,7 @@ The modular installation system groups dependencies by functionality:
 
 ### reads
 - **seqkit** (sequence manipulation)
-- **bowtie** (optional alignment)
+- **bwa-mem2** (optional alignment)
 - **falco** (quality control reports)
 - **pigz** (parallel compression)
 
