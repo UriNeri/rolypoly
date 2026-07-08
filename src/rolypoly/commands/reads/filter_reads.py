@@ -39,11 +39,11 @@ FILTER_READS_PRESETS: dict[str, dict[str, Any]] = {
         "step_params": {
             "quality_trim_unmerged": {"trimq": 5, "minlen": 20},
             "trim_adapters": {"minlen": 20},
-            "decontaminate_rrna": {"mincovfraction": 0.7},
+            "decontaminate_rrna": {"mincovfraction": 0.6},
         },
         "skip_steps": [],
         "flags": {"trim_polya": False},
-        "description": "Total RNA ribo-depleted: stricter rRNA removal (mincovfraction=0.7), known-DNA + identified-DNA filtering, adapter trim, lenient quality trim (trimq=5 minlen=20); no polyA trimming",
+        "description": "Total RNA ribo-depleted: stricter rRNA removal (mincovfraction=0.6), known-DNA + identified-DNA filtering, adapter trim, lenient quality trim (trimq=5 minlen=20); no polyA trimming",
     },
     "poly_a_selected": {
         "step_params": {
@@ -63,7 +63,6 @@ FILTER_READS_PRESETS: dict[str, dict[str, Any]] = {
     "strict": {
         "step_params": {
             "quality_trim_unmerged": {"trimq": 20, "minlen": 20},
-            "dedupe": {"passes": 2},
         },
         "skip_steps": [],
         "flags": {},
@@ -184,9 +183,9 @@ def auto_tune_params(
 
     minlen = 20
     if avg_quality >= 30:
-        trimq = 20
-    elif avg_quality >= 25:
         trimq = 15
+    elif avg_quality >= 25:
+        trimq = 12
     else:
         trimq = 10
 
@@ -415,7 +414,7 @@ class ReadFilterConfig(BaseConfig):
             # "filter_by_tile": {"nullifybrokenquality": "t"}, # filter tile is disabled until we verify we can get tile/xy information from the fastq headers in all the different scenarios (single/interleaved/paired and concated files), as well as the potential impacts of concatenating multiple samples on the tile filtering step.
             "filter_known_dna": {
                 "k": 31,
-                "mincovfraction": 0.7,
+                "mincovfraction": 0.65,
                 "hdist": 0
             },
             "decontaminate_rrna": {
@@ -430,8 +429,9 @@ class ReadFilterConfig(BaseConfig):
             },
             "dedupe": {
                 "dedupe": True,
-                "passes": 1,
-                "s": 0
+                "s": 0,
+                "lowcomplexity": True,
+
             },
             "trim_adapters": {
                 "ktrim": "r",
@@ -572,8 +572,7 @@ def process_reads(
     steps = [
         # handle_input_fastq, # moved to outside of the steps to avoid ensures the input is "interleaved" by moving it through rename or reformat
         # filter_by_tile, # filters out reads by tile # dropped - breaks when the fastq headers are not pristine, and should not be used if multiple libraries are merged/concated
-        # TODO: add a subsample read and seal.sh against rrnas for better host composition than the rrna filtering with bbduk.
-        # TODO: THE TODO ABOVE THIS, PUTTING THIS SECOND TODO CAUSE IS KINDA HIGH PRIORITY.
+        # TODO: Replace bbduk with seal.sh for the rrna mapping - should be better at resolving the host composition, as bbduk (current) is geared for filtering, not resolving taxonomy from mapping.
         filter_known_dna,  # filters out known DNA sequences
         decontaminate_rrna,  # decontaminates rRNA sequences
         filter_identified_dna,  # filters out reads that are likely host (based on the stats file of the previous step)
@@ -918,7 +917,8 @@ def filter_reads(
         click.echo("Either input or config-file must be provided.")
         raise click.Abort
 
-    global config
+    global config, output_tracker
+    output_tracker = OutputTracker()
     if config_file is not None:
         config = ReadFilterConfig.read(config_file)
     else:
@@ -1157,7 +1157,7 @@ def filter_known_dna(
 
     ref_file = str(config.known_dna)
     if "mask_known_dna" not in config.skip_steps:
-        ref_file = f"masked_known_dna_{config.file_name}.fasta"
+        ref_file = str((Path(config.temp_dir) / f"masked_known_dna_{config.file_name}.fasta").absolute())
         mask_args = {
             "threads": config.threads,
             "memory": config.memory["giga"],

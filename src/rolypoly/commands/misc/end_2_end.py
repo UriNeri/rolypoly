@@ -11,9 +11,7 @@ from rolypoly.commands.identify_virus.search_viruses import virus_mapping
 
 
 ### TODOs:
-### add the rdrp_motif_search as a seperate step (after marker search or after annotate). [in progress]
 ### simplify the presets / align preset name and description with those in the read-filtering and assembly commands
-
 
 global tools
 tools = []
@@ -116,8 +114,8 @@ ROLL_PRESET_MAP: dict[str, tuple[str, str, str]] = {
 )
 @click.option(
     "--log-file",
-    default=lambda: f"{os.getcwd()}/rolypoly_pipeline.log",
-    help="Path to log file",
+    # default=lambda: f"{os.getcwd()}/rolypoly_pipeline.log",
+    help="Path to log file. default would be inside the output directory.",
 )
 @click.option(
     "-ll",
@@ -238,6 +236,7 @@ ROLL_PRESET_MAP: dict[str, tuple[str, str, str]] = {
 )
 @click.option(
     "--mmseqs-args",
+    default="--min-seq-id 0.5 --min-aln-len 80",
     help="Additional arguments to pass to MMseqs2 search command during filtering of potential host/contamination sequences",
 )
 @click.option(
@@ -335,13 +334,14 @@ def roll(
         log_start_info,
         setup_logging,
     )
-    output_dir = Path(output_dir)
+    output_dir = Path(output_dir).absolute()
 
     if overwrite and output_dir.exists():
         shutil.rmtree(output_dir, ignore_errors=True)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    log_file = output_dir / "rolypoly_pipeline.log"
+    if log_file is None:
+        log_file = output_dir / "rolypoly_pipeline.log"
     logger = setup_logging(log_file, log_level.upper())
     log_start_info(logger, dict(zip(sys.argv[1::2], sys.argv[2::2])))
 
@@ -510,7 +510,7 @@ def roll(
             ctx.invoke(
                 filter_contigs,
                 input=str(final_assembly_file),
-                host=host,
+                known_dna=host,
                 output=str(filtered_assembly),
                 mode="both",
                 threads=threads,
@@ -779,7 +779,8 @@ def roll(
             keep_tmp=keep_tmp,
             overwrite = overwrite,
             log_file=str(log_file),
-            log_level = log_level
+            log_level = log_level,
+            temp_dir=str(temp_base_dir / "rdrp_motif_search") if temp_base_dir else None,
         )
 
 
@@ -800,6 +801,12 @@ def roll(
     #         threads=threads,
     #         log_file=str(log_file),
     #     )
+
+
+    # step: cleanup, just in case:
+    if not keep_tmp and temp_base_dir.exists():
+        logger.info("Cleaning up temporary files in %s", temp_base_dir)
+        shutil.rmtree(temp_base_dir, ignore_errors=True)
 
     logger.info("RolyPoly pipeline completed successfully!")
     from rolypoly.utils.logging.citation_reminder import remind_citations

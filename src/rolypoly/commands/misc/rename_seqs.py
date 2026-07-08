@@ -18,6 +18,12 @@ console = Console()
     "-p", "--prefix", default="CID", help="Prefix for new sequence IDs"
 )
 @click.option(
+    "-g",
+    "--log-file",
+    default=None,
+    help="Path to log file",
+)
+@click.option(
     "--hash/--no-hash",
     default=False,
     help="Use hash instead of a padded running number for IDs",
@@ -35,6 +41,7 @@ def rename_seqs(
     output: str,
     mapping: str,
     prefix: str,
+    log_file: str | None,
     hash: bool,
     stats: bool,
     log_level: str,
@@ -47,7 +54,7 @@ def rename_seqs(
     """
     from rolypoly.utils.logging.loggit import get_logger, setup_logging
 
-    setup_logging(None, log_level)
+    setup_logging(log_file, log_level)
     logger = get_logger()
 
     # Read input FASTA
@@ -87,4 +94,4 @@ def rename_seqs(
     logger.info(f"Writing ID mapping to {mapping}")
     mapping_df.write_csv(mapping, separator="\t")
 
-    logger.info("[green]Done![/green]")
+    logger.info("Done!")

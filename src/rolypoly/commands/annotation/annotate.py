@@ -118,7 +118,7 @@ class AnnotationConfig(BaseConfig):
 )
 @click.option(
     "--domain-db",
-    default="Pfam",
+    default=("Pfam",),
     type=click.Choice(
         [
             "Pfam",

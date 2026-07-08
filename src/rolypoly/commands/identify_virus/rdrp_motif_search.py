@@ -49,7 +49,7 @@ class RdRpMotifSearchConfig(BaseConfig):
         self.search_tool = kwargs.get("search_tool", "hmmsearch")
         self.evalue = kwargs.get("evalue", 1e-2)
         self.min_score = kwargs.get("min_score", None)
-        self.max_distance = kwargs.get("max_distance", 200)
+        self.max_distance = kwargs.get("max_distance", 250)
         self.aa_method = kwargs.get("aa_method", "six_frame")
         self.min_orf_length = kwargs.get("min_orf_length", 15)
         self.motif_filter = kwargs.get(
@@ -123,7 +123,7 @@ class RdRpMotifSearchConfig(BaseConfig):
 )
 @option(
     "--max-distance",
-    default=200,
+    default=250,
     help="Maximum distance between motifs in amino acids",
 )
 @option(
@@ -181,6 +181,12 @@ class RdRpMotifSearchConfig(BaseConfig):
     "-k", "--keep-tmp", is_flag=True, default=False, help="Keep temporary files"
 )
 @option(
+    "-td",
+    "--temp-dir",
+    default=None,
+    help="Path to temporary directory",
+)
+@option(
     "-ow",
     "--overwrite",
     is_flag=True,
@@ -219,6 +225,7 @@ def rdrp_motif_search(
     output_format,
     output_structure,
     keep_tmp,
+    temp_dir,
     overwrite,
     log_level,
     config_file,
@@ -260,6 +267,7 @@ def rdrp_motif_search(
             keep_tmp=keep_tmp,
             overwrite=overwrite,
             log_level=log_level,
+            temp_dir=temp_dir,
         )
 
     # Start logging

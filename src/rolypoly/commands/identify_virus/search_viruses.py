@@ -50,7 +50,7 @@ matched_tabb = []
 @click.option(
     "-mo",
     "--matched-output",
-    default=lambda: f"{os.getcwd()}/matched_virus_contigs.fasta",
+    # default=lambda: f"{os.getcwd()}/matched_virus_contigs.fasta",
     help="Output path for matched virus contigs. set to 'no' to skip writing matched contigs",
 )
 @click.option(
