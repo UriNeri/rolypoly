@@ -9,10 +9,10 @@ dependencies:
 - bwa-mem2 >=2.2.1
 - falco >=1.2.5,<2
 - pigz >=2.8,<3
+- mmseqs2 >=18.8cc5c,<19
 - spades >=4.2.0,<5
 - megahit >=1.2.9,<2
 - plass >=5.cf8933,<6
-- mmseqs2 >=18.8cc5c,<19
 - infernal >=1.1.5,<2
 - linearfold >=1.0.1.dev20220829,<2
 - aragorn >=1.2.41,<2
@@ -21,13 +21,13 @@ dependencies:
 - blast >=2.17.0,<3
 - aria2 >=1.37.0,<2
 - pip >=25.1.1,<26
+- pip
 
 - pip:
   - pyskani>=0.2.0, <0.3
   - pyfastani>=0.6.1, <0.7
   - igraph>=1.0.0, <2
   - leidenalg>=0.11.0, <0.12
-  - lightmotif>=0.10.0, <0.11
   - mappy>=2.30, <3
   - needletail>=0.7.0, <0.8
   - psutil>=7.0.0, <8
@@ -36,7 +36,6 @@ dependencies:
   - requests>=2.32.4, <3
   - rich-click>=1.8.9, <2
   - rich>=14.0.0, <15
-  - viennarna>=2.7.0, <3
   - intervaltree>=3.1.0, <4
   - polars>=1.29.0, <2
   - bbmapy>=0.0.56, <0.0.58
@@ -46,5 +45,4 @@ dependencies:
   - pyopal>=0.7.3, <0.8
   - pytantan>=0.1.3, <0.2
   - pydustmasker>=2.0.0, <3
-  - itables>=2.7.0, <3
   - pyarrow>=23.0.1, <24
