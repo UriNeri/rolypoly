@@ -130,6 +130,8 @@ Use environment protection rules in GitHub for safer releases (recommended):
 - Optional: create/publish a GitHub Release (also triggers workflow)
 - Optional: run the workflow manually (`workflow_dispatch`) for dry-runs/testing
 
+- **Bioconda note**: our Bioconda recipe automatically uses the source tar.gz from GitHub Releases; So when pushing to GitHub, make a GitHub Release (tagged source) so Bioconda can fetch the correct source archive - something like gh release create v0.n.nn --target main --title "v0.n.nn" --notes "Release v0.n.nn" etc.
+
 ## Branch and release flow (recommended)
 
 - Use `main` or dedicated "dev_nnn" branches when adding features, testing, working, PR review, docs updates. 
