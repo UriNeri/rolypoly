@@ -113,6 +113,8 @@ Workflow file: `.github/workflows/pypi-release.yml`
 
 The workflow uses concurrency cancellation per ref (`pypi-release-${ref}`), so newer runs automatically cancel older in-progress runs on the same branch/tag.
 
+**Important**: publishing (steps 2-5 above) only ever runs for an actual GitHub Release event, or a manual `workflow_dispatch`. A plain push to the `release` branch only runs the build/help-smoke job (step 1) - it does not publish anything. This keeps "promote main into release" and "cut a release" as two distinct, non-conflicting actions, so you can never get a duplicate TestPyPI upload from pushing the branch and then publishing a GitHub Release for the same version.
+
 ### One-time setup (maintainers)
 
 Configure trusted publishers in both PyPI and TestPyPI for project `rolypoly-tk`:
@@ -126,29 +128,31 @@ Use environment protection rules in GitHub for safer releases (recommended):
 
 ### Triggering releases
 
-- Primary path: push to deployment branch `release` (this triggers build/test/publish workflow)
-- Not optional: create/publish a GitHub Release (also triggers workflow)
-- Optional: run the workflow manually (`workflow_dispatch`) for dry-runs/testing
+- Push to deployment branch `release`: builds + runs help-smoke tests only. No publish. Safe to re-run/re-push.
+- Create/publish a GitHub Release (tag `vX.Y.Z` targeting `release`): the **only** trigger that publishes, running the full build -> TestPyPI -> smoke-install -> PyPI pipeline in one shot.
+- `workflow_dispatch` (manual run): builds/tests, and also publishes to TestPyPI; pass `publish_pypi: true` to additionally publish to PyPI (useful for dry-runs/recovery).
+- Both publish steps pass `skip-existing: true`, so re-running the workflow (e.g. after a transient failure) won't hard-fail if that version was already uploaded.
 
-- **Bioconda note**: our Bioconda recipe automatically uses the source tar.gz from GitHub Releases; So when pushing to GitHub, make a GitHub Release (tagged source) so Bioconda can fetch the correct source archive - something like gh release create v0.n.nn --target main --title "v0.n.nn" --notes "Release v0.n.nn" etc.
+- **Bioconda note**: our Bioconda recipe automatically uses the source tar.gz from GitHub Releases; the GitHub Release created below (tagged source) is what Bioconda fetches.
 
 ## Branch and release flow (recommended)
 
-- Use `main` or dedicated "dev_nnn" branches when adding features, testing, working, PR review, docs updates. 
-- Keep `release` as a deployment branch used to trigger publish automation.
-- At release time, promote `main` into `release` and push `release` to GitHub.
+- Use `main` or dedicated "dev_nnn" branches when adding features, testing, working, PR review, docs updates.
+- Keep `release` as a deployment branch that mirrors what gets published; pushing to it alone is a no-op for publishing.
+- At release time, promote `main` into `release`, push `release`, then create a GitHub Release targeting `release` - that release is what actually triggers publishing.
 - Avoid long-lived drift between `main` and `release`; if a hotfix lands on `release`, merge it back into `main` asap.
 
 Typical release promotion sequence:
 - `git checkout main && git pull origin main`
 - `git checkout release && git pull origin release`
 - `git merge --ff-only origin/main`
-- `git push origin release`
-Then create a GitHub Release (tagged source) for Bioconda and PyPI to fetch the correct source archive:
-- `gh release create v0.n.nn --target release --title "v0.n.nn" --notes "Release v0.n.nn"`
-This keeps branch history cleaner and ensures PyPI publishes reflect reviewed `main` content.
+- `git push origin release` (build/smoke-test only - does not publish)
+Then create the GitHub Release that triggers publishing and gives Bioconda a tagged source archive:
+- `gh release create v0.n.nn --target release --title "v0.n.nn" --generate-notes`
 
-### One-command release prep (manual bump + commit + trigger CI)
+`--generate-notes` has GitHub auto-draft the release notes (merged PRs/commits and any first-time contributors) since the previous tag - prefer this over a hand-written `--notes` string so the notes and contributor list stay accurate without manual upkeep.
+
+### One-command release prep (bump + commit + release)
 
 Use the pixi task:
 - `pixi run -e dev bump-commit-publish`
@@ -157,14 +161,15 @@ This task runs `src/setup/bump_commit_publish.sh` and by default:
 - bumps version in `src/rolypoly/__init__.py` (`micro` by default; or `major`/`minor`/explicit `X.Y.Z`)
 - refreshes `src/setup/env_big.yaml` from `pixi workspace export conda-environment -e complete`, with cleanup for micromamba compatibility
 - runs help-smoke tests locally
-- commits `src/rolypoly/__init__.py` and `src/setup/env_big.yaml`
-- pushes to `origin/release` to trigger GitHub Actions publish flow
+- commits `src/rolypoly/__init__.py` and `src/setup/env_big.yaml`, and pushes to `origin/release` (build/smoke-test only, no publish)
+- creates the GitHub Release `vX.Y.Z` targeting `release` via `gh release create ... --generate-notes`, which is what actually triggers the publish workflow
 
 Common options:
 - `pixi run -e dev bump-commit-publish -- --bump minor`
 - `pixi run -e dev bump-commit-publish -- --bump 0.7.0`
 - `pixi run -e dev bump-commit-publish -- --branch release --remote origin`
 - `pixi run -e dev bump-commit-publish -- --skip-smoke`
+- `pixi run -e dev bump-commit-publish -- --skip-release` (push the branch only; create the GitHub Release yourself later)
 
 ### Local fallback (manual upload)
 
@@ -172,6 +177,7 @@ If needed, manual upload with twine is still supported:
 - Build: `pixi run -e dev python -m build --sdist --wheel --outdir dist`
 - Check: `pixi run -e dev twine check dist/*`
 - Upload: `pixi run -e dev twine upload dist/* --verbose`
+
 
 ## Example Workflow: Adding a New Command
 

@@ -1,10 +1,10 @@
 import os
 import shutil
 from logging import Logger
+from math import floor
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-from numpy import floor
 import polars as pl
 
 from rolypoly.utils.logging.loggit import (
@@ -596,8 +596,6 @@ def get_reduced_memory(config_memory_dict: dict, percentage: int = 85) -> str:
     Note:
         This is because the JVM (used by bbtools --> bbmapy -->rolypoly) can be very memory hungry, and carry its own overhead. For most bbtools commands we use setting the Xmx flag to the max of system memory didn't break anything, but for clumpify (with dedupe) it did.
     """
-    from numpy import floor
-    
     # Get the bytes value from the dict
     bytes_str = config_memory_dict.get("bytes", "0b")
     # Parse to get numeric value in bytes
