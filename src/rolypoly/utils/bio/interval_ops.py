@@ -18,6 +18,37 @@ logger = get_logger()
 # TODO: make this more robust and less dependent on external libraries. Candidate destination library is polars-bio.
 
 
+def derive_strand_from_coordinates(
+    df: pl.DataFrame, qstart_col: str = "qstart", qend_col: str = "qend"
+) -> pl.DataFrame:
+    """Derive strand information from query start/end coordinates.
+    
+    For nucleotide searches, mmseqs encodes strand in the coordinate order:
+    - qstart < qend = forward strand (+)
+    - qstart > qend = reverse strand (-)
+    
+    Args:
+        df: DataFrame containing qstart and qend columns
+        qstart_col: Name of the query start column (default 'qstart')
+        qend_col: Name of the query end column (default 'qend')
+    
+    Returns:
+        DataFrame with added 'strand' column containing '+' or '-' values
+    """
+    if qstart_col not in df.columns or qend_col not in df.columns:
+        logger.warning(
+            f"Columns '{qstart_col}' and/or '{qend_col}' not found in dataframe. "
+            "Skipping strand derivation."
+        )
+        return df
+
+    return df.with_columns(
+        (pl.col(qstart_col) < pl.col(qend_col))
+        .map_elements(lambda x: "+" if x else "-", return_dtype=pl.Utf8)
+        .alias("strand")
+    )
+
+
 def calculate_adaptive_overlap_threshold(
     ali_len: int, is_polyprotein_like: bool = False
 ) -> int:
@@ -120,6 +151,7 @@ def consolidate_hits(
     rank_columns: str = "-score",
     one_per_query: bool = False,
     one_per_range: bool = False,
+    strand_col: Optional[str] = None,
     min_overlap_positions: int = 1,
     merge: bool = False,
     column_specs: str = "qseqid,sseqid",
@@ -135,6 +167,8 @@ def consolidate_hits(
         rank_columns: Columns to rank by (prefix with - for descending, + for ascending)
         one_per_query: Keep only one hit per query sequence
         one_per_range: Keep only one hit per overlapping range
+        strand_col: Optional column name for strand information.
+                   When provided, overlaps are resolved independently per strand. Can be a column with '+'/'-' values, bool, maybe ints need to check if partition by respects these.
         min_overlap_positions: Minimum overlap to consider (used if adaptive_overlap=False)
         merge: Merge overlapping hits
         column_specs: Query and target column names (comma-separated)
@@ -271,7 +305,13 @@ def consolidate_hits(
         # partition_by(maintain_order=True) preserves the score-descending sort
         # that sort_hit_table applied; group_by does NOT preserve row order.
         subdfs = []
-        for subdf in work_table.partition_by(query_id_col, maintain_order=True):
+        
+        # Determine partitioning columns: query_id and optionally strand
+        partition_cols = [query_id_col]
+        if strand_col and strand_col in work_table.columns:
+            partition_cols.append(strand_col)
+        
+        for subdf in work_table.partition_by(partition_cols, maintain_order=True):
             subdf = subdf.select(query_id_col, q1_col, q2_col, "uid").rename(
                 {q1_col: "start", q2_col: "end"}
             )
@@ -296,11 +336,19 @@ def consolidate_hits(
         # inserted per overlapping region is always the highest-scoring one.
         subdfs = []
 
-        for subdf in work_table.partition_by(query_id_col, maintain_order=True):
+        # Determine partitioning columns: query_id and optionally strand
+        partition_cols = [query_id_col]
+        if strand_col and strand_col in work_table.columns:
+            partition_cols.append(strand_col)
+            logger.info(
+                f"Resolving overlaps with strand awareness (column: {strand_col})"
+            )
+
+        for subdf in work_table.partition_by(partition_cols, maintain_order=True):
             if len(subdf) == 0:
                 continue
 
-            # Create interval tree for this query
+            # Create interval tree for this query (and strand if specified)
             tree = itree.IntervalTree()
             kept_uids = []
 
@@ -309,19 +357,24 @@ def consolidate_hits(
                 end = row[q2_col]
                 uid = row["uid"]
 
+                # Normalize coordinates for interval tree (must have norm_start < norm_end)
+                # This preserves the original coordinates in the dataframe
+                norm_start = min(start, end)
+                norm_end = max(start, end)
+
                 # Check if this interval significantly overlaps with any kept interval
-                overlaps = tree.overlap(start, end)
+                overlaps = tree.overlap(norm_start, norm_end)
                 has_significant_overlap = False
 
                 for ovl in overlaps:
-                    overlap_size = min(end, ovl.end) - max(start, ovl.begin)
+                    overlap_size = min(norm_end, ovl.end) - max(norm_start, ovl.begin)
                     if overlap_size >= min_overlap_positions:
                         has_significant_overlap = True
                         break
 
                 # If no significant overlap, keep this hit
                 if not has_significant_overlap:
-                    tree.addi(start, end, uid)
+                    tree.addi(norm_start, norm_end, uid)
                     kept_uids.append(uid)
 
             # Filter to kept UIDs
@@ -371,7 +424,12 @@ def interval_tree_from_df(
     """
     tree = itree.IntervalTree()
     for row in df.iter_rows(named=True):
-        tree.addi(begin=row["start"], end=row["end"], data=row[data_col])
+        # Normalize coordinates (start must be < end for IntervalTree)
+        start = row["start"]
+        end = row["end"]
+        norm_start = min(start, end)
+        norm_end = max(start, end)
+        tree.addi(begin=norm_start, end=norm_end, data=row[data_col])
     return tree
 
 
