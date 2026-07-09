@@ -16,8 +16,10 @@ Options:
   -h, --help                                Show this help
 
 Notes:
-  - This command bumps version locally in src/rolypoly/__init__.py, refreshes src/setup/env_big.yaml,
-    commits release files, and pushes to the deployment branch.
+  - This command merges the latest origin/main into the deployment branch first (so the
+    branch never ships stale code or a stale workflow file), then bumps version locally
+    in src/rolypoly/__init__.py, refreshes src/setup/env_big.yaml, commits release files,
+    and pushes to the deployment branch.
   - Pushing to the deployment branch only builds/smoke-tests (no publish); it is safe to re-run.
   - Publishing to TestPyPI then PyPI is triggered solely by creating a GitHub Release
     (tag v<version> targeting the deployment branch). This script creates that release
@@ -98,6 +100,19 @@ fi
 
 if git show-ref --verify --quiet "refs/remotes/${REMOTE_NAME}/${TARGET_BRANCH}"; then
   git pull --ff-only "${REMOTE_NAME}" "${TARGET_BRANCH}"
+fi
+
+# GitHub Actions runs the workflow file as it exists on the ref that triggers
+# the event, not whatever is on main. Always promote main into the deployment
+# branch first so release/publish behavior (and any code fixes) reflect what
+# was reviewed on main - otherwise a stale release branch can silently re-run
+# an old workflow and/or ship a stale bug.
+git fetch "${REMOTE_NAME}" main || true
+if git show-ref --verify --quiet "refs/remotes/${REMOTE_NAME}/main"; then
+  if ! git merge --no-edit "${REMOTE_NAME}/main" -m "Merge branch 'main' into ${TARGET_BRANCH}"; then
+    echo "Automatic merge of ${REMOTE_NAME}/main into ${TARGET_BRANCH} failed (conflicts?). Resolve manually, push, and re-run." >&2
+    exit 1
+  fi
 fi
 
 if [[ "${BUMP_SPEC}" == "patch" ]]; then

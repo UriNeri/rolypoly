@@ -158,6 +158,7 @@ Use the pixi task:
 - `pixi run -e dev bump-commit-publish`
 
 This task runs `src/setup/bump_commit_publish.sh` and by default:
+- merges the latest `origin/main` into the deployment branch first, so it never ships stale code or a stale copy of the workflow file (GitHub Actions runs the workflow version from the ref that triggered it, not from `main`)
 - bumps version in `src/rolypoly/__init__.py` (`micro` by default; or `major`/`minor`/explicit `X.Y.Z`)
 - refreshes `src/setup/env_big.yaml` from `pixi workspace export conda-environment -e complete`, with cleanup for micromamba compatibility
 - runs help-smoke tests locally
