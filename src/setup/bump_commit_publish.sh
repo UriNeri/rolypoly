@@ -11,13 +11,18 @@ Options:
   --branch <name>                           Deployment branch to push (default: release)
   --remote <name>                           Git remote name (default: origin)
   --skip-smoke                              Skip local help-smoke test before commit
+  --skip-release                            Push the branch but do not create a GitHub Release
   --allow-dirty                             Allow running with uncommitted changes
   -h, --help                                Show this help
 
 Notes:
   - This command bumps version locally in src/rolypoly/__init__.py, refreshes src/setup/env_big.yaml,
     commits release files, and pushes to the deployment branch.
-  - Pushing to the deployment branch triggers the GitHub Actions publish workflow.
+  - Pushing to the deployment branch only builds/smoke-tests (no publish); it is safe to re-run.
+  - Publishing to TestPyPI then PyPI is triggered solely by creating a GitHub Release
+    (tag v<version> targeting the deployment branch). This script creates that release
+    via `gh release create ... --generate-notes` unless --skip-release is passed, so
+    contributors/notes are auto-generated and Bioconda gets a matching tagged source archive.
 EOF
 }
 
@@ -25,6 +30,7 @@ BUMP_SPEC="micro"
 TARGET_BRANCH="release"
 REMOTE_NAME="origin"
 RUN_SMOKE=1
+RUN_RELEASE=1
 ALLOW_DIRTY=0
 
 while [[ $# -gt 0 ]]; do
@@ -46,6 +52,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-smoke)
       RUN_SMOKE=0
+      shift
+      ;;
+    --skip-release)
+      RUN_RELEASE=0
       shift
       ;;
     --allow-dirty)
@@ -303,6 +313,27 @@ git commit -m "release: bump version to v${NEW_VERSION}"
 git push "${REMOTE_NAME}" "${TARGET_BRANCH}"
 
 echo "Pushed release commit for v${NEW_VERSION} to ${REMOTE_NAME}/${TARGET_BRANCH}"
+
+# Publishing to TestPyPI/PyPI is only triggered by a GitHub Release (see
+# .github/workflows/pypi-release.yml), not by this branch push. Create that
+# release here so the process is a single, idempotent step; --generate-notes
+# has GitHub auto-draft release notes (commits/PRs/new contributors) since the
+# previous tag, which also gives Bioconda a tagged source archive to fetch.
+if [[ "${RUN_RELEASE}" -eq 1 ]]; then
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "gh CLI not found; skipping GitHub Release creation. Create it manually with:" >&2
+    echo "  gh release create v${NEW_VERSION} --target ${TARGET_BRANCH} --title v${NEW_VERSION} --generate-notes" >&2
+  elif gh release view "v${NEW_VERSION}" >/dev/null 2>&1; then
+    echo "GitHub Release v${NEW_VERSION} already exists; skipping creation." >&2
+  else
+    gh release create "v${NEW_VERSION}" \
+      --target "${TARGET_BRANCH}" \
+      --title "v${NEW_VERSION}" \
+      --generate-notes
+    echo "Created GitHub Release v${NEW_VERSION} targeting ${TARGET_BRANCH}; publish workflow will run now."
+  fi
+fi
+
 if [[ "${CURRENT_BRANCH}" != "${TARGET_BRANCH}" ]]; then
   git checkout "${CURRENT_BRANCH}"
 fi
