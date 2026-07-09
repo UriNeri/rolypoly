@@ -12,7 +12,7 @@ from rolypoly.utils.bio.library_detection import (
 )
 from rolypoly.utils.logging.config import BaseConfig
 from rolypoly.utils.logging.output_tracker import OutputTracker
-from rolypoly.utils.various import ensure_memory, run_command_comp
+from rolypoly.utils.various import ensure_memory, run_command_comp, get_reduced_memory
 
 global tools
 tools = ["bbmap"]
@@ -296,7 +296,7 @@ def discover_merge_adapters(
             capture_output=True,
             outadapter=str(discovery_output),
             merge=False,
-            Xmx=config.memory["giga"],
+            Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
@@ -586,7 +586,7 @@ def process_reads(
         error_correct_2,  # error corrects the reads (second round - based on ???, ecc)
         merge_reads,  # merges reads with insert size smaller than 2xread length (i.e. overlapping) # DONE: investigate if remaining adapters need to  also removed here... (UPDATE Brian says merged reads never retain adapter seq).
         quality_trim_unmerged,  # quality trims the unmerged reads
-        # dedupe, # removes duplicates (second round - after the above processing some reads may have been "corrected"/modified and are now duplicates) NOTE! this is now done as part of process_reads_final_deduplication() at the end of the pipeline.
+        # dedupe, # removes duplicates (second round - after the above processing some reads may have been "corrected"/modified and are now duplicates) NOTE! this is now done as part of process_reads (see Final deduplication step at the end of the pipeline.)
     ]
 
     current_input = fastq_file
@@ -1177,7 +1177,7 @@ def filter_known_dna(
             out=str(output_file),
             ref=str(ref_file),
             **params,
-            Xmx=config.memory["giga"],
+            Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
@@ -1225,7 +1225,7 @@ def decontaminate_rrna(
             out=str(output_file),
             ref=f"{rrna_fas1},{rrna_fas2}",
             **params,
-            Xmx=config.memory["giga"],
+            Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
@@ -1350,7 +1350,7 @@ def filter_identified_dna(
             out=str(output_file),
             ref=str(host_file),
             **params,
-            Xmx=config.memory["giga"],
+            Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
@@ -1404,7 +1404,7 @@ def dedupe(
             capture_output=True,
             out=str(output_file),
             **params,
-            Xmx=config.memory["giga"],
+            Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
@@ -1442,7 +1442,7 @@ def trim_adapters(
             out=str(output_file),
             ref=config.adapters,
             **params,
-            Xmx=config.memory["giga"],
+            Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
@@ -1490,7 +1490,7 @@ def remove_synthetic_artifacts(
             capture_output=True,
             out=str(output_file),
             **params,
-            Xmx=config.memory["giga"],
+            Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
@@ -1529,7 +1529,7 @@ def trim_polya_tails(
             capture_output=True,
             out=str(output_file),
             **params,
-            Xmx=config.memory["giga"],
+            Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
@@ -1568,7 +1568,7 @@ def entropy_filter(
             capture_output=True,
             out=str(output_file),
             **params,
-            Xmx=config.memory["giga"],
+            Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
@@ -1605,7 +1605,7 @@ def error_correct_1(
             capture_output=True,
             out=str(output_file),
             **params,
-            Xmx=config.memory["giga"],
+            Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
@@ -1642,7 +1642,7 @@ def error_correct_2(
             capture_output=True,
             out=str(output_file),
             **params,
-            Xmx=config.memory["giga"],
+            Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
@@ -1681,7 +1681,7 @@ def merge_reads(
             out=str(output_file),
             outu=str(unmerged_file),
             **params,
-            Xmx=config.memory["giga"],
+            Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
@@ -1732,7 +1732,7 @@ def quality_trim_unmerged(
             capture_output=True,
             out=str(output_file),
             **params,
-            Xmx=config.memory["giga"],
+            Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
             interleaved="t",
