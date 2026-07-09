@@ -4,6 +4,7 @@ from logging import Logger
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
+from numpy import floor
 import polars as pl
 
 from rolypoly.utils.logging.loggit import (
@@ -581,6 +582,32 @@ def ensure_memory(
             )
 
     return convert_bytes_to_units(requested_memory_bytes)
+
+def get_reduced_memory(config_memory_dict: dict, percentage: int = 85) -> str:
+    """Calculate reduced memory to a percentage of config memory.
+    
+    Args:
+        config_memory_dict: The config.memory dictionary with "bytes" key
+        percentage: The percentage to use (default 85)
+    
+    Returns:
+        Memory string in megabytes format (e.g., 10g will become 8500m)
+
+    Note:
+        This is because the JVM (used by bbtools --> bbmapy -->rolypoly) can be very memory hungry, and carry its own overhead. For most bbtools commands we use setting the Xmx flag to the max of system memory didn't break anything, but for clumpify (with dedupe) it did.
+    """
+    from numpy import floor
+    
+    # Get the bytes value from the dict
+    bytes_str = config_memory_dict.get("bytes", "0b")
+    # Parse to get numeric value in bytes
+    total_bytes = parse_memory(bytes_str)
+    # Calculate percentage
+    reduced_bytes = int(total_bytes * (percentage / 100))
+    # Convert to gigabytes with 2 decimal places
+    mega_value = floor(reduced_bytes // (1024**2))
+    
+    return f"{mega_value}m"
 
 
 def create_bash_script(command: List[str], script_name: str) -> None:

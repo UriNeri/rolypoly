@@ -15,7 +15,7 @@ import rich_click as click
 
 from rolypoly.utils.bio.library_detection import identify_fastq_files
 from rolypoly.utils.logging.loggit import get_logger, setup_logging
-from rolypoly.utils.various import ensure_memory, run_command_comp
+from rolypoly.utils.various import ensure_memory, run_command_comp, get_reduced_memory
 
 def mappy_hit_to_sam(hit, name, seq, qual, mate=None, read1=None):
     """Build a SAM record line from a mappy.Alignment hit.
@@ -334,6 +334,7 @@ def map(
 
         # ── bbmap via bbmapy ─────────────────────────────────────────────────
         if mapper_name == "bbmap":
+            memory_giga = get_reduced_memory(ensure_memory(memory), percentage=85)  # bbmapy overhead. this is now actually in mb but don't worry about it...
             from bbmapy import bbmap as bbmap_run
 
             bbmap_sam = mapper_outdir / "bbmap.sam"

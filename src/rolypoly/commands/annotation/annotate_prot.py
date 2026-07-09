@@ -446,8 +446,8 @@ def process_protein_annotations(config):
         combine_results,
     ]
 
-    if config.search_tool in ["diamond", "mmseqs2"]:
-        config.skip_steps.append("resolve_domain_overlaps")
+    # if config.search_tool in ["diamond", "mmseqs2"]:
+    #     config.skip_steps.append("resolve_domain_overlaps")
 
     for step in steps:
         step_name = step.__name__
@@ -731,7 +731,11 @@ def search_protein_domains_hmmsearch(config):
     # Get database paths
     database_paths = get_database_paths(config, "hmmsearch")
     if not database_paths:
-        return
+        config.logger.error(
+            f"No valid databases found for hmmsearch. Requested: {config.domain_db}. "
+            f"Supported: Pfam, NVPC, RVMT, genomad, vfam. Please check your --domain-db parameter."
+        )
+        raise ValueError(f"No valid databases found for hmmsearch search")
 
     global output_files
     config.logger.info(
@@ -855,7 +859,11 @@ def search_protein_domains_mmseqs2(config):
     # Get database paths
     database_paths = get_database_paths(config, "mmseqs2")
     if not database_paths:
-        return
+        config.logger.error(
+            f"No valid databases found for mmseqs2. Requested: {config.domain_db}. "
+            f"Supported: NVPC, RVMT, vfam, Pfam, genomad. Please check your --domain-db parameter."
+        )
+        raise ValueError(f"No valid databases found for mmseqs2 search")
 
     global output_files
     config.logger.info(
@@ -878,6 +886,7 @@ def search_protein_domains_mmseqs2(config):
                 "threads": config.threads,
                 "e": config.step_params["mmseqs2"]["evalue"],
                 "c": config.step_params["mmseqs2"]["cov"],
+                "format-mode": 2,
             },
             logger=config.logger,
             output_file=str(output_file),
@@ -896,6 +905,8 @@ def search_protein_domains_mmseqs2(config):
                 "send",
                 "evalue",
                 "bitscore",
+                "qlen",
+                "tlen",
             ]
             suffix_pattern = r"(?:\.faa\.msa\.Cons\.msa|\.msa\.Cons\.msa|\.Cons\.msa|\.faa\.msa|\.msa)$"
             try:
@@ -947,7 +958,11 @@ def search_protein_domains_diamond(config):
     # Get database paths
     database_paths = get_database_paths(config, "diamond")
     if not database_paths:
-        return
+        config.logger.error(
+            f"No valid databases found for diamond. Requested: {config.domain_db}. "
+            f"Supported: uniref50, RVMT. Please check your --domain-db parameter."
+        )
+        raise ValueError(f"No valid databases found for diamond search")
 
     global output_files
     config.logger.info(
@@ -965,7 +980,7 @@ def search_protein_domains_diamond(config):
                 "db": str(db_path),
                 "out": str(output_file),
                 "threads": config.threads,
-                "outfmt": 6,
+                "outfmt": "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen",
                 "evalue": config.step_params["diamond"]["evalue"],
             },
             logger=config.logger,
@@ -1010,6 +1025,8 @@ def resolve_domain_overlaps(config):
     # Process each domain file
     for row in domain_files.iter_rows(named=True):
         domain_file = Path(row["file"])
+        tool = row["tool"]
+        
         if not domain_file.exists() or domain_file.stat().st_size == 0:
             config.logger.warning(
                 f"Domain file {domain_file} is empty or doesn't exist, skipping"
@@ -1019,8 +1036,36 @@ def resolve_domain_overlaps(config):
         config.logger.info(f"Resolving overlaps in {domain_file.name}")
 
         try:
-            # Read domain hits
-            domain_df = pl.read_csv(domain_file, separator="\t")
+            # Read domain hits with appropriate headers based on tool
+            if tool == "diamond":
+                # Diamond BLAST format with qlen/slen for adaptive overlap detection
+                diamond_columns = [
+                    "query_id", "subject_id", "pident", "length", "mismatch",
+                    "gapopen", "qstart", "qend", "sstart", "send", "evalue", "bitscore",
+                    "qlen", "slen"
+                ]
+                domain_df = pl.read_csv(
+                    domain_file, separator="\t", has_header=False, new_columns=diamond_columns
+                )
+                column_specs = "query_id,subject_id"
+                rank_columns = "-bitscore,+evalue"
+            elif tool == "mmseqs2":
+                # MMSeqs2 BLAST-TAB format with qlen/tlen for adaptive overlap detection
+                mmseqs_columns = [
+                    "qseqid", "sseqid", "pident", "length", "mismatch", "gapopen",
+                    "qstart", "qend", "sstart", "send", "evalue", "bitscore",
+                    "qlen", "tlen"
+                ]
+                domain_df = pl.read_csv(
+                    domain_file, separator="\t", has_header=False, new_columns=mmseqs_columns
+                )
+                column_specs = "qseqid,sseqid"
+                rank_columns = "-bitscore,+evalue"
+            else:
+                # HMMER or other format - assume headers are present
+                domain_df = pl.read_csv(domain_file, separator="\t")
+                column_specs = "query_full_name,hmm_full_name"
+                rank_columns = "-full_hmm_score,+full_hmm_evalue,-hmm_cov"
 
             if domain_df.height == 0:
                 config.logger.info(f"No hits in {domain_file.name}, skipping")
@@ -1031,8 +1076,8 @@ def resolve_domain_overlaps(config):
                 # Use adaptive 'simple' mode for overlap resolution with polyprotein detection
                 resolved_df = consolidate_hits(
                     input=domain_df,
-                    column_specs="query_full_name,hmm_full_name",
-                    rank_columns="-full_hmm_score,+full_hmm_evalue,-hmm_cov",
+                    column_specs=column_specs,
+                    rank_columns=rank_columns,
                     one_per_query=False,
                     one_per_range=True,
                     min_overlap_positions=config.min_overlap_positions,
@@ -1055,8 +1100,8 @@ def resolve_domain_overlaps(config):
                 resolved_df = consolidate_hits(
                     input=domain_df,
                     min_overlap_positions=config.min_overlap_positions,
-                    column_specs="query_full_name,hmm_full_name",
-                    rank_columns="-full_hmm_score,+full_hmm_evalue,-hmm_cov",
+                    column_specs=column_specs,
+                    rank_columns=rank_columns,
                     alphabet="aa",
                     **resolve_mode_dict,
                 )
@@ -1141,22 +1186,44 @@ def combine_results(config):
             df = pl.read_csv(row["file"], separator="\t")
 
             if config.search_tool in ["diamond", "mmseqs2"]:
-                # Add headers to diamond output
-                # header: qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore
-                df.columns = [
-                    "qseqid",
-                    "sseqid",
-                    "pident",
-                    "length",
-                    "mismatch",
-                    "gapopen",
-                    "qstart",
-                    "qend",
-                    "sstart",
-                    "send",
-                    "evalue",
-                    "bitscore",
-                ]
+                # Add headers to diamond/mmseqs2 output
+                # diamond format: qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen
+                # mmseqs2 format (format-mode 2): qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen tlen
+                if config.search_tool == "diamond":
+                    col_names = [
+                        "qseqid",
+                        "sseqid",
+                        "pident",
+                        "length",
+                        "mismatch",
+                        "gapopen",
+                        "qstart",
+                        "qend",
+                        "sstart",
+                        "send",
+                        "evalue",
+                        "bitscore",
+                        "qlen",
+                        "slen",
+                    ]
+                else:  # mmseqs2
+                    col_names = [
+                        "qseqid",
+                        "sseqid",
+                        "pident",
+                        "length",
+                        "mismatch",
+                        "gapopen",
+                        "qstart",
+                        "qend",
+                        "sstart",
+                        "send",
+                        "evalue",
+                        "bitscore",
+                        "qlen",
+                        "tlen",
+                    ]
+                df.columns = col_names
 
             # Add metadata columns
             df = df.with_columns(

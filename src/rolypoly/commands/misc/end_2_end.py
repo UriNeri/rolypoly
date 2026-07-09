@@ -244,6 +244,12 @@ ROLL_PRESET_MAP: dict[str, tuple[str, str, str]] = {
     default="--id 50 --min-orf 50",
     help="Additional arguments to pass to Diamond search command during filtering of potential host/contamination sequences",
 )
+@click.option(
+    "--skip-steps",
+    default=None,
+    hidden=True,
+    help="Skip these steps in the workflow: filter_reads,assemble,filter_contigs,cluster,marker_search,nucleic_search,map_reads,annotate. Provide a comma-separated list of step names to skip.",
+)
 # Marker gene search options
 @click.option(
     "--dbm",
@@ -293,6 +299,7 @@ def roll(
     dont_mask=False,
     mmseqs_args=None,
     diamond_args="--id 50 --min-orf 50",
+    skip_steps=None,
     dbn="all",
     dbm="all",
     dba="all",
@@ -337,9 +344,11 @@ def roll(
     output_dir = Path(output_dir).absolute()
 
     if overwrite and output_dir.exists():
+        print(f"Warning: removing existing output directory: {output_dir}")
         shutil.rmtree(output_dir, ignore_errors=True)
+    else:
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-    output_dir.mkdir(parents=True, exist_ok=True)
     if log_file is None:
         log_file = output_dir / "rolypoly_pipeline.log"
     logger = setup_logging(log_file, log_level.upper())

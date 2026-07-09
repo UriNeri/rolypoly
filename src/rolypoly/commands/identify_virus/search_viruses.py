@@ -3,19 +3,20 @@ from pathlib import Path as pt
 
 import rich_click as click
 
+
 global tools
 tools = []
 global matched_tabb
 matched_tabb = []
 
 @click.command(name="virus-mapping")
-@click.option("-t", "--threads", default=1, help="Threads (all) [1]")
-@click.option("-M", "--memory", default="6g", help="MEMORY in gb (more) [6]")
+@click.option("-t", "--threads", default=1, help="Threads")
+@click.option("-M", "--memory", default="6g", help="MEMORY in gb")
 @click.option(
     "-o",
     "--output",
     default=lambda: f"{os.getcwd()}_RP_mapping",
-    help="output file location - set suffix to .tab, .sam or html [default: .tab]",
+    help="output file location - set suffix to .tab, .sam or html",
 )
 @click.option(
     "--keep-tmp", is_flag=True, default=False, help="Keep temporary files"
@@ -86,6 +87,8 @@ def virus_mapping(
     from rolypoly.utils.bio.sequences import filter_fasta_by_headers
     from rolypoly.utils.logging.citation_reminder import remind_citations
     from rolypoly.utils.logging.loggit import log_start_info, setup_logging
+    import polars as pl
+    from rolypoly.utils.bio.interval_ops import consolidate_hits, derive_strand_from_coordinates
 
     # TODO: functionalize / use wrappers for mmseqs2.
     input = pt(input).absolute().resolve()
@@ -222,6 +225,34 @@ def virus_mapping(
                 f"--format-output qheader,theader,qlen,tlen,qstart,qend,tstart,tend,alnlen,mismatch,qcov,tcov,bits,evalue,gapopen,pident,nident"
             )
             subprocess.run(mmseqs_convertalis_cmd, shell=True, check=True)
+            
+            # Apply hit resolution with strand awareness
+            logger.info(f"Resolving overlapping hits for {db_name}")
+            result_file = pt(f"{output.with_suffix('')}_vs_{db_name}.tab")
+            
+            # Read results and derive strand from coordinates
+            hits_df = pl.read_csv(result_file, separator="\t")
+            hits_df = derive_strand_from_coordinates(hits_df, qstart_col="qstart", qend_col="qend")
+            
+            # Resolve overlapping hits per-strand
+            resolved_hits = consolidate_hits(
+                input=hits_df,
+                one_per_range=True,
+                strand_col="strand",
+                column_specs="qheader,theader",
+                rank_columns="-bits,+evalue,-qcov",
+                alphabet="nucl",
+            )
+            
+            # Write resolved results
+            resolved_hits.write_csv(
+                str(result_file),
+                separator="\t",
+                include_header=True,
+            )
+            logger.info(
+                f"Wrote {len(resolved_hits)} resolved hits to {result_file}"
+            )
         elif output_format == ".sam":
             mmseqs_convertalis_cmd = (
                 f"mmseqs convertalis {input} {db_path} {this_resdb}/res "
