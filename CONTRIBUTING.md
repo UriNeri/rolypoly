@@ -127,8 +127,10 @@ Use environment protection rules in GitHub for safer releases (recommended):
 ### Triggering releases
 
 - Primary path: push to deployment branch `release` (this triggers build/test/publish workflow)
-- Optional: create/publish a GitHub Release (also triggers workflow)
+- Not optional: create/publish a GitHub Release (also triggers workflow)
 - Optional: run the workflow manually (`workflow_dispatch`) for dry-runs/testing
+
+- **Bioconda note**: our Bioconda recipe automatically uses the source tar.gz from GitHub Releases; So when pushing to GitHub, make a GitHub Release (tagged source) so Bioconda can fetch the correct source archive - something like gh release create v0.n.nn --target main --title "v0.n.nn" --notes "Release v0.n.nn" etc.
 
 ## Branch and release flow (recommended)
 
@@ -142,7 +144,8 @@ Typical release promotion sequence:
 - `git checkout release && git pull origin release`
 - `git merge --ff-only origin/main`
 - `git push origin release`
-
+Then create a GitHub Release (tagged source) for Bioconda and PyPI to fetch the correct source archive:
+- `gh release create v0.n.nn --target release --title "v0.n.nn" --notes "Release v0.n.nn"`
 This keeps branch history cleaner and ensures PyPI publishes reflect reviewed `main` content.
 
 ### One-command release prep (manual bump + commit + trigger CI)
