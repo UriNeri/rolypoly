@@ -20,6 +20,8 @@ Notes:
     branch never ships stale code or a stale workflow file), then bumps version locally
     in src/rolypoly/__init__.py, refreshes src/setup/env_big.yaml, commits release files,
     and pushes to the deployment branch.
+  - After pushing, it also merges the version-bump commit straight back into main and
+    pushes main, so main's __init__.py never drifts from what was actually released.
   - Pushing to the deployment branch only builds/smoke-tests (no publish); it is safe to re-run.
   - Publishing to TestPyPI then PyPI is triggered solely by creating a GitHub Release
     (tag v<version> targeting the deployment branch). This script creates that release
@@ -328,6 +330,28 @@ git commit -m "release: bump version to v${NEW_VERSION}"
 git push "${REMOTE_NAME}" "${TARGET_BRANCH}"
 
 echo "Pushed release commit for v${NEW_VERSION} to ${REMOTE_NAME}/${TARGET_BRANCH}"
+
+# Sync the version bump straight back into main so it never drifts from what
+# was actually released (this is what caused main's __init__.py to still say
+# an old version after several releases had already gone out from release).
+MAIN_BRANCH="main"
+if [[ "${TARGET_BRANCH}" != "${MAIN_BRANCH}" ]]; then
+  git fetch "${REMOTE_NAME}" "${MAIN_BRANCH}" || true
+  if git show-ref --verify --quiet "refs/remotes/${REMOTE_NAME}/${MAIN_BRANCH}"; then
+    if git show-ref --verify --quiet "refs/heads/${MAIN_BRANCH}"; then
+      git checkout "${MAIN_BRANCH}"
+    else
+      git checkout -b "${MAIN_BRANCH}" "${REMOTE_NAME}/${MAIN_BRANCH}"
+    fi
+    git pull --ff-only "${REMOTE_NAME}" "${MAIN_BRANCH}"
+    if git merge --no-edit "${TARGET_BRANCH}" -m "Merge branch '${TARGET_BRANCH}' into ${MAIN_BRANCH}"; then
+      git push "${REMOTE_NAME}" "${MAIN_BRANCH}"
+      echo "Synced version bump back into ${REMOTE_NAME}/${MAIN_BRANCH}."
+    else
+      echo "Automatic merge of ${TARGET_BRANCH} into ${MAIN_BRANCH} failed (conflicts?). Resolve manually and push ${MAIN_BRANCH}." >&2
+    fi
+  fi
+fi
 
 # Publishing to TestPyPI/PyPI is only triggered by a GitHub Release (see
 # .github/workflows/pypi-release.yml), not by this branch push. Create that
