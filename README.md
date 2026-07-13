@@ -2,7 +2,7 @@
 
 # RolyPoly
 
-[![PyPI version](https://img.shields.io/pypi/v/rolypoly-tk.svg?cacheSeconds=300)](https://pypi.org/project/rolypoly-tk/) (https://pypi.org/project/rolypoly-tk/) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/rolypoly-tk?period=monthly&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=Downloads+%28month%29)](https://pepy.tech/projects/rolypoly-tk) [![License](https://img.shields.io/github/license/UriNeri/rolypoly.svg)](LICENSE) [![Docs](https://img.shields.io/badge/docs-urineri.github.io%2Frolypoly-blue)](https://urineri.github.io/rolypoly/) [![place-holder-for-bioconda-badge](https://img.shields.io/badge/bioconda-PLACEHOLDER-lightgrey)](https://bioconda.github.io/)
+[![PyPI version](https://img.shields.io/pypi/v/rolypoly-tk.svg?cacheSeconds=300)](https://pypi.org/project/rolypoly-tk/) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/rolypoly-tk?period=monthly&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=Downloads+%28month%29)](https://pepy.tech/projects/rolypoly-tk) [![License](https://img.shields.io/github/license/UriNeri/rolypoly.svg)](LICENSE) [![Docs](https://img.shields.io/badge/docs-urineri.github.io%2Frolypoly-blue)](https://urineri.github.io/rolypoly/) [![place-holder-for-bioconda-badge](https://img.shields.io/badge/bioconda-PLACEHOLDER-lightgrey)](https://bioconda.github.io/)
 
 RolyPoly is an RNA virus analysis toolkit, meant to be a "swiss-army knife" for RNA virus discovery and characterization by including a variety of commands, wrappers, parsers, automations, and some "quality of life" features for any many of a virus investigation process (from raw read processing to genome annotation). While it includes an "end-2-end" command that employs an entire pipeline, the main goals of rolypoly are:
 - Help non-computational researchers take a deep dive into their data without compromising on using tools that are non-techie friendly.  
@@ -31,8 +31,6 @@ By default (no positional arguments), the installation uses the session current 
 - code in `./rolypoly/code/ `  
 - conda environment in `./rolypoly/env/`  
 - log file in `./rolypoly/RolyPoly_quick_setup.log`   
-
-
 
 ### Developer / Modular setup: Command-Specific Pixi Environments
 **Mostly for software developers** looking to try or make use of specific rolypoly features with minimal risk of dependency conflicts, by using [Pixi](https://pixi.sh/) to create isolated environments for each command group:
@@ -79,7 +77,7 @@ Legend:
 - 🤔/TBD - Planned / under consideration.
 
 #### Data
-- ✅ [`get-data`](https://urineri.github.io/rolypoly/commands/get_data) — Download/setup required data
+- ✅ [`get-data`](https://urineri.github.io/rolypoly/commands/get_data) — Download required data
 - ✅ [`version`](https://urineri.github.io/rolypoly/commands/version/) — Show code and data version info
 
 #### Raw-Reads
