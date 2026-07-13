@@ -1,0 +1,67 @@
+name: Deploy docs to GitHub Pages
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref (branch/tag/SHA) to deploy"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: docs-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Install uv tool manager to fast-track the environment setup
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      # Install python dependencies for mkdocstrings source code tracking
+      - name: Install Python Package Dependencies
+        run: |
+          uv pip install --system -r docs/requirements.txt || true
+
+      # Install Zensical globally via uv tool ecosystem
+      - name: Install Zensical
+        run: uv tool install zensical
+
+      # FIX: Execute Zensical with the correct config file path
+      - name: Build Zensical site
+        run: zensical build -f docs/mkdocs_zensical.yml --clean
+
+      # FIX: Zensical outputs to the repository root directory './site'
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
