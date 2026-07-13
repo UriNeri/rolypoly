@@ -36,24 +36,24 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v5
 
-      # Install python dependencies for mkdocstrings source code tracking
+      # Install python dependencies for your source code tracking
       - name: Install Python Package Dependencies
         run: |
           uv pip install --system -r docs/requirements.txt || true
 
-      # Install Zensical globally via uv tool ecosystem
+      # Install Zensical alongside the necessary mkdocstrings bindings
       - name: Install Zensical
         run: uv tool install zensical --with mkdocstrings-python
 
-      # FIX: Execute Zensical with the correct config file path
+      # Execute Zensical with the correct config file path
       - name: Build Zensical site
         run: zensical build -f docs/mkdocs_zensical.yml --clean
 
-      # FIX: Zensical outputs to the repository root directory './site'
+      # FIXED: Points back to the correct path generated relative to the config file
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./site
+          path: docs/site
 
   deploy:
     needs: build
