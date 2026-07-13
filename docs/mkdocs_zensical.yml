@@ -4,9 +4,10 @@ repo_url: https://github.com/UriNeri/rolypoly
 docs_dir: mkdocs_docs
 theme:
   name: material
-  logo: images/rp_pixel.png
-  favicon: images/rp_pixel.png
-  icon: images/rp_pixel.png
+  logo: images/rp_pixel.png     # This safely keeps your custom PNG logo
+  favicon: images/rp_pixel.png  # This safely keeps your custom PNG favicon
+  icon:
+    repo: material/github       # FIX: Uses the native GitHub SVG icon for the repo link
   palette:
     - scheme: default
       toggle:
@@ -16,6 +17,7 @@ theme:
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
+
   features:
     - navigation.instant
     - navigation.tracking
@@ -55,13 +57,6 @@ plugins:
                   - import sys
                   - from pathlib import Path
                   - sys.path.append(str(Path("src").resolve()))
-    - mermaid2:
-        version: 10.4.0
-        arguments:
-          securityLevel: 'loose'
-          startOnLoad: true
-          theme: |
-            ^(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'default'
 
 markdown_extensions:
   - pymdownx.highlight:

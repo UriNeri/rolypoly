@@ -160,11 +160,10 @@ itables = ">=2.7.0,<3"
 
 
 [tool.pixi.feature.docs.pypi-dependencies]
-mkdocs = "*"
-mkdocs-material = "*"
 mkdocs-mermaid2-plugin = "*"
 mkdocstrings = "*"
 mkdocstrings-python = "*"
+zensical = "*"
 
 [tool.pixi.feature.py310.dependencies]
 python = "~=3.10.0"
@@ -242,8 +241,8 @@ test-cli = "pytest -q src/tests/test_cli_contracts.py"
 bump-commit-publish = "bash src/setup/bump_commit_publish.sh"
 
 [tool.pixi.feature.docs.tasks]
-docs-serve = "mkdocs serve -f docs/mkdocs.yml"
-docs-build = "mkdocs build -f docs/mkdocs.yml"
+docs-serve = "zensical serve -f docs/mkdocs_zensical.yml"
+docs-build = "zensical build -f docs/mkdocs_zensical.yml"
 
 [tool.ruff]
 exclude = [
