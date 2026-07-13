@@ -43,7 +43,7 @@ jobs:
 
       # Install Zensical globally via uv tool ecosystem
       - name: Install Zensical
-        run: uv tool install zensical
+        run: uv tool install zensical --with mkdocstrings-python
 
       # FIX: Execute Zensical with the correct config file path
       - name: Build Zensical site
