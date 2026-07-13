@@ -69,7 +69,8 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
-  - pymdownx.snippets
+  - pymdownx.snippets:
+      base_path: ["."] # Allows snippets to reference the repository root
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
@@ -92,9 +93,8 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Contributing: contribute.md
-  - Installation: installation.md
   - Configuration: configuration.md
-  - Examples: examples.md
+  - Examples and Scientific background: examples.md
   - Resource Usage: resource_usage.md
   - Commands:
     - "get-data": commands/get_data.md
@@ -126,4 +126,3 @@ nav:
       - "fastx-stats": commands/fastx_stats.md
       - "fetch-sra": commands/fetch_sra.md
       - "rename-seqs": commands/rename_seqs.md
-

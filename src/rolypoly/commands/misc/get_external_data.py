@@ -19,7 +19,8 @@ tools = []
     help="Display current RolyPoly version, installation type, and configuration paths",
 )
 @option(
-    "--ROLYPOLY_DATA",
+    "-rd",
+    "--rolypoly-data",
     required=False,
     help="If you do not want to download the the data to same location as the rolypoly code, specify an alternative path. TODO: remind user to provide such alt path in other scripts? envirometnal variable maybe",
 )

@@ -2,39 +2,31 @@
 
 # RolyPoly
 
-[![PyPI version](https://img.shields.io/pypi/v/rolypoly-tk.svg?cacheSeconds=300)](https://pypi.org/project/rolypoly-tk/) [![Python versions](https://img.shields.io/pypi/pyversions/rolypoly-tk.svg?cacheSeconds=300)](https://pypi.org/project/rolypoly-tk/) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/rolypoly-tk?period=monthly&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=Downloads+%28month%29)](https://pepy.tech/projects/rolypoly-tk) [![License](https://img.shields.io/github/license/UriNeri/rolypoly.svg)](LICENSE) [![Docs](https://img.shields.io/badge/docs-urineri.github.io%2Frolypoly-blue)](https://urineri.github.io/rolypoly/)
+[![PyPI version](https://img.shields.io/pypi/v/rolypoly-tk.svg?cacheSeconds=300)](https://pypi.org/project/rolypoly-tk/) (https://pypi.org/project/rolypoly-tk/) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/rolypoly-tk?period=monthly&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=Downloads+%28month%29)](https://pepy.tech/projects/rolypoly-tk) [![License](https://img.shields.io/github/license/UriNeri/rolypoly.svg)](LICENSE) [![Docs](https://img.shields.io/badge/docs-urineri.github.io%2Frolypoly-blue)](https://urineri.github.io/rolypoly/) [![place-holder-for-bioconda-badge](https://img.shields.io/badge/bioconda-PLACEHOLDER-lightgrey)](https://bioconda.github.io/)
 
 RolyPoly is an RNA virus analysis toolkit, meant to be a "swiss-army knife" for RNA virus discovery and characterization by including a variety of commands, wrappers, parsers, automations, and some "quality of life" features for any many of a virus investigation process (from raw read processing to genome annotation). While it includes an "end-2-end" command that employs an entire pipeline, the main goals of rolypoly are:
 - Help non-computational researchers take a deep dive into their data without compromising on using tools that are non-techie friendly.  
 - Help (software) developers of virus analysis pipeline "plug" holes missing from their framework, by using specific RolyPoly commands to add features to their existing code base.
 
 ## Note - Rolypoly is still under development (contributions welcome!)
-RolyPoly is an open, still in progress project - I aim to summarise the main functionality into a manuscript ~mid 2026. Pull requests and contributions are welcome and will be considered (see [CONTRIBUTING.md](CONTRIBUTING.md)).  
-This also means that there are bugs, verbose logging even for non debug mode, and some place holders and TODOs here and there.
+RolyPoly is an open, rolling-release, still in progress project. We hope to summarise the main functionality into a manuscript ~late 2026. Pull requests and contributions are welcome and will be considered (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+
 
 ## Installation
 
 ### Quick and Easy - One Conda/Mamba Environment
-**Recommended for most users** who want a "just works" solution and primarily intend to use rolypoly as a CLI tool in an independent environment.
+**Recommended for most users** who want a "just works" solution and primarily intend to use rolypoly as a CLI tool in an independent environment. We hope to have rolypoly available from bioconda in the near future.   
 
-We hope to have rolypoly available from bioconda in the near future.  
-In the meantime, it can be installed with the [`quick_setup.sh`](https://raw.githubusercontent.com/UriNeri/rolypoly/main/src/setup/quick_setup.sh) script, which is Conda/Mamba-based (uses `mamba` or `micromamba`) and also fetches the pre-generated data rolypoly requires.
-
+In the meantime, a complete conda/mamba environment can be installed as follows:
 ```bash
 curl -O https://raw.githubusercontent.com/UriNeri/rolypoly/main/src/setup/quick_setup.sh && \
 bash quick_setup.sh 
 ```
-
-#### Quick Setup - Additional Options
-You can specify custom paths for the code, databases, and Conda/Mamba environment location (this is also how you "name" the environment by choosing its path):
+You can specify custom paths for the code, databases, and Conda/Mamba environment location:
 ```bash
 bash quick_setup.sh /path/to/conda/env /path/to/install/rolypoly_code /path/to/store/databases /path/to/logfile
 ```
-Example with an explicit environment path:
-```bash
-bash quick_setup.sh "$HOME/mamba_envs/rolypoly"
-```
-By default if no positional arguments are supplied, rolypoly is installed into the session current folder (path the quick_setup.sh is called from):   
+By default (no positional arguments), the installation uses the session current folder:  
 - database in `./rolypoly/data/`  
 - code in `./rolypoly/code/ `  
 - conda environment in `./rolypoly/env/`  
@@ -42,8 +34,8 @@ By default if no positional arguments are supplied, rolypoly is installed into t
 
 
 
-### Modular / Dev - Command-Specific Pixi Environments
-**For software developers** looking to try or make use of specific rolypoly features with minimal risk of dependency conflicts. This approach should allow you to install only the tools you need for specific functionality. Note: dependencies from pip are always installed; conda/bioconda dependencies are the modular ones.
+### Developer / Modular setup: Command-Specific Pixi Environments
+**Mostly for software developers** looking to try or make use of specific rolypoly features with minimal risk of dependency conflicts, by using [Pixi](https://pixi.sh/) to create isolated environments for each command group:
 
 ```bash
 # Install pixi first (if not already installed)
@@ -65,7 +57,7 @@ pixi run -e reads-only rolypoly filter-reads --help
 pixi shell -e reads-only
 rolypoly filter-reads --help
 ```  
-For detailed modular installation options, see the [installation documentation](https://urineri.github.io/rolypoly/installation).
+For details about specific command groups and their dependencies, see the [pyproject.toml file](https://github.com/UriNeri/rolypoly/blob/main/pyproject.toml).
 
 ## Usage
 RolyPoly is a command-line tool with subcommands grouped by analysis stage. 
@@ -124,16 +116,16 @@ Legend:
 - ✅ [`rename-seqs`](https://urineri.github.io/rolypoly/commands/misc) — Rename sequences (add a prefix, suffix, hash, running number, etc.)
 - 🤔 [`quick-taxonomy`](https://urineri.github.io/rolypoly/commands/misc) — Quick taxonomy assignment. Candidate workflows are [github.com/UriNeri/ictv-mmseqs2-protein-database](https://github.com/UriNeri/ictv-mmseqs2-protein-database) and [github.com/apcamargo/ictv-mmseqs2-protein-database](https://github.com/apcamargo/ictv-mmseqs2-protein-database) 
 - 🤔 support for [genotate](https://github.com/deprekate/genotate) for gene prediction.
-- 🤔 Genome refinement / strain de-entalgement / variant calling?
+- 🤔 Genome refinement / strain de-entalgement / variant/haplotype calling?
 - 🤔 Virus feature prediction (+/-ssRNA/dsRNA, circular/linear, mono/poly-segmented, capsid type, etc.)
 - 🤔 Host prediction 
-- 🤔 protein structural prediction support (and reseek search xyz dbs)
+- 🤔 protein structural prediction/embedding support (and reseek search xyz dbs?)
 
 If you have suggestions for additional commands or features, or want to implement some of these - please let us know, and consider contributing :-) 
 
 ## Dependencies
 
-Not all 3rd party software is used by all the different commands. RolyPoly includes a "citation reminder" that will try to list all the external software used by a command. The "reminded citations" are pretty printed to console (stdout) and to a logfile. To shut off the terminal citation reminder printing, set `ROLYPOLY_REMIND_CITATIONS` to false in your `rpconfig.json` file.
+Not all 3rd party software is used by all the different commands. RolyPoly includes a "citation reminder" that will list external software used by it. The "reminded citations" are printed to console (stdout) and to a logfile. To shut off the terminal citation reminder printing, set `ROLYPOLY_REMIND_CITATIONS` to false in your `rpconfig.json` file.
 
 <details><summary>Click to show dependencies</summary>  
 

@@ -177,7 +177,7 @@ fi
 # Prepare external data
 logit "$LOGFILE" "Preparing external data"
 export ROLYPOLY_DATA="$DATA_PATH"
-"$mamba_command" run -p "$MAMBA_ENV_PATH" rolypoly get-data --ROLYPOLY_DATA "$DATA_PATH" --log-file "$LOGFILE"
+"$mamba_command" run -p "$MAMBA_ENV_PATH" rolypoly get-data --rolypoly-data "$DATA_PATH" --log-file "$LOGFILE"
 
 # Final setup and version check
 if [ "$DEV_INSTALL" != "TRUE" ]; then
