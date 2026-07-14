@@ -311,6 +311,9 @@ awk '
   done < "${TMP_PIP_OUT}"
 } > src/setup/env_big.yaml
 
+# add rolypoly-tk (with the new version) to the bottom (pip deps) of the env_big.yaml file:
+echo "  - rolypoly-tk >=${NEW_VERSION},<1" >> src/setup/env_big.yaml
+
 if [[ "${RUN_SMOKE}" -eq 1 ]]; then
   mkdir -p testing_folder/outputs
   pytest -q src/tests/test_cli_help_smoke.py
