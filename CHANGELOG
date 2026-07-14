@@ -1,6 +1,13 @@
 # Changelog
 
 
+## 14.07.2026 [v0.7.15]
+- fix mismatch between docs and `get-data` command args.
+- Remove quick_setup.sh from repo and simplify the "complete" mamba env instructions.
+- Add rolypoly-tk to the env_big.yaml dependencies list (TBD automate version bumping in the future).  
+
+
+
 ## 05.07.2026 [TBD]
 ### Added
 - New command: `map` - wrapper around some popular raw read aligners.

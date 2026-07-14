@@ -22,7 +22,7 @@ Main Commands	Coherce outputs to GFF	In Progress	High		Add \n//FASTA with sequen
 Main Commands	add support for non illumina PE data (single end, pacbio, ONT).	To Do	High	@FSchultz. support for MetaFlye and MetaMDBG to be considered.		
 Main Commands	Add option to keep files in memory/RAM disk	Done	Medium	Mostly done via keep-tmp and temp-dir args	
 Marker Search	Validate and implement remaining hit-consoldation and interval ops functionality	Done	Higest (v1 mvp)		merge mode now uses native polars/intervaltree clustering; remaining modes may still need tests/examples	rolypoly/utils/interval_ops.py	
-Packaging	bioconda	In Progress	High		on pypi, currently quick_setup.sh installs everything. PR with recipe submitted to bioconda	misc/quick_setup.sh and misc/envs/env_big.yaml
+Packaging	bioconda	In Progress	High		on pypi. PR with recipe submitted to bioconda	misc/envs/env_big.yaml
 Packaging	Finalizing the database and contents	To Do	Higest (v1 mvp)	Uri Neri	Done, needs to upload to zenodo.	 is:open 	
 Packaging	Documentation	To Do	Higest (v1 mvp)		Need to clean and add use-cases.		
 Summary	Circularity prediction	To Do	High	Antonio Camargo	For ambi and maybe mito/narna	src/rolypoly/commands/virotype/predict_characteristics.py	

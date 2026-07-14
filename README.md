@@ -14,23 +14,25 @@ RolyPoly is an open, rolling-release, still in progress project. We hope to summ
 
 ## Installation
 
-### Quick and Easy - One Conda/Mamba Environment
-**Recommended for most users** who want a "just works" solution and primarily intend to use rolypoly as a CLI tool in an independent environment. We hope to have rolypoly available from bioconda in the near future.   
-
-In the meantime, a complete conda/mamba environment can be installed as follows:
+### Mamba/Conda (Quick and Easy - One complete environment)
+**Recommended for most users** if you want a "just works" solution and intend to use rolypoly as a CLI tool in an independent environment. We hope to have rolypoly available from bioconda in the near future, in the meantime, a complete conda/[mamba](https://github.com/mamba-org/mamba) environment recipe is available under [src/setup/rolypoly_env.yaml](src/setup/rolypoly_env.yaml). You can install it with the following commands:
+1. Get micromamba (if not already installed)
 ```bash
-curl -O https://raw.githubusercontent.com/UriNeri/rolypoly/main/src/setup/quick_setup.sh && \
-bash quick_setup.sh 
+"${SHELL}" <(curl -L https://micro.mamba.pm/install.sh)
 ```
-You can specify custom paths for the code, databases, and Conda/Mamba environment location:
+2. Fetch the latest rolypoly-tk recipe
 ```bash
-bash quick_setup.sh /path/to/conda/env /path/to/install/rolypoly_code /path/to/store/databases /path/to/logfile
+curl -O https://raw.githubusercontent.com/UriNeri/rolypoly/main/src/setup/env_big.yaml
+# Create the environment (this will take a few minutes)
+micromamba create -f env_big.yaml
 ```
-By default (no positional arguments), the installation uses the session current folder:  
-- database in `./rolypoly/data/`  
-- code in `./rolypoly/code/ `  
-- conda environment in `./rolypoly/env/`  
-- log file in `./rolypoly/RolyPoly_quick_setup.log`   
+3. Activate the environment or directly fetch rolypoly database (may take a few minutes)
+```bash
+micromamba run -n rolypoly-tk rolypoly get-data --data-dir /path/to/store/databases
+# Activate the environment and use rolypoly
+micromamba activate rolypoly-tk
+rolypoly --help
+```
 
 ### Developer / Modular setup: Command-Specific Pixi Environments
 **Mostly for software developers** looking to try or make use of specific rolypoly features with minimal risk of dependency conflicts, by using [Pixi](https://pixi.sh/) to create isolated environments for each command group:
@@ -59,9 +61,9 @@ For details about specific command groups and their dependencies, see the [pypro
 
 ## Usage
 RolyPoly is a command-line tool with subcommands grouped by analysis stage. 
-Use `rolypoly --help` or `rolypoly <command> --help` for most up to date details. Some additional information is in the [docs](https://urineri.github.io/rolypoly/commands/).
+Use `rolypoly <command> --help` for most up to date details. Some additional information is in the [docs](https://urineri.github.io/rolypoly/commands/).
 
-For scenario-based usage examples (different library types, preset selection, step-by-step modular workflow), see the **[Examples page](https://urineri.github.io/rolypoly/examples)**.
+For some scientific background and common use-case scenario examples (different library types, preset selection, step-by-step workflow), see the **[Examples page](https://urineri.github.io/rolypoly/examples)**.
 
 ```bash
 rolypoly  <COMMAND> [ARGS]...
