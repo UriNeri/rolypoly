@@ -58,9 +58,7 @@ def add_command(
     commands_dir = package_src / "src" / "rolypoly" / "commands"
 
     if not commands_dir.exists():
-        logger.warning(
-            f"Commands directory {commands_dir} does not exist."
-        )
+        logger.warning(f"Commands directory {commands_dir} does not exist.")
         return
 
     # If any required argument is missing and interactive mode is enabled, fall back to prompts

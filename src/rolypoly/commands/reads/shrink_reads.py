@@ -68,14 +68,14 @@ from rolypoly.utils.logging.loggit import log_start_info, setup_logging
     default="info",
     type=click.Choice(["debug", "info", "warning", "error", "critical"]),
     help="Log level. Options: debug, info, warning, error, critical",
-)   
+)
 def shrink_reads(
     input,
     output,
     subset_type,
     sample_size,
     bbnorm_min_depth,
-    threads, # TODO: no real threading support yet (apart from bbnorm) maybe will have it if multiple input files are used (one per thread)
+    threads,  # TODO: no real threading support yet (apart from bbnorm) maybe will have it if multiple input files are used (one per thread)
     log_file,
     log_level,
 ):

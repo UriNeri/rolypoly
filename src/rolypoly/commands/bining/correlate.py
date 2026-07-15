@@ -9,6 +9,7 @@ import rich_click as click
 from rolypoly.utils.logging.loggit import log_start_info, setup_logging
 from rolypoly.utils.various import infer_separator
 
+
 def parse_abundance_table(
     input_path: Path, separator: str, logger
 ) -> tuple[pl.DataFrame, str, list[str]]:
@@ -420,7 +421,9 @@ def correlate(
             idx_2 = contig_index[pair["contig_2"]]
             shared_samples = float(pair["shared_samples"])
             either_present = (
-                prevalence_counts[idx_1] + prevalence_counts[idx_2] - shared_samples
+                prevalence_counts[idx_1]
+                + prevalence_counts[idx_2]
+                - shared_samples
             )
             if either_present <= 0.0:
                 return 0.0
@@ -431,9 +434,7 @@ def correlate(
             shared_matrix.astype(np.float64),
             float(min_shared_samples),
             "shared_samples",
-        ).with_columns(
-            pl.col("shared_samples").cast(pl.Int64)
-        )
+        ).with_columns(pl.col("shared_samples").cast(pl.Int64))
         cooccurrence_pairs = cooccurrence_pairs.with_columns(
             pl.struct(["contig_1", "contig_2", "shared_samples"])
             .map_elements(get_shared_fraction, return_dtype=pl.Float64)
@@ -460,18 +461,20 @@ def correlate(
             ["contig_1", "contig_2", "correlation"]
         )
     else:
-        selected_pairs = pl.concat(
-            [
-                correlation_pairs.select(
-                    ["contig_1", "contig_2", "correlation"]
-                ),
-                cooccurrence_pairs_with_correlation.select(
-                    ["contig_1", "contig_2", "correlation"]
-                ),
-            ],
-            how="vertical_relaxed",
-        ).group_by(["contig_1", "contig_2"], maintain_order=True).agg(
-            pl.col("correlation").max().alias("correlation")
+        selected_pairs = (
+            pl.concat(
+                [
+                    correlation_pairs.select(
+                        ["contig_1", "contig_2", "correlation"]
+                    ),
+                    cooccurrence_pairs_with_correlation.select(
+                        ["contig_1", "contig_2", "correlation"]
+                    ),
+                ],
+                how="vertical_relaxed",
+            )
+            .group_by(["contig_1", "contig_2"], maintain_order=True)
+            .agg(pl.col("correlation").max().alias("correlation"))
         )
 
     selected_pairs.write_csv(

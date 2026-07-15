@@ -48,9 +48,7 @@ datadir = rolypoly_dir / "data"
 ##################################################################################################
 ##### Main #####
 # mkdir dsRNA_data mock_data synt_data VANA_data
-output_dir = Path(
-    "./bench/gen_data"
-)
+output_dir = Path("./bench/gen_data")
 output_dir.mkdir(parents=True, exist_ok=True)
 os.chdir(output_dir)
 

@@ -8,7 +8,6 @@ from typing import Dict, Optional, Union
 from rich.console import Console
 from rich.logging import RichHandler
 
-
 ROLYPOLY_HANDLER_ATTR = "rolypoly_handler_type"
 
 
@@ -309,4 +308,3 @@ def resolve_datadir() -> Path:
 
     # final fallback to cwd --- Probably in ipython / creating a data release?
     return Path.cwd()
-

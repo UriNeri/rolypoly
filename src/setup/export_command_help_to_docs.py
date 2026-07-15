@@ -9,7 +9,6 @@ import click
 
 from rolypoly.rolypoly import rolypoly
 
-
 DEFAULT_TEMPLATE = """# __TITLE__
 
 <!-- Auto-generated draft from CLI metadata for `rolypoly __COMMAND__`. -->
@@ -256,7 +255,9 @@ def discover_documented_commands(
 
         content = markdown_file.read_text(encoding="utf-8")
 
-        rolypoly_refs = set(re.findall(r"rolypoly\s+([a-z0-9][a-z0-9-]*)", content))
+        rolypoly_refs = set(
+            re.findall(r"rolypoly\s+([a-z0-9][a-z0-9-]*)", content)
+        )
         backtick_refs = set(re.findall(r"`([a-z0-9][a-z0-9-]*)`", content))
 
         mentioned = (rolypoly_refs | backtick_refs) & command_set
@@ -412,7 +413,9 @@ def print_report(
 
     print("Documented commands:")
     for command_name in sorted(documented_map):
-        files = ", ".join(sorted(path.name for path in documented_map[command_name]))
+        files = ", ".join(
+            sorted(path.name for path in documented_map[command_name])
+        )
         print(f"  - {command_name}: {files}")
     print()
 
@@ -489,7 +492,9 @@ def main() -> None:
     scaffold_dir = repo_root / args.scaffold_dir
 
     if not docs_commands_dir.exists():
-        raise FileNotFoundError(f"Docs commands directory not found: {docs_commands_dir}")
+        raise FileNotFoundError(
+            f"Docs commands directory not found: {docs_commands_dir}"
+        )
 
     template_text = (
         template_path.read_text(encoding="utf-8")
@@ -504,15 +509,23 @@ def main() -> None:
     auto_generated_pages = discover_auto_generated_pages(docs_commands_dir)
 
     missing_commands = sorted(
-        command_name for command_name in command_names if command_name not in documented_map
+        command_name
+        for command_name in command_names
+        if command_name not in documented_map
     )
 
     target_commands: list[str]
     if args.all_commands:
         target_commands = list(command_names)
     elif args.commands.strip():
-        requested = {item.strip() for item in args.commands.split(",") if item.strip()}
-        target_commands = [command_name for command_name in command_names if command_name in requested]
+        requested = {
+            item.strip() for item in args.commands.split(",") if item.strip()
+        }
+        target_commands = [
+            command_name
+            for command_name in command_names
+            if command_name in requested
+        ]
     elif args.overwrite:
         target_commands = [
             command_name

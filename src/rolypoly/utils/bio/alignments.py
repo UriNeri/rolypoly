@@ -12,7 +12,6 @@ import polars as pl
 import pyhmmer
 from rich.progress import track
 
-
 from rolypoly.utils.logging.loggit import get_logger
 from rolypoly.utils.various import find_files_by_extension, run_command_comp
 
@@ -1348,9 +1347,10 @@ def fetchPfamMSA(
         (as in, a standalone function just to fetch Pfam MSA files from InterPro).
 
     """
-    import requests
-    from time import sleep as time_sleep
     import gzip
+    from time import sleep as time_sleep
+
+    import requests
 
     DOWNLOAD_FORMATS = {"seed", "full", "uniprot"}
 

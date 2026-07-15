@@ -68,7 +68,9 @@ class RdRpMotifSearchConfig(BaseConfig):
         self.name = kwargs.get("name") or Path(self.input).stem
 
         # Database paths
-        self.data_dir = kwargs.get("data_dir") or os.environ.get("ROLYPOLY_DATA")
+        self.data_dir = kwargs.get("data_dir") or os.environ.get(
+            "ROLYPOLY_DATA"
+        )
 
         data_dir_path = Path(self.data_dir)
         self.motif_metadata_path = (
@@ -86,6 +88,7 @@ class RdRpMotifSearchConfig(BaseConfig):
                 / "mmseqs_dbs"
                 / "rvmt_motifs/rvmt_motifs"
             )
+
 
 @command(
     epilog="""\n\nEXAMPLES:\n\n  # Basic search with default flat TSV output and alignment\n  rolypoly rdrp-motif-search -i sequences.fasta -o results_dir\n\n  # Nested structure for programmatic analysis\n  rolypoly rdrp-motif-search -i sequences.fasta -o results_dir --output-structure nested\n\n  # Parquet output with structured data for analysis\n  rolypoly rdrp-motif-search -i sequences.fasta -o results_dir --output-format parquet\n\n  # Disable alignment to reduce output size\n  rolypoly rdrp-motif-search -i sequences.fasta -o results_dir --no-include-alignment\n\n  # High sensitivity search with custom parameters\n  rolypoly rdrp-motif-search -i sequences.fasta -o results_dir -e 0.1 --max-distance 300\n\nOUTPUT FORMATS:\n\n  flat + tsv: separate columns (motif_a_start, motif_b_start, etc.) - DEFAULT\n  nested + tsv: motif_details column as JSON string\n  flat + parquet: separate columns with native data types\n  nested + parquet: motif_details as structured data types\n"""
@@ -180,12 +183,7 @@ class RdRpMotifSearchConfig(BaseConfig):
 @option(
     "-k", "--keep-tmp", is_flag=True, default=False, help="Keep temporary files"
 )
-@option(
-    "-td",
-    "--temp-dir",
-    default=None,
-    help="Path to temporary directory",
-)
+@option("-td", "--temp-dir", default=None, help="Path to temporary directory")
 @option(
     "-ow",
     "--overwrite",

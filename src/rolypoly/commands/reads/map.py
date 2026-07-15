@@ -15,7 +15,12 @@ import rich_click as click
 
 from rolypoly.utils.bio.library_detection import identify_fastq_files
 from rolypoly.utils.logging.loggit import get_logger, setup_logging
-from rolypoly.utils.various import ensure_memory, run_command_comp, get_reduced_memory
+from rolypoly.utils.various import (
+    ensure_memory,
+    get_reduced_memory,
+    run_command_comp,
+)
+
 
 def mappy_hit_to_sam(hit, name, seq, qual, mate=None, read1=None):
     """Build a SAM record line from a mappy.Alignment hit.
@@ -101,7 +106,9 @@ def mappy_hit_to_sam(hit, name, seq, qual, mate=None, read1=None):
     return "\t".join(fields)
 
 
-def write_paired_sam_records(sam_f, name1, seq1, qual1, hits1, name2, seq2, qual2, hits2):
+def write_paired_sam_records(
+    sam_f, name1, seq1, qual1, hits1, name2, seq2, qual2, hits2
+):
     """Write SAM records for one read pair, cross-referencing mate fields.
 
     Each mate's own primary alignment (first hit with is_primary=True, or
@@ -111,19 +118,34 @@ def write_paired_sam_records(sam_f, name1, seq1, qual1, hits1, name2, seq2, qual
     Mates with zero hits are skipped (unmapped reads are not written), and
     the surviving mate correctly gets the mate-unmapped flag (0x8).
     """
-    primary1 = next((h for h in hits1 if h.is_primary), hits1[0] if hits1 else None)
-    primary2 = next((h for h in hits2 if h.is_primary), hits2[0] if hits2 else None)
+    primary1 = next(
+        (h for h in hits1 if h.is_primary), hits1[0] if hits1 else None
+    )
+    primary2 = next(
+        (h for h in hits2 if h.is_primary), hits2[0] if hits2 else None
+    )
 
     for hit in hits1:
-        sam_f.write(mappy_hit_to_sam(hit, name1, seq1, qual1, mate=primary2, read1=True) + "\n")
+        sam_f.write(
+            mappy_hit_to_sam(hit, name1, seq1, qual1, mate=primary2, read1=True)
+            + "\n"
+        )
     for hit in hits2:
-        sam_f.write(mappy_hit_to_sam(hit, name2, seq2, qual2, mate=primary1, read1=False) + "\n")
-
-
+        sam_f.write(
+            mappy_hit_to_sam(
+                hit, name2, seq2, qual2, mate=primary1, read1=False
+            )
+            + "\n"
+        )
 
 
 @click.command(name="map", no_args_is_help=True)
-@click.option("-i", "--input", default=None, help="Input FASTQ file or directory to auto-detect libraries from")
+@click.option(
+    "-i",
+    "--input",
+    default=None,
+    help="Input FASTQ file or directory to auto-detect libraries from",
+)
 @click.option(
     "-id",
     "--input-dir",
@@ -131,7 +153,9 @@ def write_paired_sam_records(sam_f, name1, seq1, qual1, hits1, name2, seq2, qual
     type=click.Path(exists=True, file_okay=False, dir_okay=True),
     help="Input directory to scan for FASTQ files (alias for --input)",
 )
-@click.option("-r", "--reference", required=True, help="Reference FASTA to map against")
+@click.option(
+    "-r", "--reference", required=True, help="Reference FASTA to map against"
+)
 @click.option("-t", "--threads", default=1, type=int, help="Number of threads")
 @click.option("-M", "--memory", default="6gb", help="RAM limit (e.g. 6gb)")
 @click.option(
@@ -141,7 +165,9 @@ def write_paired_sam_records(sam_f, name1, seq1, qual1, hits1, name2, seq2, qual
     default="RP_mapping_output",
     help="Output directory",
 )
-@click.option("-k", "--keep-tmp", is_flag=True, default=False, help="Keep temporary files")
+@click.option(
+    "-k", "--keep-tmp", is_flag=True, default=False, help="Keep temporary files"
+)
 @click.option(
     "-g",
     "--log-file",
@@ -184,9 +210,21 @@ def write_paired_sam_records(sam_f, name1, seq1, qual1, hits1, name2, seq2, qual
     type=click.Choice(["bbmap", "mmseqs", "bwa-mem2", "minimap2"]),
     help="Mapper (read aligner) choice. Use multiple -m flags to run multiple mappers.",
 )
-@click.option("-ow", "--overwrite", is_flag=True, default=False, help="Overwrite existing output directory")
-@click.option("-ll", "--log-level", default="INFO", hidden=True, help="Log level")
-@click.option("--temp-dir", default=None, help="Optional base directory for temporary files")
+@click.option(
+    "-ow",
+    "--overwrite",
+    is_flag=True,
+    default=False,
+    help="Overwrite existing output directory",
+)
+@click.option(
+    "-ll", "--log-level", default="INFO", hidden=True, help="Log level"
+)
+@click.option(
+    "--temp-dir",
+    default=None,
+    help="Optional base directory for temporary files",
+)
 @click.option(
     "--bwa-mem2-all",
     is_flag=True,
@@ -274,14 +312,20 @@ def map(
     memory_giga = ensure_memory(memory)["giga"]
 
     # ── Input discovery (mirrors assemble.py: auto-detect then add explicit) ─
-    paired_reads = []       # list of (r1_path_str, r2_path_str)
+    paired_reads = []  # list of (r1_path_str, r2_path_str)
     interleaved_reads = []  # list of path_str
-    single_reads = []       # list of path_str
+    single_reads = []  # list of path_str
 
     if input is not None:
-        file_info = identify_fastq_files(Path(input).resolve(), return_rolypoly=True, logger=logger)
-        paired_reads.extend((str(r1), str(r2)) for r1, r2 in file_info.get("R1_R2_pairs", []))
-        interleaved_reads.extend(str(x) for x in file_info.get("interleaved_files", []))
+        file_info = identify_fastq_files(
+            Path(input).resolve(), return_rolypoly=True, logger=logger
+        )
+        paired_reads.extend(
+            (str(r1), str(r2)) for r1, r2 in file_info.get("R1_R2_pairs", [])
+        )
+        interleaved_reads.extend(
+            str(x) for x in file_info.get("interleaved_files", [])
+        )
         single_reads.extend(str(x) for x in file_info.get("single_end", []))
         for lib_data in file_info.get("rolypoly_data", {}).values():
             if lib_data.get("interleaved"):
@@ -300,18 +344,22 @@ def map(
 
     # Deduplicate while preserving order
     seen: set = set()
-    paired_reads      = [x for x in paired_reads      if not (x in seen or seen.add(x))]
+    paired_reads = [x for x in paired_reads if not (x in seen or seen.add(x))]
     seen = set()
-    interleaved_reads = [x for x in interleaved_reads if not (x in seen or seen.add(x))]
+    interleaved_reads = [
+        x for x in interleaved_reads if not (x in seen or seen.add(x))
+    ]
     seen = set()
-    single_reads      = [x for x in single_reads      if not (x in seen or seen.add(x))]
+    single_reads = [x for x in single_reads if not (x in seen or seen.add(x))]
 
     if not paired_reads and not interleaved_reads and not single_reads:
         raise click.ClickException("No readable FASTQ inputs were detected.")
 
     logger.info(
         "Read inputs detected: paired=%d  interleaved=%d  single=%d",
-        len(paired_reads), len(interleaved_reads), len(single_reads),
+        len(paired_reads),
+        len(interleaved_reads),
+        len(single_reads),
     )
 
     # Normalise mapper list (deduplicate, handle comma-separated tokens)
@@ -334,30 +382,63 @@ def map(
 
         # ── bbmap via bbmapy ─────────────────────────────────────────────────
         if mapper_name == "bbmap":
-            memory_giga = get_reduced_memory(ensure_memory(memory), percentage=85)  # bbmapy overhead. this is now actually in mb but don't worry about it...
+            memory_giga = get_reduced_memory(
+                ensure_memory(memory), percentage=85
+            )  # bbmapy overhead. this is now actually in mb but don't worry about it...
             from bbmapy import bbmap as bbmap_run
 
             bbmap_sam = mapper_outdir / "bbmap.sam"
             first = True
             for r1, r2 in paired_reads:
-                bbmap_run(ref=reference, outm=str(bbmap_sam), threads=threads,
-                          Xmx=memory_giga, minid=0.8, nodisk="t", overwrite="t",
-                          append="f" if first else "t", in1=str(r1), in2=str(r2))
+                bbmap_run(
+                    ref=reference,
+                    outm=str(bbmap_sam),
+                    threads=threads,
+                    Xmx=memory_giga,
+                    minid=0.8,
+                    nodisk="t",
+                    overwrite="t",
+                    append="f" if first else "t",
+                    in1=str(r1),
+                    in2=str(r2),
+                )
                 first = False
             for fq in interleaved_reads:
-                bbmap_run(ref=reference, outm=str(bbmap_sam), threads=threads,
-                          Xmx=memory_giga, minid=0.8, nodisk="t", overwrite="t",
-                          append="f" if first else "t", in_file=str(fq), interleaved="t")
+                bbmap_run(
+                    ref=reference,
+                    outm=str(bbmap_sam),
+                    threads=threads,
+                    Xmx=memory_giga,
+                    minid=0.8,
+                    nodisk="t",
+                    overwrite="t",
+                    append="f" if first else "t",
+                    in_file=str(fq),
+                    interleaved="t",
+                )
                 first = False
             for fq in single_reads:
-                bbmap_run(ref=reference, outm=str(bbmap_sam), threads=threads,
-                          Xmx=memory_giga, minid=0.8, nodisk="t", overwrite="t",
-                          append="f" if first else "t", in_file=str(fq))
+                bbmap_run(
+                    ref=reference,
+                    outm=str(bbmap_sam),
+                    threads=threads,
+                    Xmx=memory_giga,
+                    minid=0.8,
+                    nodisk="t",
+                    overwrite="t",
+                    append="f" if first else "t",
+                    in_file=str(fq),
+                )
                 first = False
             if bbmap_sam.exists() and bbmap_sam.stat().st_size > 0:
-                run_command_comp("pigz", params={"p": str(threads)},
-                                 positional_args=[str(bbmap_sam)],
-                                 logger=logger, check_status=True, prefix_style="single")
+                run_command_comp(
+                    "pigz",
+                    params={"p": str(threads)},
+                    positional_args=[str(bbmap_sam)],
+                    logger=logger,
+                    check_status=True,
+                    prefix_style="single",
+                )
                 outputs.append(str(bbmap_sam) + ".gz")
 
         # ── minimap2 via mappy Python bindings ───────────────────────────────
@@ -366,7 +447,9 @@ def map(
 
             aligner = mp.Aligner(str(reference), preset="sr", n_threads=threads)
             if not aligner:
-                raise click.ClickException(f"mappy: failed to load/build index from {reference}")
+                raise click.ClickException(
+                    f"mappy: failed to load/build index from {reference}"
+                )
             sam_header = (
                 "@HD\tVN:1.6\tSO:unsorted\n"
                 + "\n".join(
@@ -390,7 +473,15 @@ def map(
                         hits1 = list(aligner.map(seq1, MD=True))
                         hits2 = list(aligner.map(seq2, MD=True))
                         write_paired_sam_records(
-                            sam_f, name1, seq1, qual1, hits1, name2, seq2, qual2, hits2
+                            sam_f,
+                            name1,
+                            seq1,
+                            qual1,
+                            hits1,
+                            name2,
+                            seq2,
+                            qual2,
+                            hits2,
                         )
                 outputs.append(str(out_sam))
                 idx += 1
@@ -408,11 +499,22 @@ def map(
                         except StopIteration:
                             # Odd read out (unpaired trailing record): write as unpaired.
                             for hit in hits1:
-                                sam_f.write(mappy_hit_to_sam(hit, name1, seq1, qual1) + "\n")
+                                sam_f.write(
+                                    mappy_hit_to_sam(hit, name1, seq1, qual1)
+                                    + "\n"
+                                )
                             break
                         hits2 = list(aligner.map(seq2, MD=True))
                         write_paired_sam_records(
-                            sam_f, name1, seq1, qual1, hits1, name2, seq2, qual2, hits2
+                            sam_f,
+                            name1,
+                            seq1,
+                            qual1,
+                            hits1,
+                            name2,
+                            seq2,
+                            qual2,
+                            hits2,
                         )
                 outputs.append(str(out_sam))
                 idx += 1
@@ -424,7 +526,9 @@ def map(
                     sam_f.write(sam_header)
                     for name, seq, qual in mp.fastx_read(str(fq)):
                         for hit in aligner.map(seq, MD=True):
-                            sam_f.write(mappy_hit_to_sam(hit, name, seq, qual) + "\n")
+                            sam_f.write(
+                                mappy_hit_to_sam(hit, name, seq, qual) + "\n"
+                            )
                 outputs.append(str(out_sam))
                 idx += 1
 
@@ -434,10 +538,19 @@ def map(
             bwa_index_dir = mapper_outdir / "bwa_index"
             bwa_index_dir.mkdir(parents=True, exist_ok=True)
             bwa_index_prefix = bwa_index_dir / "ref"
-            run_command_comp("bwa-mem2",
-                             positional_args=["index", "-p", str(bwa_index_prefix), str(reference)],
-                             positional_args_location="start",
-                             logger=logger, check_status=True, prefix_style="single")
+            run_command_comp(
+                "bwa-mem2",
+                positional_args=[
+                    "index",
+                    "-p",
+                    str(bwa_index_prefix),
+                    str(reference),
+                ],
+                positional_args_location="start",
+                logger=logger,
+                check_status=True,
+                prefix_style="single",
+            )
 
             # -a: report all valid alignments (not just primary) so that
             # multi-mapping reads carry information about shared regions
@@ -453,47 +566,96 @@ def map(
             idx = 0
             for r1, r2 in paired_reads:
                 out_sam = mapper_outdir / f"bwa_mem2_paired_{idx}.sam"
-                run_command_comp("bwa-mem2",
-                                 positional_args=["mem", *mem_flags, "-o", str(out_sam),
-                                                  str(bwa_index_prefix), str(r1), str(r2)],
-                                 positional_args_location="start",
-                                 logger=logger, check_status=True, prefix_style="single")
+                run_command_comp(
+                    "bwa-mem2",
+                    positional_args=[
+                        "mem",
+                        *mem_flags,
+                        "-o",
+                        str(out_sam),
+                        str(bwa_index_prefix),
+                        str(r1),
+                        str(r2),
+                    ],
+                    positional_args_location="start",
+                    logger=logger,
+                    check_status=True,
+                    prefix_style="single",
+                )
                 outputs.append(str(out_sam))
                 idx += 1
             for fq in interleaved_reads:
                 # -p: smart pairing mode (reads interleaved paired-end from single file)
                 out_sam = mapper_outdir / f"bwa_mem2_interleaved_{idx}.sam"
-                run_command_comp("bwa-mem2",
-                                 positional_args=["mem", *mem_flags, "-p", "-o", str(out_sam),
-                                                  str(bwa_index_prefix), str(fq)],
-                                 positional_args_location="start",
-                                 logger=logger, check_status=True, prefix_style="single")
+                run_command_comp(
+                    "bwa-mem2",
+                    positional_args=[
+                        "mem",
+                        *mem_flags,
+                        "-p",
+                        "-o",
+                        str(out_sam),
+                        str(bwa_index_prefix),
+                        str(fq),
+                    ],
+                    positional_args_location="start",
+                    logger=logger,
+                    check_status=True,
+                    prefix_style="single",
+                )
                 outputs.append(str(out_sam))
                 idx += 1
             for fq in single_reads:
                 out_sam = mapper_outdir / f"bwa_mem2_single_{idx}.sam"
-                run_command_comp("bwa-mem2",
-                                 positional_args=["mem", *mem_flags, "-o", str(out_sam),
-                                                  str(bwa_index_prefix), str(fq)],
-                                 positional_args_location="start",
-                                 logger=logger, check_status=True, prefix_style="single")
+                run_command_comp(
+                    "bwa-mem2",
+                    positional_args=[
+                        "mem",
+                        *mem_flags,
+                        "-o",
+                        str(out_sam),
+                        str(bwa_index_prefix),
+                        str(fq),
+                    ],
+                    positional_args_location="start",
+                    logger=logger,
+                    check_status=True,
+                    prefix_style="single",
+                )
                 outputs.append(str(out_sam))
                 idx += 1
 
         # ── mmseqs easy-search (SAM via format-mode 1) ───────────────────────
         elif mapper_name == "mmseqs":
-            all_fqs = list(interleaved_reads) + list(single_reads) + [f for pair in paired_reads for f in pair]
+            all_fqs = (
+                list(interleaved_reads)
+                + list(single_reads)
+                + [f for pair in paired_reads for f in pair]
+            )
             for idx, fq in enumerate(all_fqs):
                 run_tmp = mapper_outdir / f"mmseqs_tmp_{idx}"
                 run_tmp.mkdir(parents=True, exist_ok=True)
                 out_sam = mapper_outdir / f"mmseqs_reads_{idx}.sam"
-                run_command_comp("mmseqs",
-                                 positional_args=["easy-search", str(fq), str(reference),
-                                                  str(out_sam), str(run_tmp)],
-                                 positional_args_location="start",
-                                 params={"search-type": "3", "min-seq-id": "0.7",
-                                         "threads": str(threads), "format-mode": "1"},
-                                 logger=logger, check_status=True, prefix_style="double")
+                run_command_comp(
+                    "mmseqs",
+                    positional_args=[
+                        "easy-search",
+                        str(fq),
+                        str(reference),
+                        str(out_sam),
+                        str(run_tmp),
+                    ],
+                    positional_args_location="start",
+                    params={
+                        "search-type": "3",
+                        "min-seq-id": "0.7",
+                        "threads": str(threads),
+                        "format-mode": "1",
+                    },
+                    logger=logger,
+                    check_status=True,
+                    prefix_style="double",
+                )
                 outputs.append(str(out_sam))
 
         else:
@@ -517,4 +679,3 @@ def map(
 
 if __name__ == "__main__":
     map()
-

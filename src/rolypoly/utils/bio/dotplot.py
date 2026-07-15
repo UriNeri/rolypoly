@@ -1,18 +1,12 @@
 from __future__ import annotations
 
 
-def compute_self_dotplot_track_spans(
-    sequence: str,
-    k: int,
-) -> dict[str, int]:
+def compute_self_dotplot_track_spans(sequence: str, k: int) -> dict[str, int]:
     """Estimate strongest forward/inverted self-dotplot tracks from exact k-mer runs."""
     normalized = str(sequence).upper()
     n = len(normalized)
     if n < max(2, k):
-        return {
-            "dotplot_forward_max_span": 0,
-            "dotplot_inverted_max_span": 0,
-        }
+        return {"dotplot_forward_max_span": 0, "dotplot_inverted_max_span": 0}
 
     kmer_positions: dict[str, list[int]] = {}
     for start in range(0, n - k + 1):
@@ -54,7 +48,9 @@ def compute_self_dotplot_track_spans(
                 offset_to_positions_forward.setdefault(offset, []).append(
                     left_pos
                 )
-    forward_max_span = max_span_from_offset_positions(offset_to_positions_forward)
+    forward_max_span = max_span_from_offset_positions(
+        offset_to_positions_forward
+    )
 
     rc_sequence = normalized[::-1].translate(str.maketrans("ACGT", "TGCA"))
     rc_kmer_positions: dict[str, list[int]] = {}
@@ -73,7 +69,9 @@ def compute_self_dotplot_track_spans(
                 offset_to_positions_inverted.setdefault(delta, []).append(
                     query_pos
                 )
-    inverted_max_span = max_span_from_offset_positions(offset_to_positions_inverted)
+    inverted_max_span = max_span_from_offset_positions(
+        offset_to_positions_inverted
+    )
 
     return {
         "dotplot_forward_max_span": int(forward_max_span),

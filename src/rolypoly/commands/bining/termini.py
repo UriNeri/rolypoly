@@ -6,16 +6,15 @@ from typing import Any, Tuple
 import polars as pl
 import rich_click as click
 
-from rolypoly.utils.logging.loggit import log_start_info, setup_logging
-from rolypoly.utils.bio.polars_fastx import frame_to_fastx, load_sequences
-from rolypoly.utils.bio.alignments import hamming_distance
-from rolypoly.utils.bio.sequences import revcomp
+# ANI clustering is shared with the assembly extend command
+from rolypoly.commands.assembly.extend import cluster_contigs_by_ani
 
 # Ensure the FASTX plugins are registered
 from rolypoly.utils.bio import polars_fastx as _polars_fastx  # noqa: F401
-
-# ANI clustering is shared with the assembly extend command
-from rolypoly.commands.assembly.extend import cluster_contigs_by_ani
+from rolypoly.utils.bio.alignments import hamming_distance
+from rolypoly.utils.bio.polars_fastx import frame_to_fastx, load_sequences
+from rolypoly.utils.bio.sequences import revcomp
+from rolypoly.utils.logging.loggit import log_start_info, setup_logging
 
 
 def parse_length_window(value: str) -> Tuple[int, int]:
@@ -844,9 +843,7 @@ def build_membership_table(
             pl.DataFrame: One row per contig with 5' and 3' group annotations.
     """
     base = seq_df.select(
-        pl.col("contig_id"),
-        pl.col("seq_length"),
-        pl.col("sequence"),
+        pl.col("contig_id"), pl.col("seq_length"), pl.col("sequence")
     )
     if signatures.is_empty():
         membership = base.with_columns(

@@ -1,6 +1,7 @@
 import os
 import re
 from pathlib import Path
+
 from rich.console import Console
 from rich_click import Choice, command, option
 
@@ -35,17 +36,19 @@ class RVirusSearchConfig(BaseConfig):
         self.min_overlap_positions = kwargs.get("min_overlap_positions") or 10
         self.name = kwargs.get("name") or None
         self.write_matched_regions = kwargs.get("write_matched_regions", True)
-        self.matched_regions_output = kwargs.get(
-            "matched_regions_output"
-        ) or None
-        self.include_aligned_region = kwargs.get(
-            "include_aligned_region", True
+        self.matched_regions_output = (
+            kwargs.get("matched_regions_output") or None
         )
+        self.include_aligned_region = kwargs.get("include_aligned_region", True)
         self.include_alignment_string = kwargs.get(
             "include_alignment_string", False
         )
-        self.write_matched_input_seqs = kwargs.get("write_matched_input_seqs", False)
-        self.matched_input_seqs_output = kwargs.get("matched_input_seqs_output") or None
+        self.write_matched_input_seqs = kwargs.get(
+            "write_matched_input_seqs", False
+        )
+        self.matched_input_seqs_output = (
+            kwargs.get("matched_input_seqs_output") or None
+        )
 
 
 def write_matched_regions_fasta(
@@ -82,7 +85,9 @@ def write_matched_regions_fasta(
                 query_id,
                 re.IGNORECASE,
             )
-            frame_suffix = f"|frame={frame_match.group(1)}" if frame_match else ""
+            frame_suffix = (
+                f"|frame={frame_match.group(1)}" if frame_match else ""
+            )
             query_token = query_id.split()[0].replace(" ", "_")
             token_parts = query_token.split("|")
             orf_suffix = (
@@ -108,9 +113,7 @@ def write_matched_regions_fasta(
             if not region_seq:
                 continue
 
-            region_id = (
-                f"{query_token}{frame_suffix}{orf_suffix}|hit={hmm_name}|coords={q1}-{q2}"
-            )
+            region_id = f"{query_token}{frame_suffix}{orf_suffix}|hit={hmm_name}|coords={q1}-{q2}"
             fout.write(f">{region_id}\n{region_seq}\n")
 
 
@@ -163,13 +166,13 @@ def write_matched_input_seqs_fasta(
         # TODO: confirm bbmap callgenes.sh follows the same <contig>_<N> convention.
         matched_ids = list({_re.sub(r"_\d+$", "", sid) for sid in raw_ids})
     else:  # six_frame (seqkit)
-        # seqkit --append-frame: <contig>_frame=<N> 
-        matched_ids = list({_re.sub(r"_frame=[+-]?\d+$", "", sid) for sid in raw_ids})
+        # seqkit --append-frame: <contig>_frame=<N>
+        matched_ids = list(
+            {_re.sub(r"_frame=[+-]?\d+$", "", sid) for sid in raw_ids}
+        )
 
     filter_fasta_by_headers(
-        fasta_file=input_file,
-        headers=matched_ids,
-        output_file=str(output_path),
+        fasta_file=input_file, headers=matched_ids, output_file=str(output_path)
     )
 
 
@@ -748,7 +751,7 @@ def marker_search(
             testdf = testdf.with_columns(
                 pl.col("query_full_name")
                 .str.extract(r"^([^\s]+)", group_index=1)
-                .alias("source_seq_id"),
+                .alias("source_seq_id")
             )
 
     # Write to a file in the output directory instead of the directory itself

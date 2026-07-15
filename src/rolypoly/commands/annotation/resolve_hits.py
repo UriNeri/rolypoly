@@ -177,7 +177,9 @@ def consolidate_hits_rich(
 
     setup_logging(None, log_level)
 
-    input_df = pl.read_csv(input, separator="\t") if isinstance(input, str) else input
+    input_df = (
+        pl.read_csv(input, separator="\t") if isinstance(input, str) else input
+    )
 
     inferred_column_specs = infer_column_specs(input_df, column_specs)
     inferred_rank_columns = infer_rank_columns(input_df, rank_columns)

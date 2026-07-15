@@ -82,7 +82,9 @@ def extract(
             with zipfile.ZipFile(archive_path, "r") as zip_ref:
                 zip_ref.extractall(extract_to)
 
-        logger.info(f"Successfully decompressed '{archive_path}' to '{extract_to}'")
+        logger.info(
+            f"Successfully decompressed '{archive_path}' to '{extract_to}'"
+        )
 
     except Exception as e:
         logger.warning(f"Error processing '{archive_path}': {str(e)}")
@@ -583,13 +585,14 @@ def ensure_memory(
 
     return convert_bytes_to_units(requested_memory_bytes)
 
+
 def get_reduced_memory(config_memory_dict: dict, percentage: int = 85) -> str:
     """Calculate reduced memory to a percentage of config memory.
-    
+
     Args:
         config_memory_dict: The config.memory dictionary with "bytes" key
         percentage: The percentage to use (default 85)
-    
+
     Returns:
         Memory string in megabytes format (e.g., 10g will become 8500m)
 
@@ -604,7 +607,7 @@ def get_reduced_memory(config_memory_dict: dict, percentage: int = 85) -> str:
     reduced_bytes = int(total_bytes * (percentage / 100))
     # Convert to gigabytes with 2 decimal places
     mega_value = floor(reduced_bytes // (1024**2))
-    
+
     return f"{mega_value}m"
 
 

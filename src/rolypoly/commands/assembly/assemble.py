@@ -78,9 +78,7 @@ ASSEMBLY_PRESETS: dict[str, dict[str, Any]] = {
         # For DNA-based or mixed metagenomic libraries.
         # metaSPAdes only (default meta mode); no RNA-specific tuning, no MEGAHIT.
         "assembler": ["spades"],
-        "step_params": {
-            "spades": {"k": "21,33,55,77,99,121,127"},
-        },
+        "step_params": {"spades": {"k": "21,33,55,77,99,121,127"}},
         "dereplicate": True,
         "description": (
             "Metagenomics: metaSPAdes (meta mode) only, broad k-mer range. "
@@ -97,6 +95,7 @@ def to_odd(values: list[int]) -> list[int]:
 
 def detect_average_read_length(libraries: dict, logger) -> float:
     from rolypoly.utils.bio.library_detection import determine_fastq_type
+
     # TODO: figure out if only the interleaved (non-merged) reads should be used to select the read length for kmer selection/capping.
     lengths: list[float] = []
     seen_paths: set[str] = set()
@@ -116,7 +115,9 @@ def detect_average_read_length(libraries: dict, logger) -> float:
                     lengths.append(read_len)
             except Exception as error:
                 logger.debug(
-                    "Could not detect read length for %s: %s", path_str, str(error)
+                    "Could not detect read length for %s: %s",
+                    path_str,
+                    str(error),
                 )
     if not lengths:
         return 0.0
@@ -124,9 +125,7 @@ def detect_average_read_length(libraries: dict, logger) -> float:
 
 
 def apply_assembly_preset(
-    preset_name: str | None,
-    ctx: click.Context,
-    config: "AssemblyConfig",
+    preset_name: str | None, ctx: click.Context, config: "AssemblyConfig"
 ) -> None:
     if not preset_name:
         return
@@ -193,7 +192,7 @@ class AssemblyConfig(BaseConfig):
 
         self.step_params = {
             "spades": {
-                "k": "21,33,45,57,69,83,95,103,115,127",  # DONE: figure out a way to smartly choose which kmers to use prior to main spades call. 
+                "k": "21,33,45,57,69,83,95,103,115,127",  # DONE: figure out a way to smartly choose which kmers to use prior to main spades call.
                 "mode": kwargs.get("spades_mode", "meta"),
             },
             "megahit": {
@@ -371,7 +370,9 @@ def handle_input_files(
     if input_path.is_dir():
         from rolypoly.utils.bio.library_detection import identify_fasta_files
 
-        fasta_files = identify_fasta_files(input_path, logger=logger)["fasta_files"]
+        fasta_files = identify_fasta_files(input_path, logger=logger)[
+            "fasta_files"
+        ]
         for fasta in fasta_files:
             library_info.add_raw_fasta(str(fasta))
             logger.debug(f"Added raw FASTA: {fasta.name}")
@@ -382,17 +383,16 @@ def handle_input_files(
     return libraries, len(libraries)
 
 
-def run_spades(config, libraries, mode: str | None = None, output_label: str | None = None):
+def run_spades(
+    config, libraries, mode: str | None = None, output_label: str | None = None
+):
     import subprocess
 
     from rolypoly.utils.various import ensure_memory
 
     spades_mode = mode or config.step_params["spades"]["mode"]
     output_name = output_label or spades_mode
-    spades_output = (
-        config.output_dir
-        / f"spades_{output_name}_output"
-    )
+    spades_output = config.output_dir / f"spades_{output_name}_output"
     spades_cmd = f"spades.py --{spades_mode} -o {spades_output} --threads {config.threads} --only-assembler -k {config.step_params['spades']['k']} --phred-offset 33 -m {ensure_memory(config.memory)['bytes'][:-1]}"
 
     if len(libraries) > 9:
@@ -833,7 +833,9 @@ def assembly(
     )
     if observed_read_length > 1:
         megahit_k_min = to_odd([int(config.step_params["megahit"]["k-min"])])[0]
-        megahit_k_max = min(int(config.step_params["megahit"]["k-max"]), max_k - 1)
+        megahit_k_max = min(
+            int(config.step_params["megahit"]["k-max"]), max_k - 1
+        )
         megahit_k_max = max(to_odd([megahit_k_max])[0], megahit_k_min)
         megahit_k_step = int(config.step_params["megahit"]["k-step"])
         if megahit_k_step % 2 == 1:
@@ -850,8 +852,8 @@ def assembly(
             config.step_params["megahit"]["k-max"],
             config.step_params["megahit"]["k-step"],
         )
-    contigs4eval = []          # list[Path | str]  – one entry per assembler run
-    contigs_asm_labels = []    # list[str]          – parallel assembler name
+    contigs4eval = []  # list[Path | str]  – one entry per assembler run
+    contigs_asm_labels = []  # list[str]          – parallel assembler name
 
     if "spades" in config.assembler and "spades" not in config.skip_steps:
         contigs4eval.append(
@@ -864,13 +866,13 @@ def assembly(
         )
         contigs_asm_labels.append("spades")
         tools.append("spades")
-    if "spades_rnaviral" in config.assembler and "spades_rnaviral" not in config.skip_steps:
+    if (
+        "spades_rnaviral" in config.assembler
+        and "spades_rnaviral" not in config.skip_steps
+    ):
         contigs4eval.append(
             run_spades(
-                config,
-                libraries,
-                mode="rnaviral",
-                output_label="rnaviral",
+                config, libraries, mode="rnaviral", output_label="rnaviral"
             )
         )
         contigs_asm_labels.append("spades_rnaviral")
@@ -899,7 +901,8 @@ def assembly(
         if "rename" not in config.skip_steps:
             try:
                 config.logger.info(
-                    "Renaming contigs from %d assembler output(s)", len(contigs4eval)
+                    "Renaming contigs from %d assembler output(s)",
+                    len(contigs4eval),
                 )
 
                 # Read each assembler output separately and track which rows
@@ -907,10 +910,14 @@ def assembly(
                 assembler_dfs = []
                 assembler_ranges = []  # (label, start_row_inclusive, end_row_exclusive)
                 row_offset = 0
-                for contig_file, asm_label in zip(contigs4eval, contigs_asm_labels):
+                for contig_file, asm_label in zip(
+                    contigs4eval, contigs_asm_labels
+                ):
                     df_part = read_fasta_df(str(contig_file))
                     n = len(df_part)
-                    assembler_ranges.append((asm_label, row_offset, row_offset + n))
+                    assembler_ranges.append(
+                        (asm_label, row_offset, row_offset + n)
+                    )
                     row_offset += n
                     assembler_dfs.append(df_part)
 
@@ -919,7 +926,9 @@ def assembly(
                 config.logger.info("Found %d sequences total", len(df))
 
                 # Assign sequential IDs (CID_0001, CID_0002, …)
-                df_renamed, id_map = rename_sequences(df, prefix="CID", use_hash=False)
+                df_renamed, id_map = rename_sequences(
+                    df, prefix="CID", use_hash=False
+                )
 
                 # Build an assembler-label column using row-index ranges.
                 # A chained when/then expression covers each assembler's row range;
@@ -932,14 +941,20 @@ def assembly(
                         .then(pl.lit(asm_label))
                         .otherwise(asm_expr)
                     )
-                df_renamed = df_renamed.with_columns(asm_expr.alias("assembler")).drop("_row_nr")
+                df_renamed = df_renamed.with_columns(
+                    asm_expr.alias("assembler")
+                ).drop("_row_nr")
 
                 config.logger.info("Calculating sequence statistics")
                 df_renamed = process_sequences(df_renamed)
 
                 # Write renamed sequences using the shared utility
-                renamed_file = str(config.output_dir / "all_contigs_renamed.fasta")
-                config.logger.info("Writing renamed sequences to %s", renamed_file)
+                renamed_file = str(
+                    config.output_dir / "all_contigs_renamed.fasta"
+                )
+                config.logger.info(
+                    "Writing renamed sequences to %s", renamed_file
+                )
                 write_fasta_file(
                     seqs=df_renamed["sequence"].to_list(),
                     headers=df_renamed["header"].to_list(),
@@ -965,7 +980,9 @@ def assembly(
                 mapping_df.write_csv(mapping_file, separator="\t")
 
             except Exception as e:
-                config.logger.error("Error during sequence renaming: %s", str(e))
+                config.logger.error(
+                    "Error during sequence renaming: %s", str(e)
+                )
                 config.logger.warning("Continuing with original contig files")
                 # contigs4eval remains a list of paths – no change needed
 
@@ -1009,7 +1026,9 @@ def assembly(
         config.logger.info("Skipping dereplication as requested")
         dereplicated_output = str(contigs4eval[0])  # Use original contigs
     else:
-        config.logger.warning("No contigs available for dereplication or further processing")
+        config.logger.warning(
+            "No contigs available for dereplication or further processing"
+        )
 
     config.logger.info(f"Finished assembly: {contigs4eval}")
 
@@ -1045,7 +1064,10 @@ def assembly(
 
     if dereplicated_output:
         final_assembly_symlink = config.output_dir / "final_assembly.fasta"
-        if final_assembly_symlink.exists() or final_assembly_symlink.is_symlink():
+        if (
+            final_assembly_symlink.exists()
+            or final_assembly_symlink.is_symlink()
+        ):
             final_assembly_symlink.unlink()
         final_assembly_symlink.symlink_to(Path(dereplicated_output).resolve())
         config.logger.info(

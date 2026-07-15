@@ -115,8 +115,8 @@ def download_fastq(run_id, output_path):
 
         # Add protocol prefix to URLs
         urls = [
-            # f"ftp://{url}" # borken for some reason? maybe specific network restrictions? 
-            f"http://{url}" # TODO: understand why this works when ftp doesn't?
+            # f"ftp://{url}" # borken for some reason? maybe specific network restrictions?
+            f"http://{url}"  # TODO: understand why this works when ftp doesn't?
             if not url.startswith(("ftp://", "http://", "https://"))
             else url
             for url in urls

@@ -126,9 +126,8 @@ def mask_dna(
     sam_output = Path(tmpdir) / "tmp_mapped.sam"
 
     if not dont_remove_viral_headers:
-        from rolypoly.utils.bio.sequences import (
-            filter_fasta_by_headers,
-        )
+        from rolypoly.utils.bio.sequences import filter_fasta_by_headers
+
         no_viral_headers_file = tmpdir / "tmp_no_viral.fasta"
 
         counts = filter_fasta_by_headers(
@@ -144,13 +143,16 @@ def mask_dna(
         )
 
         input_file = no_viral_headers_file
-        logger.info(f"New input file after removing viral headers: {input_file}")
+        logger.info(
+            f"New input file after removing viral headers: {input_file}"
+        )
         if not dont_clean_spaces_from_input:
             logger.info(
                 "Also dropping everything after the first space in fasta headers"
             )
             from rolypoly.utils.bio.sequences import clean_fasta_headers
-            headers_cleaned =tmpdir / "tmp_no_viral_cleaned.fasta"
+
+            headers_cleaned = tmpdir / "tmp_no_viral_cleaned.fasta"
             clean_fasta_headers(
                 fasta_file=str(no_viral_headers_file),
                 drop_from_space=True,
@@ -236,7 +238,11 @@ def mask_dna(
             mmseqs_ok = False
             logger.warning("mmseqs2 mapping failed: %s", str(e))
 
-        if not mmseqs_ok or (not sam_output.exists()) or sam_output.stat().st_size == 0:
+        if (
+            not mmseqs_ok
+            or (not sam_output.exists())
+            or sam_output.stat().st_size == 0
+        ):
             logger.warning(
                 "mmseqs2 did not produce a SAM file, falling back to bbmap for masking input"
             )

@@ -17,12 +17,7 @@ console = Console()
 @click.option(
     "-p", "--prefix", default="CID", help="Prefix for new sequence IDs"
 )
-@click.option(
-    "-g",
-    "--log-file",
-    default=None,
-    help="Path to log file",
-)
+@click.option("-g", "--log-file", default=None, help="Path to log file")
 @click.option(
     "--hash/--no-hash",
     default=False,

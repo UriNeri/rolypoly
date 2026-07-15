@@ -224,7 +224,7 @@ def count_kmers_df_explicit(
     """
     import itertools
 
-    all_kmers = ["" .join(p) for p in itertools.product("ATCG", repeat=k)]
+    all_kmers = ["".join(p) for p in itertools.product("ATCG", repeat=k)]
 
     # Build a mapping from k-mer -> canonical form (plain str replace_strict)
     if canonical:
@@ -234,14 +234,12 @@ def count_kmers_df_explicit(
             rc = km.translate(_comp)[::-1]
             canon_map[km] = km if km <= rc else rc
 
-    count_df = (
-        df.with_columns(
-            pl.col(seq_col)
-            .str.extract_many(
-                all_kmers, overlapping=True, ascii_case_insensitive=True
-            )
-            .alias("kmers")
+    count_df = df.with_columns(
+        pl.col(seq_col)
+        .str.extract_many(
+            all_kmers, overlapping=True, ascii_case_insensitive=True
         )
+        .alias("kmers")
     )
 
     if canonical:
@@ -251,15 +249,11 @@ def count_kmers_df_explicit(
             )
         )
 
-    count_df = (
-        count_df
-        .group_by(id_col)
-        .agg(
-            pl.col("kmers")
-            .explode()
-            .value_counts(normalize=relative)
-            .alias(f"kmer_{k}_relative" if relative else f"kmer_{k}_counts")
-        )
+    count_df = count_df.group_by(id_col).agg(
+        pl.col("kmers")
+        .explode()
+        .value_counts(normalize=relative)
+        .alias(f"kmer_{k}_relative" if relative else f"kmer_{k}_counts")
     )
     return count_df
 
@@ -307,7 +301,8 @@ def count_kmers_df(
         _comp = str.maketrans("ACGT", "TGCA")
         # Build the full look-up in Python once, then use replace_strict
         import itertools
-        all_possible = ["" .join(p) for p in itertools.product("ATCG", repeat=k)]
+
+        all_possible = ["".join(p) for p in itertools.product("ATCG", repeat=k)]
         canon_map: dict[str, str] = {}
         for km in all_possible:
             rc = km.translate(_comp)[::-1]
@@ -315,7 +310,9 @@ def count_kmers_df(
         base_df = base_df.with_columns(
             pl.col("substrings")
             .str.to_uppercase()
-            .replace_strict(canon_map, default=pl.col("substrings"), return_dtype=pl.String)
+            .replace_strict(
+                canon_map, default=pl.col("substrings"), return_dtype=pl.String
+            )
         )
 
     # Aggregate expressions
@@ -329,11 +326,7 @@ def count_kmers_df(
         ).first(),  # Keep all other original columns
     ]
 
-    return (
-        base_df
-        .group_by(id_col, maintain_order=True)
-        .agg(*agg_exprs)
-    )
+    return base_df.group_by(id_col, maintain_order=True).agg(*agg_exprs)
 
 
 def filter_repetitive_kmers(
@@ -463,7 +456,9 @@ def fasta_stats(
                 "Quality scores not found in input file for avg_quality calculation."
             )
         else:
-            stats_expr.append(pl.col("quality").seq.avg_quality().alias("avg_quality"))
+            stats_expr.append(
+                pl.col("quality").seq.avg_quality().alias("avg_quality")
+            )
 
     # if "codon_usage" in selected_fields:
     #     stats_expr.append(pl.col("sequence").seq.codon_usage().alias("codon_usage"))

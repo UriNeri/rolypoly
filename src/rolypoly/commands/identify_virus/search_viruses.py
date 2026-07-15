@@ -3,11 +3,11 @@ from pathlib import Path as pt
 
 import rich_click as click
 
-
 global tools
 tools = []
 global matched_tabb
 matched_tabb = []
+
 
 @click.command(name="virus-mapping")
 @click.option("-t", "--threads", default=1, help="Threads")
@@ -72,7 +72,19 @@ matched_tabb = []
     help="Optional temp directory for mmseqs2 to use",
 )
 def virus_mapping(
-    threads, memory, output, keep_tmp, db, db_path, log_file, log_level, input, matched_output, mmseqs_evalue, mmseqs_identity, temp_dir
+    threads,
+    memory,
+    output,
+    keep_tmp,
+    db,
+    db_path,
+    log_file,
+    log_level,
+    input,
+    matched_output,
+    mmseqs_evalue,
+    mmseqs_identity,
+    temp_dir,
 ):
     """Search nucleotide reads/contigs against virus reference databases.
 
@@ -84,11 +96,15 @@ def virus_mapping(
     import shutil
     import subprocess
 
+    import polars as pl
+
+    from rolypoly.utils.bio.interval_ops import (
+        consolidate_hits,
+        derive_strand_from_coordinates,
+    )
     from rolypoly.utils.bio.sequences import filter_fasta_by_headers
     from rolypoly.utils.logging.citation_reminder import remind_citations
     from rolypoly.utils.logging.loggit import log_start_info, setup_logging
-    import polars as pl
-    from rolypoly.utils.bio.interval_ops import consolidate_hits, derive_strand_from_coordinates
 
     # TODO: functionalize / use wrappers for mmseqs2.
     input = pt(input).absolute().resolve()
@@ -225,15 +241,17 @@ def virus_mapping(
                 f"--format-output qheader,theader,qlen,tlen,qstart,qend,tstart,tend,alnlen,mismatch,qcov,tcov,bits,evalue,gapopen,pident,nident"
             )
             subprocess.run(mmseqs_convertalis_cmd, shell=True, check=True)
-            
+
             # Apply hit resolution with strand awareness
             logger.info(f"Resolving overlapping hits for {db_name}")
             result_file = pt(f"{output.with_suffix('')}_vs_{db_name}.tab")
-            
+
             # Read results and derive strand from coordinates
             hits_df = pl.read_csv(result_file, separator="\t")
-            hits_df = derive_strand_from_coordinates(hits_df, qstart_col="qstart", qend_col="qend")
-            
+            hits_df = derive_strand_from_coordinates(
+                hits_df, qstart_col="qstart", qend_col="qend"
+            )
+
             # Resolve overlapping hits per-strand
             resolved_hits = consolidate_hits(
                 input=hits_df,
@@ -243,12 +261,10 @@ def virus_mapping(
                 rank_columns="-bits,+evalue,-qcov",
                 alphabet="nucl",
             )
-            
+
             # Write resolved results
             resolved_hits.write_csv(
-                str(result_file),
-                separator="\t",
-                include_header=True,
+                str(result_file), separator="\t", include_header=True
             )
             logger.info(
                 f"Wrote {len(resolved_hits)} resolved hits to {result_file}"
@@ -265,8 +281,10 @@ def virus_mapping(
                 f"{output.with_suffix('')}_vs_{db_name}.html --format-mode 3 --search-type 3"
             )
             subprocess.run(mmseqs_convertalis_cmd, shell=True, check=True)
-        matched_tabb.append(f"{output.with_suffix('')}_vs_{db_name}.{output_format.lstrip('.')}")
-        
+        matched_tabb.append(
+            f"{output.with_suffix('')}_vs_{db_name}.{output_format.lstrip('.')}"
+        )
+
     matched_output_opt_out = (
         matched_output is None
         or str(matched_output).strip() == ""
@@ -345,7 +363,7 @@ def virus_mapping(
             logger.info(
                 f"Wrote {len(seen_headers)} unique matched virus contigs to {matched_output}"
             )
-        
+
     # Clean up
     # Remove intermediate files
     if not keep_tmp:

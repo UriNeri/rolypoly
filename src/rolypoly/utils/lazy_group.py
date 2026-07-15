@@ -86,14 +86,15 @@ class LazyGroup(click.RichGroup):
                 # For explicit command invocation, show a warning.
                 context_tokens = []
                 if ctx is not None:
-                    context_tokens.extend(getattr(ctx, "protected_args", []) or [])
+                    context_tokens.extend(
+                        getattr(ctx, "protected_args", []) or []
+                    )
                     context_tokens.extend(getattr(ctx, "args", []) or [])
                 is_direct_command_request = cmd_name in context_tokens
 
-                if (
-                    is_direct_command_request
-                    and not self.lazy_subcommands[cmd_name].startswith("hidden:")
-                ):
+                if is_direct_command_request and not self.lazy_subcommands[
+                    cmd_name
+                ].startswith("hidden:"):
                     logger.warning(
                         f"Failed to load command '{cmd_name}': {str(e)}"
                     )

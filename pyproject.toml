@@ -39,8 +39,10 @@ dependencies = [
     "pytantan>=0.1.3,<0.2",
     "pydustmasker>=2.0.0,<3",
     "pyarrow>=23.0.1,<24",
+    # "linearfold>=1.1,<2",
+    "viennarna>=2.7.2,<3",
 ]
-    # "viennarna>=2.7.0,<3",
+# "viennarna>=2.7.0,<3",
 
 [project.urls]
 Source = "https://github.com/UriNeri/rolypoly"
@@ -222,9 +224,6 @@ full-annotation = { features = [
     "annotation-prot",
     "identify",
 ] }
-
-# [tool.pixi.project]
-# platforms = []
 
 [tool.pixi.feature.format.tasks]
 format = "ruff check --select I --fix src && ruff format src"

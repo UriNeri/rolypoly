@@ -12,7 +12,11 @@ from rolypoly.utils.bio.library_detection import (
 )
 from rolypoly.utils.logging.config import BaseConfig
 from rolypoly.utils.logging.output_tracker import OutputTracker
-from rolypoly.utils.various import ensure_memory, run_command_comp, get_reduced_memory
+from rolypoly.utils.various import (
+    ensure_memory,
+    get_reduced_memory,
+    run_command_comp,
+)
 
 global tools
 tools = ["bbmap"]
@@ -56,14 +60,16 @@ FILTER_READS_PRESETS: dict[str, dict[str, Any]] = {
     },
     "fast": {
         "step_params": {},
-        "skip_steps": ["error_correct_1", "error_correct_2", "filter_identified_dna"],
+        "skip_steps": [
+            "error_correct_1",
+            "error_correct_2",
+            "filter_identified_dna",
+        ],
         "flags": {},
         "description": "Fast: skips overlap error correction (error_correct_1/2) and identified-DNA filtering; all other steps run at default parameters",
     },
     "strict": {
-        "step_params": {
-            "quality_trim_unmerged": {"trimq": 20, "minlen": 20},
-        },
+        "step_params": {"quality_trim_unmerged": {"trimq": 20, "minlen": 20}},
         "skip_steps": [],
         "flags": {},
         "description": "Strict: aggressive quality trim (trimq=20 minlen=20), two-pass deduplication; all filtering steps enabled",
@@ -111,9 +117,7 @@ def collect_protected_step_params(
 
 
 def apply_filter_reads_preset(
-    preset_name: str | None,
-    ctx: click.Context,
-    config: "ReadFilterConfig",
+    preset_name: str | None, ctx: click.Context, config: "ReadFilterConfig"
 ) -> set[tuple[str, str]]:
     if not preset_name:
         return set()
@@ -235,7 +239,9 @@ def format_bbmapy_output(stdout_obj, stderr_obj) -> str:
     return "\n".join(parts)
 
 
-def validate_adapter_fasta(adapter_path: Path, min_non_n_bases: int = 25) -> Path | None:
+def validate_adapter_fasta(
+    adapter_path: Path, min_non_n_bases: int = 25
+) -> Path | None:
     if not adapter_path.exists() or adapter_path.stat().st_size == 0:
         return None
 
@@ -248,7 +254,7 @@ def validate_adapter_fasta(adapter_path: Path, min_non_n_bases: int = 25) -> Pat
         if current_header is None:
             return
         sequence = "".join(current_sequence).strip()
-        if  sequence.__len__() - sequence.upper().count("N") >= min_non_n_bases:
+        if sequence.__len__() - sequence.upper().count("N") >= min_non_n_bases:
             validated_records.append((current_header, sequence))
         current_header = None
         current_sequence = []
@@ -268,9 +274,7 @@ def validate_adapter_fasta(adapter_path: Path, min_non_n_bases: int = 25) -> Pat
     if not validated_records:
         return None
 
-    validated_path = adapter_path.with_name(
-        f"validated_{adapter_path.stem}.fa"
-    )
+    validated_path = adapter_path.with_name(f"validated_{adapter_path.stem}.fa")
     with open(validated_path, "w") as handle:
         for header, sequence in validated_records:
             handle.write(f">{header}\n{sequence}\n")
@@ -289,7 +293,9 @@ def discover_merge_adapters(
         )
         return input_file
 
-    discovery_output = config.temp_dir / f"bbmerge_discovered_{config.file_name}.fa"
+    discovery_output = (
+        config.temp_dir / f"bbmerge_discovered_{config.file_name}.fa"
+    )
     try:
         bb_stdout, bb_stderr = bbmerge(
             in_file=str(input_file),
@@ -412,27 +418,14 @@ class ReadFilterConfig(BaseConfig):
 
         self.step_params = {  # these are the default parameters for each step, if not overridden by the user
             # "filter_by_tile": {"nullifybrokenquality": "t"}, # filter tile is disabled until we verify we can get tile/xy information from the fastq headers in all the different scenarios (single/interleaved/paired and concated files), as well as the potential impacts of concatenating multiple samples on the tile filtering step.
-            "filter_known_dna": {
-                "k": 31,
-                "mincovfraction": 0.65,
-                "hdist": 0
-            },
-            "decontaminate_rrna": {
-                "k": 31,
-                "mincovfraction": 0.6,
-                "hdist": 0
-            },
+            "filter_known_dna": {"k": 31, "mincovfraction": 0.65, "hdist": 0},
+            "decontaminate_rrna": {"k": 31, "mincovfraction": 0.6, "hdist": 0},
             "filter_identified_dna": {
                 "k": 31,
                 "mincovfraction": 0.7,
                 "hdist": 0,
             },
-            "dedupe": {
-                "dedupe": True,
-                "s": 0,
-                "lowcomplexity": True,
-
-            },
+            "dedupe": {"dedupe": True, "s": 0, "lowcomplexity": True},
             "trim_adapters": {
                 "ktrim": "r",
                 "k": 23,
@@ -443,23 +436,13 @@ class ReadFilterConfig(BaseConfig):
                 "minlen": 25,
             },
             "trim_polya_tails": {
-                "trimpolya": 22, # TODO: figure out if this is the right ball park...
+                "trimpolya": 22,  # TODO: figure out if this is the right ball park...
                 # "mink": 8,
                 "minlen": 25,
             },
-            "remove_synthetic_artifacts": {
-                "k": 31,
-                "ref": "artifacts"
-                },
-            "entropy_filter": {
-                "entropy": 0.01,
-                "entropywindow": 30
-            },
-            "error_correct_1": {
-                "ecco": True,
-                "mix": "t",
-                "ordered": "t"
-            },
+            "remove_synthetic_artifacts": {"k": 31, "ref": "artifacts"},
+            "entropy_filter": {"entropy": 0.01, "entropywindow": 30},
+            "error_correct_1": {"ecco": True, "mix": "t", "ordered": "t"},
             "error_correct_2": {
                 "ecc": True,
                 "reorder": True,
@@ -470,12 +453,12 @@ class ReadFilterConfig(BaseConfig):
                 # "k": 93,
                 # "extend2": 80,
                 # "rem": True,
-                "mix": "f" # DO NOT Output both the merged (or mergable) and unmerged reads
+                "mix": "f"  # DO NOT Output both the merged (or mergable) and unmerged reads
             },  # TODO: add explanation somewhere about the (high) memory usage and the potential gains/tradeoffs of merging reads https://bbmap.org/tools/bbmerge#:~:text=When%20NOT%20to%20Use%20BBMerge
             "quality_trim_unmerged": {
                 "qtrim": "rl",
-                "trimq": 5, # For now, keeping this very low.
-                "minlen": 25
+                "trimq": 5,  # For now, keeping this very low.
+                "minlen": 25,
             },
         }
         self.max_genomes = (
@@ -547,7 +530,11 @@ def process_reads(
     )
     has_single_ends = bool(file_info.get("single_end_files"))
     has_mixed_input = has_paired_input and has_single_ends
-    if file_info.get("is_single_end_only") or has_mixed_input or not has_paired_input:
+    if (
+        file_info.get("is_single_end_only")
+        or has_mixed_input
+        or not has_paired_input
+    ):
         for step_name in (
             "discover_merge_adapters",
             "error_correct_1",
@@ -1012,6 +999,7 @@ def probe_inputs(config: ReadFilterConfig) -> dict[str, Any]:
         logger=config.logger,
     )
 
+
 def generate_reports(file_name: str, threads: int, skip_existing: bool, logger):
     import glob
 
@@ -1045,10 +1033,14 @@ def generate_reports(file_name: str, threads: int, skip_existing: bool, logger):
 
 
 # Using the file_detection module instead of local implementation, below takes the library detection from there.
-def process_input_fastq(config: ReadFilterConfig) -> tuple[Path, str, dict[str, Any]]:
+def process_input_fastq(
+    config: ReadFilterConfig,
+) -> tuple[Path, str, dict[str, Any]]:
     """Process input FASTQ files and prepare them for filtering."""
     from bbmapy import reformat
-    from bbmapy.update import ensure_java_availability # eventually will need to make sure (upsteream in bbmappy) to get a JRE even if there is java on path but of version <17...
+    from bbmapy.update import (
+        ensure_java_availability,  # eventually will need to make sure (upsteream in bbmappy) to get a JRE even if there is java on path but of version <17...
+    )
 
     ensure_java_availability()
 
@@ -1157,7 +1149,12 @@ def filter_known_dna(
 
     ref_file = str(config.known_dna)
     if "mask_known_dna" not in config.skip_steps:
-        ref_file = str((Path(config.temp_dir) / f"masked_known_dna_{config.file_name}.fasta").absolute())
+        ref_file = str(
+            (
+                Path(config.temp_dir)
+                / f"masked_known_dna_{config.file_name}.fasta"
+            ).absolute()
+        )
         mask_args = {
             "threads": config.threads,
             "memory": config.memory["giga"],
@@ -1216,7 +1213,7 @@ def decontaminate_rrna(
     )  # type: ignore
     rrna_fas2 = (
         Path(config.datadir)
-        / "contam/rrna/silva_rRNA_all_sequences_masked_entropy.fasta"   
+        / "contam/rrna/silva_rRNA_all_sequences_masked_entropy.fasta"
     )  # type: ignore
     try:
         params = config.step_params["decontaminate_rrna"]
@@ -1790,7 +1787,12 @@ def cleanup_and_move_files(
                     config.logger.warning(f"Could not move {qc_dir}: {str(e)}")
 
     # Move all stats and adapter files to run_info
-    for pattern in ["stats_*.txt", "out_adapter_*.txt", "bbmerge_discovered_*.fa", "validated_bbmerge_discovered_*.fa"]:
+    for pattern in [
+        "stats_*.txt",
+        "out_adapter_*.txt",
+        "bbmerge_discovered_*.fa",
+        "validated_bbmerge_discovered_*.fa",
+    ]:
         for stat_file in temp_dir.glob(pattern):
             if stat_file.exists():
                 try:

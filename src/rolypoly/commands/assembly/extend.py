@@ -9,18 +9,16 @@ from typing import Any  # , Tuple
 import polars as pl
 import rich_click as click
 
-from rolypoly.utils.logging.loggit import log_start_info, setup_logging
+# Ensure the FASTX plugins are registered
+from rolypoly.utils.bio import polars_fastx as _polars_fastx  # noqa: F401
+from rolypoly.utils.bio.dotplot import compute_self_dotplot_track_spans
 from rolypoly.utils.bio.polars_fastx import (
     count_kmers_df,
     frame_to_fastx,
     load_sequences,
 )
-from rolypoly.utils.bio.dotplot import compute_self_dotplot_track_spans
 from rolypoly.utils.bio.sequences import revcomp
-
-# Ensure the FASTX plugins are registered
-from rolypoly.utils.bio import polars_fastx as _polars_fastx  # noqa: F401
-
+from rolypoly.utils.logging.loggit import log_start_info, setup_logging
 
 # Pileup / alignment constants
 
@@ -209,7 +207,9 @@ def _merge_pair_by_overlap(
         right_identity = right_matches / window_span
         return min(left_identity, right_identity)
 
-    def overlap_fraction_ok(overlap_len: int, left_len: int, right_len: int) -> bool:
+    def overlap_fraction_ok(
+        overlap_len: int, left_len: int, right_len: int
+    ) -> bool:
         shorter = min(left_len, right_len)
         if shorter <= 0:
             return False
@@ -238,7 +238,9 @@ def _merge_pair_by_overlap(
             return False
         return ungapped_identity(added_seq, anchor_seq) >= min_identity
 
-    def has_high_identity_internal_match(query_seq: str, target_seq: str) -> bool:
+    def has_high_identity_internal_match(
+        query_seq: str, target_seq: str
+    ) -> bool:
         if len(query_seq) < min_overlap or len(query_seq) > len(target_seq):
             return False
         if query_seq in target_seq or revcomp(query_seq) in target_seq:
@@ -282,7 +284,9 @@ def _merge_pair_by_overlap(
             )
             identity = 1.0 - (mismatches / overlap)
             edge_identity = terminal_identity(repr_overlap, ext_overlap)
-            if not overlap_fraction_ok(overlap, len(base), len(candidate_other)):
+            if not overlap_fraction_ok(
+                overlap, len(base), len(candidate_other)
+            ):
                 continue
             if identity >= min_identity and edge_identity >= min_identity:
                 merged = base + candidate_other[overlap:]
@@ -315,7 +319,9 @@ def _merge_pair_by_overlap(
             )
             identity = 1.0 - (mismatches / overlap)
             edge_identity = terminal_identity(repr_overlap, ext_overlap)
-            if not overlap_fraction_ok(overlap, len(base), len(candidate_other)):
+            if not overlap_fraction_ok(
+                overlap, len(base), len(candidate_other)
+            ):
                 continue
             if identity >= min_identity and edge_identity >= min_identity:
                 merged = candidate_other + base[overlap:]
@@ -392,7 +398,9 @@ def _merge_pair_by_overlap(
         )
         if overlap_len < min_overlap:
             return base, None
-        if not overlap_fraction_ok(overlap_len, len(base), len(candidate_other)):
+        if not overlap_fraction_ok(
+            overlap_len, len(base), len(candidate_other)
+        ):
             return base, None
 
         matches = sum(1 for mark in tb_comp if mark == "|")
@@ -498,7 +506,9 @@ def _merge_pair_by_overlap(
         overlap_len = min((q_end - q_start + 1), (t_end - t_start + 1))
         if overlap_len < min_overlap:
             return fallback_overlap_merge(candidate_other, ext_is_rc)
-        if not overlap_fraction_ok(overlap_len, len(base), len(candidate_other)):
+        if not overlap_fraction_ok(
+            overlap_len, len(base), len(candidate_other)
+        ):
             return fallback_overlap_merge(candidate_other, ext_is_rc)
 
         repr_overlap = base[q_start : q_start + overlap_len]
@@ -717,9 +727,7 @@ def ungapped_identity(left: str, right: str) -> float:
 
 
 def detect_terminal_repeat_risk(
-    sequence: str,
-    check_span: int,
-    max_terminal_identity: float,
+    sequence: str, check_span: int, max_terminal_identity: float
 ) -> dict[str, Any]:
     """Detect obvious terminal direct/inverted repeat risk on one sequence."""
     normalized = str(sequence).upper()
@@ -792,10 +800,7 @@ def compute_terminal_repeat_risk_map(
             ) from exc
     if use_dustmasker:
         try:
-            from pydustmasker import (  
-                DustMasker,
-                LongdustMasker,
-            )
+            from pydustmasker import DustMasker, LongdustMasker
 
             if masker == "longdustmasker":
                 dustmasker_class = LongdustMasker
@@ -835,8 +840,7 @@ def compute_terminal_repeat_risk_map(
             risk_reasons.append("terminal_repeat")
 
         dotplot_metrics = compute_self_dotplot_track_spans(
-            sequence,
-            k=max(3, int(dotplot_k)),
+            sequence, k=max(3, int(dotplot_k))
         )
         dotplot_forward_max_span = int(
             dotplot_metrics.get("dotplot_forward_max_span", 0)
@@ -889,9 +893,7 @@ def compute_terminal_repeat_risk_map(
         if large_repeat_total_bases >= max_large_repeat_total_bases:
             risk_reasons.append("masker_large_total")
 
-        details["is_repeat_risky"] = bool(
-            len(risk_reasons) > 0
-        )
+        details["is_repeat_risky"] = bool(len(risk_reasons) > 0)
         details["repeat_risk_reasons"] = risk_reasons
         details["repeat_risk_reason"] = ",".join(risk_reasons)
 
@@ -903,8 +905,12 @@ def compute_terminal_repeat_risk_map(
             and details["is_repeat_risky"]
         ):
             threshold = max(1, int(dotplot_min_track_len))
-            forward_units = min(20, int((dotplot_forward_max_span / threshold) * 20))
-            inverted_units = min(20, int((dotplot_inverted_max_span / threshold) * 20))
+            forward_units = min(
+                20, int((dotplot_forward_max_span / threshold) * 20)
+            )
+            inverted_units = min(
+                20, int((dotplot_inverted_max_span / threshold) * 20)
+            )
             logger.debug(
                 "Repeat dotplot %s: F[%s%s] %sbp I[%s%s] %sbp reasons=%s",
                 str(row.get("contig_id", idx)),
@@ -1158,9 +1164,7 @@ def build_pileup_sequence(
     non_risky_rows = [
         row
         for row in cluster_rows
-        if not bool(
-            (repeat_risk_by_idx or {}).get(int(row["_order"]), False)
-        )
+        if not bool((repeat_risk_by_idx or {}).get(int(row["_order"]), False))
     ]
     graph_rows = non_risky_rows if non_risky_rows else []
 
@@ -1170,9 +1174,16 @@ def build_pileup_sequence(
             for row in cluster_rows
             if int(row["_order"]) == int(seed_idx_override)
         ]
-        seed = seed_candidates[0] if seed_candidates else max(
-            cluster_rows,
-            key=lambda row: (len(str(row["sequence"])), -int(row["_order"])),
+        seed = (
+            seed_candidates[0]
+            if seed_candidates
+            else max(
+                cluster_rows,
+                key=lambda row: (
+                    len(str(row["sequence"])),
+                    -int(row["_order"]),
+                ),
+            )
         )
     else:
         seed = max(
@@ -1192,7 +1203,8 @@ def build_pileup_sequence(
             {
                 "cluster_size": len(cluster_rows),
                 "eligible_nodes": len(graph_rows),
-                "repeat_risk_excluded_nodes": len(cluster_rows) - len(graph_rows),
+                "repeat_risk_excluded_nodes": len(cluster_rows)
+                - len(graph_rows),
                 "candidate_pairs": 0,
                 "prefilter_passed": 0,
                 "prefilter_skipped": 0,
@@ -1242,10 +1254,7 @@ def build_pileup_sequence(
                 continue
             candidate_pairs += 1
             if should_skip_repeat_risk_pair(
-                source_idx,
-                target_idx,
-                repeat_risk_by_idx,
-                repeat_risk_policy,
+                source_idx, target_idx, repeat_risk_by_idx, repeat_risk_policy
             ):
                 repeat_risk_skipped += 1
                 continue
@@ -1326,7 +1335,9 @@ def build_pileup_sequence(
                     )
                     if overlap_len < min_overlap:
                         continue
-                    shorter = min(len(source_seq), len(str(entry["ext_sequence_used"])))
+                    shorter = min(
+                        len(source_seq), len(str(entry["ext_sequence_used"]))
+                    )
                     if shorter <= 0:
                         continue
                     if (overlap_len / shorter) < min_overlap_fraction_shorter:
@@ -1493,7 +1504,9 @@ def build_pileup_sequence(
                 else:
                     assert candidate_right is not None
                     assert candidate_left is not None
-                    if edge_score(candidate_right) >= edge_score(candidate_left):
+                    if edge_score(candidate_right) >= edge_score(
+                        candidate_left
+                    ):
                         chosen_direction = "right"
                         chosen_edge = candidate_right
                     else:
@@ -1510,7 +1523,9 @@ def build_pileup_sequence(
                     else:
                         assert candidate_right is not None
                         assert candidate_left is not None
-                        if edge_score(candidate_right) >= edge_score(candidate_left):
+                        if edge_score(candidate_right) >= edge_score(
+                            candidate_left
+                        ):
                             active_direction = "right"
                         else:
                             active_direction = "left"
@@ -1641,7 +1656,10 @@ def build_pileup_sequence(
                 candidate_is_risky = bool(
                     repeat_risk_by_idx.get(candidate_idx, False)
                 )
-                if repeat_risk_policy in {"target-only", "any"} and candidate_is_risky:
+                if (
+                    repeat_risk_policy in {"target-only", "any"}
+                    and candidate_is_risky
+                ):
                     continue
             candidate_sequence = str(row["sequence"])
             merged_candidate, meta = _merge_pair_by_overlap(
@@ -1659,9 +1677,13 @@ def build_pileup_sequence(
             )
             if not meta:
                 continue
-            orientation = str(meta.get("orientation", "repr_suffix_vs_ext_prefix"))
+            orientation = str(
+                meta.get("orientation", "repr_suffix_vs_ext_prefix")
+            )
             candidate_placement = (
-                "right" if orientation == "repr_suffix_vs_ext_prefix" else "left"
+                "right"
+                if orientation == "repr_suffix_vs_ext_prefix"
+                else "left"
             )
             if (
                 not allow_bidirectional
@@ -1752,7 +1774,7 @@ def build_pileup_sequence(
     )
 
 
-# ANI clustering 
+# ANI clustering
 def cluster_contigs_by_ani(
     seq_rows: list[dict[str, Any]], min_identity: float, min_af: float, logger
 ) -> list[list[dict[str, Any]]]:
@@ -2062,18 +2084,20 @@ def run_pileup_extension(
     repeat_risk_by_idx: dict[int, bool] = {}
     repeat_risk_details_by_idx: dict[int, dict[str, Any]] = {}
     if pileup_repeat_precheck:
-        repeat_risk_by_idx, repeat_risk_details_by_idx = compute_terminal_repeat_risk_map(
-            seq_rows,
-            check_span=pileup_repeat_check_span,
-            max_terminal_identity=pileup_repeat_max_terminal_identity,
-            repeat_masker=pileup_repeat_masker,
-            max_large_repeat_run=pileup_repeat_max_large_run,
-            min_large_repeat_run=pileup_repeat_min_large_run,
-            max_large_repeat_total_bases=pileup_repeat_max_large_total_bases,
-            dotplot_k=pileup_repeat_dotplot_k,
-            dotplot_min_track_len=pileup_repeat_dotplot_min_track_len,
-            dotplot_ascii_debug=pileup_repeat_dotplot_ascii_debug,
-            logger=logger,
+        repeat_risk_by_idx, repeat_risk_details_by_idx = (
+            compute_terminal_repeat_risk_map(
+                seq_rows,
+                check_span=pileup_repeat_check_span,
+                max_terminal_identity=pileup_repeat_max_terminal_identity,
+                repeat_masker=pileup_repeat_masker,
+                max_large_repeat_run=pileup_repeat_max_large_run,
+                min_large_repeat_run=pileup_repeat_min_large_run,
+                max_large_repeat_total_bases=pileup_repeat_max_large_total_bases,
+                dotplot_k=pileup_repeat_dotplot_k,
+                dotplot_min_track_len=pileup_repeat_dotplot_min_track_len,
+                dotplot_ascii_debug=pileup_repeat_dotplot_ascii_debug,
+                logger=logger,
+            )
         )
         risky_count = sum(1 for value in repeat_risk_by_idx.values() if value)
         max_masked_fraction_seen = max(
@@ -2242,16 +2266,13 @@ def run_pileup_extension(
         cluster = cluster_result.get("cluster", [])
         representative_contig_id = str(
             cluster_result.get(
-                "representative_contig_id",
-                representative_row["contig_id"],
+                "representative_contig_id", representative_row["contig_id"]
             )
         )
-        default_cluster_id = f"ani_cluster_{int(representative_row.get('_order', 0)) + 1}"
-        cluster_id = str(
-            cluster_result.get(
-                "cluster_id", default_cluster_id
-            )
+        default_cluster_id = (
+            f"ani_cluster_{int(representative_row.get('_order', 0)) + 1}"
         )
+        cluster_id = str(cluster_result.get("cluster_id", default_cluster_id))
 
         if not cluster_result.get("is_multi", False):
             # Singleton cluster
@@ -2567,7 +2588,9 @@ def run_pileup_extension(
     "--pileup-repeat-risk-policy",
     default="target-only",
     show_default=True,
-    type=click.Choice(["target-only", "source-only", "any"], case_sensitive=False),
+    type=click.Choice(
+        ["target-only", "source-only", "any"], case_sensitive=False
+    ),
     help="How repeat-risk flags are applied to candidate pair filtering",
 )
 @click.option(
@@ -2722,7 +2745,9 @@ def extend(
             seq_frames.append(frame)
 
     if not seq_frames:
-        logger.warning("No sequences found across %s input files", len(input_files))
+        logger.warning(
+            "No sequences found across %s input files", len(input_files)
+        )
         return
 
     seq_df = pl.concat(seq_frames, how="vertical_relaxed")
@@ -2737,7 +2762,11 @@ def extend(
     )
     if duplicate_ids:
         preview = ", ".join(str(item) for item in duplicate_ids[:5])
-        extra = "" if len(duplicate_ids) <= 5 else f" (+{len(duplicate_ids) - 5} more)"
+        extra = (
+            ""
+            if len(duplicate_ids) <= 5
+            else f" (+{len(duplicate_ids) - 5} more)"
+        )
         raise click.ClickException(
             "Duplicate contig IDs detected across input files. "
             "Please ensure unique headers before running extend. "
@@ -2749,9 +2778,7 @@ def extend(
         return
 
     logger.info(
-        "Merged %s contigs from %s input files",
-        total_loaded,
-        len(input_files),
+        "Merged %s contigs from %s input files", total_loaded, len(input_files)
     )
 
     extended_df, clusters_df = run_pileup_extension(

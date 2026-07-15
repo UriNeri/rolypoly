@@ -20,12 +20,15 @@ elif REMIND_CITATIONS == "True":
 def load_citations():
     """Load citation information from the configured citation file"""
     import json
+
     # Allow either a correctly-named env var or the historical misspelled one
     citation_file = os.environ.get("ROLYPOLY_CITATION_FILE") or os.environ.get(
         "citatioasdn_file"
     )
     if citation_file is None:
-        citation_file = Path(__file__).parent / "all_used_tools_dbs_citations.json"
+        citation_file = (
+            Path(__file__).parent / "all_used_tools_dbs_citations.json"
+        )
     with open(citation_file, "r") as f:
         return json.load(f)
 
@@ -43,7 +46,9 @@ def get_citations(tools: Union[str, List[str]]):
             entry = all_citations[tool]
             name = entry.get("name", tool)
             # Try explicit citation first, then doi, then code (URL), otherwise fallback
-            citation = entry.get("citation") or entry.get("doi") or entry.get("code")
+            citation = (
+                entry.get("citation") or entry.get("doi") or entry.get("code")
+            )
             if citation:
                 citations.append((name, citation))
             else:

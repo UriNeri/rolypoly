@@ -22,16 +22,16 @@ def derive_strand_from_coordinates(
     df: pl.DataFrame, qstart_col: str = "qstart", qend_col: str = "qend"
 ) -> pl.DataFrame:
     """Derive strand information from query start/end coordinates.
-    
+
     For nucleotide searches, mmseqs encodes strand in the coordinate order:
     - qstart < qend = forward strand (+)
     - qstart > qend = reverse strand (-)
-    
+
     Args:
         df: DataFrame containing qstart and qend columns
         qstart_col: Name of the query start column (default 'qstart')
         qend_col: Name of the query end column (default 'qend')
-    
+
     Returns:
         DataFrame with added 'strand' column containing '+' or '-' values
     """
@@ -305,13 +305,15 @@ def consolidate_hits(
         # partition_by(maintain_order=True) preserves the score-descending sort
         # that sort_hit_table applied; group_by does NOT preserve row order.
         subdfs = []
-        
+
         # Determine partitioning columns: query_id and optionally strand
         partition_cols = [query_id_col]
         if strand_col and strand_col in work_table.columns:
             partition_cols.append(strand_col)
-        
-        for subdf in work_table.partition_by(partition_cols, maintain_order=True):
+
+        for subdf in work_table.partition_by(
+            partition_cols, maintain_order=True
+        ):
             subdf = subdf.select(query_id_col, q1_col, q2_col, "uid").rename(
                 {q1_col: "start", q2_col: "end"}
             )
@@ -344,7 +346,9 @@ def consolidate_hits(
                 f"Resolving overlaps with strand awareness (column: {strand_col})"
             )
 
-        for subdf in work_table.partition_by(partition_cols, maintain_order=True):
+        for subdf in work_table.partition_by(
+            partition_cols, maintain_order=True
+        ):
             if len(subdf) == 0:
                 continue
 
@@ -367,7 +371,9 @@ def consolidate_hits(
                 has_significant_overlap = False
 
                 for ovl in overlaps:
-                    overlap_size = min(norm_end, ovl.end) - max(norm_start, ovl.begin)
+                    overlap_size = min(norm_end, ovl.end) - max(
+                        norm_start, ovl.begin
+                    )
                     if overlap_size >= min_overlap_positions:
                         has_significant_overlap = True
                         break
@@ -671,7 +677,9 @@ def _merge_overlapping_hits(
     """Merge overlapping hits per query into one row per overlap cluster."""
     merged_parts: list[pl.DataFrame] = []
     internal_cols = {"uid", "width", "_cluster_id"}
-    merge_output_cols = [c for c in work_table.columns if c not in internal_cols]
+    merge_output_cols = [
+        c for c in work_table.columns if c not in internal_cols
+    ]
 
     for _, subdf in work_table.group_by(query_id_col, maintain_order=True):
         if subdf.is_empty():
@@ -691,9 +699,7 @@ def _merge_overlapping_hits(
         ).sort("uid")
 
         value_cols = [
-            col
-            for col in merge_output_cols
-            if col not in {q1_col, q2_col}
+            col for col in merge_output_cols if col not in {q1_col, q2_col}
         ]
         agg_exprs = [pl.col(q1_col).min(), pl.col(q2_col).max()]
         agg_exprs.extend(pl.col(col).first() for col in value_cols)

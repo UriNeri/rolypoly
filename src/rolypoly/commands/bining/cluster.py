@@ -24,7 +24,8 @@ from time import perf_counter
 import polars as pl
 import rich_click as click
 
-from rolypoly.utils.logging.loggit import log_start_info, setup_logging
+# Ensure the FASTX plugins are registered
+from rolypoly.utils.bio import polars_fastx as _polars_fastx  # noqa: F401
 from rolypoly.utils.bio.clustering import (
     EDGE_COLUMNS,
     SIMILARITY_COLUMNS,
@@ -37,8 +38,8 @@ from rolypoly.utils.bio.clustering import (
     compute_ani_pyfastani,
     compute_ani_pyskani,
     compute_kmer_overlap_matrix,
-    empty_edge_frame,
     empty_cluster_frame,
+    empty_edge_frame,
     enrich_edges_with_derived_metrics,
     filter_edges,
     flag_repetitive_sequences,
@@ -50,12 +51,9 @@ from rolypoly.utils.bio.clustering import (
     summarise_clusters,
 )
 from rolypoly.utils.bio.polars_fastx import load_sequences
+from rolypoly.utils.logging.loggit import log_start_info, setup_logging
 
-# Ensure the FASTX plugins are registered
-from rolypoly.utils.bio import polars_fastx as _polars_fastx  # noqa: F401
-
-
-#  Input loaders 
+#  Input loaders
 INPUT_TYPE_FASTA = "fasta"
 INPUT_TYPE_BLAST6 = "blast6"
 INPUT_TYPE_ANI_TABLE = "ani-table"
@@ -66,7 +64,7 @@ CLUSTERING_METHODS = ["centroid", "connected-components", "leiden"]
 OUTPUT_FORMATS = ["tsv", "csv", "parquet", "jsonl"]
 SIMILARITY_MEASURES = sorted(SIMILARITY_COLUMNS.keys())
 
-#  Presets 
+#  Presets
 # Each preset maps option names (as they appear in the function
 # signature) to override values.  Options not listed keep the user's
 # explicit value or the CLI default.  Presets are based on the tool
@@ -201,12 +199,8 @@ _PRESET_DESCRIPTIONS = {
     "miuvig-species": (
         "MIUViG species-level vOTU (95% ANI, 85% AF, blastn, centroid)"
     ),
-    "checkv": (
-        "CheckV anicalc+aniclust (blastn, 95% ANI, 85% AF, centroid)"
-    ),
-    "pyskani": (
-        "skani/pyskani-style (tANI >= 95%, no AF filter, centroid)"
-    ),
+    "checkv": ("CheckV anicalc+aniclust (blastn, 95% ANI, 85% AF, centroid)"),
+    "pyskani": ("skani/pyskani-style (tANI >= 95%, no AF filter, centroid)"),
     "pyfastani": (
         "FastANI/pyfastani-style (tANI >= 95%, adjusted frag len, centroid)"
     ),
@@ -230,17 +224,19 @@ _PRESET_DESCRIPTIONS = {
     ),
 }
 
-COMMAND_EPILOG = """
+COMMAND_EPILOG = (
+    """
 \b
 Presets (--preset NAME):
   Presets override multiple options at once to match common tool
   configurations.  Explicit CLI flags always take priority over
   preset values.
 \b
-""" + "\n".join(
-    f"  {name:20s} {_PRESET_DESCRIPTIONS[name]}"
-    for name in PRESET_NAMES
-) + """
+"""
+    + "\n".join(
+        f"  {name:20s} {_PRESET_DESCRIPTIONS[name]}" for name in PRESET_NAMES
+    )
+    + """
 \b
 
 Similarity measures (details from Vclust, DOI:10.1038/s41592-025-02701-7):
@@ -257,12 +253,11 @@ Similarity measures (details from Vclust, DOI:10.1038/s41592-025-02701-7):
   AF(B->A)  ≈ L(B,A->B) / |B| (target coverage, approximated from
               target coordinates of the A->B alignment)
 """
+)
 
 
 def _apply_preset(
-    ctx: click.Context,
-    preset_name: str | None,
-    params: dict[str, object],
+    ctx: click.Context, preset_name: str | None, params: dict[str, object]
 ) -> dict[str, object]:
     """Apply preset defaults without overriding explicitly-set options.
 
@@ -345,28 +340,17 @@ def load_edges_from_input(
         return parse_mmseqs_table(input_path)
     elif input_type == INPUT_TYPE_FASTA:
         if ani_backend == "pyskani":
-            logger.info(
-                "Computing ANI with pyskani from %s", input_path
-            )
+            logger.info("Computing ANI with pyskani from %s", input_path)
             return compute_ani_pyskani(
-                input_path,
-                min_identity=0.0,
-                threads=threads,
-                logger=logger,
+                input_path, min_identity=0.0, threads=threads, logger=logger
             )
         elif ani_backend == "pyfastani":
-            logger.info(
-                "Computing ANI with pyfastani from %s", input_path
-            )
+            logger.info("Computing ANI with pyfastani from %s", input_path)
             return compute_ani_pyfastani(
-                input_path,
-                threads=threads,
-                logger=logger,
+                input_path, threads=threads, logger=logger
             )
         elif ani_backend == "blastn":
-            logger.info(
-                "Computing ANI with blastn from %s", input_path
-            )
+            logger.info("Computing ANI with blastn from %s", input_path)
             return compute_ani_blastn(
                 input_path,
                 threads=threads,
@@ -376,9 +360,7 @@ def load_edges_from_input(
                 logger=logger,
             )
         elif ani_backend == "mmseqs":
-            logger.info(
-                "Computing ANI with mmseqs from %s", input_path
-            )
+            logger.info("Computing ANI with mmseqs from %s", input_path)
             return compute_ani_mmseqs(
                 input_path,
                 threads=threads,
@@ -392,16 +374,11 @@ def load_edges_from_input(
                 input_path,
             )
             kmer_df = compute_kmer_overlap_matrix(
-                input_path,
-                k=kmer_k,
-                min_overlap=0.0,
-                logger=logger,
+                input_path, k=kmer_k, min_overlap=0.0, logger=logger
             )
             return kmer_to_edge_table(kmer_df)
         else:
-            raise click.ClickException(
-                f"Unknown ANI backend: {ani_backend}"
-            )
+            raise click.ClickException(f"Unknown ANI backend: {ani_backend}")
     else:
         raise click.ClickException(f"Unknown input type: {input_type}")
 
@@ -437,10 +414,7 @@ def assignments_to_star_edges(assignments: pl.DataFrame) -> pl.DataFrame:
 
 
 def load_seq_lengths(
-    input_path: Path,
-    input_type: str,
-    fasta_path: Path | None,
-    logger,
+    input_path: Path, input_type: str, fasta_path: Path | None, logger
 ) -> dict[str, int]:
     """Load sequence lengths from a FASTA file.
 
@@ -489,7 +463,8 @@ def write_output(
     logger.info("Wrote %s (%s rows) to %s", label, df.height, output_path)
 
 
-#  CLI command 
+#  CLI command
+
 
 @click.command(
     short_help="Cluster sequences by ANI/AAI (centroid, connected-components, leiden)",
@@ -521,7 +496,12 @@ def write_output(
 @click.option(
     "--input-type",
     type=click.Choice(
-        [INPUT_TYPE_FASTA, INPUT_TYPE_BLAST6, INPUT_TYPE_ANI_TABLE, INPUT_TYPE_MMSEQS],
+        [
+            INPUT_TYPE_FASTA,
+            INPUT_TYPE_BLAST6,
+            INPUT_TYPE_ANI_TABLE,
+            INPUT_TYPE_MMSEQS,
+        ],
         case_sensitive=False,
     ),
     default=INPUT_TYPE_FASTA,
@@ -758,11 +738,7 @@ def write_output(
     help="Optional log file path",
 )
 @click.option(
-    "-ll",
-    "--log-level",
-    default="INFO",
-    show_default=True,
-    hidden=True,
+    "-ll", "--log-level", default="INFO", show_default=True, hidden=True
 )
 @click.option(
     "--temp-dir",
@@ -855,24 +831,28 @@ def cluster(
     """
     # Apply preset (overrides defaults but not explicit CLI flags)
     ctx = click.get_current_context()
-    params = _apply_preset(ctx, preset_name, {
-        "input_path": input_path,
-        "input_type": input_type,
-        "ani_backend": ani_backend,
-        "clustering_method": clustering_method,
-        "min_identity": min_identity,
-        "min_target_coverage": min_target_coverage,
-        "min_query_coverage": min_query_coverage,
-        "min_alignment_fraction": min_alignment_fraction,
-        "min_alignment_length": min_alignment_length,
-        "min_evalue": min_evalue,
-        "mmseqs_sensitivity": mmseqs_sensitivity,
-        "leiden_resolution": leiden_resolution,
-        "similarity_measure": similarity_measure,
-        "kmer_prefilter": kmer_prefilter,
-        "kmer_k": kmer_k,
-        "kmer_prefilter_threshold": kmer_prefilter_threshold,
-    })
+    params = _apply_preset(
+        ctx,
+        preset_name,
+        {
+            "input_path": input_path,
+            "input_type": input_type,
+            "ani_backend": ani_backend,
+            "clustering_method": clustering_method,
+            "min_identity": min_identity,
+            "min_target_coverage": min_target_coverage,
+            "min_query_coverage": min_query_coverage,
+            "min_alignment_fraction": min_alignment_fraction,
+            "min_alignment_length": min_alignment_length,
+            "min_evalue": min_evalue,
+            "mmseqs_sensitivity": mmseqs_sensitivity,
+            "leiden_resolution": leiden_resolution,
+            "similarity_measure": similarity_measure,
+            "kmer_prefilter": kmer_prefilter,
+            "kmer_k": kmer_k,
+            "kmer_prefilter_threshold": kmer_prefilter_threshold,
+        },
+    )
     # Unpack (potentially overridden) values back into local scope
     input_type = params["input_type"]
     ani_backend = params["ani_backend"]
@@ -901,7 +881,12 @@ def cluster(
     log_start_info(logger, locals())
 
     output_path = Path(output_path)
-    ext_map = {"tsv": ".tsv", "csv": ".csv", "parquet": ".parquet", "jsonl": ".jsonl"}
+    ext_map = {
+        "tsv": ".tsv",
+        "csv": ".csv",
+        "parquet": ".parquet",
+        "jsonl": ".jsonl",
+    }
     ext = ext_map.get(output_format, ".tsv")
     if summary_output is None:
         summary_output = output_path.with_suffix(f".summary{ext}")
@@ -937,12 +922,20 @@ def cluster(
             )
 
         write_output(
-            assignments, output_path, output_format, logger, label="cluster assignments"
+            assignments,
+            output_path,
+            output_format,
+            logger,
+            label="cluster assignments",
         )
 
         summary = summarise_clusters(assignments)
         write_output(
-            summary, summary_output, output_format, logger, label="cluster summary"
+            summary,
+            summary_output,
+            output_format,
+            logger,
+            label="cluster summary",
         )
 
         if representatives_fasta:
@@ -980,7 +973,11 @@ def cluster(
     # Step 1b (optional): k-mer prefilter — discard edges between pairs
     # whose k-mer overlap coefficient is below the threshold. Only makes
     # sense for alignment-based backends, not kmer backend.
-    if kmer_prefilter and ani_backend != "kmer" and input_type == INPUT_TYPE_FASTA:
+    if (
+        kmer_prefilter
+        and ani_backend != "kmer"
+        and input_type == INPUT_TYPE_FASTA
+    ):
         logger.info(
             "Step 1b: Applying k-mer prefilter (k=%d, threshold=%.2f)",
             kmer_k,
@@ -1001,9 +998,7 @@ def cluster(
                 }
             ).unique()
             edges = edges.join(
-                allowed_df,
-                on=["query_id", "target_id"],
-                how="inner",
+                allowed_df, on=["query_id", "target_id"], how="inner"
             )
         else:
             edges = empty_edge_frame()
@@ -1025,7 +1020,9 @@ def cluster(
         else:
             seq_lengths = {
                 str(row[0]): int(row[1])
-                for row in fasta_seq_df.select("contig_id", "seq_length").iter_rows()
+                for row in fasta_seq_df.select(
+                    "contig_id", "seq_length"
+                ).iter_rows()
             }
     else:
         seq_lengths = load_seq_lengths(
@@ -1158,11 +1155,15 @@ def cluster(
     )
     n_multi = n_clusters - n_singletons
     largest_cluster_size = (
-        assignments.group_by("cluster_id")
-        .agg(pl.col("seq_id").count().alias("n"))
-        .select(pl.col("n").max())
-        .item()
-    ) if not assignments.is_empty() else 0
+        (
+            assignments.group_by("cluster_id")
+            .agg(pl.col("seq_id").count().alias("n"))
+            .select(pl.col("n").max())
+            .item()
+        )
+        if not assignments.is_empty()
+        else 0
+    )
     logger.info(
         "Clustering produced %s clusters (%s multi-member, %s singletons, "
         "largest: %s members)",
@@ -1174,7 +1175,11 @@ def cluster(
 
     # Step 5: Write outputs
     write_output(
-        assignments, output_path, output_format, logger, label="cluster assignments"
+        assignments,
+        output_path,
+        output_format,
+        logger,
+        label="cluster assignments",
     )
 
     summary = summarise_clusters(assignments)
@@ -1198,7 +1203,7 @@ def cluster(
     logger.debug("Cluster command completed in %.1f seconds", elapsed)
 
 
-#  Representative FASTA writer 
+#  Representative FASTA writer
 def write_representative_fasta(
     assignments: pl.DataFrame,
     input_path: Path,
@@ -1233,7 +1238,11 @@ def write_representative_fasta(
         )
         return
 
-    seq_df = seq_df_cache if seq_df_cache is not None else load_sequences(str(source_fasta))
+    seq_df = (
+        seq_df_cache
+        if seq_df_cache is not None
+        else load_sequences(str(source_fasta))
+    )
     if seq_df.is_empty():
         logger.warning("Source FASTA is empty, skipping representative output")
         return
@@ -1251,9 +1260,7 @@ def write_representative_fasta(
     write_df = rep_df.rename({"contig_id": "header"})
     frame_to_fastx(write_df, str(output_fasta))
     logger.info(
-        "Wrote %s representative sequences to %s",
-        rep_df.height,
-        output_fasta,
+        "Wrote %s representative sequences to %s", rep_df.height, output_fasta
     )
 
 

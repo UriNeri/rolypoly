@@ -26,11 +26,13 @@ SLASH_PAIR_HEADER_RE = re.compile(
 )
 LEGACY_PAIR_RE = re.compile(r"^(?P<base>.+?)(?:\s|/)(?P<mate>[12])$")
 MATE_SUFFIX_RE = re.compile(r"([_\.-])(R?[12])$")
-READ_EXT_SUFFIX_RE = re.compile(r"\.(?:f(?:ast)?q|fq|fa|fasta|fna)(?:_[A-Za-z0-9]+)?$", re.IGNORECASE)
+READ_EXT_SUFFIX_RE = re.compile(
+    r"\.(?:f(?:ast)?q|fq|fa|fasta|fna)(?:_[A-Za-z0-9]+)?$", re.IGNORECASE
+)
 
 
 def _append_unique(values: list[str], value: str, limit: int = 5) -> None:
-    #TODO: is this really needed? maybe use set and get first n instead? but then we lose order, which I'm not sure is important. 
+    # TODO: is this really needed? maybe use set and get first n instead? but then we lose order, which I'm not sure is important.
     if value and value not in values and len(values) < limit:
         values.append(value)
 
@@ -53,9 +55,7 @@ def normalize_fastq_sample_name(name: str) -> str:
     return normalized
 
 
-def analyze_fastq_header_metadata(
-    headers: list[str],
-) -> Dict[str, Any]:
+def analyze_fastq_header_metadata(headers: list[str]) -> Dict[str, Any]:
     """Summarize header-derived metadata from a small read sample."""
     summary: Dict[str, Any] = {
         "sample_size": len(headers),
@@ -97,7 +97,9 @@ def analyze_fastq_header_metadata(
                 )
         if casava_match:
             summary["format"] = (
-                header_format if summary["format"] == "unknown" else summary["format"]
+                header_format
+                if summary["format"] == "unknown"
+                else summary["format"]
             )
             summary["has_sequencer"] = True
             summary["has_tile"] = True
@@ -255,7 +257,9 @@ def create_sample_file(
                 )
             return str(output_file)
         except Exception as e:
-            logger.error(f"Error creating bbnorm sample file from {file_path}: {e}")
+            logger.error(
+                f"Error creating bbnorm sample file from {file_path}: {e}"
+            )
             raise
 
     if not is_paired_files:
@@ -687,9 +691,10 @@ def determine_fastq_type(
         ).item()
         average_read_quality = (
             fastq_df.select(
-                pl.col("quality").seq.avg_quality().mean().alias(
-                    "average_read_quality"
-                )
+                pl.col("quality")
+                .seq.avg_quality()
+                .mean()
+                .alias("average_read_quality")
             ).item()
             if "quality" in fastq_df.columns
             else 0.0
@@ -927,9 +932,9 @@ def identify_fastq_files(
 
     return file_info
 
+
 def identify_fasta_files(
-    input_path: Union[str, Path],
-    logger: Optional[logging.Logger] = None,
+    input_path: Union[str, Path], logger: Optional[logging.Logger] = None
 ) -> Dict:
     """Identify FASTA files from input path. for consistency with the FASTQ detection, in cases where a flat/no-quality containing fasta migth be used (e.g. to use as --trusted-contigs)
 
@@ -944,7 +949,7 @@ def identify_fasta_files(
 
     fasta_files = find_files_by_extension(
         input_path,
-        ["*.fa", "*.fasta", "*.fa.gz", "*.fasta.gz","*.fna", "*.fna.gz"],
+        ["*.fa", "*.fasta", "*.fa.gz", "*.fasta.gz", "*.fna", "*.fna.gz"],
     )
     return {"fasta_files": fasta_files}
 
@@ -972,7 +977,9 @@ def handle_input_fastq(
     logger = get_logger(logger)
     input_path = Path(input_path)
 
-    def aggregate_read_stats(file_details: Dict[str, Dict]) -> Tuple[float, float]:
+    def aggregate_read_stats(
+        file_details: Dict[str, Dict],
+    ) -> Tuple[float, float]:
         lengths = [
             float(details.get("average_read_length", 0))
             for details in file_details.values()

@@ -1,18 +1,19 @@
 import logging
 import os
-from pathlib import Path
 import shutil
+from pathlib import Path
 from typing import Union
 
 import polars as pl
-from polars.exceptions import NoDataError
 import rich_click as click
+from polars.exceptions import NoDataError
 
 from rolypoly.utils.bio.sequences import guess_fasta_alpha
 from rolypoly.utils.logging.config import BaseConfig
 from rolypoly.utils.various import run_command_comp
 
 # global tools # TODO: add support for this directly here not just from annotate.py
+
 
 def init_output_files_table() -> pl.DataFrame:
     return pl.DataFrame(
@@ -66,14 +67,20 @@ INFO_TABLE_SPECS = {
         "read_csv_kwargs": {"separator": ",", "has_header": True},
     },
     "uniref50": {
-        "relative_path": Path("reference_seqs") / "uniref" / "uniref50_viral.tsv",
+        "relative_path": Path("reference_seqs")
+        / "uniref"
+        / "uniref50_viral.tsv",
         "join_column": "Cluster_ID",
         "prefix": "uniref50_meta",
         "columns": [
             "Cluster_ID",
             "Cluster Name",
-            "Types",	"Size",	"Organisms",	"Length",	"Identity",	"Cluster members",
-
+            "Types",
+            "Size",
+            "Organisms",
+            "Length",
+            "Identity",
+            "Cluster members",
         ],
         "rename_columns": {"Cluster ID": "Cluster_ID"},
         "read_csv_kwargs": {"separator": "\t", "has_header": True},
@@ -416,7 +423,9 @@ def annotate_prot(
     try:
         process_protein_annotations(config)
     except Exception as e:
-        config.logger.warning(f"An error occurred during protein annotation: {str(e)}")
+        config.logger.warning(
+            f"An error occurred during protein annotation: {str(e)}"
+        )
         raise
 
 
@@ -1026,7 +1035,7 @@ def resolve_domain_overlaps(config):
     for row in domain_files.iter_rows(named=True):
         domain_file = Path(row["file"])
         tool = row["tool"]
-        
+
         if not domain_file.exists() or domain_file.stat().st_size == 0:
             config.logger.warning(
                 f"Domain file {domain_file} is empty or doesn't exist, skipping"
@@ -1040,24 +1049,52 @@ def resolve_domain_overlaps(config):
             if tool == "diamond":
                 # Diamond BLAST format with qlen/slen for adaptive overlap detection
                 diamond_columns = [
-                    "query_id", "subject_id", "pident", "length", "mismatch",
-                    "gapopen", "qstart", "qend", "sstart", "send", "evalue", "bitscore",
-                    "qlen", "slen"
+                    "query_id",
+                    "subject_id",
+                    "pident",
+                    "length",
+                    "mismatch",
+                    "gapopen",
+                    "qstart",
+                    "qend",
+                    "sstart",
+                    "send",
+                    "evalue",
+                    "bitscore",
+                    "qlen",
+                    "slen",
                 ]
                 domain_df = pl.read_csv(
-                    domain_file, separator="\t", has_header=False, new_columns=diamond_columns
+                    domain_file,
+                    separator="\t",
+                    has_header=False,
+                    new_columns=diamond_columns,
                 )
                 column_specs = "query_id,subject_id"
                 rank_columns = "-bitscore,+evalue"
             elif tool == "mmseqs2":
                 # MMSeqs2 BLAST-TAB format with qlen/tlen for adaptive overlap detection
                 mmseqs_columns = [
-                    "qseqid", "sseqid", "pident", "length", "mismatch", "gapopen",
-                    "qstart", "qend", "sstart", "send", "evalue", "bitscore",
-                    "qlen", "tlen"
+                    "qseqid",
+                    "sseqid",
+                    "pident",
+                    "length",
+                    "mismatch",
+                    "gapopen",
+                    "qstart",
+                    "qend",
+                    "sstart",
+                    "send",
+                    "evalue",
+                    "bitscore",
+                    "qlen",
+                    "tlen",
                 ]
                 domain_df = pl.read_csv(
-                    domain_file, separator="\t", has_header=False, new_columns=mmseqs_columns
+                    domain_file,
+                    separator="\t",
+                    has_header=False,
+                    new_columns=mmseqs_columns,
                 )
                 column_specs = "qseqid,sseqid"
                 rank_columns = "-bitscore,+evalue"
@@ -1318,7 +1355,11 @@ def combine_results(config):
             config.logger.warning(f"Could not remove tmp directory: {e}")
 
     # Clean up rolypoly temp_dir (created by BaseConfig)
-    if not config.keep_tmp and hasattr(config, "temp_dir") and config.temp_dir.exists():
+    if (
+        not config.keep_tmp
+        and hasattr(config, "temp_dir")
+        and config.temp_dir.exists()
+    ):
         try:
             shutil.rmtree(config.temp_dir)
             config.logger.info(

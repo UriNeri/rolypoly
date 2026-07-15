@@ -17,13 +17,12 @@ from rolypoly.utils.bio.alignments import (
     hmmdb_from_directory,
     mmseqs_profile_db_from_directory,
 )
+from rolypoly.utils.bio.polars_fastx import from_fastx_eager
 from rolypoly.utils.bio.sequences import (
     filter_fasta_by_headers,
     remove_duplicates,
     write_fasta_file,
 )
-
-from rolypoly.utils.bio.polars_fastx import from_fastx_eager
 
 # import tqdm
 from rolypoly.utils.logging.citation_reminder import remind_citations
@@ -322,7 +321,7 @@ def download_and_extract_rfam(data_dir, logger):
     except requests.exceptions.RequestException as e:
         logger.error(f"Error downloading Rfam database: {e}")
 
-    #press the cm file
+    # press the cm file
     run_command_comp(
         base_cmd="cmpress",
         positional_args_location="start",
@@ -397,8 +396,8 @@ def analyze_data_dependencies(src_dir="src/rolypoly", data_dir=None):
     Returns:
         set: Set of required data paths relative to data_dir
     """
-    import re
     import os
+    import re
 
     required_paths = set()
 
@@ -582,8 +581,8 @@ def create_slim_tarball(
         required_paths (set): Set of required relative paths
         version (str): Version string for the archive name
     """
-    import tempfile
     import subprocess
+    import tempfile
 
     # Deduplicate paths: remove subpaths if parent directory is included
     def deduplicate_paths(paths):
