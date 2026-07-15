@@ -85,8 +85,8 @@ class AnnotationConfig(BaseConfig):
     "--secondary-structure-tool",
     default="LinearFold",
     type=click.Choice(
-        ["LinearFold", "RNAfold"]
-    ),  # , "SQUARNA", "RNAstructure", "IPknot"
+        ["LinearFold", "RNAfold"],
+    ),
     help="Tool for secondary structure prediction",
 )
 @click.option(
@@ -239,7 +239,9 @@ def annotate(
         trna_tool=trna_tool,
         rnamotif_tool=rnamotif_tool,
         overwrite=True,  # Prevent directory checks
-        temp_dir=str(temp_dir_path / "rna_annotation") if temp_dir_path else None,
+        temp_dir=str(temp_dir_path / "rna_annotation")
+        if temp_dir_path
+        else None,
         keep_tmp=keep_tmp,
     )
 
@@ -259,7 +261,9 @@ def annotate(
         min_orf_length=min_orf_length,
         genetic_code=11,  # Default genetic code
         overwrite=True,  # Prevent directory checks
-        temp_dir=str(temp_dir_path / "protein_annotation") if temp_dir_path else None,
+        temp_dir=str(temp_dir_path / "protein_annotation")
+        if temp_dir_path
+        else None,
         keep_tmp=keep_tmp,
     )
 

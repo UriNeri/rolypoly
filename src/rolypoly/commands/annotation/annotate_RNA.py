@@ -71,7 +71,6 @@ class RNAAnnotationConfig(BaseConfig):
                 "temperature": 25
             },  # 37 is unreasonably hot for most enviroments
             "LinearFold": {},  # Fixed parameter name
-            "RNAstructure": {"temperature": 25},
             "cmsearch": {
                 "cut_ga": True,
                 "noali": True,
@@ -270,7 +269,9 @@ def annotate_RNA(
     try:
         process_RNA_annotations(config)
     except Exception as e:
-        config.logger.warning(f"An error occurred during RNA annotation: {str(e)}")
+        config.logger.warning(
+            f"An error occurred during RNA annotation: {str(e)}"
+        )
         raise
 
     # remind_citations(tools)
@@ -308,12 +309,18 @@ def process_RNA_annotations(config):
 
     combine_results(config)
 
-    if not config.keep_tmp and hasattr(config, "temp_dir") and config.temp_dir.exists():
+    if (
+        not config.keep_tmp
+        and hasattr(config, "temp_dir")
+        and config.temp_dir.exists()
+    ):
         import shutil
 
         try:
             shutil.rmtree(config.temp_dir)
-            config.logger.info(f"Cleaned up temporary directory: {config.temp_dir}")
+            config.logger.info(
+                f"Cleaned up temporary directory: {config.temp_dir}"
+            )
         except Exception as e:
             config.logger.warning(f"Could not remove temp_dir: {e}")
 
@@ -373,10 +380,6 @@ def predict_secondary_structure(config):
 
     if config.secondary_structure_tool == "RNAfold":
         predict_secondary_structure_rnafold(config, input_fasta, output_file)
-    elif config.secondary_structure_tool == "RNAstructure":
-        predict_secondary_structure_rnastructure(
-            config, input_fasta, output_file
-        )
     elif config.secondary_structure_tool == "LinearFold":
         predict_secondary_structure_linearfold(config, input_fasta, output_file)
 
@@ -402,87 +405,29 @@ def predict_secondary_structure_rnafold(config, input_fasta, output_file):
             # Predict MFE structure
             (ss, mfe) = RNA.fold(sequence, str(md))
 
-            # Calculate partition function and base pair probabilities
-            (ss_pf, fe) = RNA.pf_fold(sequence, md)
+            # # Calculate partition function and base pair probabilities
+            # (ss_pf, fe) = RNA.pf_fold(sequence, md)
 
-            # Generate dot-plot
-            RNA.plot_structure_svg(
-                data=sequence,
-                filename=config.output_dir / f"{record.id}_plot.svg",  # pyright: ignore
-                sequence=sequence,
-                structure=ss,
-            )  # pyright: ignore
+            # # Generate dot-plot
+            # RNA.plot_structure_svg(
+            #     data=sequence,
+            #     filename=config.output_dir / f"{record.id}_plot.svg",  # pyright: ignore
+            #     sequence=sequence,
+            #     structure=ss,
+            # )  # pyright: ignore
 
             # Write results
             out_f.write(f">{record.id}\n")  # pyright: ignore
             out_f.write(f"Sequence: {sequence}\n")
             out_f.write(f"MFE structure: {ss}\n")
             out_f.write(f"MFE: {mfe:.2f} kcal/mol\n")
-            out_f.write(f"Ensemble structure: {ss_pf}\n")
-            out_f.write(f"Ensemble free energy: {fe:.2f} kcal/mol\n\n")
+            # out_f.write(f"Ensemble structure: {ss_pf}\n")
+            # out_f.write(f"Ensemble free energy: {fe:.2f} kcal/mol\n\n")
 
     config.logger.info(
         f"Secondary structure prediction completed. Output written to {output_file}"
     )
     tools.append("rnafold")
-
-
-def predict_secondary_structure_rnastructure(config, input_fasta, output_file):
-    """Predict RNA secondary structure using RNAstructure."""
-    import subprocess
-
-    from needletail import parse_fastx_file
-
-    with open(output_file, "w") as out_f:
-        for record in parse_fastx_file(str(input_fasta)):
-            sequence = str(record.seq).replace("T", "U")  # pyright: ignore
-
-            # Write sequence to temporary file
-            temp_seq_file = config.output_dir / f"{record.id}_temp.seq"  # pyright: ignore
-            with open(temp_seq_file, "w") as temp_f:
-                temp_f.write(sequence)
-
-            # Run RNAstructure Fold
-            ct_file = config.output_dir / f"{record.id}_temp.ct"  # pyright: ignore
-            params = config.step_params["RNAstructure"]
-            cmd = [
-                "Fold",
-                "--temperature",
-                str(params.get("temperature", 25)),
-                str(temp_seq_file),
-                str(ct_file),
-            ]
-            subprocess.run(cmd)
-
-            # Parse CT file to extract structure
-            with open(ct_file, "r") as ct_f:
-                lines = ct_f.readlines()
-                structure = "".join(
-                    [
-                        (
-                            "("
-                            if int(line.split()[4]) > int(line.split()[0])
-                            else ")"
-                            if int(line.split()[4]) != 0
-                            else "."
-                        )
-                        for line in lines[1:]
-                    ]
-                )
-
-            # Write results
-            out_f.write(f">{record.id}\n")  # pyright: ignore
-            out_f.write(f"Sequence: {sequence}\n")
-            out_f.write(f"Structure: {structure}\n\n")
-
-            # Clean up temporary files
-            temp_seq_file.unlink()
-            ct_file.unlink()
-
-    config.logger.info(
-        f"RNAstructure prediction completed. Output written to {output_file}"
-    )
-
 
 def predict_secondary_structure_linearfold(config, input_fasta, output_file):
     """Predict RNA secondary structure using LinearFold."""
@@ -1149,13 +1094,17 @@ def process_ribozymes_data(config, ribozymes_file):
         # cmscan tblout reports seq_from/seq_to in hit orientation, so
         # reverse-strand hits may have start > end. Normalize coordinates
         # for interval operations that require start <= end.
-        data = data.with_columns(
-            pl.col("start").alias("_start_raw"),
-            pl.col("end").alias("_end_raw"),
-        ).with_columns(
-            pl.min_horizontal(["_start_raw", "_end_raw"]).alias("start"),
-            pl.max_horizontal(["_start_raw", "_end_raw"]).alias("end"),
-        ).drop(["_start_raw", "_end_raw"])
+        data = (
+            data.with_columns(
+                pl.col("start").alias("_start_raw"),
+                pl.col("end").alias("_end_raw"),
+            )
+            .with_columns(
+                pl.min_horizontal(["_start_raw", "_end_raw"]).alias("start"),
+                pl.max_horizontal(["_start_raw", "_end_raw"]).alias("end"),
+            )
+            .drop(["_start_raw", "_end_raw"])
+        )
 
         before_rows = data.height
         data = data.filter(
@@ -1527,13 +1476,17 @@ def combine_results(config):
         # resolve_rna_element_overlaps) over the raw cmscan tblout, since the
         # raw file still contains overlapping/redundant hits.
         if "search_ribozymes" not in config.skip_steps:
-            ribozymes_resolved_file = config.output_dir / "ribozymes_resolved.out"
+            ribozymes_resolved_file = (
+                config.output_dir / "ribozymes_resolved.out"
+            )
             ribozymes_file = config.output_dir / "ribozymes.out"
             if (
                 os.path.exists(ribozymes_resolved_file)
                 and os.path.getsize(ribozymes_resolved_file) > 0
             ):
-                ribozymes_data = pl.read_csv(ribozymes_resolved_file, separator="\t")
+                ribozymes_data = pl.read_csv(
+                    ribozymes_resolved_file, separator="\t"
+                )
                 if not ribozymes_data.is_empty():
                     all_results.append(("ribozyme", ribozymes_data))
                     config.logger.debug(
