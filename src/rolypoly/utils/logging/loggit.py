@@ -71,47 +71,31 @@ def get_version_info() -> dict[str, str]:
     - "data": version of the data from the config file.
     """
     import json
-    import os
-    import subprocess
     from importlib import resources
     from importlib.metadata import version
 
-    cwd = os.getcwd()
     version_info = {}
     # get code version
     try:
-        os.chdir(str(resources.files("rolypoly")))
-        # Try to get git hash first
-        git_hash = (
-            subprocess.check_output(
-                ["git", "rev-parse", "--short", "HEAD"],
-                stderr=subprocess.DEVNULL,
-            )
-            .decode("ascii")
-            .strip()
-        )
-        version_info["code"] = git_hash
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        version_info["code"] = version("rolypoly_tk")
+    except Exception:
         try:
-            version_info["code"] = version("rolypoly_tk")
+            from rolypoly import __version__
+            version_info["code"] = __version__
         except Exception:
-            try:
-                from rolypoly import __version__
-
-                version_info["code"] = __version__
-            except Exception:
-                version_info["code"] = "Unknown"
-    finally:
-        os.chdir(cwd)
+            version_info["code"] = "Unknown"
 
     # get data version
-    version_info["data"] = "Unknown"
+    version_info["data"] = "NOT FOUND"
     config_path = str(resources.files("rolypoly") / "rpconfig.json")
     config_path = Path(config_path)
+    # print("config_path:", config_path)
     if config_path.exists():
         with config_path.open("r") as f:
             config = json.load(f)
             data_dir_path = resolve_config_path(config["ROLYPOLY_DATA"])
+            # print("data_dir_path:", data_dir_path)
+
         readme_path = data_dir_path / "README.md"
         if readme_path.exists():
             with readme_path.open("r") as f:

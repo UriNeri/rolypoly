@@ -41,6 +41,7 @@ dependencies = [
     "pyarrow>=23.0.1,<24",
     "linearfold>=1.1,<2",
     "viennarna>=2.7.2,<3",
+    "numpy>=2.2.6",
 ]
 
 [project.urls]
