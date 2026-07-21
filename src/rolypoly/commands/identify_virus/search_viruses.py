@@ -145,7 +145,19 @@ def virus_mapping(
     else:
         logger.warning(f"Output path already exists: {output_path}")
 
-    output_format = output.suffix
+    output_suffix = output.suffix.lower()
+    valid_output_formats = {".tab", ".sam", ".html"}
+    if output_suffix == "":
+        logger.info("No output suffix provided for --output; defaulting to '.tab'.")
+        output_format = ".tab"
+        output_prefix = output
+    elif output_suffix in valid_output_formats:
+        output_format = output_suffix
+        output_prefix = output.with_suffix("")
+    else:
+        raise click.BadParameter(
+            "Unsupported --output suffix. Use one of: .tab, .sam, .html"
+        )
     logger.info(f"Started virus mapping for: {input}")
 
     # Create folders for MMseqs2 to use
@@ -237,14 +249,14 @@ def virus_mapping(
         if output_format == ".tab":
             mmseqs_convertalis_cmd = (
                 f"mmseqs convertalis {input} {db_path} {this_resdb}/res "
-                f"{output.with_suffix('')}_vs_{db_name}.tab --format-mode 4 "
+                f"{output_prefix}_vs_{db_name}.tab --format-mode 4 "
                 f"--format-output qheader,theader,qlen,tlen,qstart,qend,tstart,tend,alnlen,mismatch,qcov,tcov,bits,evalue,gapopen,pident,nident"
             )
             subprocess.run(mmseqs_convertalis_cmd, shell=True, check=True)
 
             # Apply hit resolution with strand awareness
             logger.info(f"Resolving overlapping hits for {db_name}")
-            result_file = pt(f"{output.with_suffix('')}_vs_{db_name}.tab")
+            result_file = pt(f"{output_prefix}_vs_{db_name}.tab")
 
             # Read results and derive strand from coordinates
             hits_df = pl.read_csv(result_file, separator="\t")
@@ -272,17 +284,17 @@ def virus_mapping(
         elif output_format == ".sam":
             mmseqs_convertalis_cmd = (
                 f"mmseqs convertalis {input} {db_path} {this_resdb}/res "
-                f"{output.with_suffix('')}_vs_{db_name}.sam --format-mode 1 --search-type 3"
+                f"{output_prefix}_vs_{db_name}.sam --format-mode 1 --search-type 3"
             )
             subprocess.run(mmseqs_convertalis_cmd, shell=True, check=True)
         elif output_format == ".html":
             mmseqs_convertalis_cmd = (
                 f"mmseqs convertalis {input} {db_path} {this_resdb}/res "
-                f"{output.with_suffix('')}_vs_{db_name}.html --format-mode 3 --search-type 3"
+                f"{output_prefix}_vs_{db_name}.html --format-mode 3 --search-type 3"
             )
             subprocess.run(mmseqs_convertalis_cmd, shell=True, check=True)
         matched_tabb.append(
-            f"{output.with_suffix('')}_vs_{db_name}.{output_format.lstrip('.')}"
+            f"{output_prefix}_vs_{db_name}.{output_format.lstrip('.')}"
         )
 
     matched_output_opt_out = (
