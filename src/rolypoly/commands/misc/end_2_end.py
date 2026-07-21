@@ -729,7 +729,7 @@ def roll(
         marker_hits = pl.read_csv(marker_hits, separator="\t")
         marker_matched_contigs = marker_hits["source_seq_id"].unique().to_list()
         if len(marker_matched_contigs) == 0:
-            logger.warning("No marker contigs found =\.")
+            logger.warning("No marker contigs found =/")
         matched_contigs.update(marker_matched_contigs)
 
     # Step: Nucleic search
@@ -775,7 +775,7 @@ def roll(
         nucleic_hits_df = contig_hit_table.collect()  # scan_csv is lazy
         nucleic_matched_contigs = nucleic_hits_df["qheader"].unique().to_list()
         if len(nucleic_matched_contigs) == 0:
-            logger.warning("No nucleic contigs found =\.")
+            logger.warning("No nucleic contigs found =/")
         else:
             matched_contigs.update(nucleic_matched_contigs)
 

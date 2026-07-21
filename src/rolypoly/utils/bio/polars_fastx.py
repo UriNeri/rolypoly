@@ -179,6 +179,7 @@ def from_gff_lazy(input_file: Union[str, Path]) -> pl.LazyFrame:
         comment_prefix="#",
         schema=schema,
         null_values=["."],
+        empty_as_null=True,
     )
     reader = reader.with_columns(pl.col("attributes").str.extract_all(spattern))
     return reader
@@ -278,7 +279,8 @@ def count_kmers_df(
             form ``min(kmer, revcomp(kmer))`` before counting, making
             the result strand-agnostic.
     """
-    # Split sequences into characters
+    # Keep this vectorized in Polars; this is faster than Python UDF-based splitting.
+    # NOTE: On Polars 1.43.0, empty_as_null is not exposed on str.split yet.
     split_chars_expr = pl.col(seq_col).str.split("").alias("chars")
 
     # Create k-mers by shifting and concatenating
