@@ -43,7 +43,6 @@ dependencies:
   - pyrodigal-rv>=0.1.0, <0.2
   - parasail>=1.3.4, <2
   - pyopal>=0.7.3, <0.8
-  - pytantan>=0.1.3, <0.2
-  - pydustmasker>=2.0.0, <3
+  - pydustmasker>=3.0.0, <4
   - pyarrow>=23.0.1, <24
   - rolypoly-tk>=0.7.16, <1

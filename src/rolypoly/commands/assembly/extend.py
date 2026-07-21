@@ -781,22 +781,22 @@ def compute_terminal_repeat_risk_map(
 ) -> tuple[dict[int, bool], dict[int, dict[str, Any]]]:
     """Return repeat-risk flags and details keyed by sequence row order."""
     masker = repeat_masker.lower().strip()
-    if masker not in {"none", "pytantan", "dustmasker", "longdustmasker"}:
+    if masker not in {"none", "tantan", "dustmasker", "longdustmasker"}:
         raise click.ClickException(
-            "--pileup-repeat-masker must be one of: none, pytantan, dustmasker, longdustmasker"
+            "--pileup-repeat-masker must be one of: none, tantan, dustmasker, longdustmasker"
         )
-    use_pytantan = masker == "pytantan"
+    use_tantan = masker == "tantan"
     use_dustmasker = masker in {"dustmasker", "longdustmasker"}
-    pytantan_module = None
+    tantan_masker_cls = None
     dustmasker_class = None
-    if use_pytantan:
+    if use_tantan:
         try:
-            import pytantan as _pytantan  # type: ignore[import-not-found]
+            from pydustmasker import TantanMasker
 
-            pytantan_module = _pytantan
+            tantan_masker_cls = TantanMasker
         except ImportError as exc:
             raise click.ClickException(
-                "--pileup-repeat-masker pytantan requires the pytantan package"
+                "--pileup-repeat-masker tantan requires the pydustmasker package"
             ) from exc
     if use_dustmasker:
         try:
@@ -863,8 +863,8 @@ def compute_terminal_repeat_risk_map(
         largest_masked_run = 0
         large_repeat_total_bases = 0
         masked_sequence = ""
-        if pytantan_module is not None and sequence:
-            masked_sequence = str(pytantan_module.mask_repeats(sequence))
+        if tantan_masker_cls is not None and sequence:
+            masked_sequence = str(tantan_masker_cls(sequence).mask())
         elif dustmasker_class is not None and sequence:
             repeat_window = max(20, int(check_span))
             masked_sequence = str(
@@ -2063,12 +2063,12 @@ def run_pileup_extension(
         )
     if pileup_repeat_masker not in {
         "none",
-        "pytantan",
+        "tantan",
         "dustmasker",
         "longdustmasker",
     }:
         raise click.ClickException(
-            "--pileup-repeat-masker must be one of: none, pytantan, dustmasker, longdustmasker"
+            "--pileup-repeat-masker must be one of: none, tantan, dustmasker, longdustmasker"
         )
     if pileup_repeat_dotplot_k < 3:
         raise click.ClickException("--pileup-repeat-dotplot-k must be >= 3")
@@ -2598,7 +2598,7 @@ def run_pileup_extension(
     default="none",
     show_default=True,
     type=click.Choice(
-        ["none", "pytantan", "dustmasker", "longdustmasker"],
+        ["none", "tantan", "dustmasker", "longdustmasker"],
         case_sensitive=False,
     ),
     help="Optional sequence repeat masker used in repeat-risk precheck",
