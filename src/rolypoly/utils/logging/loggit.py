@@ -41,7 +41,7 @@ def is_interactive_terminal_session() -> bool:
 def resolve_config_path(raw_path: str) -> Path:
     """Resolve config paths only when they start with a leading $ENV_VAR token."""
     if not raw_path.startswith("$"):
-        return Path(raw_path)
+        return Path(raw_path).expanduser().resolve()
 
     if raw_path.startswith("${"):
         closing = raw_path.find("}")
@@ -60,8 +60,12 @@ def resolve_config_path(raw_path: str) -> Path:
 
     env_value = os.environ.get(var_name)
     if not env_value:
-        return Path(raw_path)
-    return Path(f"{env_value}{suffix}")
+        return Path(raw_path).expanduser().resolve()
+
+    base_path = Path(env_value).expanduser()
+    if not suffix:
+        return base_path.resolve()
+    return (base_path / suffix.lstrip("/")).resolve()
 
 
 def get_version_info() -> dict[str, str]:
@@ -264,7 +268,7 @@ def resolve_datadir() -> Path:
     # 1. environment
     env = os.environ.get("ROLYPOLY_DATA_DIR")
     if env:
-        p = Path(env)
+        p = Path(env).expanduser().resolve()
         if p.exists():
             return p
 

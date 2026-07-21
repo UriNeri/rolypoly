@@ -245,7 +245,7 @@ def search_hmmdb(
         seqs = seq_file.read_block()
     seqs_dict = {}
     for seq in seqs:
-        seqs_dict[seq.name.decode() + f" {seq.description.decode()}"] = (
+        seqs_dict[f"{seq.name} {seq.description}"] = (
             seq.textize().sequence
         )  # type: ignore
 
@@ -327,10 +327,10 @@ def search_hmmdb(
                 else:
                     if len(hits) >= 1:
                         for hit in hits:
-                            hit_desc = hit.description or bytes("", "utf-8")
-                            hit_name = hit.name.decode()
+                            hit_desc = hit.description or ""
+                            hit_name = hit.name
                             # join the prot name and acc into a single string because God knows why there are spaces in fasta headers
-                            full_prot_name = f"{hit_name} {hit_desc.decode()}"
+                            full_prot_name = f"{hit_name} {hit_desc}"
                             if full_qseq:
                                 protein_seq = seqs_dict[full_prot_name]
                             for domain in hit.domains.included:
@@ -340,21 +340,14 @@ def search_hmmdb(
                                 # Calculate hmm_coverage
                                 hmm_coverage = get_hmm_coverage(domain)
 
-                                dom_desc = hits.query.description or bytes(
-                                    "", "utf-8"
-                                )
+                                dom_desc = hits.query.description or ""
 
                                 accession = hits.query.accession
-                                if accession is None:
-                                    profile_acc = ""
-                                elif isinstance(accession, bytes):
-                                    profile_acc = accession.decode()
-                                else:
-                                    profile_acc = str(accession)
+                                profile_acc = accession if accession is not None else ""
 
                                 outputline = [
                                     f"{full_prot_name}",  # query_full_name
-                                    f"{hits.query.name.decode()}",  # hmm_full_name
+                                    f"{hits.query.name}",  # hmm_full_name
                                     profile_acc,  # profile_accession
                                     f"{domain.alignment.hmm_length}",  # hmm_len
                                     f"{hit.length}",  # qlen
@@ -371,7 +364,7 @@ def search_hmmdb(
                                     f"{domain.env_to}",  # env_to
                                     f"{hmm_coverage}",  # hmm_cov
                                     f"{alignment_length}",  # ali_len
-                                    f"{dom_desc.decode()}",  # I think this is description of the target hit.
+                                    dom_desc,  # I think this is description of the target hit.
                                 ]
                                 if match_region:
                                     outputline.append(
@@ -457,7 +450,7 @@ def hmm_fetch(
                     target_accessions = accessions_exact.copy()
                     for hmm in hmms:
                         hmms_processed += 1
-                        hmm_acc = hmm.accession.decode().strip()
+                        hmm_acc = str(hmm.accession or "").strip()
                         if strip_after_char:
                             hmm_acc = hmm_acc.split(strip_after_char)[0]
 
@@ -474,7 +467,7 @@ def hmm_fetch(
                     # Substring match
                     for hmm in hmms:
                         hmms_processed += 1
-                        hmm_acc = hmm.accession.decode().strip()
+                        hmm_acc = str(hmm.accession or "").strip()
                         if strip_after_char:
                             hmm_acc = hmm_acc.split(strip_after_char)[0]
 
@@ -492,7 +485,7 @@ def hmm_fetch(
                     # Exact match exclusion
                     for hmm in hmms:
                         hmms_processed += 1
-                        hmm_acc = hmm.accession.decode().strip()
+                        hmm_acc = str(hmm.accession or "").strip()
                         if strip_after_char:
                             hmm_acc = hmm_acc.split(strip_after_char)[0]
 
@@ -505,7 +498,7 @@ def hmm_fetch(
                     # Substring match exclusion
                     for hmm in hmms:
                         hmms_processed += 1
-                        hmm_acc = hmm.accession.decode().strip()
+                        hmm_acc = str(hmm.accession or "").strip()
                         if strip_after_char:
                             hmm_acc = hmm_acc.split(strip_after_char)[0]
 
@@ -592,7 +585,7 @@ def hmm_filter(
                 # Get HMM description, handle None case
                 hmm_desc = ""
                 if hmm.description is not None:
-                    hmm_desc = hmm.description.decode().strip()
+                    hmm_desc = str(hmm.description).strip()
 
                 # Prepare for matching
                 search_text = hmm_desc if case_sensitive else hmm_desc.lower()
@@ -607,20 +600,12 @@ def hmm_filter(
                     hmm.write(outfh, binary=binary)
                     hmms_written += 1
                     if logger:
-                        hmm_acc = (
-                            hmm.accession.decode().strip()
-                            if hmm.accession
-                            else "N/A"
-                        )
+                        hmm_acc = str(hmm.accession).strip() if hmm.accession else "N/A"
                         logger.debug(f"Kept HMM {hmm_acc}: {hmm_desc}")
                 else:
                     hmms_filtered += 1
                     if logger:
-                        hmm_acc = (
-                            hmm.accession.decode().strip()
-                            if hmm.accession
-                            else "N/A"
-                        )
+                        hmm_acc = str(hmm.accession).strip() if hmm.accession else "N/A"
                         logger.debug(f"Filtered HMM {hmm_acc}: {hmm_desc}")
 
     if logger:

@@ -25,7 +25,7 @@ with resources.files("rolypoly").joinpath("rpconfig.json").open("r") as conff:
 def resolve_data_dir(configured_path: str) -> str:
     """Resolve env-based config paths with a script-relative data fallback."""
     if not configured_path.startswith("$"):
-        return configured_path
+        return str(Path(configured_path).expanduser().resolve())
 
     if configured_path.startswith("${"):
         closing = configured_path.find("}")
@@ -44,7 +44,7 @@ def resolve_data_dir(configured_path: str) -> str:
 
     env_value = os.environ.get(var_name)
     if env_value:
-        base_path = Path(env_value)
+        base_path = Path(env_value).expanduser()
         if not suffix:
             return str(base_path.resolve())
         return str((base_path / suffix.lstrip("/")).resolve())
@@ -72,7 +72,7 @@ def resolve_data_dir(configured_path: str) -> str:
         RuntimeWarning,
     )
 
-    return configured_path
+    return str(Path(configured_path).expanduser().resolve())
 
 
 data_dir = resolve_data_dir(config["ROLYPOLY_DATA"])

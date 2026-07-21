@@ -16,32 +16,32 @@ authors = [
 
 description = "RNA virus analysis toolkit"
 readme = "README.md"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.10,<=3.14"
 license = { file = "LICENSE" }
 # License-File = "license"
 dependencies = [
     # "lightmotif>=0.10.0,<0.11", # not yet on conda-forge, will be added later. Our use case (rnamotif_tool) is not yet mature.
-    "mappy>=2.30,<3",
-    "needletail>=0.7.0,<0.8",
-    "psutil>=7.0.0,<8",
-    "pyfastx>=2.2.0,<3",
-    "pyhmmer>=0.11.1,<0.12",
-    "requests>=2.32.4,<3",
-    "rich-click>=1.8.9,<2",
-    "rich>=14.0.0,<15",
-    "intervaltree>=3.1.0,<4",
-    "polars>=1.29.0,<2",
-    "bbmapy>=0.0.56,<0.0.58",
-    "xxhash>=3.6.0,<4",
+    "mappy>=2.31,<3",
+    "needletail>=0.7.3,<0.8",
+    "psutil>=7.2.2,<8",
+    "pyfastx>=2.3.1,<3",
+    "pyhmmer>=0.12.1,<0.13",
+    "requests>=2.34.2,<3",
+    "rich-click>=1.9.8,<2",
+    "rich>=15.0.0,<16",
+    "intervaltree>=3.2.1,<4",
+    "polars>=1.43.0,<2",
+    "bbmapy>=0.0.57,<0.0.58",
+    "xxhash>=3.8.1,<4",
     "pyrodigal-rv>=0.1.0,<0.2",
     "parasail>=1.3.4,<2",
     "pyopal>=0.7.3,<0.8",
-    "pytantan>=0.1.3,<0.2",
-    "pydustmasker>=2.0.0,<3",
-    "pyarrow>=23.0.1,<24",
+    "pytantan>=0.1.4,<0.2",
+    "pydustmasker>=3.2.0,<4",
+    "pyarrow>=25.0.0,<26",
     "linearfold>=1.1,<2",
     "viennarna>=2.7.2,<3",
-    "numpy>=2.2.6",
+    "numpy>=2.2.6,<3", "pyupgradecheck>=0.2.1,<0.3",
 ]
 
 [project.urls]
@@ -53,18 +53,18 @@ pypi = "https://pypi.org/project/rolypoly-tk/"
 rolypoly = "rolypoly.rolypoly:rolypoly"
 
 [dependency-groups]
-build = ["hatch >=1.14.0,<2", "pip >=25.0.1,<26"]
-format = ["ruff >=0.11.3,<0.12"]
-publish = ["twine >=6.1.0,<7"]
+build = ["hatch>=1.17.1,<2", "pip"]
+format = ["ruff>=0.15.22,<0.16"]
+publish = ["twine>=6.2.0,<7"]
 dev = [
     "aria2p>=0.12.1,<0.13",
-    "tqdm>=4.67.1,<5",
-    "fsspec>=2025.10.0,<2026",
-    "networkx>=3.2.1,<4",
-    "matplotlib>=3.9.4,<4",
+    "tqdm>=4.69.0,<5",
+    "fsspec>=2026.6.0,<2027",
+    "networkx>=3.4.2,<4",
+    "matplotlib>=3.10.9,<4",
     "baltic>=0.3.0,<0.4",
-    "tskit>=0.6.4,<0.7",
-    "pytest>=8.4.2,<9",
+    "tskit>=1.0.1,<2",
+    "pytest>=9.1.1,<10",
 ]
 
 [build-system]
@@ -91,41 +91,41 @@ rolypoly_tk = { path = ".", editable = true }
 
 # Core dependencies needed for base rolypoly functionality
 [tool.pixi.dependencies]
-pip = ">=25.1.1,<26"
+pip = ">=26.1.2,<27"
 
 # Feature-based dependencies for modular installation
 [tool.pixi.feature.reads.dependencies]
 # For reads processing commands (filter-reads, shrink-reads, mask-dna)
-seqkit = ">=2.10.0,<3"
-bwa-mem2 = ">=2.2.1"
-falco = ">=1.2.5,<2"
+seqkit = ">=2.13.0,<3"
+bwa-mem2 = ">=2.3,<3"
+falco = ">=1.3.1,<2"
 pigz = ">=2.8,<3"
-mmseqs2 = ">=17.b804f,<19"
+mmseqs2 = ">=18.8cc5c,<19"
 
 
 [tool.pixi.feature.assembly.dependencies]
 # For assembly command (assemble, filter-contigs)  
-spades = ">=4.2.0,<5"
+spades = ">=4.3.0,<5"
 megahit = ">=1.2.9,<2"
 plass = ">=5.cf8933,<6"
-mmseqs2 = ">=17.b804f,<19"
+mmseqs2 = ">=18.8cc5c,<19"
 
 [tool.pixi.feature.annotation-rna.dependencies]
 # For RNA annotation commands (annotate-rna)
 infernal = ">=1.1.5,<2"
 linearfold = ">=1.0.1.dev20220829,<2"
 aragorn = ">=1.2.41,<2"
-trnascan-se = ">=2.0.12,<3"
+trnascan-se = ">=2.0.13,<3"
 
 [tool.pixi.feature.annotation-prot.dependencies]
 # For protein annotation commands (annotate-prot)
-mmseqs2 = ">=17.b804f,<19"
-diamond = ">=2.1.12,<3"
+mmseqs2 = ">=18.8cc5c,<19"
+diamond = ">=2.2.4,<3"
 
 [tool.pixi.feature.identify.dependencies]
 # For virus identification commands (marker-search, search-viruses)
 mmseqs2 = ">=18.8cc5c,<19"
-diamond = ">=2.1.12,<3"
+diamond = ">=2.2.4,<3"
 # hmmer = ">=3.4,<4" # not needed, pyhmmer is used instead
 
 [tool.pixi.feature.cluster.dependencies]
@@ -135,10 +135,10 @@ mmseqs2 = ">=18.8cc5c,<19"
 
 [tool.pixi.feature.cluster.pypi-dependencies]
 # Python ANI/clustering backends
-pyskani = ">=0.2.0,<0.3"
-pyfastani = ">=0.6.1,<0.7"
-igraph = ">=1.0.0,<2"
-leidenalg = ">=0.11.0,<0.12"
+pyskani = ">=0.2.0, <0.3"
+pyfastani = ">=0.6.1, <0.7"
+igraph = ">=1.0.0, <2"
+leidenalg = ">=0.12.0, <0.13"
 
 [tool.pixi.feature.misc.dependencies]
 # For miscellaneous commands (fetch-sra, etc.)
@@ -147,25 +147,25 @@ aria2 = ">=1.37.0,<2"
 [tool.pixi.feature.dev.dependencies]
 # Development and testing tools
 entrez-direct = ">=24.0,<25"
-ipython = "*"
-uv = ">=0.7.13,<0.8"
-jupyter = "*"
-ipykernel = ">=6.30.1,<7"
+ipython = ">=8.37.0,<9"
+uv = ">=0.11.29,<0.12"
+jupyter = ">=1.1.1,<2"
+ipykernel = ">=7.3.0,<8"
 blast = ">=2.17.0,<3"        # for getting fasta from NCBI blastdbs
 aria2 = ">=1.37.0,<2"
 eutils = ">=0.6.1,<0.7"
 
 
 [tool.pixi.feature.dev.pypi-dependencies]
-lets-plot = ">=4.8.2,<5"
-itables = ">=2.7.0,<3"
+lets-plot = ">=4.11.0, <5"
+itables = ">=2.9.0, <3"
 
 
 [tool.pixi.feature.docs.pypi-dependencies]
-mkdocs-mermaid2-plugin = "*"
-mkdocstrings = "*"
-mkdocstrings-python = "*"
-zensical = "*"
+mkdocs-mermaid2-plugin = ">=1.2.3, <2"
+mkdocstrings = ">=1.0.6, <2"
+mkdocstrings-python = ">=2.0.5, <3"
+zensical = ">=0.0.51, <0.0.52"
 
 [tool.pixi.feature.py310.dependencies]
 python = "~=3.10.0"

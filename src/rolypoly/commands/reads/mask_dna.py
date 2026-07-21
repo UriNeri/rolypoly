@@ -118,7 +118,7 @@ def mask_dna(
         exit
     needs_bbmask_only = aligner in ["bbmap", "mmseqs2"]
     memory = ensure_memory(memory)["giga"]
-    reference = Path(reference).absolute().resolve()
+    reference = Path(reference).expanduser().resolve()
     if tmpdir is None:
         tmpdir = output_file.parent / "tmp_mask_dna"
     tmpdir = Path(tmpdir).absolute().resolve()
