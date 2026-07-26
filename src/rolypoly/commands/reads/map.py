@@ -252,7 +252,7 @@ def map(
     mapper,
     overwrite,
     log_level,
-    temp_dir=None,
+    temp_dir=None, # TBD
     bwa_mem2_all=True,
     bwa_mem2_extra_flags="",
 ):

@@ -489,7 +489,8 @@
       "1"
     ],
     "expected_files": [
-      "{tmp}/assemble_out/all_contigs_renamed.fasta",
+      "{tmp}/assemble_out/dereplicated_contigs.fasta",
+      "{tmp}/assemble_out/final_assembly.fasta",
       "{tmp}/assemble_out/contigs_id_map.tsv"
     ]
   },
@@ -699,6 +700,28 @@
     "expected_table_min_rows": {
       "{tmp}/extend_demo.clusters.tsv": 1
     }
+  },
+    {
+    "id": "roll_contigs_mode_runtime",
+    "description": "Runtime smoke test roll in contigs mode (skip filter_reads+assemble); DB-free path through staging and length filtering",
+    "args": [
+      "roll",
+      "-i",
+      "testing_folder/inputs/contigs/test_contigs.fasta",
+      "-o",
+      "{tmp}/roll_contigs_out",
+      "--skip-steps",
+      "filter_reads,assemble,marker_search,nucleic_search,annotate,rdrp_motif_search,report",
+      "--cluster-backend",
+      "none",
+      "-t",
+      "1"
+    ],
+    "expected_files": [
+      "{tmp}/roll_contigs_out/assembly/final_assembly.fasta",
+      "{tmp}/roll_contigs_out/assembly/contigs_id_map.tsv",
+      "{tmp}/roll_contigs_out/assembly/length_filtered.fasta"
+    ]
   },
   {
     "id": "correlate_runtime_smoke",

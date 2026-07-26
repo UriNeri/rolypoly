@@ -986,32 +986,53 @@ def assembly(
                 config.logger.warning("Continuing with original contig files")
                 # contigs4eval remains a list of paths – no change needed
 
-    # Dereplication step (identical sequences only)
+    # Dereplication step (identical sequences only).
+    # Single low-memory streaming pass via polars_fastx.dereplicate_fasta: it
+    # computes length/GC/N-count natively + an xxh3 content hash, writes the
+    # unique representatives, the redundancy map, and a stats table -- so we no
+    # longer need seqkit here, and the raw all_contigs*.fasta copies become
+    # disposable (removed below unless --keep-tmp). The per-contig stats are
+    # merged back into contigs_id_map.tsv (adds seq_hash + redundancy).
     dereplicated_output = None
     if len(contigs4eval) > 0 and config.dereplicate:
-        config.logger.info("Starting sequence deduplication with seqkit")
-        tools.append("seqkit")
+        config.logger.info(
+            "Starting single-pass sequence dereplication (polars_fastx)"
+        )
+        from rolypoly.utils.bio.polars_fastx import dereplicate_fasta
+
         dereplicated_output = str(
             config.output_dir / "dereplicated_contigs.fasta"
         )
-
-        run_command_comp(
-            "seqkit rmdup",
-            positional_args=[str(contigs4eval[0])],
-            positional_args_location="end",
-            params={
-                "by-seq": True,  # Use sequence for deduplication
-                "line-width": "0",
-                "threads": str(config.threads),
-                "out-file": dereplicated_output,
-                "dup-num-file": str(
-                    config.output_dir / "Redundancy_lookup.txt"
-                ),
-            },
+        derep_stats = dereplicate_fasta(
+            input_file=str(contigs4eval[0]),
+            output_file=dereplicated_output,
+            redundancy_file=str(config.output_dir / "Redundancy_lookup.txt"),
+            prefix=None,  # keep the CID_ ids assigned during renaming
             logger=config.logger,
-            prefix_style="double",
         )
-        config.logger.info("Finished sequence deduplication")
+        config.logger.info("Finished sequence dereplication")
+
+        # Enrich contigs_id_map.tsv with the content hash + redundancy count so
+        # the dropped FASTAs remain fully reconstructable from the map + reps.
+        mapping_file = config.output_dir / "contigs_id_map.tsv"
+        if mapping_file.exists():
+            try:
+                id_map_df = pl.read_csv(mapping_file, separator="\t")
+                hash_df = derep_stats.select(
+                    [
+                        pl.col("old_id").alias("new_id"),
+                        pl.col("seq_hash"),
+                        pl.col("redundancy"),
+                    ]
+                )
+                id_map_df = id_map_df.join(hash_df, on="new_id", how="left")
+                id_map_df.write_csv(mapping_file, separator="\t")
+            except Exception as e:
+                config.logger.warning(
+                    "Could not merge dereplication stats into %s: %s",
+                    mapping_file,
+                    e,
+                )
 
         # Verify dereplicated output exists before proceeding
         if dereplicated_output and (
@@ -1039,15 +1060,20 @@ def assembly(
             config.output_dir / "all_interleaved.fq.gz",
             config.output_dir / "all_merged.fq.gz",
             config.output_dir / "megahit_custom_out" / "intermediate_contigs",
+            # Raw concatenated contigs: only ever an intermediate for renaming,
+            # reconstructable from dereplicated_contigs.fasta + contigs_id_map.tsv.
+            config.output_dir / "all_contigs.fasta",
         ]
 
-        # Add SPAdes subdirectories for cleanup
-        spades_output_dir = config.output_dir / "spades_meta_output"
-        if spades_output_dir.exists():
-            # Remove subdirectories but keep the main spades output
-            for item in spades_output_dir.iterdir():
-                if item.is_dir():
-                    cleanup_paths.append(item)
+        # The pre-dereplication renamed file is redundant with
+        # dereplicated_contigs.fasta ONLY when dereplication actually ran (else it
+        # is the final assembly and must be kept).
+        if config.dereplicate and os.path.exists(
+            str(config.output_dir / "dereplicated_contigs.fasta")
+        ):
+            cleanup_paths.append(
+                config.output_dir / "all_contigs_renamed.fasta"
+            )
 
         # Clean up all paths
         for path in cleanup_paths:
@@ -1059,6 +1085,49 @@ def assembly(
                 else:
                     config.logger.debug(f"Removing temporary file: {path}")
                     path.unlink(missing_ok=True)
+
+        # Prune the assemblers' own output folders. Once we have the renamed /
+        # dereplicated contigs + id map, the only things worth keeping are the
+        # assembly graphs (*.fastg / *.gfa), the tool's own log, and its run
+        # parameters. Everything else (per-k subdirs, intermediate contigs, the
+        # raw final contigs, checkpoints, ...) is disposable.
+        def prune_assembler_dir(assembler_dir, keep_names):
+            if not assembler_dir.exists():
+                return
+            for item in assembler_dir.rglob("*"):
+                if not item.exists():
+                    continue  # a parent dir may already have been removed
+                if item.is_dir():
+                    continue  # handled by removing their leftover files below
+                if item.name in keep_names or item.suffix in (".fastg", ".gfa"):
+                    continue
+                item.unlink(missing_ok=True)
+            # drop any now-empty subdirectories, deepest first
+            for item in sorted(
+                (p for p in assembler_dir.rglob("*") if p.is_dir()),
+                key=lambda p: len(p.parts),
+                reverse=True,
+            ):
+                try:
+                    item.rmdir()
+                except OSError:
+                    pass  # not empty (kept a graph/log), leave it
+
+        # Only prune when the final assembly lives directly under output_dir (the
+        # normal renamed / dereplicated case). If rename and dereplication were
+        # both skipped the endpoint can still point into an assembler folder, in
+        # which case we leave those folders untouched.
+        endpoint = Path(dereplicated_output) if dereplicated_output else None
+        endpoint_in_output = (
+            endpoint is not None
+            and endpoint.resolve().parent == config.output_dir.resolve()
+        )
+        if endpoint_in_output:
+            for spades_dir in config.output_dir.glob("spades_*output"):
+                prune_assembler_dir(spades_dir, {"spades.log", "params.txt"})
+            prune_assembler_dir(
+                config.output_dir / "megahit_custom_out", {"log", "options.json"}
+            )
 
     config.logger.info("Assembly process completed successfully.")
 

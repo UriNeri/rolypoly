@@ -107,6 +107,33 @@ class BaseConfig:
             return self.log_file
         return setup_logging(self.log_file, log_level=self.log_level)
 
+    def cleanup_temp(self) -> None:
+        """Remove this config's temporary directory unless ``keep_tmp`` is set.
+
+        ``__init__`` always creates ``self.temp_dir`` (an auto-named
+        ``rolypoly_tmp_<timestamp>`` under the output dir when no explicit
+        ``temp_dir`` was given). Commands MUST call this at the end so that
+        auto-created temp dirs are not leaked into the output directory. Safe to
+        call multiple times. Never removes the output directory itself.
+        """
+        try:
+            if getattr(self, "keep_tmp", False):
+                return
+            temp_dir = getattr(self, "temp_dir", None)
+            if not temp_dir:
+                return
+            temp_dir = Path(temp_dir)
+            # Guard against accidentally removing the output dir (e.g. if a caller
+            # passed temp_dir == output_dir).
+            if temp_dir.resolve() == self.output_dir.resolve():
+                return
+            if temp_dir.exists():
+                import shutil
+                self.logger.debug(f"Removing temporary directory: {temp_dir}")
+                shutil.rmtree(temp_dir, ignore_errors=True)
+        except Exception as e:  # never let cleanup break a completed run
+            self.logger.warning(f"Could not clean temp dir: {e}")
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary"""
         return {

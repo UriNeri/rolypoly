@@ -988,3 +988,173 @@ def load_sequences(fasta_path: Union[str, Path]) -> pl.DataFrame:
         )
     df = df.with_columns(pl.col("sequence").seq.length().alias("seq_length"))
     return df
+
+
+##### Single-pass streaming dereplication (identical-sequence) with stats (used in assemble and roll)
+def seq_hash_xxh3(seq: str) -> str:
+    """Return a hex xxh3-64 hash of a sequence (fast, low-collision).
+
+    Falls back to blake2b if xxhash is unavailable (both already used by
+    sequences.remove_duplicates)."""
+    field = seq.upper().encode()
+    try:
+        import xxhash
+
+        return format(xxhash.xxh3_64(field).intdigest(), "016x")
+    except Exception:
+        import hashlib
+
+        return hashlib.blake2b(field, digest_size=8).hexdigest()
+
+
+def dereplicate_fasta(
+    input_file: Union[str, Path],
+    output_file: Union[str, Path],
+    stats_file: Optional[Union[str, Path]] = None,
+    redundancy_file: Optional[Union[str, Path]] = None,
+    prefix: Optional[str] = None,
+    ignore_case: bool = True,
+    batch_size: int = 4096,
+    line_width: int = 0,
+    logger=None,
+) -> pl.DataFrame:
+    """Dereplicate identical sequences in a single, low-memory streaming pass.
+
+    Reads the input FASTA in batches (via the ``from_fastx`` lazy reader), computes
+    per-sequence length / GC / N-count natively (the ``.seq`` expressions) and an
+    ``xxh3`` content hash, keeps the first occurrence of each unique sequence, and
+    writes the representatives to ``output_file`` while streaming (only the hash
+    set + compact per-representative metadata are held in RAM -- never all
+    sequences at once).
+
+    This is meant to replace the seqkit-rmdup + extra intermediate-FASTA approach
+    in the assembly step: one pass yields the dereplicated FASTA, the per-contig
+    stats (``contigs_id_map``-style: old id, new id, length, gc, n_count, hash) and
+    the redundancy map (representative -> collapsed members), so the raw
+    ``all_contigs.fasta`` / ``all_contigs_renamed.fasta`` copies are no longer
+    needed.
+
+    Args:
+        input_file: FASTA path to dereplicate.
+        output_file: destination FASTA for the unique representatives.
+        stats_file: optional TSV/parquet for the per-representative stats table.
+        redundancy_file: optional TSV mapping representative -> member count/list.
+        prefix: if given (e.g. ``"CID"``), representatives are renamed
+            ``<prefix>_<zero-padded index>`` and the stats table records old->new;
+            if None, original headers (first whitespace-delimited token) are kept.
+        ignore_case: hash case-insensitively (default True).
+        batch_size: records read per streaming batch (RAM/speed trade-off).
+        line_width: FASTA line wrapping; 0 = one line per sequence.
+        logger: optional logger.
+
+    Returns:
+        polars DataFrame of the per-representative stats (also written to
+        ``stats_file`` if provided) with columns: new_id (if prefix), old_id,
+        seq_hash, length, gc_content, n_count, redundancy, members.
+    """
+    from rolypoly.utils.logging.loggit import get_logger
+
+    logger = get_logger(logger)
+    input_file = str(input_file)
+    output_file = Path(output_file)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    seen: dict[str, int] = {}          # hash -> representative row index
+    reps: list[dict] = []              # per-representative metadata (compact)
+    members: list[list[str]] = []      # per-representative collapsed member ids
+    total = 0
+
+    # Pull records off the fastx reader in fixed-size batches so at most
+    # `batch_size` sequences are ever in memory at once (the whole file is never
+    # materialised). Each batch becomes a small DataFrame so length/GC/N are
+    # computed with the native .seq expressions rather than per-record python.
+    def read_batches(path, size):
+        reader = parse_fastx_file(path)
+        rows = []
+        for record in reader:
+            rows.append((record.id, record.seq))
+            if len(rows) >= size:
+                yield pl.DataFrame(rows, schema=["header", "sequence"], orient="row")
+                rows = []
+        if rows:
+            yield pl.DataFrame(rows, schema=["header", "sequence"], orient="row")
+
+    with open(output_file, "w") as out_fh:
+        for batch in read_batches(input_file, batch_size):
+            batch = batch.with_columns([
+                pl.col("sequence").seq.length().alias("length"),
+                (pl.col("sequence").seq.gc_content()).round(4).alias("gc_content"),
+                pl.col("sequence").seq.n_count().alias("n_count"),
+            ])
+            headers = batch["header"].to_list()
+            seqs = batch["sequence"].to_list()
+            lengths = batch["length"].to_list()
+            gcs = batch["gc_content"].to_list()
+            ns = batch["n_count"].to_list()
+            for header, seq, length, gc, n in zip(headers, seqs, lengths, gcs, ns):
+                total += 1
+                old_id = header.split()[0] if header else header
+                h = seq_hash_xxh3(seq if not ignore_case else seq.upper())
+                idx = seen.get(h)
+                if idx is None:
+                    seen[h] = len(reps)
+                    reps.append({"old_id": old_id, "seq_hash": h,
+                                 "length": int(length), "gc_content": gc,
+                                 "n_count": int(n)})
+                    members.append([old_id])
+                    # Stream the representative straight to the output FASTA.
+                    out_id = old_id  # renamed below in a second cheap pass if prefix
+                    if line_width and line_width > 0:
+                        wrapped = "\n".join(seq[i:i + line_width]
+                                            for i in range(0, len(seq), line_width))
+                    else:
+                        wrapped = seq
+                    out_fh.write(f">{out_id}\n{wrapped}\n")
+                else:
+                    members[idx].append(old_id)
+
+    stats = pl.DataFrame(reps) if reps else pl.DataFrame(
+        schema={"old_id": pl.Utf8, "seq_hash": pl.Utf8, "length": pl.Int64,
+                "gc_content": pl.Float64, "n_count": pl.Int64})
+    stats = stats.with_columns([
+        pl.Series("redundancy", [len(m) for m in members], dtype=pl.Int64),
+        pl.Series("members", [";".join(m) for m in members], dtype=pl.Utf8),
+    ])
+
+    # Optional renaming to <prefix>_<index>. Because representatives were written
+    # with their original id, we rewrite the FASTA headers in a cheap second pass
+    # (streaming, ids only) so the output matches the stats table.
+    if prefix is not None and stats.height:
+        pad = len(str(stats.height))
+        new_ids = [f"{prefix}_{str(i + 1).zfill(pad)}" for i in range(stats.height)]
+        stats = stats.with_columns(pl.Series("new_id", new_ids)).select(
+            ["new_id", "old_id", "seq_hash", "length", "gc_content", "n_count",
+             "redundancy", "members"])
+        rename_map = dict(zip(stats["old_id"].to_list(), new_ids))
+        tmp = output_file.with_suffix(output_file.suffix + ".tmp")
+        with open(output_file) as src, open(tmp, "w") as dst:
+            for line in src:
+                if line.startswith(">"):
+                    old = line[1:].split()[0].rstrip("\n")
+                    dst.write(f">{rename_map.get(old, old)}\n")
+                else:
+                    dst.write(line)
+        tmp.replace(output_file)
+
+    if stats_file:
+        stats_file = str(stats_file)
+        if stats_file.endswith((".parquet", ".pq")):
+            stats.write_parquet(stats_file)
+        else:
+            stats.write_csv(stats_file, separator="\t")
+    if redundancy_file:
+        red = stats.filter(pl.col("redundancy") > 1).select(
+            [c for c in ("new_id", "old_id") if c in stats.columns][:1]
+            + ["redundancy", "members"])
+        red.write_csv(str(redundancy_file), separator="\t")
+
+    logger.info(
+        "dereplicate_fasta: %d sequences -> %d unique (%d collapsed) written to %s",
+        total, stats.height, total - stats.height, output_file,
+    )
+    return stats

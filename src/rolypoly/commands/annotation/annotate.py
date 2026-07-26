@@ -155,7 +155,7 @@ class AnnotationConfig(BaseConfig):
     "--search-tool",
     default="hmmsearch",
     type=click.Choice(
-        ["hmmsearch", "hmmscan", "mmseqs2", "DIAMOND", "nail"],
+        ["hmmsearch", "mmseqs2", "DIAMOND"], #, "nail"
         case_sensitive=False,
     ),
     help="Tool/command for protein domain detection. hmmer commands are via pyhmmer bindings. ",
@@ -171,6 +171,15 @@ class AnnotationConfig(BaseConfig):
     is_flag=True,
     default=False,
     help="Keep temporary files instead of removing them after each sub-step completes.",
+)
+@click.option(
+    "--html/--no-html",
+    "html",
+    default=True,
+    show_default=True,
+    help="Write an interactive HTML genome-map report (genome_maps.html) combining the "
+    "protein and RNA annotations. Use --no-html when calling from roll, which writes the "
+    "report itself at the end.",
 )
 def annotate(
     input,
@@ -192,6 +201,7 @@ def annotate(
     search_tool,
     temp_dir=None,
     keep_tmp=False,
+    html=True,
 ):
     """Run combined RNA + protein annotation on nucleotide viral sequences.
 
@@ -299,6 +309,29 @@ def annotate(
     # TODO: logic to combine RNA and protein annotation results - either stack the tables or combine the gff3s (both?)
 
     config.logger.info("Annotation process completed.")
+
+    # Remove the auto-created rolypoly_tmp_* dir for the main annotation config
+    # (the sub-commands clean their own; without this the main config's temp dir
+    # was leaked into annotation_results). Honours --keep-tmp.
+    config.cleanup_temp()
+
+    # Interactive HTML report (protein maps + RNA track). Skipped with --no-html
+    # (roll passes --no-html and writes the report once at the end of the pipeline).
+    if html:
+        try:
+            from rolypoly.utils.viz.genome_maps import write_report_for_dir
+
+            report = write_report_for_dir(
+                config.output_dir,
+                config.output_dir / "genome_maps.html",
+                title=f"RolyPoly annotate — {Path(input).stem}",
+            )
+            if report is not None:
+                config.logger.info("Wrote interactive genome-map report to %s", report)
+        except Exception as report_error:
+            config.logger.warning(
+                "Pretty report generation failed (%s); continuing.", report_error
+            )
 
     # remind_citations(tools)
     if config.log_level != 10:

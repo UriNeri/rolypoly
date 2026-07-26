@@ -277,13 +277,13 @@ ROLL_PRESET_MAP: dict[str, tuple[str, str, str]] = {
     "--skip-steps",
     default=None,
     hidden=True,
-    help="Skip these steps in the workflow: filter_reads,assemble,filter_contigs,cluster,marker_search,nucleic_search,map_reads,annotate. Provide a comma-separated list of step names to skip.",
+    help="Skip these steps in the workflow: filter_reads,assemble,filter_contigs,cluster,marker_search,nucleic_search,map_reads,annotate,rdrp_motif_search,report. Provide a comma-separated list of step names to skip. Note: skipping both filter_reads and assemble treats the input as contigs and also skips map_reads.",
 )
 # Marker gene search options
 @click.option(
     "--dbm",
     "--db-marker",
-    default="all",
+    default="rvmt,genomad,Pfam_RTs_RdRp",
     help="Database(s) to use for marker gene search",
 )
 @click.option(
@@ -297,6 +297,23 @@ ROLL_PRESET_MAP: dict[str, tuple[str, str, str]] = {
     "--db-annotation",
     default="all",
     help="Database(s) to use for protein annotation.",
+)
+# Pretty report options
+@click.option(
+    "--report/--no-report",
+    "make_report",
+    default=True,
+    show_default=True,
+    help="Write an interactive HTML genome-map report (genome_maps.html) from the "
+    "annotation results (marker/protein hits + RNA track) at the end of the run.",
+)
+@click.option(
+    "--report-best-by",
+    default="score",
+    show_default=True,
+    type=click.Choice(["score", "evalue", "longest", "source"]),
+    help="Initial 'best hit per range' criterion shown in the report "
+    "(toggleable in the viewer).",
 )
 def roll(
     input,
@@ -335,6 +352,8 @@ def roll(
     dbn="all",
     dbm="all",
     dba="all",
+    make_report=True,
+    report_best_by="score",
     skip_existing=False,
     overwrite=False,
     log_level="INFO",
@@ -352,6 +371,27 @@ def roll(
     Returns:
         None: Results are written to the specified output directory
     """
+    # Normalise skip_steps early, mirroring filter-reads' ReadFilterConfig handling:
+    # it may arrive as None, a list of step names, or a comma-separated string.
+    # We keep roll config-free (no BaseConfig) and just work with a plain list.
+    if isinstance(skip_steps, str):
+        skip_steps = [s.strip() for s in skip_steps.split(",") if s.strip()]
+    elif isinstance(skip_steps, (list, tuple, set)):
+        skip_steps = [str(s).strip() for s in skip_steps if str(s).strip()]
+    else:
+        skip_steps = []
+
+    # If the user opts out of BOTH read filtering and assembly, assume the input
+    # is already contigs / ready for downstream use: use it as the assembly and
+    # also skip read mapping (there are no processed reads to map back).
+    skip_filter_reads = "filter_reads" in skip_steps
+    skip_assemble = "assemble" in skip_steps
+    input_is_contigs = skip_filter_reads and skip_assemble
+    if input_is_contigs:
+        for implied in ("filter_reads", "assemble", "map_reads"):
+            if implied not in skip_steps:
+                skip_steps.append(implied)
+
     import sys
 
     import polars as pl
@@ -408,10 +448,18 @@ def roll(
     temp_base_dir = Path(temp_dir).resolve()
     logger.info("Setting temp directory: %s", temp_base_dir)
 
+    if input_is_contigs:
+        logger.warning(
+            "Skipping filter-reads and assemble opts to assume input is contigs "
+            "or ready to use downstream (read mapping will also be skipped)."
+        )
+
     known_dna = host
-    input_info = handle_input_fastq(
-        input, logger=logger
-    )  # we can probably reuse this?
+    # handle_input_fastq expects sequencing reads; skip it when the input is
+    # already contigs (both filter-reads and assemble were skipped).
+    input_info = (
+        handle_input_fastq(input, logger=logger) if not input_is_contigs else {}
+    )
 
     # Resolve filter/assembly presets: explicit --filter-preset / --assembly-preset always win.
     mapped_f, mapped_a, _ = ROLL_PRESET_MAP[preset]
@@ -434,7 +482,7 @@ def roll(
     step = 0
     # Suppress per-command citation writes; roll collects and writes them once at the end.
     os.environ["ROLYPOLY_SUPPRESS_CITATIONS_WRITE"] = "1"
-    if mini:
+    if mini and not input_is_contigs:
         step += 1
         assembly_preset = "fast"
         logger.info("Step %d: Subsampling reads (mini mode)", step)
@@ -486,7 +534,9 @@ def roll(
     step += 1
     logger.info("Step %d: Preprocessing reads (`filter-reads`)    ", step)
     filtered_reads = output_dir / "filtered_reads"
-    if skip_existing and filtered_reads.exists():
+    if "filter_reads" in skip_steps:
+        logger.info("Step %d: Skipping filter-reads (in --skip-steps)", step)
+    elif skip_existing and filtered_reads.exists():
         logger.info(
             "Filtered reads %s already exist, skipping step", filtered_reads
         )
@@ -514,7 +564,72 @@ def roll(
     logger.info("Step %d: Performing assembly (`assemble`)    ", step)
     assembly_output = output_dir / "assembly"
     final_assembly_file = assembly_output / "final_assembly.fasta"
-    if skip_existing and final_assembly_file.exists():
+    if input_is_contigs:
+        # Both filter-reads and assemble were skipped: treat the input as the
+        # assembly. Rename headers to the CID_ convention (as the assemble step
+        # would when combining assemblers) so downstream steps see consistent
+        # ids; fall back to a plain copy if the rename helpers are unavailable.
+        logger.info(
+            "Step %d: Using provided input as assembly (contigs mode)", step
+        )
+        assembly_output.mkdir(parents=True, exist_ok=True)
+        try:
+            from rolypoly.utils.bio.sequences import (
+                process_sequences,
+                read_fasta_df,
+                rename_sequences,
+                write_fasta_file,
+            )
+
+            contigs_df = read_fasta_df(str(input))
+            renamed_df, id_map = rename_sequences(contigs_df, prefix="CID")
+            # Match the assemble step's contigs_id_map schema (old_id, new_id,
+            # assembler, length, gc_content, n_count) so downstream steps that
+            # reuse the map - length filtering, the run-stats report - find the
+            # columns they expect. Contigs came straight from the input, so the
+            # assembler is just "input".
+            renamed_df = process_sequences(renamed_df)
+            write_fasta_file(
+                headers=renamed_df["header"].to_list(),
+                seqs=renamed_df["seq"].to_list()
+                if "seq" in renamed_df.columns
+                else renamed_df["sequence"].to_list(),
+                output_file=str(final_assembly_file),
+            )
+            pl.DataFrame(
+                {
+                    "old_id": list(id_map.keys()),
+                    "new_id": list(id_map.values()),
+                    "assembler": ["input"] * renamed_df.height,
+                    "length": renamed_df["length"],
+                    "gc_content": renamed_df["gc_content"].round(2),
+                    "n_count": renamed_df["n_count"],
+                }
+            ).write_csv(
+                assembly_output / "contigs_id_map.tsv", separator="\t"
+            )
+            logger.info(
+                "Renamed %d input contigs to CID_ ids for downstream use",
+                renamed_df.height,
+            )
+        except Exception as rename_error:
+            logger.warning(
+                "Contig renaming unavailable (%s); using input headers as-is.",
+                rename_error,
+            )
+            if final_assembly_file.exists() or final_assembly_file.is_symlink():
+                final_assembly_file.unlink()
+            try:
+                final_assembly_file.symlink_to(Path(input).resolve())
+            except OSError:
+                shutil.copy(str(input), str(final_assembly_file))
+    elif "assemble" in skip_steps:
+        logger.info(
+            "Step %d: Skipping assemble (in --skip-steps); expecting existing %s",
+            step,
+            final_assembly_file,
+        )
+    elif skip_existing and final_assembly_file.exists():
         logger.info(
             "Assembly output %s already exists, skipping step",
             final_assembly_file,
@@ -659,7 +774,14 @@ def roll(
         )
 
         contig_id_map = assembly_output / "contigs_id_map.tsv"
-        if contig_id_map.exists():
+        # Only reuse the map's lengths when it actually carries a length column
+        # (the contigs-mode fallback copy, or an older map, may not); otherwise
+        # fall through to computing lengths from the FASTA.
+        id_map_has_length = contig_id_map.exists() and (
+            "length"
+            in pl.read_csv(contig_id_map, separator="\t", n_rows=0).columns
+        )
+        if id_map_has_length:
             # Re-use lengths computed at assembly command time.
             # Intersect with the IDs currently in the assembly (cluster reps,
             # post-dedup and post-host-filter) before applying the length cut-off.
@@ -700,7 +822,9 @@ def roll(
     # Step: Marker protein Search
     step += 1
     marker_output = output_dir / "marker_search_results"
-    if skip_existing and marker_output.exists():
+    if "marker_search" in skip_steps:
+        logger.info("Step %d: Skipping marker search (in --skip-steps)", step)
+    elif skip_existing and marker_output.exists():
         logger.info(
             "Marker search results %s already exist, skipping step",
             marker_output,
@@ -738,7 +862,9 @@ def roll(
     nucleic_search_dir.mkdir(parents=True, exist_ok=True)
     nucleic_search_output = nucleic_search_dir / "results.tab"
     nucleic_result_files = sorted(nucleic_search_dir.glob("*_vs_*.tab"))
-    if skip_existing and nucleic_result_files:
+    if "nucleic_search" in skip_steps:
+        logger.info("Step %d: Skipping nucleic search (in --skip-steps)", step)
+    elif skip_existing and nucleic_result_files:
         logger.info(
             "Nucleic search results already exist (%d files), skipping step",
             len(nucleic_result_files),
@@ -798,7 +924,15 @@ def roll(
     # Step: Map **original** reads back to the chosen assembly
     step += 1
     mapping_output = output_dir / "read_mapping"
-    if skip_existing and mapping_output.exists():
+    if "map_reads" in skip_steps:
+        # This includes the contigs mode (filter-reads + assemble skipped), where
+        # there are no processed reads to map back.
+        logger.info(
+            "Step %d: Skipping read mapping (in --skip-steps%s)",
+            step,
+            "; contigs mode" if input_is_contigs else "",
+        )
+    elif skip_existing and mapping_output.exists():
         logger.info(
             "Read mapping output %s already exists, skipping step",
             mapping_output,
@@ -834,7 +968,9 @@ def roll(
     step += 1
     logger.info("Step %d: Annotation", step)
     annotation_output = output_dir / "annotation_results"
-    if skip_existing and annotation_output.exists():
+    if "annotate" in skip_steps:
+        logger.info("Step %d: Skipping annotate (in --skip-steps)", step)
+    elif skip_existing and annotation_output.exists():
         logger.info(
             "Annotation results %s already exist, skipping step",
             annotation_output,
@@ -854,13 +990,17 @@ def roll(
             if temp_base_dir
             else None,
             search_tool="diamond" if dba == "uniref50" else "hmmsearch",
+            # roll writes a single combined report itself (report step below).
+            html=False,
         )
 
     # Step: identify RdRp motifs (TBD call rdrp_motif_search.py)
     step += 1
     logger.info("Step %d: RdRp motifs marking", step)
     rdrp_motif_search_output = output_dir / "rdrp_motif_search"
-    if skip_existing and rdrp_motif_search_output.exists():
+    if "rdrp_motif_search" in skip_steps:
+        logger.info("Step %d: Skipping RdRp motif search (in --skip-steps)", step)
+    elif skip_existing and rdrp_motif_search_output.exists():
         logger.info(
             "Annotation results %s already exist, skipping step",
             rdrp_motif_search_output,
@@ -904,10 +1044,55 @@ def roll(
     #         log_file=str(log_file),
     #     )
 
+    # Step: Report (interactive genome maps)
+    step += 1
+    report_output = output_dir / "genome_maps.html"
+    if "report" in skip_steps or not make_report:
+        logger.info("Step %d: Skipping report (disabled)", step)
+    elif skip_existing and report_output.exists():
+        logger.info(
+            "Report %s already exists, skipping step", report_output
+        )
+    else:
+        logger.info("Step %d: Writing interactive genome-map report", step)
+        # The shared helper discovers the marker table (hmmsearch or
+        # mmseqs2/diamond schema) and the annotate-rna table by header, so exact
+        # filenames aren't hard-coded here. Wrapped in try/except so a report
+        # failure never breaks the pipeline.
+        from rolypoly.utils.viz.genome_maps import write_report_for_dir
+
+        try:
+            report_path = write_report_for_dir(
+                output_dir,
+                report_output,
+                title=f"RolyPoly roll — {Path(input).stem}",
+                initial_criterion=report_best_by,
+                initial_tab="table",
+            )
+            if report_path is not None:
+                logger.info("Wrote interactive genome-map report to %s", report_path)
+            else:
+                logger.warning("No annotation tables found for the report; skipped.")
+        except Exception as report_error:
+            logger.warning(
+                "Report generation failed (%s); continuing.", report_error
+            )
+
     # step: cleanup, just in case:
     if not keep_tmp and temp_base_dir.exists():
         logger.info("Cleaning up temporary files in %s", temp_base_dir)
         shutil.rmtree(temp_base_dir, ignore_errors=True)
+
+    # Defensive sweep: sub-commands create auto-named `rolypoly_tmp_*` dirs (and
+    # can leave `rolypoly__*` temp bases from interrupted steps) inside the output
+    # tree. Remove any such leftovers unless the user asked to keep temp files.
+    if not keep_tmp:
+        for leftover in list(output_dir.glob("**/rolypoly_tmp_*")) + list(
+            output_dir.glob("rolypoly__*")
+        ):
+            if leftover.is_dir() and leftover.resolve() != temp_base_dir.resolve():
+                logger.debug("Removing leftover temp directory: %s", leftover)
+                shutil.rmtree(leftover, ignore_errors=True)
 
     logger.info("RolyPoly pipeline completed successfully!")
     from rolypoly.utils.logging.citation_reminder import remind_citations
