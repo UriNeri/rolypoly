@@ -29,8 +29,9 @@ class RVirusSearchConfig(BaseConfig):
         )  # initialize the BaseConfig class
         # initialize the rest of the parameters (i.e. the ones that are not in the BaseConfig class)
         self.database = kwargs.get("database", "RVMT,genomad")
-        self.inc_evalue = kwargs.get("inc_evalue", 0.05)
+        self.inc_evalue = kwargs.get("inc_evalue", 0.001)
         self.score = kwargs.get("score", 20)
+        self.min_ali_len = kwargs.get("min_ali_len", 15)
         self.aa_method = kwargs.get("aa_method", "six_frame")
         self.resolve_mode = kwargs.get("resolve_mode") or "simple"
         self.min_overlap_positions = kwargs.get("min_overlap_positions") or 10
@@ -229,7 +230,7 @@ console = Console(width=150)
 @option(
     "-ie",
     "--inc-evalue",
-    default=0.05,
+    default=0.001,
     help="Maximal e-value for including a domain match in the results",
 )  #  for HMM reporting
 @option(
@@ -238,6 +239,10 @@ console = Console(width=150)
     default=20,
     help="Minimal score for including a domain match in the results",
 )
+@option(
+    "-mla", "--min-ali-len",
+    default=15,
+    help="Minimal alignment length for including a domain match in the results")
 @option(
     "-am",
     "--aa-method",
@@ -365,6 +370,7 @@ def marker_search(
     temp_dir,
     write_matched_regions,
     matched_regions_output,
+    min_ali_len,
     include_aligned_region,
     include_alignment_string,
     write_matched_input_seqs,
@@ -452,6 +458,7 @@ def marker_search(
             include_alignment_string=include_alignment_string,
             write_matched_input_seqs=write_matched_input_seqs,
             matched_input_seqs_output=matched_input_seqs_output,
+            min_ali_len=min_ali_len
         )
 
     # Logging
@@ -598,6 +605,7 @@ def marker_search(
             logger=config.logger,
             inc_e=config.inc_evalue,
             mscore=config.score,
+            min_ali_len=config.min_ali_len,
             output_format="modomtblout",
             ali_str=config.include_alignment_string,
             full_qseq=config.write_matched_regions,

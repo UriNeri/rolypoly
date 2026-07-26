@@ -186,8 +186,9 @@ def search_hmmdb(
     output: Union[str, Path],
     threads: int,
     logger=None,
-    inc_e=0.05,
+    inc_e=0.001,
     mscore=20,
+    min_ali_len=10,
     match_region=False,
     full_qseq=False,
     ali_str=False,
@@ -204,12 +205,13 @@ def search_hmmdb(
       db_path(str): Path to the HMM database file
       output(str): Path where the output file will be written
       threads(int): Number of CPU threads to use for the search
-      logger(logging.Logger, optional): Logger object for debug messages. (Default value = None)
-      inc_e(float, optional): Inclusion E-value threshold for reporting domains. (Default value = 0.05)
-      mscore(float, optional): Minimum score threshold for reporting domains. (Default value = 20)
-      match_region(bool, optional): Include aligned region in output. Only works with modomtblout format. (Default value = False)
-      full_qseq(bool, optional): Include full query sequence in output. Only works with modomtblout format. (Default value = False)
-      ali_str(bool, optional): Include alignment string in output. Only works with modomtblout format. (Default value = False)
+      logger(logging.Logger, optional): Logger object for debug messages.
+      inc_e(float, optional): Inclusion E-value threshold for reporting domains.
+      mscore(float, optional): Minimum score threshold for reporting domains.
+      min_ali_len(int, optional): Minimum alignment length for reporting domains. 
+      match_region(bool, optional): Include aligned region in output. Only works with modomtblout format.
+      full_qseq(bool, optional): Include full query sequence in output. Only works with modomtblout format.
+      ali_str(bool, optional): Include alignment string in output. Only works with modomtblout format.
       output_format(str, optional): Format of the output file. One of: "modomtblout", "domtblout", "tblout".
 
     Returns:
@@ -217,7 +219,7 @@ def search_hmmdb(
 
     Note:
       The modomtblout format is a modified domain table output that includes additional columns (like coverage, alignment string, query sequence, etc).
-      match_region, full_qseq, and ali_str only work with modomtblout format. (Default value = "modomtblout")
+      match_region, full_qseq, and ali_str only work with modomtblout format.
       pyhmmer_hmmsearch_args(dict, optional): Additional arguments to pass to pyhmmer.hmmsearch. (Default value = {})
 
     Example:
@@ -336,6 +338,8 @@ def search_hmmdb(
                             for domain in hit.domains.included:
                                 # Get alignment length
                                 alignment_length = get_hmmali_length(domain)
+                                if alignment_length < min_ali_len:
+                                    continue
 
                                 # Calculate hmm_coverage
                                 hmm_coverage = get_hmm_coverage(domain)

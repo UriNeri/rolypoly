@@ -31,6 +31,7 @@ def init_output_files_table() -> pl.DataFrame:
 global output_files
 output_files = init_output_files_table()
 
+#schemas
 INFO_TABLE_SPECS = {
     "nvpc": {
         "relative_path": Path("profiles") / "NVPC_descriptions.csv",
@@ -151,7 +152,7 @@ class ProteinAnnotationConfig(BaseConfig):
             },
             "pyrodigal": {"minimum_length": min_orf_length},
             "six-frame": {"threads": 1, "minimum_length": min_orf_length},
-            "hmmsearch": {"inc_e": evalue, "mscore": 5},
+            "hmmsearch": {"inc_e": evalue, "mscore": 8, "min_ali_len": 10},
             "diamond": {"evalue": evalue},
             "mmseqs2": {"evalue": evalue, "cov": 0.1},
         }
@@ -255,7 +256,7 @@ def stage_protein_input_as_orfs(config) -> bool:
 @click.option(
     "-gp",
     "--gene-prediction-tool",
-    default="ORFfinder",
+    default="pyrodigal",
     type=click.Choice(
         ["ORFfinder", "pyrodigal", "six-frame"],  # , "bbmap"``
         case_sensitive=False,
@@ -307,7 +308,7 @@ def stage_protein_input_as_orfs(config) -> bool:
 @click.option(
     "-e",
     "--evalue",
-    default=1e-1,
+    default=1e-3,
     help="E-value for search result filtering. Note, this is for inital filteringg only, you are encouraged to filter the results further using e.g. profile coverage and scores.",
 )
 @click.option(
@@ -430,7 +431,7 @@ def annotate_prot(
 
 
 def process_protein_annotations(config):
-    """Process protein annotations"""
+    """MAIN LOGIC HERE."""
     global output_files
     output_files = init_output_files_table()
 
@@ -764,6 +765,7 @@ def search_protein_domains_hmmsearch(config):
             ali_str=config.include_alignment_strings,
             inc_e=config.step_params["hmmsearch"]["inc_e"],
             mscore=config.step_params["hmmsearch"]["mscore"],
+            min_ali_len=config.step_params["hmmsearch"]["min_ali_len"]
         )
         output_files = output_files.vstack(
             pl.DataFrame(
@@ -800,8 +802,11 @@ def predict_orfs_with_orffinder(config):
         # )
         lazy = "yes"  # most people don't care
         if lazy.lower() == "yes":
-            os.system(
-                "wget ftp://ftp.ncbi.nlm.nih.gov/genomes/TOOLS/ORFfinder/linux-i64/ORFfinder.gz; gunzip ORFfinder.gz; chmod a+x ORFfinder; mv ORFfinder $CONDA_PREFIX/bin"
+            import subprocess as sp
+            sp.run(
+                "wget ftp://ftp.ncbi.nlm.nih.gov/genomes/TOOLS/ORFfinder/linux-i64/ORFfinder.gz; gunzip ORFfinder.gz; chmod a+x ORFfinder; mv ORFfinder $CONDA_PREFIX/bin",
+                shell=True,
+                check=True,
             )
             config.logger.info("ORFfinder installed successfully")
         else:

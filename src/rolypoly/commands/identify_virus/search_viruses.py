@@ -57,7 +57,7 @@ matched_tabb = []
 @click.option(
     "-e",
     "--mmseqs-evalue",
-    default=1e-5,
+    default=1e-1,
     help="E-value threshold for MMseqs2 search)",
 )
 @click.option(
@@ -65,6 +65,12 @@ matched_tabb = []
     "--mmseqs-identity",
     default=0.7,
     help="minimum Identity threshold for MMseqs2 search)",
+)
+@click.option(
+    "-al",
+    "--mmseqs-min-aln-len",
+    default=95,
+    help="Minimum alignment length for MMseqs2 search)",
 )
 @click.option(
     "--temp-dir",
@@ -84,6 +90,7 @@ def virus_mapping(
     matched_output,
     mmseqs_evalue,
     mmseqs_identity,
+    mmseqs_min_aln_len,
     temp_dir,
 ):
     """Search nucleotide reads/contigs against virus reference databases.
@@ -241,7 +248,7 @@ def virus_mapping(
         mmseqs_search_cmd = (
             f"mmseqs search {input} {db_path} {this_resdb}/res {tmpdir} "
             f"--min-seq-id {mmseqs_identity} --threads {threads} -a --search-type 3 -s 8 --strand 2"
-            f" --max-seqs 10000 -e {mmseqs_evalue} --cov-mode 0 --min-aln-len 50"
+            f" --max-seqs 10000 -e {mmseqs_evalue} --cov-mode 0 --min-aln-len {mmseqs_min_aln_len}"
         )
         subprocess.run(mmseqs_search_cmd, shell=True, check=True)
 
