@@ -20,7 +20,8 @@ tools = []
 )
 @option(
     "-rd",
-    "--rolypoly-data",
+    "--rolypoly-data", # fail-safe 
+    "--data-dir",
     required=False,
     help="If you do not want to download the the data to same location as the rolypoly code, specify an alternative path. TODO: remind user to provide such alt path in other scripts? envirometnal variable maybe",
 )
@@ -90,11 +91,30 @@ def get_data(info, rolypoly_data, log_file, log_level):
     ROLYPOLY_DATA.mkdir(parents=True, exist_ok=True)
 
     # Download the tarball
+    # first try from nersc, if that fails, try from zenodo
     logger.info("Downloading data tarball...")
-    response = requests.get(
-        "https://portal.nersc.gov/dna/microbial/prokpubs/rolypoly/data/data.tar.gz",
-        stream=True,
-    )
+    try: 
+        response = requests.get(
+            "https://portal.nersc.gov/dna/microbial/prokpubs/rolypoly/data/data.tar.gz",
+            stream=True,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        logger.warning(f"Failed to download from NERSC: {e}. Trying Zenodo...")
+        try:
+            response = requests.get(
+                "https://zenodo.org/record/1234567/files/data.tar.gz?download=1",
+                stream=True,
+            )
+            response.raise_for_status()
+        except requests.RequestException as e:
+            logger.error(f"Failed to download from Zenodo: {e}. Aborting.")
+            return 1
+    # response = requests.get(
+    #     "https://portal.nersc.gov/dna/microbial/prokpubs/rolypoly/data/data.tar.gz",
+    #     stream=True,
+    # )
+
     tar_path = ROLYPOLY_DATA / "data.tar.gz"
     with open(str(tar_path), "wb") as f:
         for chunk in response.iter_content(chunk_size=1024):

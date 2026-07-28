@@ -27,7 +27,7 @@ from rolypoly.utils.bio.sequences import (
 # import tqdm
 from rolypoly.utils.logging.citation_reminder import remind_citations
 from rolypoly.utils.logging.loggit import get_version_info, setup_logging
-from rolypoly.utils.various import fetch_and_extract, run_command_comp
+from rolypoly.utils.various import fetch_and_extract, read_fwf, run_command_comp
 
 console = Console()
 global tools
@@ -218,7 +218,33 @@ def prepare_rvmt_mmseqs(data_dir, threads, logger: logging.Logger):
 
     # Filter out chimeric sequences using rolypoly's filter function
     cleaned_path = os.path.join(rvmt_dir, "RVMT_cleaned_contigs.fasta")
-    logger.info("Filtering out chimeric sequences")
+    # logger.info("Filtering out chimeric sequences")
+    # filter_fasta_by_headers(
+    #     fasta_file=contigs_fasta_path,
+    #     headers=chimera_ids,
+    #     output_file=cleaned_path,
+    #     invert=True,  # Keep sequences NOT in the chimera list
+    # )
+
+    ### run cmscan with rrnas to remove more potential chimeras
+    logger.info("Running cmscan to identify rRNA sequences in RVMT contigs")
+    run_command_comp(
+        base_cmd="cmscan",
+        positional_args_location="end",
+        positional_args=["/home/neri/Documents/GitHub/rolypoly/data/profiles/cm/rrna/rrna.cm", contigs_fasta_path],
+        params={
+            "cpu": 8,
+            "tblout": "rvmt_rrna.tab",
+            "cut_ga": True,
+            "noali": True,
+        },
+        logger=logger,
+    )
+    rrna_df = read_fwf("rvmt_rrna.tab") #,widths=widths, columns=column_names,dtypes = "str")
+    rrna_df = rrna_df.filter(pl.col("E-value").cast(pl.Float64) < 1e-3)
+    chimera_rrna_ids = rrna_df.select(pl.col("query_name")).to_series().to_list()
+    chimera_ids.extend(chimera_rrna_ids)
+    logger.info("Filtering out known chimeric and potential rRNA containing sequences")
     filter_fasta_by_headers(
         fasta_file=contigs_fasta_path,
         headers=chimera_ids,

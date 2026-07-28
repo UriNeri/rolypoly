@@ -2,7 +2,7 @@
 
 # RolyPoly
 
-[![PyPI version](https://img.shields.io/pypi/v/rolypoly-tk.svg?cacheSeconds=300)](https://pypi.org/project/rolypoly-tk/) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/rolypoly-tk?period=monthly&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=Downloads+%28month%29)](https://pepy.tech/projects/rolypoly-tk) [![License](https://img.shields.io/github/license/UriNeri/rolypoly.svg)](LICENSE) [![Docs](https://img.shields.io/badge/docs-urineri.github.io%2Frolypoly-blue)](https://urineri.github.io/rolypoly/) [![place-holder-for-bioconda-badge](https://img.shields.io/badge/bioconda-PLACEHOLDER-lightgrey)](https://bioconda.github.io/)
+[![PyPI version](https://img.shields.io/pypi/v/rolypoly-tk.svg?cacheSeconds=300)](https://pypi.org/project/rolypoly-tk/) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/rolypoly-tk?period=monthly&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=Downloads+%28month%29)](https://pepy.tech/projects/rolypoly-tk) [![License](https://img.shields.io/github/license/UriNeri/rolypoly.svg)](LICENSE) [![Docs](https://img.shields.io/badge/docs-urineri.github.io%2Frolypoly-blue)](https://urineri.github.io/rolypoly/) [![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat)](http://bioconda.github.io/recipes/rolypoly-tk/README.html)
 
 RolyPoly is an RNA virus analysis toolkit, meant to be a "swiss-army knife" for RNA virus discovery and characterization by including a variety of commands, wrappers, parsers, automations, and some "quality of life" features for any many of a virus investigation process (from raw read processing to genome annotation). While it includes an "end-2-end" command that employs an entire pipeline, the main goals of rolypoly are:
 - Help non-computational researchers take a deep dive into their data without compromising on using tools that are non-techie friendly.  
@@ -15,23 +15,24 @@ RolyPoly is an open, rolling-release, still in progress project. We hope to summ
 ## Installation
 
 ### Mamba/Conda (Quick and Easy - One complete environment)
-**Recommended for most users** if you want a "just works" solution and intend to use rolypoly as a CLI tool in an independent environment. We hope to have rolypoly available from bioconda in the near future, in the meantime, a complete conda/[mamba](https://github.com/mamba-org/mamba) environment recipe is available under [src/setup/rolypoly_env.yaml](src/setup/rolypoly_env.yaml). You can install it with the following commands:
-1. Get micromamba (if not already installed)
+**Recommended for most users** if you want a "just works" solution and intend to use rolypoly as a CLI tool in an independent environment.  
+First, install conda or [mamba](https://github.com/mamba-org/mamba), if you don't have it already:
 ```bash
 "${SHELL}" <(curl -L https://micro.mamba.pm/install.sh)
-```
-2. Fetch the latest rolypoly-tk recipe
+```  
+Then install rolypoly-tk from bioconda into a new environment:
 ```bash
-curl -O https://raw.githubusercontent.com/UriNeri/rolypoly/main/src/setup/env_big.yaml
-# Create the environment (this will take a few minutes)
-micromamba create -f env_big.yaml
-```
-3. Activate the environment or directly fetch rolypoly database (may take a few minutes)
+micromamba create -n rolypoly-tk -c bioconda -c conda-forge rolypoly-tk
+```  
+Then, activate the environment and fetch rolypoly's database (may take a few minutes)
 ```bash
-micromamba run -n rolypoly-tk rolypoly get-data --data-dir /path/to/store/databases
+micromamba run -n rolypoly-tk rolypoly get-data --rolypoly-data /home/neri/test_rp_data
+```
+You should then be able to run rolypoly commands, for example:
+```bash
 # Activate the environment and use rolypoly
 micromamba activate rolypoly-tk
-rolypoly --help
+rolypoly --help 
 ```
 
 ### Developer / Modular setup: Command-Specific Pixi Environments
