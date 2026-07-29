@@ -37,7 +37,7 @@ tools = []
 threads = 6
 log_file = "rolypoly_build_data.log"
 data_dir = os.environ.get("RP_DIR") + "data"
-
+log_level = "debug"
 
 @command()
 @option("--data-dir", required=True, help="Path to the data directory")

@@ -1194,108 +1194,154 @@ def check_file_exist_isempty(file_path):
         return True
 
 
-def read_fwf(filename, widths=None, columns=None, dtypes=None, comment_prefix="#", **kwargs):
+def infer_columns_from_ruler(header_line, dash_runs, widths):
+    """Infer column names from a tblout-style header + dashed ruler.
+
+    The dash-runs of the ruler give each column's span; slicing the header line
+    at those spans recovers labels that may themselves contain spaces (e.g.
+    "seq from", "description of target"). The final label usually overflows its
+    dash-run, so it is read to end of line. Repeated labels (tblout has two
+    "accession" columns) are de-duplicated as name, name_2, ...
+    """
+    import re
+
+    if header_line is not None and dash_runs is not None:
+        columns, seen = [], {}
+        for i, (start, length) in enumerate(dash_runs):
+            raw = header_line[start:] if i == len(dash_runs) - 1 else header_line[start:start + length]
+            name = re.sub(r"\s+", "_", raw.strip()) or f"column_{i + 1}"
+            if name in seen:
+                seen[name] += 1
+                name = f"{name}_{seen[name]}"
+            else:
+                seen[name] = 1
+            columns.append(name)
+        return columns
+
+    n_cols = len(widths) if widths is not None else (len(dash_runs) if dash_runs else None)
+    if n_cols is None:
+        raise ValueError("Cannot infer columns: pass `columns`, `widths`, or a file with a ruler line.")
+    return [f"column_{i + 1}" for i in range(n_cols)]
+
+
+def read_fwf(filename, widths=None, columns=None, dtypes=None, comment_prefix="#", peek_lines=100, **kwargs):
     """Read a column-aligned text table into a Polars DataFrame.
 
-    Handles the two ways these files show up in practice:
+    Uses a lightweight three-step, memory-conscious workflow:
 
-    - whitespace mode (``widths=None``, the default): columns are split on runs
-      of whitespace and the last name in ``columns`` soaks up the remainder of
-      the line. This is the robust choice for Infernal/HMMER ``--tblout`` output
-      (cmscan, cmsearch, hmmsearch, ...), which only *looks* fixed-width: the
-      columns shift as soon as a value is wider than its header, and the final
+    1. *Peek*: read only the first ``peek_lines`` lines (never the whole file)
+       to locate the dashed ruler and learn the column layout.
+    2. *Stream*: hand the file straight to ``polars.read_csv``, which loads the
+       body as a single string column, skipping the header rows and dropping
+       comment lines without ever materialising a big Python list.
+    3. *Split*: carve that one column into the real columns with native Polars
+       string expressions (vectorised and memory efficient).
+
+    Two splitting modes:
+
+    - whitespace mode (``widths=None``, the default): fields are split on runs
+      of whitespace and the last column soaks up the remainder of the line. This
+      is the robust choice for Infernal/HMMER ``--tblout`` output (cmscan,
+      cmsearch, hmmsearch, ...), which only *looks* fixed-width: columns shift as
+      soon as a value is wider than its header, and the trailing
       "description of target" field carries spaces of its own.
     - fixed-width mode (``widths`` given): each column is sliced by an explicit
-      ``(start, length)`` tuple. Use this only when the layout is genuinely
-      fixed and known ahead of time.
+      ``(start, length)`` tuple. Use only when the layout is genuinely fixed.
 
-    The one/two header lines and the dashed ruler line typical of tblout files
-    are skipped automatically, so ``rrna_matches.txt`` and friends read cleanly.
+    The header line(s) and the dashed ruler are skipped automatically, so
+    ``rrna_matches.txt`` and friends read cleanly.
 
     Args:
         filename (str): path to the table (transparently handles gzip).
         widths (list, optional): (start, length) tuples for fixed-width slicing.
         columns (list, optional): column names. If omitted, they are inferred
-            from the ruler line as column_1..column_n.
+            from the header line above the ruler (or column_1..n as a fallback).
         dtypes (list, optional): Polars dtypes to cast each column to. Casting is
             non-strict, so unparseable values become null rather than raising.
         comment_prefix (str, optional): lines starting with this are dropped
-            (defaults to "#", matching tblout comment/footer lines).
-        **kwargs: currently unused, kept for signature compatibility.
+            (defaults to "#", matching tblout ruler/footer comment lines).
+        peek_lines (int, optional): how many leading lines to sniff for the
+            layout. Defaults to 100 (tblout headers are only 1-2 lines).
+        **kwargs: forwarded to ``polars.read_csv``.
 
     Returns:
         polars.DataFrame: the parsed table.
     """
+    import gzip
+    import itertools
     import re
 
     import polars as pl
 
     # a tblout ruler is a line of dash-runs, optionally prefixed with '#'
     ruler_re = re.compile(r"^#?\s*-{2,}(?:\s+-+)*\s*$")
-    import gzip
+
+    # --- 1. peek: sniff only the first `peek_lines` lines for the layout ---
     opener = gzip.open if is_gzipped(filename) else open
     with opener(filename, "rt") as fh:
-        lines = [ln.rstrip("\n") for ln in fh if ln.strip()]
+        head = [ln.rstrip("\n") for ln in itertools.islice(fh, peek_lines)]
 
-    # locate the ruler: everything below it is data, the line above it is the header
-    ruler_idx = next((i for i, ln in enumerate(lines) if ruler_re.match(ln)), None)
+    ruler_idx = next((i for i, ln in enumerate(head) if ruler_re.match(ln)), None)
     dash_runs = None
     header_line = None
     if ruler_idx is not None:
-        ruler = lines[ruler_idx]
-        header_line = lines[ruler_idx - 1] if ruler_idx > 0 else None
-        # the ruler is sometimes comment-prefixed ('#---') while the header line
-        # above it is not; drop a lone leading comment char so dash offsets line
-        # up with the header labels for name inference
+        ruler = head[ruler_idx]
+        header_line = head[ruler_idx - 1] if ruler_idx > 0 else None
+        header_region = head[:ruler_idx + 1]
+        # the ruler is usually comment-prefixed ('#---') while the header line
+        # above it is not; drop that leading '#' so the dash offsets line up
+        # with the header labels for name inference
         if (comment_prefix and ruler.startswith(comment_prefix)
                 and header_line is not None and not header_line.startswith(comment_prefix)):
             ruler = ruler[len(comment_prefix):]
-        dash_runs = [
-            (m.start(), m.end() - m.start())
-            for m in re.finditer(r"-+", ruler)
-        ]
-        body = lines[ruler_idx + 1:]
+        dash_runs = [(m.start(), m.end() - m.start()) for m in re.finditer(r"-+", ruler)]
     else:
-        # no ruler: assume the first line is a header unless the caller told us the layout
-        body = lines if (columns is not None or widths is not None) else lines[1:]
+        # no ruler: treat the first line as a header unless the caller gave the layout
+        header_region = head[:1] if (columns is None and widths is None) else []
+        header_line = header_region[0] if header_region else None
 
-    data = [ln for ln in body if not (comment_prefix and ln.startswith(comment_prefix))]
+    # polars applies `comment_prefix` filtering *before* `skip_rows`, so we skip
+    # only the non-comment header lines; the comment ruler and any footer '#'
+    # lines fall out on their own. (Without a comment prefix, use a raw count.)
+    if comment_prefix:
+        skip_rows = sum(1 for ln in header_region if not ln.startswith(comment_prefix))
+    else:
+        skip_rows = len(header_region)
 
+    # --- 2. infer column names from the peeked header/ruler if not given ---
     if columns is None:
-        # prefer real names sliced from the header line (labels may contain
-        # spaces, e.g. "seq from", "description of target"); the final label
-        # usually overflows its dash-run, so let it run to end of line
-        if header_line is not None and dash_runs is not None:
-            columns = []
-            seen = {}
-            for i, (start, length) in enumerate(dash_runs):
-                raw = header_line[start:] if i == len(dash_runs) - 1 else header_line[start:start + length]
-                name = re.sub(r"\s+", "_", raw.strip()) or f"column_{i + 1}"
-                # de-duplicate repeated labels (tblout has two "accession" columns)
-                if name in seen:
-                    seen[name] += 1
-                    name = f"{name}_{seen[name]}"
-                else:
-                    seen[name] = 1
-                columns.append(name)
-        else:
-            n_cols = len(widths) if widths is not None else (len(dash_runs) if dash_runs else None)
-            if n_cols is None:
-                raise ValueError("Cannot infer columns: pass `columns`, `widths`, or a file with a ruler line.")
-            columns = [f"column_{i + 1}" for i in range(n_cols)]
+        columns = infer_columns_from_ruler(header_line, dash_runs, widths)
 
-    df = pl.DataFrame({"line": data})
+    # --- 3. stream the body into one string column, then split natively ---
+    # separator="\x01" is a byte that won't occur in these text tables, so each
+    # whole line lands in a single "line" column; splitting happens vectorised
+    # in Polars rather than in a Python loop.
+    raw = pl.read_csv(
+        filename,
+        separator="\x01",
+        has_header=False,
+        skip_rows=skip_rows,
+        comment_prefix=comment_prefix,
+        new_columns=["line"],
+        quote_char=None,
+        truncate_ragged_lines=True,
+        **kwargs,
+    )
+
     if widths is not None:
-        df = df.select(
+        out = raw.select(
             pl.col("line").str.slice(start, length).str.strip_chars().alias(name)
             for (start, length), name in zip(widths, columns)
         )
     else:
         # collapse whitespace runs, then split into exactly len(columns) fields;
         # splitn keeps everything after the last split in the final field, so a
-        # free-text trailing column (e.g. description) survives its own spaces
-        df = (
-            df.select(
+        # free-text trailing column (e.g. description) survives its own spaces. 
+        # This is a bit assumptive, but it works for the cmscan tblout output easy enough
+        # Hopfully, pyinfernal from the mastero will soon be mature enough and can be used to 
+        # run a python binded cmscan and have the output directly in python.
+        out = (
+            raw.select(
                 pl.col("line")
                 .str.replace_all(r"\s+", " ")
                 .str.strip_chars()
@@ -1304,13 +1350,13 @@ def read_fwf(filename, widths=None, columns=None, dtypes=None, comment_prefix="#
             )
             .unnest("fields")
         )
-        df.columns = columns
+        out.columns = columns
 
     if dtypes is not None:
-        df = df.with_columns(
+        out = out.with_columns(
             pl.col(name).cast(dt, strict=False) for name, dt in zip(columns, dtypes)
         )
-    return df
+    return out
 
 
 def read_cmscan_tblout(filename, **kwargs):
