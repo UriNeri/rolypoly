@@ -9,7 +9,7 @@ import polars as pl
 from rich.console import Console
 from rich_click import Choice, command, option
 
-from rolypoly.utils.bio.alignments import search_hmmdb
+from rolypoly.utils.bio.alignments import mmseqs_easy_search, search_hmmdb
 from rolypoly.utils.bio.sequences import guess_fasta_alpha
 from rolypoly.utils.bio.translation import (
     pyro_predict_orfs,
@@ -20,7 +20,7 @@ from rolypoly.utils.logging.config import BaseConfig
 from rolypoly.utils.logging.loggit import log_start_info
 from rolypoly.utils.various import ensure_memory, run_command_comp
 
-console = Console(width=150)
+console = Console(width=150) # is this necessary? 
 
 
 class RdRpMotifSearchConfig(BaseConfig):
@@ -47,6 +47,8 @@ class RdRpMotifSearchConfig(BaseConfig):
 
         # RdRp motif-specific parameters
         self.search_tool = kwargs.get("search_tool", "hmmsearch")
+        # self.search_tool = kwargs.get("search_tool", "mmseqs")
+
         self.evalue = kwargs.get("evalue", 1e-2)
         self.min_score = kwargs.get("min_score", None)
         self.max_distance = kwargs.get("max_distance", 250)
@@ -427,20 +429,39 @@ def search_motifs(
             mscore=None,  # Use E-value filtering
         )
     if config.search_tool == "mmseqs":
-        from rolypoly.utils.bio.alignments import mmseqs_search
-
-        output_path = mmseqs_search(
-            query_db=protein_file,
-            db_path=str(config.motif_db_path),
-            output=output_file,
-            threads=config.threads,
-            logger=config.logger,
-            match_region=True,
-            full_qseq=True,
-            ali_str=True,
-            inc_e=config.evalue,
-            mscore=None,  # Use E-value filtering
+        output_path = os.path.join(
+            config.temp_dir, f"{config.name}_mmseqs_motif_hits.tsv"
         )
+        mmseqs_easy_search(
+            query=protein_file,
+            target=str(config.motif_db_path),
+            output=output_path,
+            tmp_dir=os.path.join(config.temp_dir, "mmseqs_motif_tmp"),
+            threads=config.threads,
+            evalue=config.evalue,
+            format_mode=4,
+            format_output="qheader,theader,qlen,tlen,qstart,qend,tstart,tend,alnlen,mismatch,qcov,tcov,bits,evalue,gapopen,pident,nident,qaln".split(","),
+            logger=config.logger,
+        )
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            mmseqs_results = pl.read_csv(
+                output_path, separator="\t", has_header=True
+            ).rename(
+                {
+                    "qheader": "query_name",
+                    "theader": "target_name",
+                    "qlen": "query_length",
+                    "tlen": "target_length",
+                    "qstart": "ali_from",
+                    "qend": "ali_to",
+                    "bits": "score",
+                    "qaln": "aligned_region",
+                }
+            ).with_columns(
+                # mmseqs profile theader is "<marker> <representative_seq_id>/<range>"; keep just the marker
+                pl.col("target_name").str.split(" ").list.first()
+            )
+            mmseqs_results.write_csv(output_path, separator="\t")
 
     # Read the results into a DataFrame
     if os.path.exists(output_path) and os.path.getsize(output_path) > 0:

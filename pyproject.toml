@@ -143,22 +143,25 @@ leidenalg = ">=0.12.0, <0.13"
 # For miscellaneous commands (fetch-sra, etc.)
 aria2 = ">=1.37.0,<2"
 
+
 [tool.pixi.feature.dev.dependencies]
-# Development and testing tools
-entrez-direct = ">=24.0,<25"
-ipython = ">=8.37.0,<9"
+# Development and testing tools. Many of these are only used in the build-data script.
 uv = ">=0.11.29,<0.12"
+ipython = ">=8.37.0,<9"
 jupyter = ">=1.1.1,<2"
 ipykernel = ">=7.3.0,<8"
-blast = ">=2.17.0,<3"        # for getting fasta from NCBI blastdbs
 aria2 = ">=1.37.0,<2"
+google-cloud-sdk = ">=578.0.0,<579"
+blast = ">=2.17.0,<3"        
+entrez-direct = ">=24.0,<25"
 eutils = ">=0.6.1,<0.7"
-
+taxonkit = ">=0.20.0,<0.21"
 
 [tool.pixi.feature.dev.pypi-dependencies]
 lets-plot = ">=4.11.0, <5"
 itables = ">=2.9.0, <3"
-
+fastexcel = ">=0.12,<1"
+taxopy = ">=0.1.0, <0.2"
 
 [tool.pixi.feature.docs.pypi-dependencies]
 mkdocs-mermaid2-plugin = ">=1.2.3, <2"

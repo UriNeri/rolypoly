@@ -1108,47 +1108,233 @@ def mmseqs_profile_db_from_directory(
         return output
 
 
-def mmseqs_search(
-    query_db: Union[str, Path],
-    target_db: Union[str, Path],
-    result_db: Union[str, Path],
-    tmp_dir: Union[str, Path],
-    sensitivity: int = 5,
+
+# NOTE: These are the recommended, config-free "unified schema" wrappers for domain
+# search calls going forward. Various commands (e.g. annotate-prot) still have their
+# own config-class-bound search_protein_domains_* implementations; those are left as
+# they are for now and should eventually be migrated to call these instead.
+def mmseqs_domain_search(
+    query_faa: Union[str, Path],
+    database_paths: Dict[str, Union[str, Path]],
+    output_dir: Union[str, Path],
     threads: int = 1,
-    threads_opt_name: str = "--threads",
-    extra_opts: str = "",
-):
-    """Run `mmseqs search` with sensible defaults and return the result DB path.
+    evalue: float = 1e-5,
+    cov: float = 0.5,
+    tmp_dir: Optional[Union[str, Path]] = None,
+    clean_sseqid_suffix: bool = True,
+    logger: Optional[logging.Logger] = None,
+) -> pl.DataFrame:
+    """Search protein domains across one or more mmseqs2 databases via `easy-search`.
 
-    This is a thin wrapper around the mmseqs CLI to centralize invocation.
+    Args:
+        query_faa: Path to the query protein FASTA (e.g. predicted ORFs).
+        database_paths: Mapping of database name -> database path.
+        output_dir: Directory to write per-database `<db_name>_mmseqs2_domains.tsv` outputs.
+        threads: Number of threads to use.
+        evalue: E-value threshold passed to `mmseqs easy-search -e`.
+        cov: Coverage threshold passed to `mmseqs easy-search -c`.
+        tmp_dir: Temp directory for mmseqs (default: `output_dir/tmp`).
+        clean_sseqid_suffix: Strip common MSA-derived suffixes (e.g. `.msa`) from `sseqid`.
+        logger: Optional logger.
+
+    Returns:
+        pl.DataFrame with one row per database: file, description, db, tool, params, command.
     """
-    positional = [
-        "search",
-        str(query_db),
-        str(target_db),
-        str(result_db),
-        str(tmp_dir),
-    ]
-    params = {
-        "threads": int(threads),
-        "sensitivity": int(sensitivity),  # TODO: check if this should be float?
-        "a": True,  # TODO: find out if this has a long form name so less chance of fudging the param prefix.
-    }
+    logger = get_logger(logger)
+    query_faa = Path(query_faa)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    tmp_dir = Path(tmp_dir) if tmp_dir else output_dir / "tmp"
 
+    if not query_faa.exists():
+        raise FileNotFoundError(f"Query file not found: {query_faa}")
+    if not database_paths:
+        raise ValueError("No database paths provided for mmseqs2 domain search")
+
+    mmseqs_columns = [
+        "qseqid",
+        "sseqid",
+        "pident",
+        "length",
+        "mismatch",
+        "gapopen",
+        "qstart",
+        "qend",
+        "sstart",
+        "send",
+        "evalue",
+        "bitscore",
+        "qlen",
+        "tlen",
+    ]
+    suffix_pattern = r"(?:\.faa\.msa\.Cons\.msa|\.msa\.Cons\.msa|\.Cons\.msa|\.faa\.msa|\.msa)$"
+
+    records = []
+    logger.info(f"Using {', '.join(database_paths.keys())} for domain search")
+    for db_name, db_path in database_paths.items():
+        logger.info(f"Searching {db_name} for domains")
+        output_file = output_dir / f"{db_name}_mmseqs2_domains.tsv"
+        mmseqs_easy_search(
+            query=query_faa,
+            target=db_path,
+            output=output_file,
+            tmp_dir=tmp_dir,
+            threads=threads,
+            evalue=evalue,
+            cov=cov,
+            logger=logger,
+        )
+        if clean_sseqid_suffix and output_file.exists() and output_file.stat().st_size > 0:
+            try:
+                cleaned = pl.read_csv(
+                    output_file,
+                    separator="\t",
+                    has_header=False,
+                    new_columns=mmseqs_columns,
+                ).with_columns(
+                    pl.col("sseqid")
+                    .str.replace_all(suffix_pattern, "", literal=False)
+                    .alias("sseqid")
+                )
+                cleaned.write_csv(output_file, separator="\t", include_header=False)
+            except pl.exceptions.NoDataError:
+                logger.debug(f"No data found in {output_file}, skipping suffix cleanup")
+        records.append(
+            {
+                "file": str(output_file),
+                "description": f"protein domains for {db_name}",
+                "db": db_name,
+                "tool": "mmseqs2",
+                "params": str({"evalue": evalue, "cov": cov}),
+                "command": f"ext. call mmseqs2: mmseqs easy-search {query_faa} {db_path} {output_file} {tmp_dir} -t {threads} -e {evalue} -c {cov}",
+            }
+        )
+        logger.info(f"Finished searching {db_name} for domains")
+    return pl.DataFrame(records)
+
+
+def diamond_domain_search(
+    query_faa: Union[str, Path],
+    database_paths: Dict[str, Union[str, Path]],
+    output_dir: Union[str, Path],
+    threads: int = 1,
+    evalue: float = 1e-5,
+    logger: Optional[logging.Logger] = None,
+) -> pl.DataFrame:
+    """Search protein sequences across one or more DIAMOND databases via `diamond blastp`.
+
+    Args:
+        query_faa: Path to the query protein FASTA (e.g. predicted ORFs).
+        database_paths: Mapping of database name -> database path.
+        output_dir: Directory to write per-database `<db_name>_diamond_domains.tsv` outputs.
+        threads: Number of threads to use.
+        evalue: E-value threshold passed to `diamond blastp --evalue`.
+        logger: Optional logger.
+
+    Returns:
+        pl.DataFrame with one row per database: file, description, db, tool, params, command.
+
+    Note:
+        This isn't a "domain" search in the "profile" sense of the term, rather we use representative sequences (e.g. from uniref50) as a proxy for domain detection.
+    """
+    logger = get_logger(logger)
+    query_faa = Path(query_faa)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if not query_faa.exists():
+        raise FileNotFoundError(f"Query file not found: {query_faa}")
+    if not database_paths:
+        raise ValueError("No database paths provided for diamond domain search")
+
+    records = []
+    logger.info(f"Using {', '.join(database_paths.keys())} for domain search")
+    for db_name, db_path in database_paths.items():
+        logger.info(f"Searching {db_name} for domains")
+        output_file = output_dir / f"{db_name}_diamond_domains.tsv"
+        run_command_comp(
+            "diamond",
+            positional_args=["blastp"],
+            positional_args_location="start",
+            params={
+                "query": str(query_faa),
+                "db": str(db_path),
+                "out": str(output_file),
+                "threads": threads,
+                "outfmt": "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen",
+                "evalue": evalue,
+            },
+            logger=logger,
+            output_file=str(output_file),
+        )
+        records.append(
+            {
+                "file": str(output_file),
+                "description": f"protein domains for {db_name}",
+                "db": db_name,
+                "tool": "diamond",
+                "params": str({"evalue": evalue}),
+                "command": f"ext. call diamond: diamond blastp -d {db_path} -q {query_faa} -o {output_file} -t {threads} -e {evalue}",
+            }
+        )
+        logger.info(f"Finished searching {db_name} for domains")
+    return pl.DataFrame(records)
+
+def mmseqs_easy_search(
+    query: Union[str, Path],
+    target: Union[str, Path],
+    output: Union[str, Path],
+    tmp_dir: Union[str, Path],
+    threads: int = 1,
+    sensitivity: Optional[float] = None,
+    evalue: Optional[float] = None,
+    cov: Optional[float] = None,
+    format_mode: int = 2,
+    format_output: Optional[Union[str, List[str]]] = None,
+    extra_opts: str = "",
+    logger: Optional[logging.Logger] = None,
+):
+    """Run `mmseqs easy-search` and return the output file path.
+
+    Thin wrapper around `mmseqs easy-search`, which (unlike `mmseqs search`) accepts
+    FASTA files directly for `query`/`target` (building temporary DBs internally), so
+    it does not require a separate `createdb`/`convertalis` step.
+
+    Note: this is a recommended, config-free wrapper shape for new mmseqs search
+    call-sites in this project; see also `mmseqs_convertalis` for the lower-level
+    `search` + `convertalis` two-step flow used when pre-built DBs and alignment DBs
+    are needed downstream. There might be some difference between easy-search and search wrt to identity reporting.
+    """
+    positional = ["easy-search", str(query), str(target), str(output), str(tmp_dir)]
     if extra_opts:
         # split extra options naively on whitespace
         positional.extend(str(extra_opts).split())
+
+    params = {"threads": int(threads), "format-mode": int(format_mode)}
+    if sensitivity is not None:
+        params["s"] = sensitivity
+    if evalue is not None:
+        params["e"] = evalue
+    if cov is not None:
+        params["c"] = cov
+    if format_output:
+        params["format-output"] = (
+            ",".join(format_output)
+            if isinstance(format_output, list)
+            else str(format_output)
+        )
 
     run_command_comp(
         "mmseqs",
         positional_args=positional,
         params=params,
         positional_args_location="start",
-        return_final_cmd=True,
+        logger=logger,
         check_status=True,
-        check_output=False,
+        check_output=True,
+        output_file=str(output),
     )
-    return result_db
+    return output
 
 
 def mmseqs_convertalis(
