@@ -1,7 +1,9 @@
 import datetime
+import gzip
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -27,7 +29,12 @@ from rolypoly.utils.bio.sequences import (
 # import tqdm
 from rolypoly.utils.logging.citation_reminder import remind_citations
 from rolypoly.utils.logging.loggit import get_version_info, setup_logging
-from rolypoly.utils.various import fetch_and_extract, read_fwf, run_command_comp
+from rolypoly.utils.various import (
+    fetch_and_extract,
+    read_fwf,
+    run_command_comp,
+    simple_fetch,
+)
 
 console = Console()
 global tools
@@ -36,8 +43,28 @@ tools = []
 ### DEBUG ARGS (for manually building, not entering via CLI):
 threads = 6
 log_file = "rolypoly_build_data.log"
-data_dir = os.environ.get("RP_DIR") + "data"
+# data_dir = os.environ.get("RP_DIR") + "data"
+data_dir = "/home/neri/Documents/GitHub/rolypoly/data"
 log_level = "debug"
+
+ICTV_RANKS = [
+    "realm",
+    "subrealm",
+    "kingdom",
+    "subkingdom",
+    "phylum",
+    "subphylum",
+    "class",
+    "subclass",
+    "order",
+    "suborder",
+    "family",
+    "subfamily",
+    "genus",
+    "subgenus",
+    "species",
+]
+
 
 @command()
 @option("--data-dir", required=True, help="Path to the data directory")
@@ -56,7 +83,7 @@ def build_data(data_dir, threads, log_file, log_level):
     4. Download Rfam data.
     """
 
-    global profile_dir  #
+    global profile_dir  
     global rrna_dir
     global hmmdb_dir
     global mmseqs_dbs
@@ -126,6 +153,9 @@ def build_data(data_dir, threads, log_file, log_level):
 
     # NCBI ribovirus refseq
     prepare_ncbi_ribovirus(data_dir, threads, logger)
+
+    # NCBI/NR viral proteins with ICTV taxonomy (mmseqs taxonomy database)
+    prepare_ncbi_ribovirus_protein_taxdb(data_dir, threads, logger)
 
     # pfam RdRps and RTs
     prepare_pfam_rdrps_rt(data_dir, threads, logger)
@@ -1499,6 +1529,389 @@ def prepare_ncbi_ribovirus(data_dir, threads, logger: logging.Logger):
         logger.warning("Some intermediate files not found for cleanup")
 
     logger.info(f"NCBI ribovirus preparation completed in {ncbi_ribovirus_dir}")
+
+
+def read_names_dmp(names_dmp_path) -> pl.DataFrame:
+    """Parse a taxdump names.dmp file into a (taxid, name, name_class) polars DataFrame."""
+    rows = []
+    with open(names_dmp_path) as fh:
+        for line in fh:
+            fields = [f.strip() for f in line.rstrip("\n").split("\t|")]
+            rows.append(
+                {"taxid": int(fields[0]), "name": fields[1], "name_class": fields[3]}
+            )
+    names_df = pl.DataFrame(rows)
+    if "scientific name" in names_df["name_class"].unique().to_list():
+        names_df = names_df.filter(pl.col("name_class") == "scientific name")
+    return names_df.select("taxid", "name").unique(subset=["name"], keep="first")
+
+
+def prepare_ncbi_ribovirus_protein_taxdb(data_dir, threads, logger: logging.Logger):
+    """Build an ICTV-taxonomy-aware MMseqs2 protein database of NR viral proteins.
+
+    Maps NCBI NR viral proteins to ICTV taxonomy (Realm..Species) and builds an
+    MMseqs2 protein database annotated with taxonomy, so it can later be used
+    with `mmseqs taxonomy`/`mmseqs easy-taxonomy` (e.g. a future rolypoly
+    `quick-taxonomy` command). This is the protein-level counterpart of
+    `prepare_ncbi_ribovirus` (nucleotide RefSeq genomes) - the two are separate
+    databases.
+
+    Args:
+        data_dir (str): Base directory for data storage
+        threads (int): Number of CPU threads to use
+        logger: Logger object for recording progress and errors
+
+    Note:
+        Adapted (in a more "pythonic"/polars-based way, and using NR proteins
+        instead of a RefSeq+GenBank merge) from
+        https://github.com/apcamargo/ictv-mmseqs2-protein-database.
+        Requires `taxonkit`, `mmseqs`, and BLAST+ (`update_blastdb.pl` and
+        `blastdbcmd`) on PATH. NCBI stopped publishing a plain NR FASTA
+        (nr.gz) in April 2024, so the formatted NR BLAST database is
+        downloaded instead and `blastdbcmd -entry_batch` is used to pull out
+        only the viral protein accessions we need, without ever writing the
+        full NR FASTA to disk. This step is still slow and disk/bandwidth
+        heavy (the formatted NR db is >100GB).
+    """
+    logger.info("Preparing NCBI/NR viral protein MMseqs2 taxonomy database")
+
+    ncbi_ribovirus_dir = os.path.join(
+        data_dir, "reference_seqs", "ncbi_ribovirus"
+    )
+    work_dir = os.path.join(ncbi_ribovirus_dir, "protein_taxdb")
+    mmdb_dir = os.path.join(ncbi_ribovirus_dir, "mmseqs")
+    os.makedirs(work_dir, exist_ok=True)
+    os.makedirs(mmdb_dir, exist_ok=True)
+
+    #  Step 1: ICTV VMR taxonomy lineages ---
+    ictv_xlsx = os.path.join(work_dir, "ictv_vmr.xlsx")
+    ictv_taxonomy_tsv = os.path.join(work_dir, "ictv_taxonomy.tsv")
+    ictv_names_txt = os.path.join(work_dir, "ictv_names.txt")
+
+    logger.info("Downloading ICTV VMR taxonomy")
+    simple_fetch(
+                "https://ictv.global/vmr/current", ictv_xlsx, logger=logger
+            )
+    ictv_df = pl.read_excel(ictv_xlsx, sheet_id=2)
+    lineage_df = (
+            ictv_df.select([c.capitalize() for c in ICTV_RANKS])
+            .with_columns(pl.all().cast(pl.Utf8).str.strip_chars())
+            .unique()
+            .rename({c.capitalize(): c for c in ICTV_RANKS})
+    )
+    lineage_df.write_csv(ictv_taxonomy_tsv, separator="\t", include_header=True)
+
+    ictv_names = (
+            lineage_df.unpivot(variable_name="rank", value_name="name")
+            .select("name")
+            .filter(pl.col("name").is_not_null() & (pl.col("name") != ""))
+            .unique()
+    )
+    ictv_names.write_csv(ictv_names_txt, include_header=False)
+
+    #  Step 2: ICTV taxdump (taxonkit >=0.20 already emits sequential taxids) ---
+    ictv_taxdump_dir = os.path.join(work_dir, "ictv_taxdump")
+    logger.info("Building ICTV taxdump with taxonkit")
+    run_command_comp(
+        base_cmd="taxonkit create-taxdump",
+        positional_args_location="end",
+        positional_args=[ictv_taxonomy_tsv],
+        params={"out-dir": ictv_taxdump_dir, "force": True},
+        logger=logger,
+    )
+
+    #  Step 3: NCBI taxdump ---
+    ncbi_taxdump_dir = os.path.join(work_dir, "ncbi_taxdump")
+    logger.info("Downloading NCBI taxdump")
+    fetch_and_extract(
+        url="https://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz",
+        fetched_to=os.path.join(work_dir, "taxdump.tar.gz"),
+        extract_to=ncbi_taxdump_dir,
+        logger=logger,
+    )
+    
+    #  Step 4: all NCBI taxids under Viruses (10239) ---
+    viral_taxids_txt = os.path.join(work_dir, "viral_taxids.txt")
+    logger.info("Listing NCBI taxids under Viruses (taxid 10239)")
+    subprocess.run(
+        f"taxonkit list --ids 10239 --data-dir {ncbi_taxdump_dir} --indent '' > {viral_taxids_txt}",
+        shell=True,
+        check=True,
+    )
+    viral_taxids = (
+        pl.read_csv(
+            viral_taxids_txt, has_header=False, new_columns=["taxid"]
+        )
+        .filter(pl.col("taxid").cast(pl.Utf8).str.contains(r"^\d+$"))
+        .select(pl.col("taxid").cast(pl.Int64))
+        .to_series()
+        .to_list()
+    )
+    logger.info(f"Found {len(viral_taxids)} NCBI taxids under Viruses")
+
+    #  Step 5: filter prot.accession2taxid.FULL to virus proteins ---
+    acc2taxid_gz = os.path.join(work_dir, "prot.accession2taxid.FULL.gz")
+    if not os.path.exists(acc2taxid_gz): # large file...
+        logger.info("Downloading NCBI prot.accession2taxid.FULL")
+        simple_fetch(
+            "https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/accession2taxid/prot.accession2taxid.FULL.gz",
+            acc2taxid_gz,
+            logger=logger,
+        )
+
+    viral_acc2taxid_tsv = os.path.join(work_dir, "accession2taxid_viral.tsv")
+    if not os.path.exists(viral_acc2taxid_tsv): # also slow
+        logger.info("Filtering accession2taxid to virus proteins")
+        # prot.accession2taxid.FULL has billions of rows (exceeds polars' 32-bit
+        # row-index limit), so stream it line-by-line with a set lookup instead.
+        viral_taxids_set = {str(t) for t in viral_taxids}
+        with gzip.open(acc2taxid_gz, 'rt') as fin, open(viral_acc2taxid_tsv, 'w') as fout:
+            next(fin)  # skip header
+            fout.write('accession\ttaxid\n')
+            for line in fin:
+                accession, taxid = line.rstrip('\n').split('\t', 1)
+                if taxid not in viral_taxids_set:
+                    continue
+                fout.write(f'{accession}\t{taxid}\n')
+
+    #  Step 6: map NCBI taxids -> ICTV taxids via rank-matched lineage ---
+    ictv_acc2taxid_tsv = os.path.join(work_dir, "accession2taxid_ictv.tsv")
+    if not os.path.exists(ictv_acc2taxid_tsv):
+        viral_acc2taxid = pl.read_csv(viral_acc2taxid_tsv, separator="\t")
+        ncbi_viral_taxids = (
+            viral_acc2taxid.select("taxid").unique().to_series().to_list()
+        )
+
+        ncbi_taxids_txt = os.path.join(work_dir, "ncbi_viral_taxids_seen.txt")
+        with open(ncbi_taxids_txt, "w") as fh:
+            fh.write("\n".join(str(t) for t in ncbi_viral_taxids))
+
+        lineage_out_tsv = os.path.join(work_dir, "ncbi_lineage_ranked.tsv")
+        logger.info(
+            f"Fetching ranked lineages for {len(ncbi_viral_taxids)} NCBI taxids"
+        )
+        subprocess.run(
+            f"taxonkit lineage --data-dir {ncbi_taxdump_dir} -R -t "
+            f"{ncbi_taxids_txt} > {lineage_out_tsv}",
+            shell=True,
+            check=True,
+        )
+
+        lineage_raw = pl.read_csv(
+            lineage_out_tsv,
+            separator="\t",
+            has_header=False,
+            new_columns=["taxid", "name_lineage", "taxid_lineage", "rank_lineage"],
+        ).drop_nulls(subset=["name_lineage"])
+
+        # Explode the paired name/rank lineages in lock-step, then pivot to
+        # one column per ICTV-style rank (equivalent of the old awk/taxopy loop)
+        ranked_long = (
+            lineage_raw.with_columns(
+                pl.col("name_lineage").str.split(";").alias("name"),
+                pl.col("rank_lineage").str.split(";").alias("rank"),
+            )
+            .explode(["name", "rank"])
+            .filter(pl.col("rank").is_in(ICTV_RANKS))
+        )
+        wide_lineage = ranked_long.pivot(
+            index="taxid", on="rank", values="name", aggregate_function="first"
+        )
+        for rank in ICTV_RANKS:
+            if rank not in wide_lineage.columns:
+                wide_lineage = wide_lineage.with_columns(
+                    pl.lit(None, dtype=pl.Utf8).alias(rank)
+                )
+
+        # Match against ICTV names, most specific rank (species) first
+        ictv_name_to_taxid = read_names_dmp(
+            os.path.join(ictv_taxdump_dir, "names.dmp")
+        )
+        candidate_cols = []
+        for rank in reversed(ICTV_RANKS):  # species -> realm
+            wide_lineage = wide_lineage.join(
+                ictv_name_to_taxid.rename(
+                    {"name": rank, "taxid": f"{rank}_ictv_taxid"}
+                ),
+                on=rank,
+                how="left",
+            )
+            candidate_cols.append(f"{rank}_ictv_taxid")
+        wide_lineage = wide_lineage.with_columns(
+            pl.coalesce(candidate_cols).alias("ictv_taxid")
+        ).drop_nulls(subset=["ictv_taxid"])
+
+        ncbi_to_ictv = wide_lineage.select(
+            pl.col("taxid").cast(pl.Int64), pl.col("ictv_taxid")
+        )
+        logger.info(
+            f"Mapped {ncbi_to_ictv.height}/{len(ncbi_viral_taxids)} NCBI viral "
+            "taxids to an ICTV taxid"
+        )
+
+        viral_acc2taxid.join(ncbi_to_ictv, on="taxid", how="inner").select(
+            "accession", "ictv_taxid"
+        ).write_csv(ictv_acc2taxid_tsv, separator="\t", include_header=False)
+
+    #  Step 7: fetch NCBI's formatted NR BLAST database and extract only the
+    # ICTV-mapped viral proteins from it. NCBI stopped publishing a plain NR
+    # FASTA (nr.gz) in April 2024; the supported replacement is downloading
+    # the pre-formatted BLAST database then using `blastdbcmd` to pull out the
+    # accessions we need, which also avoids ever materializing the full NR
+    # FASTA on disk. Still sucks because the formatted NR BLAST db is >100GB...
+    blastdb_dir = os.path.join(work_dir, "nr_blastdb")
+    os.makedirs(blastdb_dir, exist_ok=True)
+    nr_db_prefix = os.path.join(blastdb_dir, "nr")
+    if not os.path.exists(nr_db_prefix + ".pal") and not os.path.exists(
+        nr_db_prefix + ".00.psq"
+    ):
+        listing = requests.get("https://ftp.ncbi.nlm.nih.gov/blast/db/")
+        listing.raise_for_status()
+        remote_volumes = sorted(set(re.findall(r'href="(nr\.\d+\.tar\.gz)"', listing.text)))
+        if not remote_volumes:
+            raise RuntimeError(
+                "Could not find any nr.*.tar.gz volumes at the NCBI BLAST db listing"
+            )
+        # Skip volumes whose tar.gz is already on disk (already downloaded)
+        pending_downloads = [
+            v for v in remote_volumes if not os.path.exists(os.path.join(blastdb_dir, v))
+        ]
+
+        if pending_downloads:
+            urls_txt = os.path.join(blastdb_dir, "nr_volumes_to_fetch.txt") # There's probably a pythonic way to do this
+            with open(urls_txt, "w") as fh:
+                for volume in pending_downloads:
+                    fh.write(f"https://ftp.ncbi.nlm.nih.gov/blast/db/{volume}\n")
+
+            logger.info(
+                f"Downloading {len(pending_downloads)} NR BLAST db volumes via aria2 "
+                "(4 concurrent downloads, large, be patient)"
+            )
+            # TODO: consider some username / id for ettiquette / throttling, to respect NCBI's bandwidth...
+            run_command_comp(
+                "aria2c",
+                params={
+                    "input-file": urls_txt,
+                    "dir": blastdb_dir,
+                    "max-concurrent-downloads": "4",
+                    # one connection per file, else NCBI throttles with 503s
+                    "max-connection-per-server": "1",
+                    "split": "1",
+                    "retry-wait": "10",
+                    "max-tries": "0",
+                    "continue": True,
+                    "summary-interval": "0",
+                    "console-log-level": "warn",
+                },
+                prefix_style="double",
+            )
+
+        # Extract any volumes not yet decompressed (identified by their .psq file),
+        # including ones downloaded in a previous run.
+        pending_extractions = [
+            v
+            for v in remote_volumes
+            if not os.path.exists(
+                os.path.join(blastdb_dir, v.replace(".tar.gz", ".psq"))
+            )
+        ]
+        for volume in pending_extractions:
+            archive_path = os.path.join(blastdb_dir, volume)
+            logger.info(f"Extracting {volume}")
+            with tarfile.open(archive_path) as tar:
+                tar.extractall(blastdb_dir, filter="data")
+            # os.remove(archive_path)
+
+    ictv_proteins_faa = os.path.join(work_dir, "ictv_nr_viral.faa")
+    accessions = (
+        pl.read_csv(
+            ictv_acc2taxid_tsv,
+            separator="\t",
+            has_header=False,
+            new_columns=["accession", "ictv_taxid"],
+        )
+        .select("accession")
+        .to_series()
+        .to_list()
+    )
+    accessions_txt = os.path.join(work_dir, "ictv_viral_accessions.txt")
+    with open(accessions_txt, "w") as fh:
+        fh.write("\n".join(accessions))
+
+    logger.info(
+        f"Extracting {len(accessions)} viral protein sequences from the NR BLAST database"
+    )
+    run_command_comp(
+        base_cmd="blastdbcmd",
+        params={
+            "db": nr_db_prefix,
+            "entry_batch": accessions_txt,
+            "out": ictv_proteins_faa,
+        },
+        prefix_style="single",
+        output_file=ictv_proteins_faa,
+        logger=logger,
+        return_final_cmd=True,
+    )
+
+
+
+# blastdbcmd -db ./nr_blastdb/nr -entry all -outfmt %f | bgzip -@ 8 -o /run/media/neri/ssd2/ncbi_nr/nr.fasta.bgz --index
+    # Some accessions in accession2taxid_ictv.tsv may be missing from NR - keep
+    # only the taxonomy mapping entries that actually made it into the FASTA
+    from rolypoly.utils.bio.polars_fastx import from_fastx_lazy
+    final_acc2taxid_tsv = os.path.join(work_dir, "accession2taxid_ictv_nr.tsv")
+    if not os.path.exists(final_acc2taxid_tsv):
+        kept_accessions = (
+            from_fastx_lazy(ictv_proteins_faa)
+            .select(pl.col("header").str.split(" ").list.first().alias("accession"))
+            .sink_parquet(os.path.join(work_dir, "ictv_nr_viral_accessions.parquet")))
+        #     .collect()
+        #     .unique()
+        #     .to_series()
+        #     .to_list().
+        # )
+        pl.read_csv(
+            ictv_acc2taxid_tsv,
+            separator="\t",
+            has_header=False,
+            new_columns=["accession", "ictv_taxid"],
+        ).filter(pl.col("accession").is_in(kept_accessions)).write_csv(
+            final_acc2taxid_tsv, separator="\t", include_header=False
+        )
+
+    #  Step 8: build the MMseqs2 protein database with taxonomy ---
+    protein_taxdb_path = os.path.join(mmdb_dir, "ncbi_ribovirus_protein_taxdb")
+    logger.info("Creating MMseqs2 protein database with ICTV taxonomy")
+    run_command_comp(
+        base_cmd="mmseqs createdb",
+        positional_args_location="start",
+        positional_args=[ictv_proteins_faa, protein_taxdb_path],
+        params={"dbtype": "1"},
+        logger=logger,
+    )
+    run_command_comp(
+        base_cmd="mmseqs createtaxdb",
+        positional_args_location="start",
+        positional_args=[protein_taxdb_path, os.path.join(work_dir, "tmp")],
+        params={
+            "ncbi-tax-dump": ictv_taxdump_dir,
+            "tax-mapping-file": final_acc2taxid_tsv,
+        },
+        logger=logger,
+    )
+    shutil.rmtree(os.path.join(work_dir, "tmp"), ignore_errors=True)
+
+    # Clean up the largest single-use intermediate download (the formatted NR
+    # BLAST db in blastdb_dir is left in place since it's reusable across runs)
+    try:
+        os.remove(acc2taxid_gz)
+    except FileNotFoundError:
+        pass
+
+    logger.info(
+        f"NCBI/NR viral protein taxonomy database created at {protein_taxdb_path}"
+    )
 
 
 def prepare_rvmt_motifs(data_dir, threads, logger):
