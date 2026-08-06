@@ -107,6 +107,7 @@ nav:
       - "virus-mapping": commands/virus_mapping.md
       - "marker-search": commands/marker_search.md
       - "rdrp-motif-search": commands/rdrp_motif_search.md
+      - "mmtax": commands/mmtax.md
     - Annotation:
       - "annotate": commands/annotate.md
       - "annotate-rna": commands/annotate_rna.md

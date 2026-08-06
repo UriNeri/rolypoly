@@ -35,6 +35,7 @@ class RVirusSearchConfig(BaseConfig):
         self.aa_method = kwargs.get("aa_method", "six_frame")
         self.resolve_mode = kwargs.get("resolve_mode") or "simple"
         self.min_overlap_positions = kwargs.get("min_overlap_positions") or 10
+        self.repeat_filter = kwargs.get("repeat_filter", True)
         self.name = kwargs.get("name") or None
         self.write_matched_regions = kwargs.get("write_matched_regions", True)
         self.matched_regions_output = (
@@ -228,6 +229,12 @@ console = Console(width=150)
     help="Minimal number of overlapping positions between two intersecting ranges before they are considered as overlapping (used in some resolve_mode(s)",
 )
 @option(
+    "--repeat-filter/--no-repeat-filter",
+    default=True,
+    show_default=True,
+    help="Filter hits where the same profile region repeatedly matches distinct parts of one query.",
+)
+@option(
     "-ie",
     "--inc-evalue",
     default=0.001,
@@ -355,6 +362,7 @@ def marker_search(
     output,
     resolve_mode,
     min_overlap_positions,
+    repeat_filter,
     inc_evalue,
     score,
     aa_method,
@@ -451,6 +459,7 @@ def marker_search(
             keep_tmp=keep_tmp,
             resolve_mode=resolve_mode,
             min_overlap_positions=min_overlap_positions,
+            repeat_filter=repeat_filter,
             memory=memory,
             write_matched_regions=write_matched_regions,
             matched_regions_output=matched_regions_output,
@@ -624,6 +633,28 @@ def marker_search(
         config.logger.info("No hits found in any DB")
         config.logger.info("skipping resolution of overlaps")
         config.resolve_mode = "none"
+
+    if config.repeat_filter and not stack_df.is_empty():
+        from rolypoly.utils.bio.interval_ops import filter_repeated_profile_regions
+
+        raw_hit_count = stack_df.height
+        stack_df, repeat_filtered_df = filter_repeated_profile_regions(stack_df)
+        if repeat_filtered_df.is_empty():
+            config.logger.info("Repeat filter found no repeated profile-region hits")
+        else:
+            repeat_filtered_file = Path(output) / "marker_search_repeat_filtered.tsv"
+            repeat_filtered_df.write_csv(repeat_filtered_file, separator="\t")
+            config.logger.info(
+                "Repeat filter removed %d/%d hits; audit table written to %s",
+                repeat_filtered_df.height,
+                raw_hit_count,
+                repeat_filtered_file,
+            )
+            if stack_df.is_empty():
+                config.logger.info("No hits remain after repeat filtering; skipping overlap resolution")
+                config.resolve_mode = "none"
+    elif not config.repeat_filter:
+        config.logger.info("Repeat filter disabled by --no-repeat-filter")
 
     results_file = Path(output) / "marker_search_results.tsv"
 

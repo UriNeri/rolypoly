@@ -115,7 +115,7 @@ Legend:
 - ✅ [`fastx-calc`](https://urineri.github.io/rolypoly/commands/misc) — Calculate per-sequence metrics (length, GC content, hash, ...)
 - ✅ [`fastx-stats`](https://urineri.github.io/rolypoly/commands/misc) — Calculate (-->aggregate) statistics for sequences (min, max, mean, median, ...) (input is file/s)
 - ✅ [`rename-seqs`](https://urineri.github.io/rolypoly/commands/misc) — Rename sequences (add a prefix, suffix, hash, running number, etc.)
-- 🤔 [`quick-taxonomy`](https://urineri.github.io/rolypoly/commands/misc) — Quick taxonomy assignment. Candidate workflows are [github.com/UriNeri/ictv-mmseqs2-protein-database](https://github.com/UriNeri/ictv-mmseqs2-protein-database) and [github.com/apcamargo/ictv-mmseqs2-protein-database](https://github.com/apcamargo/ictv-mmseqs2-protein-database) 
+- 🧪 [`mmtax`](https://urineri.github.io/rolypoly/commands/mmtax) — Assign ICTV taxonomy to nucleotide or protein virus sequences with MMseqs2 or DIAMOND.
 - 🤔 support for [genotate](https://github.com/deprekate/genotate) for gene prediction.
 - 🤔 Genome refinement / strain de-entalgement / variant/haplotype calling?
 - 🤔 Virus feature prediction (+/-ssRNA/dsRNA, circular/linear, mono/poly-segmented, capsid type, etc.)
@@ -268,4 +268,3 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
-

@@ -56,6 +56,7 @@ rolypoly marker-search [OPTIONS]
 - `-o`, `--output`: Path to output directory. Note - if multiple DBs are used and the resolve-mode is `none`, multiple outputs are made (DB name appended as suffix). (type: `TEXT`; default: `/clusterfs/jgi/scratch/science/metagen/neri/code/rolypoly/marker_search_out`)
 - `-rm`, `--resolve-mode`: How to deal with regions in your query that match multiple profiles? - merge: all overlapping hits are merged into one range - one_per_range: one hit per range (ali_from-ali_to) is reported - one_per_query: one hit per query sequence is reported - split: each overlapping domain is split into a new row - drop_contained: hits that are contained within (i.e. enveloped by) other hits are dropped. - none: no resolution of overlapping hits is performed. NOTE - EXPECT A POTENTIALLY LARGE OUTPUT - simple: heuristic/personal observation based - chains drop_contained output with split mode. (type: `CHOICE`; default: `simple`)
 - `-mo`, `--min-overlap-positions`: Minimal number of overlapping positions between two intersecting ranges before they are considered as overlapping (used in some resolve_mode(s) (type: `INTEGER`; default: `10`)
+- `--repeat-filter`, `--no-repeat-filter`: Filter hits where the same profile region repeatedly matches distinct parts of one query. Rejected hits are retained in `marker_search_repeat_filtered.tsv` for auditing. (type: `BOOLEAN`; default: `True`)
 - `-ie`, `--inc-evalue`: Maximal e-value for including a domain match in the results (type: `FLOAT`; default: `0.05`)
 - `-s`, `--score`: Minimal score for including a domain match in the results (type: `INTEGER`; default: `20`)
 - `-am`, `--aa-method`: Method to translate nucleotide sequences into amino acids. Options: six frame translation using seqkit, pyrodigal-rv uses pyrodigal-meta with additional genetic codes, bbmap callgenes.sh (quick but less accurate for metagenomic data) (type: `CHOICE`; default: `six_frame`)
@@ -68,7 +69,6 @@ rolypoly marker-search [OPTIONS]
 - `-mro`, `--matched-regions-output`: Output FASTA path for matched regions (default: <output>/marker_search_matched_regions.faa) (type: `TEXT`)
 - `--include-aligned-region`, `--no-include-aligned-region`: Include aligned query region sequence in marker_search_results.tsv (enabled by default) (type: `BOOLEAN`; default: `True`)
 - `--include-alignment-string`, `--no-include-alignment-string`: Include alignment identity string in marker_search_results.tsv (disabled by default) (type: `BOOLEAN`; default: `False`)
-
 
 
 
