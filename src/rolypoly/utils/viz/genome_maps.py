@@ -31,7 +31,6 @@ generic column mapping via the *Spec dataclasses.
 
 from __future__ import annotations
 
-import glob
 import json
 import math
 import os
@@ -1397,11 +1396,146 @@ def table_to_tab(data, label, tab_id=None, columns=None, max_rows=5000):
     return {"id": tab_id, "label": label, "columns": columns, "rows": rows}
 
 
+def taxonomy_to_tab(data, label="Taxonomy", tab_id="taxonomy", max_rows=5000):
+    """Build a taxonomy table tab with a family-composition chart payload."""
+    df = data if isinstance(data, pl.DataFrame) else read_hit_table(data)
+    payload = table_to_tab(df, label, tab_id=tab_id, max_rows=max_rows)
+    composition_column = next(
+        (column for column in ("family", "taxon_name", "realm") if column in df.columns),
+        None,
+    )
+    if composition_column:
+        composition = (
+            df.with_columns(
+                pl.col(composition_column).cast(pl.String).fill_null("Unclassified")
+                .replace("", "Unclassified")
+            )
+            .group_by(composition_column)
+            .len(name="count")
+            .sort("count", descending=True)
+        )
+        payload["composition_label"] = composition_column
+        payload["composition"] = [
+            {"label": str(name), "count": int(count)}
+            for name, count in composition.iter_rows()
+        ]
+    return payload
+
+
+def load_original_contig_ids(path):
+    """Return a ``new_id -> original assembler/input ID`` mapping."""
+    mapping = read_hit_table(path)
+    if not {"new_id", "old_id"}.issubset(mapping.columns):
+        return {}
+    original_ids: dict[str, list[str]] = {}
+    for new_id, old_id in mapping.select("new_id", "old_id").iter_rows():
+        new_key, old_value = str(new_id), str(old_id)
+        if old_value not in original_ids.setdefault(new_key, []):
+            original_ids[new_key].append(old_value)
+    return {
+        key: "; ".join(values)
+        for key, values in original_ids.items()
+        if any(value != key for value in values)
+    }
+
+
+def find_report_log(output_dir):
+    """Find and read the primary pipeline log for embedding in a report."""
+    output_dir = Path(output_dir)
+    candidates = [output_dir / "rolypoly_pipeline.log"]
+    candidates.extend(sorted(output_dir.glob("*_pipeline.log")))
+    candidates.extend(sorted(output_dir.glob("*.log")))
+    candidates.extend(sorted(output_dir.glob("**/*.log")))
+    for path in candidates:
+        if path.is_file():
+            try:
+                return path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+    return None
+
+
+def build_report_file_catalog(
+    output_dir,
+    report_output,
+    *,
+    marker_table=None,
+    rna_table=None,
+    nucleic_tables=None,
+    motif_tables=None,
+    taxonomy_path=None,
+):
+    """Build relative links to original tables and external FASTA files.
+
+    Sequences remain outside the HTML. Browsers can download these files
+    directly, or load a FASTA on demand for individual sequence display/export.
+    """
+    output_dir, report_output = Path(output_dir), Path(report_output)
+    report_parent = report_output.parent.resolve()
+
+    def entry(path, label, kind):
+        if path is None or not Path(path).is_file():
+            return None
+        relative = os.path.relpath(Path(path).resolve(), report_parent)
+        return {"label": label, "kind": kind, "path": Path(relative).as_posix()}
+
+    tables = []
+    table_specs = [
+        (marker_table, "Original protein-hit table", "protein"),
+        (rna_table, "Original RNA table", "rna"),
+        (taxonomy_path, "Original taxonomy table", "taxonomy"),
+    ]
+    for nucleic_table in nucleic_tables or []:
+        if isinstance(nucleic_table, tuple):
+            source_label, path = nucleic_table
+        else:
+            path = nucleic_table
+            source_label = Path(path).stem
+        table_specs.append(
+            (path, f"Original nucleic-hit table — {source_label}", "nucleic")
+        )
+    table_specs.extend(
+        (path, f"Original RdRp-motif table — {Path(path).stem}", "motif")
+        for path in (motif_tables or [])
+    )
+    seen = set()
+    for path, label, kind in table_specs:
+        item = entry(path, label, kind)
+        if item and item["path"] not in seen:
+            seen.add(item["path"])
+            tables.append(item)
+
+    fasta_candidates = [
+        ("all_matched_contigs.fasta", "Matched contigs", "contigs"),
+        ("predicted_orfs.faa", "Predicted ORFs", "orfs"),
+        ("marker_search_matched_regions.faa", "Marker-matched amino-acid regions", "regions"),
+        ("marker_search_matched_input_seqs.fna", "Marker-matched nucleotide inputs", "contigs"),
+        ("marker_search_matched_input_seqs.faa", "Marker-matched protein inputs", "orfs"),
+    ]
+    fastas = []
+    seen.clear()
+    for filename, label, kind in fasta_candidates:
+        for path in sorted(output_dir.glob(f"**/{filename}")):
+            item = entry(path, label, kind)
+            if item and item["path"] not in seen:
+                seen.add(item["path"])
+                fastas.append(item)
+    if not any(item["kind"] == "contigs" for item in fastas):
+        for filename in ("length_filtered.fasta", "clustered_assembly.fasta", "final_assembly.fasta"):
+            path = next(iter(sorted(output_dir.glob(f"**/{filename}"))), None)
+            item = entry(path, f"Contigs — {filename}", "contigs")
+            if item:
+                fastas.append(item)
+                break
+    return {"tables": tables, "fastas": fastas}
+
+
 # RENDER
 def render_html(contigs, palette=None, title="RolyPoly — Genome / marker maps",
                 subtitle=None, criteria=tuple(BEST_CRITERIA),
                 initial_mode="all", initial_criterion=None, initial_tab="table",
-                nucleic=None, run_stats=None, extra_tabs=None):
+                nucleic=None, run_stats=None, extra_tabs=None,
+                command_line=None, log_text=None, source_files=None):
     """Return a full, standalone HTML document string for the given contig models
     and optional nucleic-hits / run-stats / extra-tab payloads."""
     all_sources = sorted({s for c in contigs for s in c.get("sources", [])})
@@ -1438,6 +1572,9 @@ def render_html(contigs, palette=None, title="RolyPoly — Genome / marker maps"
         "nucleic": nucleic_flat,
         "stats": run_stats or None,
         "extra_tabs": extra_tabs or [],
+        "command_line": command_line or None,
+        "log_text": log_text or None,
+        "source_files": source_files or {"tables": [], "fastas": []},
     }
     data_json = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
     return HTML_TEMPLATE.replace("/*__DATA__*/", data_json)
@@ -1450,7 +1587,9 @@ def write_genome_maps(data, output, spec=None, palette=None,
                       rna=None, rna_spec=None, rna_bins=150,
                       nucleic=None, nucleic_spec=None, motifs=None, motif_spec=None,
                       run_stats=None, extra_tabs=None,
-                      initial_mode="all", initial_criterion=None, initial_tab="table"):
+                      initial_mode="all", initial_criterion=None, initial_tab="table",
+                      original_ids=None, command_line=None, log_text=None,
+                      source_files=None):
     """Read a protein table (+ optional annotate-rna, nucleic-search, rdrp-motif
     tables, a run-stats dict, and extra tabs) and write a standalone interactive
     HTML report. Returns Path."""
@@ -1469,10 +1608,15 @@ def write_genome_maps(data, output, spec=None, palette=None,
         contigs = attach_nucleic(contigs, nucleic_map)
     if motifs is not None:
         contigs = attach_motifs(contigs, build_motifs_by_contig(motifs, motif_spec))
+    if original_ids:
+        for contig in contigs:
+            contig["raw_id"] = original_ids.get(contig["contig"])
     contigs.sort(key=lambda c: -c["best_score"])
     html = render_html(contigs, palette, title=title, initial_mode=initial_mode,
                        initial_criterion=initial_criterion, initial_tab=initial_tab,
-                       nucleic=nucleic_map, run_stats=run_stats, extra_tabs=extra_tabs)
+                       nucleic=nucleic_map, run_stats=run_stats, extra_tabs=extra_tabs,
+                       command_line=command_line, log_text=log_text,
+                       source_files=source_files)
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(html, encoding="utf-8")
@@ -1515,7 +1659,8 @@ def find_annotation_tables(output_dir):
 def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome / marker maps",
                          marker_table=None, rna_table=None, nucleic_tables=None,
                          motif_tables=None, with_stats=True, rrna_mapping_path=None,
-                         extra_tabs=None, **kwargs):
+                         extra_tabs=None, command_line=None, log_file=None,
+                         contig_id_map=None, **kwargs):
     """Discover annotation / nucleic / motif / stats data under ``output_dir`` (by
     header / path) and write the HTML report. Shared by ``report``, the
     ``annotate*`` commands, and ``roll``. Explicit tables override discovery. Extra
@@ -1529,11 +1674,35 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
         nucleic_tables = find_nucleic_tables(output_dir) or None
     if motif_tables is None:
         motif_tables = find_motif_tables(output_dir) or None
+    extra_tabs = list(extra_tabs or [])
+    taxonomy_path = next(iter(sorted(output_dir.glob("**/mmtax.tsv"))), None)
+    if taxonomy_path is not None and not any(
+        tab.get("id") == "taxonomy" for tab in extra_tabs
+    ):
+        extra_tabs.append(taxonomy_to_tab(taxonomy_path))
     run_stats = load_run_stats(output_dir, rrna_mapping_path) if with_stats else None
+    id_map_path = Path(contig_id_map) if contig_id_map else next(
+        iter(sorted(output_dir.glob("**/contigs_id_map.tsv"))), None
+    )
+    original_ids = load_original_contig_ids(id_map_path) if id_map_path else None
+    if log_file:
+        log_path = Path(log_file)
+        log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else None
+    else:
+        log_text = find_report_log(output_dir)
     output = Path(output) if output else (output_dir / "genome_maps.html")
+    source_files = build_report_file_catalog(
+        output_dir,
+        output,
+        marker_table=marker_table,
+        rna_table=rna_table,
+        nucleic_tables=nucleic_tables,
+        motif_tables=motif_tables,
+        taxonomy_path=taxonomy_path,
+    )
 
     if marker_table is None:
-        if rna_table is None and not nucleic_tables:
+        if rna_table is None and not nucleic_tables and not extra_tabs:
             logger.warning("genome_maps: no annotation tables under %s; skipping report", output_dir)
             return None
         contigs = []
@@ -1544,10 +1713,15 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
             contigs = attach_nucleic(contigs, nucleic_map)
         if motif_tables:
             contigs = attach_motifs(contigs, build_motifs_by_contig(list(motif_tables)))
+        if original_ids:
+            for contig in contigs:
+                contig["raw_id"] = original_ids.get(contig["contig"])
         contigs.sort(key=lambda c: -c["length"])
         html = render_html(contigs, kwargs.get("palette"), title=title,
                            initial_tab=kwargs.get("initial_tab", "table"),
-                           nucleic=nucleic_map, run_stats=run_stats, extra_tabs=extra_tabs)
+                           nucleic=nucleic_map, run_stats=run_stats, extra_tabs=extra_tabs,
+                           command_line=command_line, log_text=log_text,
+                           source_files=source_files)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(html, encoding="utf-8")
         logger.info("genome_maps: wrote %s (no protein table; %d contigs)", output, len(contigs))
@@ -1558,7 +1732,9 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
         rna=str(rna_table) if rna_table else None,
         nucleic=nucleic_tables,
         motifs=list(motif_tables) if motif_tables else None,
-        run_stats=run_stats, extra_tabs=extra_tabs, **kwargs,
+        run_stats=run_stats, extra_tabs=extra_tabs, original_ids=original_ids,
+        command_line=command_line, log_text=log_text, source_files=source_files,
+        **kwargs,
     )
 
 
@@ -1574,6 +1750,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
  header{background:linear-gradient(120deg,#1f2a44,#33507e);color:#fff;padding:14px 26px}
  header h1{margin:0;font-size:19px;font-weight:700}
  header p{margin:5px 0 0;font-size:13px;color:#cdd6e6}
+ .commandline{display:none;padding:7px 26px;background:#e5e7eb;color:#6b7280;border-bottom:1px solid #d1d5db;font:11px ui-monospace,Consolas,monospace;white-space:nowrap;overflow-x:auto}
  .tabs{display:flex;gap:2px;background:#26324d;padding:0 20px;flex-wrap:wrap}
  .tabs button{background:transparent;border:0;color:#c8d3e6;font-size:14px;font-weight:600;padding:11px 16px;cursor:pointer;border-bottom:3px solid transparent}
  .tabs button.on{color:#fff;border-bottom-color:#7fa8e6}
@@ -1624,9 +1801,15 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
  .statcard .l{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.03em}
  #exp{margin-top:8px;width:100%;padding:8px;border:1px solid var(--line);background:#fff;border-radius:8px;cursor:pointer;font-size:13px}
  #exp:hover{background:#eef2f8}
+ #logtext{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.45 ui-monospace,Consolas,monospace;color:#374151}
+ .exportbar{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin:0 0 10px}
+ .btn,.exportbar button,.exportbar a{display:inline-block;padding:6px 10px;border:1px solid var(--line);border-radius:7px;background:#fff;color:#334155;text-decoration:none;cursor:pointer;font-size:12px}
+ .btn:hover,.exportbar button:hover,.exportbar a:hover{background:#eef2f8}
+ #seqtext{max-height:360px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.4 ui-monospace,Consolas,monospace;color:#26324d}
 </style></head>
 <body>
 <header><h1 id="hdrtitle"></h1><p id="hdrsub"></p></header>
+<div class="commandline" id="commandline"></div>
 <div class="tabs" id="tabs"></div>
 <div class="toolbar" id="toolbar">
   <div class="grp"><span>Show</span>
@@ -1651,7 +1834,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           <button data-view="hits">All hits</button>
         </div>
         <input type="text" id="tblSearch" placeholder="Filter…" style="margin-left:10px;flex:1">
+        <label class="chk" id="rawIdControl" style="margin-left:12px;display:none"><input type="checkbox" id="rawIdToggle"> Show raw contig ID</label>
       </div>
+      <div class="exportbar"><button onclick="exportCurrentTable()">Export shown TSV</button><span id="tableOriginalLinks"></span></div>
       <div id="bigtable"></div>
     </div>
   </div></div>
@@ -1671,12 +1856,20 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
         <button id="exp">⬇ Export current map as SVG</button>
       </div>
+      <div class="card"><h2>Sequence files</h2>
+        <div id="fastaLinks" class="exportbar"></div>
+        <button class="btn" id="loadFastas">Load referenced FASTA</button>
+        <button class="btn" onclick="if(contigs[idx])showContigSequence(contigs[idx].contig)">Show current contig</button>
+        <label class="btn" style="margin-left:4px">Choose FASTA…<input id="fastaPicker" type="file" accept=".fa,.faa,.fna,.fasta" multiple hidden></label>
+        <div class="legend-note" id="fastaStatus">Sequences are not embedded in this report.</div>
+      </div>
       <div class="card"><h2>Contig details</h2><div id="details"></div></div>
       <div class="card"><h2>Protein sources</h2><div id="dbtoggles"></div>
         <div class="legend-note">Click to show / hide a source.</div></div>
     </div>
     <div class="main">
       <div class="card"><div id="maptitle"></div><div id="mapsub"></div><div id="mapholder"></div></div>
+      <div class="card" id="seqcard" style="display:none"><div class="exportbar"><h2 id="seqtitle" style="margin:0;flex:1"></h2><button id="seqexport">Export FASTA</button><button onclick="document.getElementById('seqcard').style.display='none'">Close</button></div><pre id="seqtext"></pre></div>
       <div class="card"><h2>Hits in this contig</h2><div id="tablebox"></div></div>
     </div>
   </div>
@@ -1685,6 +1878,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <div id="pane-nucleic" class="pane">
   <div class="wrap"><div class="main" style="flex:1 1 100%">
     <div class="card">
+      <div class="exportbar"><button onclick="exportNucleicTable()">Export shown TSV</button><span id="nucOriginalLinks"></span></div>
       <input type="text" id="nucSearch" placeholder="Filter nucleic hits…" style="width:100%;margin-bottom:10px">
       <div id="nuctable"></div>
     </div>
@@ -1693,6 +1887,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
 <div id="pane-stats" class="pane">
   <div class="wrap"><div class="main" style="flex:1 1 100%"><div id="statsbox"></div></div></div>
+</div>
+
+<div id="pane-log" class="pane">
+  <div class="wrap"><div class="main" style="flex:1 1 100%"><div class="card"><pre id="logtext"></pre></div></div></div>
 </div>
 
 <div id="extra-panes"></div>
@@ -1704,36 +1902,45 @@ const SVGNS="http://www.w3.org/2000/svg";
 const colors=DATA.colors, rnaColors=DATA.rna_colors||{}, nucColors=DATA.nucleic_colors||{}, motifColors=DATA.motif_colors||{}, contigs=DATA.contigs;
 const CRIT=DATA.criteria;
 const NUCLEIC=DATA.nucleic||[], STATS=DATA.stats||null, EXTRA=DATA.extra_tabs||[];
-const hasMaps=contigs.length>0, hasNucleic=NUCLEIC.length>0, hasStats=!!STATS;
+const FILES=DATA.source_files||{tables:[],fastas:[]};
+const hasMaps=contigs.length>0, hasNucleic=NUCLEIC.length>0, hasStats=!!STATS, hasLog=!!DATA.log_text;
 let active=new Set(Object.keys(colors)), idx=0, mode=DATA.initial_mode||"all", showRNA=true, showNuc=true, showMotif=true;
-let crit=DATA.initial_criterion||Object.keys(CRIT)[0]||"score", minScore=0, maxEexp=0;
+let crit=DATA.initial_criterion||Object.keys(CRIT)[0]||"score", minScore=0, maxEexp=0, showRawIds=false;
+let currentTableExport={columns:[],rows:[],name:'contigs.tsv'},currentNucleicExport={columns:[],rows:[]};
+let currentMapExport={columns:[],rows:[],name:'contig_hits.tsv'};
+const sequenceCache=new Map();let displayedSequence=null;
 
 document.getElementById('hdrtitle').textContent=DATA.title;
 document.getElementById('hdrsub').textContent=DATA.subtitle;
+if(DATA.command_line){const command=document.getElementById('commandline');command.textContent='Command called: '+DATA.command_line;command.style.display='block';}
+if(hasLog)document.getElementById('logtext').textContent=DATA.log_text;
 
 // Create panes for extra tabs.
 const extraPanes=document.getElementById('extra-panes');
 EXTRA.forEach(t=>{const d=document.createElement('div');d.className='pane';d.id='pane-'+t.id;
   d.innerHTML=`<div class="wrap"><div class="main" style="flex:1 1 100%"><div class="card">`+
+    `<div id="xchart-${t.id}"></div>`+
+    `<div class="exportbar"><button onclick="exportExtraTable('${t.id}')">Export shown TSV</button><span id="xoriginal-${t.id}"></span></div>`+
     `<input type="text" class="xsearch" data-for="${t.id}" placeholder="Filter ${t.label}…" style="width:100%;margin-bottom:10px">`+
     `<div id="xtable-${t.id}"></div></div></div></div>`;
   extraPanes.appendChild(d);});
 
 // Build the tab bar from available data (+ extra tabs).
 const TABS=[];
-if(hasMaps){TABS.push(["table","▤ Table"]);TABS.push(["maps","🧬 Genome maps"]);}
+if(hasMaps){TABS.push(["table","▤ Contig Table"]);TABS.push(["maps","🧬 Genome maps"]);}
 if(hasNucleic)TABS.push(["nucleic","🧷 Nucleic hits"]);
 if(hasStats)TABS.push(["stats","📊 Run stats"]);
+if(hasLog)TABS.push(["log","▧ Log"]);
 EXTRA.forEach(t=>TABS.push([t.id, t.label]));
 const tabsEl=document.getElementById('tabs');
 TABS.forEach(([id,label])=>{const b=document.createElement('button');b.dataset.tab=id;b.textContent=label;
   b.onclick=()=>showTab(id);tabsEl.appendChild(b);});
-const BUILTIN=new Set(["table","maps","nucleic","stats"]);
+const BUILTIN=new Set(["table","maps","nucleic","stats","log"]);
 function showTab(name){
   document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x.dataset.tab===name));
   document.querySelectorAll('.pane').forEach(p=>p.classList.remove('on'));
   const el=document.getElementById('pane-'+name); if(el)el.classList.add('on');
-  document.getElementById('toolbar').style.display=(name==='table'||name==='maps')?'flex':'none';
+  document.getElementById('toolbar').style.display=name==='maps'?'flex':'none';
   if(name==='table')renderTable(); else if(name==='maps')render();
   else if(name==='nucleic')renderNucleic(); else if(name==='stats')renderStats();
   else if(!BUILTIN.has(name))renderExtra(name);
@@ -1771,6 +1978,8 @@ document.getElementById('exp').onclick=()=>{const svg=document.querySelector('#m
  a.href=URL.createObjectURL(blob);a.download=contigs[idx].contig+'_map.svg';a.click();};
 
 let tblView="contigs";
+if(contigs.some(c=>c.raw_id))document.getElementById('rawIdControl').style.display='flex';
+document.getElementById('rawIdToggle').onchange=e=>{showRawIds=e.target.checked;renderTable();};
 document.querySelectorAll('#tblSeg button').forEach(b=>{b.onclick=()=>{tblView=b.dataset.view;
   document.querySelectorAll('#tblSeg button').forEach(x=>x.classList.toggle('on',x===b));renderTable();};});
 document.getElementById('tblSearch').oninput=renderTable;
@@ -1784,6 +1993,40 @@ const tip=document.getElementById('tip');
 function showTip(h,x,y){tip.innerHTML=h;tip.style.opacity=1;let tx=x+14;if(tx+410>innerWidth)tx=x-410;tip.style.left=tx+'px';tip.style.top=(y+14)+'px';}
 function hideTip(){tip.style.opacity=0;}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function safeName(s){return String(s||'export').replace(/[^A-Za-z0-9._-]+/g,'_');}
+function downloadText(name,text,type='text/plain'){
+ const blob=new Blob([text],{type:type+';charset=utf-8'}),a=document.createElement('a');
+ a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+function tsvCell(v){const s=String(v??'');return /[\t\n\r"]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+function downloadTsv(name,columns,rows){const text=[columns,...rows].map(r=>r.map(tsvCell).join('\t')).join('\n')+'\n';downloadText(name,text,'text/tab-separated-values');}
+function exportCurrentTable(){downloadTsv(currentTableExport.name,currentTableExport.columns,currentTableExport.rows);}
+function exportNucleicTable(){downloadTsv('nucleic_hits_shown.tsv',currentNucleicExport.columns,currentNucleicExport.rows);}
+function exportMapTable(){downloadTsv(currentMapExport.name,currentMapExport.columns,currentMapExport.rows);}
+function exportExtraTable(id){const t=EXTRA.find(x=>x.id===id);if(!t)return;const inp=document.querySelector('.xsearch[data-for="'+id+'"]'),f=(inp&&inp.value||'').toLowerCase();downloadTsv(safeName(t.label)+'_shown.tsv',t.columns,t.rows.filter(r=>!f||r.join(' ').toLowerCase().includes(f)));}
+function sourceLinks(kind){return FILES.tables.filter(f=>f.kind===kind).map(f=>`<a href="${encodeURI(f.path)}" download title="Untouched pipeline output">${esc(f.label)}</a>`).join(' ');}
+document.getElementById('tableOriginalLinks').innerHTML=[sourceLinks('protein'),sourceLinks('rna')].filter(Boolean).join(' ');
+document.getElementById('nucOriginalLinks').innerHTML=sourceLinks('nucleic');
+EXTRA.forEach(t=>{const box=document.getElementById('xoriginal-'+t.id);if(box)box.innerHTML=sourceLinks(t.id);});
+document.getElementById('fastaLinks').innerHTML=FILES.fastas.map(f=>`<a href="${encodeURI(f.path)}" download>${esc(f.label)}</a>`).join(' ');
+
+function parseFasta(text,source){let header=null,parts=[],count=0;const save=()=>{if(!header)return;const seq=parts.join('').replace(/\s+/g,'');if(!seq)return;const id=header.split(/\s+/)[0];const record={id,header,seq,source};sequenceCache.set(id,record);sequenceCache.set(header,record);count++;};
+ text.split(/\r?\n/).forEach(line=>{if(line.startsWith('>')){save();header=line.slice(1).trim();parts=[];}else if(header)parts.push(line.trim());});save();return count;}
+async function loadReferencedFastas(kinds=null){const status=document.getElementById('fastaStatus');let loaded=0,failed=0;status.textContent='Loading referenced FASTA files…';
+ const selected=kinds?FILES.fastas.filter(f=>kinds.includes(f.kind)):FILES.fastas;
+ for(const f of selected){try{const response=await fetch(f.path);if(!response.ok)throw new Error(response.statusText);loaded+=parseFasta(await response.text(),f.label);}catch(e){failed++;}}
+ status.textContent=loaded?`Loaded ${loaded.toLocaleString()} sequences${failed?' · '+failed+' file(s) require manual selection':''}.`:'Browser access to local FASTA files was blocked. Use “Choose FASTA…” to authorize them.';return loaded;}
+document.getElementById('loadFastas').onclick=()=>loadReferencedFastas();
+document.getElementById('fastaPicker').onchange=async e=>{let loaded=0;for(const file of e.target.files)loaded+=parseFasta(await file.text(),file.name);document.getElementById('fastaStatus').textContent=`Loaded ${loaded.toLocaleString()} sequences from ${e.target.files.length} selected file(s).`;};
+function findSequence(ids){for(const id of ids.filter(Boolean)){if(sequenceCache.has(id))return sequenceCache.get(id);}return null;}
+async function showSequence(ids,title,kind,range=null){let record=findSequence(ids);if(!record){await loadReferencedFastas([kind]);record=findSequence(ids);}if(!record){document.getElementById('fastaStatus').textContent=`Sequence ${ids.filter(Boolean).join(' / ')} is not loaded. Choose the matching FASTA file.`;return;}
+ if(range){const start=Math.max(1,Math.min(range[0],range[1])),end=Math.min(record.seq.length,Math.max(range[0],range[1]));record={id:record.id+'_'+start+'-'+end,header:record.id+'|coords='+start+'-'+end,seq:record.seq.slice(start-1,end),source:record.source};}
+ displayedSequence=record;document.getElementById('seqtitle').textContent=title+' · '+record.id;document.getElementById('seqtext').textContent='>'+record.header+'\n'+record.seq.match(/.{1,80}/g).join('\n');document.getElementById('seqcard').style.display='block';document.getElementById('seqcard').scrollIntoView({behavior:'smooth',block:'start'});}
+function focusSequencePane(cid){const i=contigs.findIndex(c=>c.contig===cid);if(i>=0){idx=i;picker.value=i;}showTab('maps');}
+function showContigSequence(cid){const c=contigs.find(x=>x.contig===cid);focusSequencePane(cid);showSequence([cid,c&&c.raw_id], 'Contig sequence','contigs');}
+function showOrfSequence(orfId){const c=contigs.find(c=>c.orfs.some(o=>o.orf_id===orfId));if(c)focusSequencePane(c.contig);showSequence([orfId], 'ORF amino-acid sequence','orfs');}
+function showOrfHit(orfId,start,end){const c=contigs.find(c=>c.orfs.some(o=>o.orf_id===orfId));if(c)focusSequencePane(c.contig);showSequence([orfId], 'Matched amino-acid region','orfs',[start,end]);}
+document.getElementById('seqexport').onclick=()=>{if(displayedSequence)downloadText(safeName(displayedSequence.id)+'.fasta','>'+displayedSequence.header+'\n'+displayedSequence.seq.match(/.{1,80}/g).join('\n')+'\n','text/x-fasta');};
 function fmtE(e){if(e===null||e===undefined||e==='')return'–';const n=+e;if(!isFinite(n))return e;if(n===0)return'0';const ex=Math.floor(Math.log10(n));return (n/Math.pow(10,ex)).toFixed(1)+'e'+ex;}
 function fmtBytes(n){if(!n)return'–';const u=['B','KB','MB','GB'];let i=0;while(n>=1024&&i<u.length-1){n/=1024;i++;}return n.toFixed(1)+u[i];}
 function isBest(h){return h.best&&h.best[crit];}
@@ -1807,30 +2050,56 @@ function renderExtra(id){
     html+=`<tr>`+r.map(v=>`<td>${esc(v)}</td>`).join('')+`</tr>`;});
   html+=`</tbody></table>`;
   document.getElementById('xtable-'+id).innerHTML=html;
+  renderComposition(t);
+}
+
+function renderComposition(t){
+  const box=document.getElementById('xchart-'+t.id);if(!box||!t.composition||!t.composition.length)return;
+  const entries=t.composition,total=entries.reduce((sum,x)=>sum+x.count,0),W=760,H=260,cx=135,cy=125,r=92;
+  const palette=['#33507e','#2e8b57','#c65d21','#7b5ea7','#d19a00','#208a9b','#ad3d66','#6b7280'];
+  let angle=-Math.PI/2,svg=`<div class="legend-note" style="margin-bottom:6px">Composition by ${esc(t.composition_label)}</div>`+
+    `<svg viewBox="0 0 ${W} ${H}" style="max-width:760px" xmlns="${SVGNS}">`;
+  entries.forEach((entry,i)=>{const frac=entry.count/total,next=angle+frac*Math.PI*2,x1=cx+r*Math.cos(angle),y1=cy+r*Math.sin(angle),x2=cx+r*Math.cos(next),y2=cy+r*Math.sin(next),large=frac>.5?1:0,col=palette[i%palette.length];
+    if(frac>=.999999)svg+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${col}"/>`;
+    else svg+=`<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z" fill="${col}"/>`;
+    const ly=20+i*22;svg+=`<rect x="270" y="${ly-11}" width="12" height="12" rx="2" fill="${col}"/>`+
+      `<text x="290" y="${ly}" font-size="12" fill="#374151">${esc(entry.label)} — ${entry.count} (${(frac*100).toFixed(1)}%)</text>`;angle=next;});
+  svg+=`<circle cx="${cx}" cy="${cy}" r="48" fill="#fff"/><text x="${cx}" y="${cy+5}" text-anchor="middle" font-size="16" font-weight="700">${total}</text></svg>`;
+  box.innerHTML=svg;
 }
 
 function renderTable(){
-  const f=(document.getElementById('tblSearch').value||'').toLowerCase();let html;
+  const f=(document.getElementById('tblSearch').value||'').toLowerCase();let html;const exportRows=[];
   if(tblView==='contigs'){
-    html=`<table><thead><tr><th>Contig</th><th>Len</th><th>ORFs</th><th>Hits</th><th>Best (${CRIT[crit]})</th><th>Sources</th><th>Top score</th><th>Top profile</th><th>RNA</th><th>Nucl.</th></tr></thead><tbody>`;
-    contigs.forEach((c)=>{if(f&&!(c.contig+' '+c.top_profile).toLowerCase().includes(f))return;
+    const columns=['contig','raw_contig_id','length','orfs','hits','best','sources','top_score','top_profile','rna','nucleic_hits'];
+    html=`<table><thead><tr><th>Contig</th><th>Len</th><th>ORFs</th><th>Hits</th><th>Best (${CRIT[crit]})</th><th>Sources</th><th>Top score</th><th>Top profile</th><th>RNA</th><th>Nucl.</th><th>Sequence</th></tr></thead><tbody>`;
+    contigs.forEach((c)=>{if(f&&!(c.contig+' '+(c.raw_id||'')+' '+c.top_profile).toLowerCase().includes(f))return;
       const nb=(c.n_best&&c.n_best[crit]!=null)?c.n_best[crit]:'';
-      html+=`<tr><td><span class="cid" onclick="openContig('${c.contig}')">${c.short}</span></td>`+
+      const displayId=showRawIds&&c.raw_id?c.raw_id:c.short;
+      exportRows.push([c.contig,c.raw_id||'',c.length,c.n_orfs,c.n_hits,nb,c.sources.join(';'),c.best_score,c.top_profile,c.rna?'true':'false',c.nucleic?c.nucleic.length:0]);
+      html+=`<tr><td><span class="cid" onclick="openContig('${c.contig}')">${esc(displayId)}</span></td>`+
         `<td>${c.length.toLocaleString()}</td><td>${c.n_orfs}</td><td>${c.n_hits}</td><td>${nb}</td>`+
         `<td>${c.sources.map(s=>`<span class="pill" style="background:${colors[s]||'#888'}">${s}</span>`).join(' ')}</td>`+
-        `<td>${c.best_score}</td><td class="mono">${c.top_profile}</td><td>${c.rna?'✓':''}</td><td>${c.nucleic?c.nucleic.length:''}</td></tr>`;});
+        `<td>${c.best_score}</td><td class="mono">${c.top_profile}</td><td>${c.rna?'✓':''}</td><td>${c.nucleic?c.nucleic.length:''}</td>`+
+        `<td><button class="btn" onclick="showContigSequence('${c.contig}')">Show</button></td></tr>`;});
     html+=`</tbody></table>`;
+    currentTableExport={columns,rows:exportRows,name:'contigs_shown.tsv'};
   }else{
-    html=`<table><thead><tr><th>Contig</th><th>ORF</th><th>Source</th><th>Profile</th><th>Score</th><th>E-value</th><th>Cov</th><th>aa span</th><th>Best</th></tr></thead><tbody>`;
+    const columns=['contig','raw_contig_id','orf','source','profile','score','evalue','coverage','aa_from','aa_to','best'];
+    html=`<table><thead><tr><th>Contig</th><th>ORF</th><th>Source</th><th>Profile</th><th>Score</th><th>E-value</th><th>Cov</th><th>aa span</th><th>Best</th><th>Sequence</th></tr></thead><tbody>`;
     contigs.forEach((c)=>c.orfs.forEach(o=>o.hits.forEach(h=>{
       if(mode==='best'&&!isBest(h))return; if(!active.has(h.source))return;
       const hay=(c.contig+' '+h.profile+' '+h.source).toLowerCase(); if(f&&!hay.includes(f))return;
-      html+=`<tr><td><span class="cid" onclick="openContig('${c.contig}')">${c.short}</span></td>`+
+      const displayId=showRawIds&&c.raw_id?c.raw_id:c.short;
+      exportRows.push([c.contig,c.raw_id||'',o.orf_id,h.source,h.profile,h.score,h.evalue,h.cov,h.aa_from,h.aa_to,isBest(h)?'true':'false']);
+      html+=`<tr><td><span class="cid" onclick="openContig('${c.contig}')">${esc(displayId)}</span></td>`+
         `<td class="mono" style="font-size:11px">${o.orf_id.split('_').slice(-1)[0]}</td>`+
         `<td><span class="pill" style="background:${colors[h.source]||'#888'}">${h.source}</span></td>`+
         `<td class="mono">${h.profile}</td><td>${h.score}</td><td class="mono">${fmtE(h.evalue)}</td>`+
-        `<td>${h.cov}</td><td class="mono">${h.aa_from}–${h.aa_to}</td><td>${isBest(h)?'✓':''}</td></tr>`;})));
+        `<td>${h.cov}</td><td class="mono">${h.aa_from}–${h.aa_to}</td><td>${isBest(h)?'✓':''}</td>`+
+        `<td><button class="btn" onclick="showOrfHit('${o.orf_id}',${h.aa_from},${h.aa_to})">Show hit</button></td></tr>`;})));
     html+=`</tbody></table>`;
+    currentTableExport={columns,rows:exportRows,name:'protein_hits_shown.tsv'};
   }
   document.getElementById('bigtable').innerHTML=html;
   document.getElementById('tbmeta').textContent=`${contigs.length} contigs · criterion: ${CRIT[crit]} · mode: ${mode==='best'?'best only':'all hits'}`;
@@ -1980,13 +2249,17 @@ function render(){
     showTip(html,ev.clientX,ev.clientY);});
    el.addEventListener('mouseleave',hideTip);});
 
-  const allh=[];c.orfs.forEach(o=>o.hits.forEach(h=>{if(hitVisible(h))allh.push(h);}));
-  allh.sort((a,b)=>(b.score||0)-(a.score||0));
-  let t=`<table><thead><tr><th>Source</th><th>Profile</th><th>Score</th><th>E-value</th><th>Cov</th><th>Len</th><th>aa span</th><th>Best</th><th>Description</th></tr></thead><tbody>`;
-  allh.forEach(h=>{t+=`<tr><td><span class="pill" style="background:${colors[h.source]||'#888'}">${h.source}</span></td>`+
+  const allh=[];c.orfs.forEach(o=>o.hits.forEach(h=>{if(hitVisible(h))allh.push({h,o});}));
+  allh.sort((a,b)=>(b.h.score||0)-(a.h.score||0));
+  const hitColumns=['contig','orf','source','profile','score','evalue','coverage','alignment_length','aa_from','aa_to','best','description'];
+  currentMapExport={columns:hitColumns,rows:allh.map(({h,o})=>[c.contig,o.orf_id,h.source,h.profile,h.score,h.evalue,h.cov,h.ali_len,h.aa_from,h.aa_to,isBest(h)?'true':'false',h.desc||'']),name:safeName(c.contig)+'_hits_shown.tsv'};
+  let t=`<div class="exportbar"><button onclick="exportMapTable()">Export shown hits TSV</button>${sourceLinks('protein')}${sourceLinks('rna')}${sourceLinks('motif')}</div>`+
+    `<table><thead><tr><th>Source</th><th>Profile</th><th>Score</th><th>E-value</th><th>Cov</th><th>Len</th><th>aa span</th><th>Best</th><th>Description</th><th>Sequence</th></tr></thead><tbody>`;
+  allh.forEach(({h,o})=>{t+=`<tr><td><span class="pill" style="background:${colors[h.source]||'#888'}">${h.source}</span></td>`+
    `<td class="mono">${h.profile}</td><td>${h.score}</td><td class="mono">${fmtE(h.evalue)}</td><td>${h.cov}</td>`+
    `<td>${h.ali_len??'–'}</td><td class="mono">${h.aa_from}–${h.aa_to}</td><td>${isBest(h)?'✓':''}</td>`+
-   `<td style="max-width:300px">${h.desc?h.desc:'<span style="color:#9aa2b1">—</span>'}</td></tr>`;});
+   `<td style="max-width:300px">${h.desc?h.desc:'<span style="color:#9aa2b1">—</span>'}</td>`+
+   `<td><button class="btn" onclick="showOrfHit('${o.orf_id}',${h.aa_from},${h.aa_to})">Show hit</button></td></tr>`;});
   t+=`</tbody></table>`;
   if(c.rna&&c.rna.features.length){t+=`<h2 style="margin-top:14px">RNA features</h2><table><thead><tr><th>Class</th><th>Source</th><th>nt span</th><th>Score</th><th>Best</th><th>Profile / note</th></tr></thead><tbody>`;
    c.rna.features.forEach(fe=>{t+=`<tr><td><span class="pill" style="background:${rnaColors[fe.klass]||'#7F7F7F'}">${fe.klass}</span></td>`+
@@ -2010,16 +2283,20 @@ function render(){
 
 function renderNucleic(){
   const f=(document.getElementById('nucSearch').value||'').toLowerCase();
-  let t=`<table><thead><tr><th>Contig</th><th>Source</th><th>Target</th><th>%id</th><th>Score</th><th>E-value</th><th>contig span</th><th>target span</th><th>qcov</th><th>strand</th></tr></thead><tbody>`;
+  const columns=['contig','source','target','pident','score','evalue','qstart','qend','tstart','tend','qcov','tcov','strand'],rows=[];
+  let t=`<table><thead><tr><th>Contig</th><th>Source</th><th>Target</th><th>%id</th><th>Score</th><th>E-value</th><th>contig span</th><th>target span</th><th>qcov</th><th>strand</th><th>Sequence</th></tr></thead><tbody>`;
   NUCLEIC.forEach(h=>{const hay=(h.contig+' '+h.target+' '+h.source).toLowerCase();if(f&&!hay.includes(f))return;
+    rows.push([h.contig,h.source,h.target,h.pident,h.score,h.evalue,h.qstart,h.qend,h.tstart,h.tend,h.qcov,h.tcov,h.strand||'']);
     const link=hasMaps&&contigs.some(c=>c.contig===h.contig)?`<span class="cid" onclick="openContig('${h.contig}')">${h.contig}</span>`:h.contig;
     t+=`<tr><td>${link}</td><td><span class="pill" style="background:${nucColors[h.source]||'#6b7280'}">${h.source}</span></td>`+
       `<td>${esc(h.target)}</td><td>${h.pident}</td><td>${h.score}</td><td class="mono">${fmtE(h.evalue)}</td>`+
       `<td class="mono">${h.qstart.toLocaleString()}–${h.qend.toLocaleString()}</td>`+
       `<td class="mono">${h.tstart.toLocaleString()}–${h.tend.toLocaleString()}</td>`+
-      `<td>${(h.qcov*100).toFixed(0)}%</td><td>${h.strand||''}</td></tr>`;});
+      `<td>${(h.qcov*100).toFixed(0)}%</td><td>${h.strand||''}</td>`+
+      `<td><button class="btn" onclick="showContigSequence('${h.contig}')">Show query</button></td></tr>`;});
   t+=`</tbody></table>`;
   document.getElementById('nuctable').innerHTML=t;
+  currentNucleicExport={columns,rows};
 }
 
 function renderStats(){

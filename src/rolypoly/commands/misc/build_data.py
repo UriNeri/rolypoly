@@ -120,8 +120,8 @@ def build_data(data_dir, threads, log_file, log_level):
     rvmt_dir = os.path.join(reference_seqs, "RVMT")
     os.makedirs(rvmt_dir, exist_ok=True)
 
-    ncbi_ribovirus_dir = os.path.join(reference_seqs, "ncbi_ribovirus")
-    os.makedirs(ncbi_ribovirus_dir, exist_ok=True)
+    ncbi_virus_dir = os.path.join(reference_seqs, "ncbi_virus_dir")
+    os.makedirs(ncbi_virus_dir, exist_ok=True)
 
     profile_dir = os.path.join(data_dir, "profiles")
     hmmdb_dir = os.path.join(profile_dir, "hmmdbs")
@@ -151,11 +151,11 @@ def build_data(data_dir, threads, log_file, log_level):
     # neordrp2.1 profiles
     prepare_neordrp_profiles(data_dir, threads, logger)
 
-    # NCBI ribovirus refseq
+    # NCBI ribovirus refseq + ncbi virus (taxdb)
     prepare_ncbi_ribovirus(data_dir, threads, logger)
 
-    # NCBI/NR viral proteins with ICTV taxonomy (mmseqs taxonomy database)
-    prepare_ncbi_ribovirus_protein_taxdb(data_dir, threads, logger)
+    # All NCBI/NR viral proteins with ICTV taxonomy (MMseqs2 + DIAMOND)
+    prepare_ncbi_virus_dir_protein_taxdb(data_dir, threads, logger)
 
     # pfam RdRps and RTs
     prepare_pfam_rdrps_rt(data_dir, threads, logger)
@@ -686,9 +686,9 @@ def create_slim_tarball(
         "profiles/mmseqs_dbs/vfam",
         # 'reference_seqs/mito_refseq/combined_mito_refseq.fasta',
         # 'reference_seqs/plastid_refseq/combined_plastid_refseq.fasta',
-        "reference_seqs/ncbi_ribovirus/mmseqs",
-        "reference_seqs/ncbi_ribovirus/refseq_ribovirus_genomes_orfs.faa",
-        "reference_seqs/ncbi_ribovirus/refseq_ribovirus_genomes.fasta",
+        "reference_seqs/ncbi_virus/mmseqs",
+        "reference_seqs/ncbi_virus/refseq_ribovirus_genomes_orfs.faa",
+        "reference_seqs/ncbi_virus/refseq_ribovirus_genomes.fasta",
         "reference_seqs/RVMT/mmseqs",
         "reference_seqs/RVMT/RVMT_cleaned_contigs.fasta",
         "reference_seqs/RVMT/RVMT_cleaned_orfs.faa",
@@ -1400,22 +1400,22 @@ def prepare_ncbi_ribovirus(data_dir, threads, logger: logging.Logger):
 
     logger.info("Preparing NCBI ribovirus reference sequences")
 
-    ncbi_ribovirus_dir = os.path.join(
-        data_dir, "reference_seqs", "ncbi_ribovirus"
+    ncbi_virus_dir = os.path.join(
+        data_dir, "reference_seqs", "ncbi_virus"
     )
-    os.makedirs(ncbi_ribovirus_dir, exist_ok=True)
-    mmdb_dir = os.path.join(ncbi_ribovirus_dir, "mmseqs")
+    os.makedirs(ncbi_virus_dir, exist_ok=True)
+    mmdb_dir = os.path.join(ncbi_virus_dir, "mmseqs")
     os.makedirs(mmdb_dir, exist_ok=True)
 
     # Define file paths
     raw_fasta_path = os.path.join(
-        ncbi_ribovirus_dir, "refseq_ribovirus_genomes.fasta"
+        ncbi_virus_dir, "refseq_ribovirus_genomes.fasta"
     )
     entropy_masked_path = os.path.join(
-        ncbi_ribovirus_dir, "refseq_ribovirus_genomes_entropy_masked.fasta"
+        ncbi_virus_dir, "refseq_ribovirus_genomes_entropy_masked.fasta"
     )  # noqa (F841)
     compressed_path = os.path.join(
-        ncbi_ribovirus_dir, "refseq_ribovirus_genomes_flat.fasta"
+        ncbi_virus_dir, "refseq_ribovirus_genomes_flat.fasta"
     )  # noqa (F841)
 
     # Riboviria taxid
@@ -1491,18 +1491,18 @@ def prepare_ncbi_ribovirus(data_dir, threads, logger: logging.Logger):
         fetch_and_extract(
             url="https://ftp.ncbi.nlm.nih.gov/refseq/release/viral/viral.1.1.genomic.fna.gz",
             fetched_to=os.path.join(
-                ncbi_ribovirus_dir, "viral.1.1.genomic.fna.gz"
+                ncbi_virus_dir, "viral.1.1.genomic.fna.gz"
             ),
-            extract_to=ncbi_ribovirus_dir,
+            extract_to=ncbi_virus_dir,
             rename_extracted=raw_fasta_path,
         )
         # orfs
         fetch_and_extract(
             url="https://ftp.ncbi.nlm.nih.gov/refseq/release/viral/viral.1.protein.faa.gz",
             fetched_to=os.path.join(
-                ncbi_ribovirus_dir, "viral.1.protein.faa.gz"
+                ncbi_virus_dir, "viral.1.protein.faa.gz"
             ),
-            extract_to=ncbi_ribovirus_dir,
+            extract_to=ncbi_virus_dir,
             rename_extracted=raw_fasta_path.replace(".fasta", "_orfs.faa"),
         )
 
@@ -1523,12 +1523,12 @@ def prepare_ncbi_ribovirus(data_dir, threads, logger: logging.Logger):
 
     # Clean up intermediate files
     try:
-        os.remove(os.path.join(ncbi_ribovirus_dir, "viral.1.1.genomic.fna.gz"))
-        os.remove(os.path.join(ncbi_ribovirus_dir, "viral.1.protein.faa.gz"))
+        os.remove(os.path.join(ncbi_virus_dir, "viral.1.1.genomic.fna.gz"))
+        os.remove(os.path.join(ncbi_virus_dir, "viral.1.protein.faa.gz"))
     except FileNotFoundError:
         logger.warning("Some intermediate files not found for cleanup")
 
-    logger.info(f"NCBI ribovirus preparation completed in {ncbi_ribovirus_dir}")
+    logger.info(f"NCBI ribovirus preparation completed in {ncbi_virus_dir}")
 
 
 def read_names_dmp(names_dmp_path) -> pl.DataFrame:
@@ -1546,15 +1546,45 @@ def read_names_dmp(names_dmp_path) -> pl.DataFrame:
     return names_df.select("taxid", "name").unique(subset=["name"], keep="first")
 
 
-def prepare_ncbi_ribovirus_protein_taxdb(data_dir, threads, logger: logging.Logger):
-    """Build an ICTV-taxonomy-aware MMseqs2 protein database of NR viral proteins.
+def renumber_taxdump(taxdump_dir: str) -> None:
+    """Renumber taxdump nodes densely to prevent enormous sparse MMseqs2 DBs."""
+    taxdump_path = pt(taxdump_dir)
+    names_path = taxdump_path / "names.dmp"
+    nodes_path = taxdump_path / "nodes.dmp"
+    node_pairs = []
+    for line in nodes_path.read_text().splitlines():
+        fields = line.split("\t")
+        if len(fields) >= 3:
+            node_pairs.append((fields[0], fields[2]))
+    root_taxid = next(taxid for taxid, parent in node_pairs if taxid == parent)
+    taxids = [root_taxid] + [taxid for taxid, _ in node_pairs if taxid != root_taxid]
+    mapping = {taxid: str(index) for index, taxid in enumerate(taxids, start=1)}
+
+    names_new = names_path.with_suffix(".dmp.new")
+    nodes_new = nodes_path.with_suffix(".dmp.new")
+    with names_path.open() as source, names_new.open("w") as destination:
+        for line in source:
+            fields = line.rstrip("\n").split("\t")
+            fields[0] = mapping[fields[0]]
+            destination.write("\t".join(fields) + "\n")
+    with nodes_path.open() as source, nodes_new.open("w") as destination:
+        for line in source:
+            fields = line.rstrip("\n").split("\t")
+            fields[0] = mapping[fields[0]]
+            fields[2] = mapping[fields[2]]
+            destination.write("\t".join(fields) + "\n")
+    names_new.replace(names_path)
+    nodes_new.replace(nodes_path)
+
+
+def prepare_ncbi_virus_dir_protein_taxdb(data_dir, threads, logger: logging.Logger):
+    """Build ICTV-taxonomy-aware MMseqs2 and DIAMOND databases of NR viral proteins.
 
     Maps NCBI NR viral proteins to ICTV taxonomy (Realm..Species) and builds an
-    MMseqs2 protein database annotated with taxonomy, so it can later be used
-    with `mmseqs taxonomy`/`mmseqs easy-taxonomy` (e.g. a future rolypoly
-    `quick-taxonomy` command). This is the protein-level counterpart of
-    `prepare_ncbi_ribovirus` (nucleotide RefSeq genomes) - the two are separate
-    databases.
+    MMseqs2 and DIAMOND protein databases annotated with taxonomy for the
+    RolyPoly ``mmtax`` command. Unlike the separate ``ncbi_ribovirus``
+    nucleotide RefSeq database, this includes proteins from all NCBI viruses
+    that can be mapped into ICTV taxonomy.
 
     Args:
         data_dir (str): Base directory for data storage
@@ -1573,13 +1603,11 @@ def prepare_ncbi_ribovirus_protein_taxdb(data_dir, threads, logger: logging.Logg
         full NR FASTA to disk. This step is still slow and disk/bandwidth
         heavy (the formatted NR db is >100GB).
     """
-    logger.info("Preparing NCBI/NR viral protein MMseqs2 taxonomy database")
+    logger.info("Preparing NCBI/NR viral protein taxonomy databases")
 
-    ncbi_ribovirus_dir = os.path.join(
-        data_dir, "reference_seqs", "ncbi_ribovirus"
-    )
-    work_dir = os.path.join(ncbi_ribovirus_dir, "protein_taxdb")
-    mmdb_dir = os.path.join(ncbi_ribovirus_dir, "mmseqs")
+    ncbi_virus_dir_dir = os.path.join(data_dir, "reference_seqs", "ncbi_virus_dir")
+    work_dir = os.path.join(ncbi_virus_dir_dir, "build")
+    mmdb_dir = os.path.join(ncbi_virus_dir_dir, "mmseqs")
     os.makedirs(work_dir, exist_ok=True)
     os.makedirs(mmdb_dir, exist_ok=True)
 
@@ -1609,8 +1637,9 @@ def prepare_ncbi_ribovirus_protein_taxdb(data_dir, threads, logger: logging.Logg
     )
     ictv_names.write_csv(ictv_names_txt, include_header=False)
 
-    #  Step 2: ICTV taxdump (taxonkit >=0.20 already emits sequential taxids) ---
-    ictv_taxdump_dir = os.path.join(work_dir, "ictv_taxdump")
+    # Step 2: ICTV taxdump. Always renumber: sparse generated IDs make MMseqs2
+    # allocate multi-gigabyte taxonomy binaries even for small taxonomies.
+    ictv_taxdump_dir = os.path.join(ncbi_virus_dir_dir, "taxonomy")
     logger.info("Building ICTV taxdump with taxonkit")
     run_command_comp(
         base_cmd="taxonkit create-taxdump",
@@ -1619,6 +1648,7 @@ def prepare_ncbi_ribovirus_protein_taxdb(data_dir, threads, logger: logging.Logg
         params={"out-dir": ictv_taxdump_dir, "force": True},
         logger=logger,
     )
+    renumber_taxdump(ictv_taxdump_dir)
 
     #  Step 3: NCBI taxdump ---
     ncbi_taxdump_dir = os.path.join(work_dir, "ncbi_taxdump")
@@ -1822,7 +1852,7 @@ def prepare_ncbi_ribovirus_protein_taxdb(data_dir, threads, logger: logging.Logg
                 tar.extractall(blastdb_dir, filter="data")
             # os.remove(archive_path)
 
-    ictv_proteins_faa = os.path.join(work_dir, "ictv_nr_viral.faa")
+    ictv_proteins_faa = os.path.join(work_dir, "ncbi_virus_dir.faa")
     accessions = (
         pl.read_csv(
             ictv_acc2taxid_tsv,
@@ -1862,26 +1892,26 @@ def prepare_ncbi_ribovirus_protein_taxdb(data_dir, threads, logger: logging.Logg
     from rolypoly.utils.bio.polars_fastx import from_fastx_lazy
     final_acc2taxid_tsv = os.path.join(work_dir, "accession2taxid_ictv_nr.tsv")
     if not os.path.exists(final_acc2taxid_tsv):
-        kept_accessions = (
+        kept_accessions_parquet = os.path.join(
+            work_dir, "ncbi_virus_dir_accessions.parquet"
+        )
+        (
             from_fastx_lazy(ictv_proteins_faa)
             .select(pl.col("header").str.split(" ").list.first().alias("accession"))
-            .sink_parquet(os.path.join(work_dir, "ictv_nr_viral_accessions.parquet")))
-        #     .collect()
-        #     .unique()
-        #     .to_series()
-        #     .to_list().
-        # )
-        pl.read_csv(
+            .unique()
+            .sink_parquet(kept_accessions_parquet)
+        )
+        pl.scan_csv(
             ictv_acc2taxid_tsv,
             separator="\t",
             has_header=False,
             new_columns=["accession", "ictv_taxid"],
-        ).filter(pl.col("accession").is_in(kept_accessions)).write_csv(
-            final_acc2taxid_tsv, separator="\t", include_header=False
-        )
+        ).join(
+            pl.scan_parquet(kept_accessions_parquet), on="accession", how="inner"
+        ).sink_csv(final_acc2taxid_tsv, separator="\t", include_header=False)
 
     #  Step 8: build the MMseqs2 protein database with taxonomy ---
-    protein_taxdb_path = os.path.join(mmdb_dir, "ncbi_ribovirus_protein_taxdb")
+    protein_taxdb_path = os.path.join(mmdb_dir, "ncbi_virus_dir")
     logger.info("Creating MMseqs2 protein database with ICTV taxonomy")
     run_command_comp(
         base_cmd="mmseqs createdb",
@@ -1902,6 +1932,38 @@ def prepare_ncbi_ribovirus_protein_taxdb(data_dir, threads, logger: logging.Logg
     )
     shutil.rmtree(os.path.join(work_dir, "tmp"), ignore_errors=True)
 
+    # DIAMOND expects the NCBI accession2taxid layout with a header.
+    diamond_dir = os.path.join(ncbi_virus_dir_dir, "diamond")
+    os.makedirs(diamond_dir, exist_ok=True)
+    diamond_taxmap_tsv = os.path.join(work_dir, "accession2taxid_ictv_diamond.tsv")
+    if not os.path.exists(diamond_taxmap_tsv):
+        pl.read_csv(
+            final_acc2taxid_tsv, separator="\t", has_header=False,
+            new_columns=["accession.version", "taxid"],
+        ).with_columns(
+            pl.col("accession.version").str.replace(r"\.\d+$", "").alias("accession"),
+            pl.lit("").alias("gi"),
+        ).select("accession", "accession.version", "taxid", "gi").write_csv(
+            diamond_taxmap_tsv, separator="\t", include_header=True
+        )
+
+    diamond_db_prefix = os.path.join(diamond_dir, "ncbi_virus_dir")
+    diamond_db_path = diamond_db_prefix + ".dmnd"
+    if not os.path.exists(diamond_db_path):
+        logger.info("Creating DIAMOND protein database with ICTV taxonomy")
+        run_command_comp(
+            base_cmd="diamond makedb",
+            params={
+                "in": ictv_proteins_faa, "db": diamond_db_prefix,
+                "taxonmap": diamond_taxmap_tsv,
+                "taxonnodes": os.path.join(ictv_taxdump_dir, "nodes.dmp"),
+                "taxonnames": os.path.join(ictv_taxdump_dir, "names.dmp"),
+                "threads": threads,
+            },
+            output_file=diamond_db_path,
+            logger=logger,
+        )
+
     # Clean up the largest single-use intermediate download (the formatted NR
     # BLAST db in blastdb_dir is left in place since it's reusable across runs)
     try:
@@ -1910,8 +1972,13 @@ def prepare_ncbi_ribovirus_protein_taxdb(data_dir, threads, logger: logging.Logg
         pass
 
     logger.info(
-        f"NCBI/NR viral protein taxonomy database created at {protein_taxdb_path}"
+        "NCBI/NR viral protein taxonomy databases created at "
+        f"{protein_taxdb_path} and {diamond_db_path}"
     )
+
+    # TODO: reserve `rvmt` and `nvpc` as mmtax database sources. Before they can
+    # be enabled, annotate their profiles with best-matching ncbi_virus_dir taxids
+    # or translate RVMT's native taxonomy into this ICTV taxdump.
 
 
 def prepare_rvmt_motifs(data_dir, threads, logger):
@@ -2094,7 +2161,7 @@ def prepare_contamination_seqs(data_dir, threads, logger):
     ncbi_ribovirus_fasta_path = os.path.join(
         data_dir,
         "reference_seqs",
-        "ncbi_ribovirus",
+        "ncbi_virus",
         "refseq_ribovirus_genomes.fasta",
     )
 
@@ -2114,10 +2181,10 @@ def prepare_contamination_seqs(data_dir, threads, logger):
         return_stats=True,
         logger=logger,
     )
-    #     (rolypoly_tk) ➜  rolypoly git:(main) ✗ time seqkit rmdup -i  -s code/rolypoly/data/reference_seqs/RVMT/RVMT_cleaned_contigs.fasta   code/rolypoly/data/reference_seqs/ncbi_ribovirus/refseq_ribovirus_genomes.fasta > /dev/null
+    #     (rolypoly_tk) ➜  rolypoly git:(main) ✗ time seqkit rmdup -i  -s code/rolypoly/data/reference_seqs/RVMT/RVMT_cleaned_contigs.fasta   code/rolypoly/data/reference_seqs/ncbi_virus/refseq_ribovirus_genomes.fasta > /dev/null
     # [INFO] 5399 duplicated records removed
     # seqkit rmdup -i -s   > /dev/null  14.70s user 0.53s system 75% cpu 20.095 total
-    #     #(rolypoly_tk) ➜  rolypoly git:(main) ✗ time seqkit rmdup --quiet code/rolypoly/data/reference_seqs/RVMT/RVMT_cleaned_contigs.fasta   code/rolypoly/data/reference_seqs/ncbi_ribovirus/refseq_ribovirus_genomes.fasta --quiet | seqkit stats
+    #     #(rolypoly_tk) ➜  rolypoly git:(main) ✗ time seqkit rmdup --quiet code/rolypoly/data/reference_seqs/RVMT/RVMT_cleaned_contigs.fasta   code/rolypoly/data/reference_seqs/ncbi_virus/refseq_ribovirus_genomes.fasta --quiet | seqkit stats
     # file  format  type  num_seqs        sum_len  min_len  avg_len    max_len
     # -     FASTA   DNA    397,135  1,582,230,847      136  3,984.1  2,473,870
     # seqkit rmdup --quiet   --quiet  0.85s user 0.58s system 10% cpu 13.454 total
@@ -2182,7 +2249,7 @@ def prepare_contamination_seqs(data_dir, threads, logger):
     ncbi_ribovirus_fasta_path = os.path.join(
         data_dir,
         "reference_seqs",
-        "ncbi_ribovirus",
+        "ncbi_virus",
         "refseq_ribovirus_genomes_orfs.faa",
     )
 

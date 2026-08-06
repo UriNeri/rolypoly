@@ -211,7 +211,7 @@ def virus_mapping(
     db = db.lower()  # Normalize db_name to lowercase for comparison
     DB_PATHS = {
         "ncbi_ribovirus": datadir
-        / "reference_seqs/ncbi_ribovirus/mmseqs/ncbi_ribovirus_cleaned",
+        / "reference_seqs/ncbi_virus/mmseqs/refseq_ribovirus_genomes_cleaned",
         "rvmt": datadir / "reference_seqs/RVMT/mmseqs/RVMT_cleaned",
     }
 

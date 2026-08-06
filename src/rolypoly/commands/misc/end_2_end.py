@@ -277,7 +277,7 @@ ROLL_PRESET_MAP: dict[str, tuple[str, str, str]] = {
     "--skip-steps",
     default=None,
     hidden=True,
-    help="Skip these steps in the workflow: filter_reads,assemble,filter_contigs,cluster,marker_search,nucleic_search,map_reads,annotate,rdrp_motif_search,report. Provide a comma-separated list of step names to skip. Note: skipping both filter_reads and assemble treats the input as contigs and also skips map_reads.",
+    help="Skip these steps in the workflow: filter_reads,assemble,filter_contigs,cluster,marker_search,nucleic_search,map_reads,annotate,rdrp_motif_search,taxonomy,report. Provide a comma-separated list of step names to skip. Note: skipping both filter_reads and assemble treats the input as contigs and also skips map_reads.",
 )
 # Marker gene search options
 @click.option(
@@ -298,6 +298,14 @@ ROLL_PRESET_MAP: dict[str, tuple[str, str, str]] = {
     default="all",
     help="Database(s) to use for protein annotation.",
 )
+@click.option("-txb", "--taxonomy-backend", type=click.Choice(["mmseqs", "diamond"]),
+              default="mmseqs", show_default=True)
+@click.option("-txd", "--taxonomy-db", default="ncbi_virus", show_default=True,
+              help="Built-in mmtax database name or custom backend database path.")
+@click.option("-txt", "--taxonomy-taxdump", type=click.Path(exists=True, file_okay=False),
+              default=None, help="Taxdump required when --taxonomy-db is a custom path.")
+@click.option("-txs", "--taxonomy-sensitivity", default="normal", show_default=True,
+              help="Shared mmtax sensitivity preset or level 1-8.")
 # Pretty report options
 @click.option(
     "--report/--no-report",
@@ -352,6 +360,10 @@ def roll(
     dbn="all",
     dbm="all",
     dba="all",
+    taxonomy_backend="mmseqs",
+    taxonomy_db="ncbi_virus",
+    taxonomy_taxdump=None,
+    taxonomy_sensitivity="normal",
     make_report=True,
     report_best_by="score",
     skip_existing=False,
@@ -366,7 +378,8 @@ def roll(
     3. Contig filtering
     4. Marker gene search (default: RdRps + genomad) and nucleic search (default: known RNA viruses)
     5. Genome annotation (default: NVPC + Pfam for proteins, and Rfam+linerfold for catalytic/structural RNAs)
-    6. Virus characteristics prediction - NOT IMPLEMENTED YET
+    6. Optional ICTV taxonomy assignment with mmtax
+    7. Virus characteristics prediction - NOT IMPLEMENTED YET
 
     Returns:
         None: Results are written to the specified output directory
@@ -393,6 +406,12 @@ def roll(
                 skip_steps.append(implied)
 
     import sys
+    import shlex
+
+    command_args = list(sys.argv)
+    if command_args and Path(command_args[0]).name == "rolypoly":
+        command_args[0] = "rolypoly"
+    command_line = shlex.join(command_args)
 
     import polars as pl
 
@@ -581,6 +600,20 @@ def roll(
                 write_fasta_file,
             )
 
+            mapping_file = assembly_output / "contigs_id_map.tsv"
+            existing_original_ids: dict[str, list[str]] = {}
+            if mapping_file.exists():
+                existing_mapping = pl.read_csv(mapping_file, separator="\t")
+                if {"old_id", "new_id"}.issubset(existing_mapping.columns):
+                    for old_id, new_id in existing_mapping.select(
+                        "old_id", "new_id"
+                    ).iter_rows():
+                        original_ids = existing_original_ids.setdefault(
+                            str(new_id), []
+                        )
+                        if str(old_id) not in original_ids:
+                            original_ids.append(str(old_id))
+
             contigs_df = read_fasta_df(str(input))
             renamed_df, id_map = rename_sequences(contigs_df, prefix="CID")
             # Match the assemble step's contigs_id_map schema (old_id, new_id,
@@ -596,18 +629,21 @@ def roll(
                 else renamed_df["sequence"].to_list(),
                 output_file=str(final_assembly_file),
             )
-            pl.DataFrame(
-                {
-                    "old_id": list(id_map.keys()),
-                    "new_id": list(id_map.values()),
-                    "assembler": ["input"] * renamed_df.height,
-                    "length": renamed_df["length"],
-                    "gc_content": renamed_df["gc_content"].round(2),
-                    "n_count": renamed_df["n_count"],
-                }
-            ).write_csv(
-                assembly_output / "contigs_id_map.tsv", separator="\t"
-            )
+            mapping_rows = []
+            for index, (input_id, new_id) in enumerate(id_map.items()):
+                original_ids = existing_original_ids.get(input_id, [input_id])
+                for original_id in original_ids:
+                    mapping_rows.append(
+                        {
+                            "old_id": original_id,
+                            "new_id": new_id,
+                            "assembler": "input",
+                            "length": renamed_df["length"][index],
+                            "gc_content": round(renamed_df["gc_content"][index], 2),
+                            "n_count": renamed_df["n_count"][index],
+                        }
+                    )
+            pl.DataFrame(mapping_rows).write_csv(mapping_file, separator="\t")
             logger.info(
                 "Renamed %d input contigs to CID_ ids for downstream use",
                 renamed_df.height,
@@ -1026,6 +1062,41 @@ def roll(
             else None,
         )
 
+    # Step: ICTV taxonomy assignment
+    step += 1
+    taxonomy_output_dir = output_dir / "taxonomy"
+    taxonomy_output = taxonomy_output_dir / "mmtax.tsv"
+    if "taxonomy" in skip_steps:
+        logger.info("Step %d: Skipping taxonomy (in --skip-steps)", step)
+    elif skip_existing and taxonomy_output.exists():
+        logger.info("Taxonomy output %s already exists, skipping step", taxonomy_output)
+    else:
+        logger.info("Step %d: Assigning ICTV taxonomy (`mmtax`)", step)
+        from rolypoly.commands.virotype.mmtax import mmtax
+
+        predicted_orfs = annotation_output / "protein_annotation" / "predicted_orfs.faa"
+        taxonomy_output_dir.mkdir(parents=True, exist_ok=True)
+        ctx = click.Context(mmtax)
+        ctx.invoke(
+            mmtax,
+            input_path=Path(matched_contigs_file),
+            query_type="nucl",
+            proteins=predicted_orfs if predicted_orfs.exists() else None,
+            protein_map=None,
+            infer_protein_map=predicted_orfs.exists(),
+            output=taxonomy_output,
+            database=taxonomy_db,
+            taxdump=Path(taxonomy_taxdump) if taxonomy_taxdump else None,
+            backend=taxonomy_backend,
+            sensitivity=taxonomy_sensitivity,
+            threads=threads,
+            memory=memory,
+            temp_dir=(temp_base_dir / "taxonomy") if temp_base_dir else None,
+            keep_tmp=keep_tmp,
+            log_file=Path(log_file),
+            log_level=log_level,
+        )
+
     # # Step: Predict Virus Characteristics - TBD not yet implemented!
     # logger.info("Step 8: Predicting virus characteristics    ")
     # characteristics_output = output_dir / "virus_characteristics.tsv"
@@ -1068,6 +1139,8 @@ def roll(
                 title=f"RolyPoly roll — {Path(input).stem}",
                 initial_criterion=report_best_by,
                 initial_tab="table",
+                command_line=command_line,
+                log_file=log_file,
             )
             if report_path is not None:
                 logger.info("Wrote interactive genome-map report to %s", report_path)

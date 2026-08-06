@@ -20,6 +20,7 @@ from rolypoly.utils.viz.genome_maps import (
     BEST_CRITERIA,
     MarkerTableSpec,
     table_to_tab,
+    taxonomy_to_tab,
     write_genome_maps,
     write_report_for_dir,
 )
@@ -50,6 +51,8 @@ def build_extra_tabs(extra_tab_specs):
 @click.option("-x", "--extra-tab", "extra_tab_specs", multiple=True,
               help="Add a generic table tab as 'Label=path.tsv' (repeatable), e.g. for "
                    "predicted taxonomy or host prediction.")
+@click.option("-tx", "--taxonomy", "taxonomy_path", default=None,
+              help="Optional mmtax TSV; adds a taxonomy table and composition chart.")
 @click.option("--rrna-mapping", default=None,
               help="Path to rrna_to_genome_mapping.parquet to enrich the rRNA stats with "
                    "reference organism names (default: $ROLYPOLY_DATA/contam/rrna/...).")
@@ -88,7 +91,7 @@ def build_extra_tabs(extra_tab_specs):
                    "'' disables it. Default: auto-detect (identity_str for hmmsearch).")
 @click.option("-lf", "--log-file", default=None, help="Path to log file.")
 @click.option("-ll", "--log-level", hidden=True, default="INFO", help="Log level")
-def report(input_path, output_path, rna_path, nucleic_paths, extra_tab_specs, rrna_mapping,
+def report(input_path, output_path, rna_path, nucleic_paths, extra_tab_specs, taxonomy_path, rrna_mapping,
            title, min_score, max_evalue, best_only, best_by, min_overlap, source_priority,
            start_tab, rna_bins, no_stats, col_query, col_profile, col_source, col_aligned,
            log_file, log_level):
@@ -117,6 +120,8 @@ def report(input_path, output_path, rna_path, nucleic_paths, extra_tab_specs, rr
     priority = ([s.strip() for s in source_priority.split(",") if s.strip()]
                 if source_priority else None)
     extra_tabs = build_extra_tabs(extra_tab_specs)
+    if taxonomy_path:
+        extra_tabs = (extra_tabs or []) + [taxonomy_to_tab(taxonomy_path)]
     common = dict(
         title=title, min_score=min_score, max_evalue=max_evalue,
         mark_best=True, min_overlap_positions=min_overlap, source_priority=priority,

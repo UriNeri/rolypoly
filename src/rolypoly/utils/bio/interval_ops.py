@@ -18,6 +18,163 @@ logger = get_logger()
 # TODO: make this more robust and less dependent on external libraries. Candidate destination library is polars-bio.
 
 
+def filter_repeated_profile_regions(
+    hit_df: pl.DataFrame,
+    *,
+    coordinate_tolerance: int = 5,
+    query_coverage_threshold: float = 0.60,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Remove hits caused by one profile region recurring along a query.
+
+    The input schema is detected for RolyPoly HMMER output or MMseqs output.
+    Hits are rejected when the same target/profile interval occurs in at least
+    two distinct query intervals. Target endpoints may differ by
+    ``coordinate_tolerance`` amino acids; intervals with at least 80% reciprocal
+    containment are also treated as the same profile region. Returns retained
+    and rejected frames, with audit columns added to the rejected frame.
+    """
+    if hit_df.is_empty():
+        return hit_df, hit_df
+    if coordinate_tolerance < 0:
+        raise ValueError("coordinate_tolerance must be non-negative")
+    if not 0 < query_coverage_threshold <= 1:
+        raise ValueError("query_coverage_threshold must be in (0, 1]")
+
+    columns = set(hit_df.columns)
+    schemas = (
+        {
+            "query": "query_full_name", "profile": "hmm_full_name",
+            "target_start": "hmm_from", "target_end": "hmm_to",
+            "query_start": "q1", "query_end": "q2", "query_length": "qlen",
+        },
+        {
+            "query": "qseqid", "profile": "sseqid",
+            "target_start": "sstart", "target_end": "send",
+            "query_start": "qstart", "query_end": "qend", "query_length": "qlen",
+        },
+    )
+    schema = next(
+        (candidate for candidate in schemas if set(candidate.values()).issubset(columns)),
+        None,
+    )
+    if schema is None:
+        expected = " or ".join(", ".join(candidate.values()) for candidate in schemas)
+        raise ValueError(f"Cannot repeat-filter hits; expected columns: {expected}")
+
+    work = hit_df.with_row_index("rp_repeat_row")
+    rejected: dict[int, tuple[int, float, str]] = {}
+
+    def normalized_interval(row: dict, start_col: str, end_col: str) -> tuple[int, int]:
+        start, end = int(row[start_col]), int(row[end_col])
+        return min(start, end), max(start, end)
+
+    def same_profile_region(left: tuple[int, int], right: tuple[int, int]) -> bool:
+        if (
+            abs(left[0] - right[0]) <= coordinate_tolerance
+            and abs(left[1] - right[1]) <= coordinate_tolerance
+        ):
+            return True
+        overlap = max(0, min(left[1], right[1]) - max(left[0], right[0]) + 1)
+        shorter = min(left[1] - left[0] + 1, right[1] - right[0] + 1)
+        return bool(shorter and overlap / shorter >= 0.80)
+
+    def union_length(intervals: list[tuple[int, int]]) -> int:
+        if not intervals:
+            return 0
+        sorted_intervals = sorted(intervals)
+        current_start, current_end = sorted_intervals[0]
+        merged_length = 0
+        for start, end in sorted_intervals[1:]:
+            if start <= current_end + 1:
+                current_end = max(current_end, end)
+            else:
+                merged_length += current_end - current_start + 1
+                current_start, current_end = start, end
+        return merged_length + current_end - current_start + 1
+
+    for group in work.partition_by(
+        [schema["query"], schema["profile"]], maintain_order=True
+    ):
+        if group.height < 2:
+            continue
+        records = list(group.iter_rows(named=True))
+        target_intervals = [
+            normalized_interval(row, schema["target_start"], schema["target_end"])
+            for row in records
+        ]
+        parent = list(range(len(records)))
+
+        def find(index: int) -> int:
+            while parent[index] != index:
+                parent[index] = parent[parent[index]]
+                index = parent[index]
+            return index
+
+        def union(left: int, right: int) -> None:
+            left_root, right_root = find(left), find(right)
+            if left_root != right_root:
+                parent[right_root] = left_root
+
+        for left in range(len(records)):
+            for right in range(left + 1, len(records)):
+                if same_profile_region(target_intervals[left], target_intervals[right]):
+                    union(left, right)
+
+        components: dict[int, list[int]] = {}
+        for index in range(len(records)):
+            components.setdefault(find(index), []).append(index)
+
+        for indexes in components.values():
+            if len(indexes) < 2:
+                continue
+            query_intervals = [
+                normalized_interval(records[index], schema["query_start"], schema["query_end"])
+                for index in indexes
+            ]
+            distinct_occurrences: list[tuple[int, int]] = []
+            for interval in sorted(query_intervals):
+                if all(
+                    max(0, min(interval[1], prior[1]) - max(interval[0], prior[0]) + 1)
+                    <= coordinate_tolerance
+                    for prior in distinct_occurrences
+                ):
+                    distinct_occurrences.append(interval)
+            if len(distinct_occurrences) < 2:
+                continue
+
+            query_length = max(
+                int(records[index][schema["query_length"]]) for index in indexes
+            )
+            coverage = union_length(distinct_occurrences) / query_length if query_length else 0.0
+            reason = (
+                "repeated_profile_region_query_coverage"
+                if coverage > query_coverage_threshold
+                else "repeated_profile_region"
+            )
+            for index in indexes:
+                rejected[int(records[index]["rp_repeat_row"])] = (
+                    len(distinct_occurrences), coverage, reason
+                )
+
+    if not rejected:
+        return hit_df, hit_df.head(0)
+
+    rejected_ids = list(rejected)
+    audit = pl.DataFrame({
+        "rp_repeat_row": rejected_ids,
+        "repeat_occurrences": [rejected[row][0] for row in rejected_ids],
+        "repeat_query_coverage": [rejected[row][1] for row in rejected_ids],
+        "repeat_filter_reason": [rejected[row][2] for row in rejected_ids],
+    })
+    filtered = work.filter(~pl.col("rp_repeat_row").is_in(rejected_ids)).drop("rp_repeat_row")
+    removed = (
+        work.filter(pl.col("rp_repeat_row").is_in(rejected_ids))
+        .join(audit, on="rp_repeat_row", how="left")
+        .drop("rp_repeat_row")
+    )
+    return filtered, removed
+
+
 def derive_strand_from_coordinates(
     df: pl.DataFrame, qstart_col: str = "qstart", qend_col: str = "qend"
 ) -> pl.DataFrame:
