@@ -135,6 +135,7 @@ CONTEXT_SETTINGS = dict(
             "commands": {
                 "roll": "rolypoly.commands.misc.end_2_end.roll",
                 "report": "rolypoly.commands.virotype.summary.report",
+                "mmtax": "rolypoly.commands.virotype.mmtax.mmtax",
                 # "add-command": "hidden:rolypoly.commands.misc.add_command.add_command",
                 "fetch-sra": "rolypoly.commands.misc.fetch_sra_fastq.fetch_sra",  # Not  a click command (yet?)
                 "fastx-stats": "rolypoly.commands.misc.fastx_stats.fastx_stats",

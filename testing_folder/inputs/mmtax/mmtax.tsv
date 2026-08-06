@@ -1,0 +1,2 @@
+query	taxid	rank	taxon_name	support	family	backend
+contig_alpha	4	species	Examplevirus testii	1.0	Exampleviridae	mmseqs

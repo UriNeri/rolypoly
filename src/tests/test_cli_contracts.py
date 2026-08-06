@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 
 import click
 import polars as pl
@@ -155,6 +156,36 @@ def apply_preconditions(scenario: dict, tmp_path: Path) -> None:
             pytest.skip(
                 f"Scenario '{scenario['id']}' skipped: required path missing ({path_obj})"
             )
+
+    for fixture_name in scenario.get("fixtures", []):
+        source = repo_root() / "testing_folder" / "inputs" / "mmtax"
+        fixture_dir = tmp_path / "mmtax_fixture"
+        fixture_dir.mkdir(parents=True, exist_ok=True)
+        if fixture_name == "mmtax_mmseqs_db":
+            database = fixture_dir / "ncbi_virus"
+            subprocess.run(
+                ["mmseqs", "createdb", str(source / "reference.faa"),
+                 str(database), "--dbtype", "1"],
+                check=True,
+            )
+            subprocess.run(
+                ["mmseqs", "createtaxdb", str(database),
+                 str(fixture_dir / "taxonomy_tmp"), "--ncbi-tax-dump",
+                 str(source / "taxonomy"), "--tax-mapping-file",
+                 str(source / "accession2taxid.tsv")],
+                check=True,
+            )
+        elif fixture_name == "mmtax_diamond_db":
+            subprocess.run(
+                ["diamond", "makedb", "--in", str(source / "reference.faa"),
+                 "--db", str(fixture_dir / "ncbi_virus"), "--taxonmap",
+                 str(source / "accession2taxid_diamond.tsv"), "--taxonnodes",
+                 str(source / "taxonomy" / "nodes.dmp"), "--taxonnames",
+                 str(source / "taxonomy" / "names.dmp"), "--threads", "1"],
+                check=True,
+            )
+        else:
+            raise ValueError(f"Unknown CLI fixture: {fixture_name}")
 
 
 def load_cli_scenarios() -> list[dict]:

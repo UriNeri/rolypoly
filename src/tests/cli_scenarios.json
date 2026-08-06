@@ -711,7 +711,7 @@
       "-o",
       "{tmp}/roll_contigs_out",
       "--skip-steps",
-      "filter_reads,assemble,marker_search,nucleic_search,annotate,rdrp_motif_search,report",
+      "filter_reads,assemble,marker_search,nucleic_search,annotate,rdrp_motif_search,taxonomy,report",
       "--cluster-backend",
       "none",
       "-t",
@@ -773,6 +773,144 @@
     },
     "expected_table_min_rows": {
       "{tmp}/correlate_demo.groups.tsv": 1
+    }
+  },
+  {
+    "id": "mmtax_mmseqs_custom_taxonomy",
+    "description": "Assign contig taxonomy from precomputed ORFs with a tiny custom MMseqs2 taxonomy database",
+    "required_commands": [
+      "mmseqs"
+    ],
+    "fixtures": [
+      "mmtax_mmseqs_db"
+    ],
+    "args": [
+      "mmtax",
+      "--input",
+      "testing_folder/inputs/mmtax/query_contigs.fasta",
+      "--query-type",
+      "nucl",
+      "--proteins",
+      "testing_folder/inputs/mmtax/query_orfs.faa",
+      "--protein-map",
+      "testing_folder/inputs/mmtax/protein_to_contig.tsv",
+      "--database",
+      "{tmp}/mmtax_fixture/ncbi_virus",
+      "--taxdump",
+      "testing_folder/inputs/mmtax/taxonomy",
+      "--backend",
+      "mmseqs",
+      "--sensitivity",
+      "faster",
+      "--min-aln-len",
+      "10",
+      "--output",
+      "{tmp}/mmtax.tsv",
+      "--threads",
+      "1"
+    ],
+    "expected_files": [
+      "{tmp}/mmtax.tsv"
+    ],
+    "expected_table_columns": {
+      "{tmp}/mmtax.tsv": [
+        "query",
+        "taxid",
+        "taxon_name",
+        "support",
+        "realm",
+        "species",
+        "backend"
+      ]
+    },
+    "expected_table_min_rows": {
+      "{tmp}/mmtax.tsv": 1
+    },
+    "expected_contains": {
+      "{tmp}/mmtax.tsv": [
+        "contig_alpha",
+        "Examplevirus testii"
+      ]
+    }
+  },
+  {
+    "id": "mmtax_diamond_custom_taxonomy",
+    "description": "Assign contig taxonomy from precomputed ORFs with a tiny custom DIAMOND taxonomy database",
+    "required_commands": [
+      "diamond"
+    ],
+    "fixtures": [
+      "mmtax_diamond_db"
+    ],
+    "args": [
+      "mmtax",
+      "--input",
+      "testing_folder/inputs/mmtax/query_contigs.fasta",
+      "--query-type",
+      "nucl",
+      "--proteins",
+      "testing_folder/inputs/mmtax/query_orfs.faa",
+      "--protein-map",
+      "testing_folder/inputs/mmtax/protein_to_contig.tsv",
+      "--database",
+      "{tmp}/mmtax_fixture/ncbi_virus.dmnd",
+      "--taxdump",
+      "testing_folder/inputs/mmtax/taxonomy",
+      "--backend",
+      "diamond",
+      "--sensitivity",
+      "faster",
+      "--min-aln-len",
+      "10",
+      "--output",
+      "{tmp}/mmtax_diamond.tsv",
+      "--threads",
+      "1"
+    ],
+    "expected_files": [
+      "{tmp}/mmtax_diamond.tsv"
+    ],
+    "expected_table_columns": {
+      "{tmp}/mmtax_diamond.tsv": [
+        "query",
+        "taxid",
+        "taxon_name",
+        "support",
+        "realm",
+        "species",
+        "backend"
+      ]
+    },
+    "expected_table_min_rows": {
+      "{tmp}/mmtax_diamond.tsv": 1
+    },
+    "expected_contains": {
+      "{tmp}/mmtax_diamond.tsv": [
+        "contig_alpha",
+        "Examplevirus testii"
+      ]
+    }
+  },
+  {
+    "id": "report_taxonomy_composition",
+    "description": "Render an auto-discovered mmtax table and taxonomy composition chart",
+    "args": [
+      "report",
+      "--input",
+      "testing_folder/inputs/mmtax",
+      "--output",
+      "{tmp}/taxonomy_report.html",
+      "--no-stats"
+    ],
+    "expected_files": [
+      "{tmp}/taxonomy_report.html"
+    ],
+    "expected_contains": {
+      "{tmp}/taxonomy_report.html": [
+        "Exampleviridae",
+        "composition_label",
+        "Taxonomy"
+      ]
     }
   }
 ]

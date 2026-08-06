@@ -1,5 +1,5 @@
 {
-    "ROLYPOLY_DATA": "~/Documents/post2/scratch_work/rp_data//data/",
+    "ROLYPOLY_DATA": "/home/neri/Documents/GitHub/rolypoly/data/",
     "ROLYPOLY_TEST_DIR": "$RP_DIR/testing_folder/",
     "ROLYPOLY_REMIND_CITATIONS": "False"
 }
