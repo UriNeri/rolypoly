@@ -99,7 +99,6 @@ CONTEXT_SETTINGS = dict(
             "name": "Setup and Data",
             "commands": {
                 "get-data": "rolypoly.commands.misc.get_external_data.get_data"
-                # "build-data": "rolypoly.commands.misc.build_data.build_data", # this is for dev work.
             },
         },
         "reads": {

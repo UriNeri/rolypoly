@@ -32,10 +32,10 @@ tools = []
 )
 @option("--log-level", hidden=True, default="INFO", help="Log level")
 def get_data(info, rolypoly_data, log_file, log_level):
-    """Download or build external data required for RolyPoly.
+    """Download pre-built external data required for RolyPoly.
 
-    This command either downloads pre-built databases and reference data from
-    a public repository, or builds them from scratch using the latest source data.
+    This command downloads pre-built databases and reference data from
+    a public repository. Reproducible builders are maintained in UriNeri/rolypoly-db.
 
     Args:
         info (bool): If True, display version and configuration information and exit.

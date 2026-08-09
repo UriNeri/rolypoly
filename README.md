@@ -81,7 +81,11 @@ Legend:
 
 #### Data
 - ✅ [`get-data`](https://urineri.github.io/rolypoly/commands/get_data) — Download required data
-- ✅ [`version`](https://urineri.github.io/rolypoly/commands/version/) — Show code and data version info
+- ✅ [`version`](https://urineri.github.io/rolypoly/commands/version/) — Show code and data version info.  
+
+Note: The (mostly, hopefully) reproducible source workflows for these data are maintained in [UriNeri/rolypoly-db](https://github.com/UriNeri/rolypoly-db).
+
+
 
 #### Raw-Reads
 - ✅ [`filter-reads`](https://urineri.github.io/rolypoly/commands/filter_reads) — Host/rRNA/adapters/artifact filtering and QC (bbmap, falco, etc.)

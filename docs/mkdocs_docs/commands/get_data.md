@@ -5,12 +5,12 @@
 
 ## Summary
 
-Download or build external data required for RolyPoly.
+Download pre-built external data required for RolyPoly.
 
 ## Description
 
-This command either downloads pre-built databases and reference data from
-    a public repository, or builds them from scratch using the latest source data.
+This command downloads pre-built databases and reference data from
+ a public repository. Reproducible construction workflows are maintained at https://github.com/UriNeri/rolypoly-db.
 
 ## Usage
 
