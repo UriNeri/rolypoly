@@ -42,7 +42,7 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
    - Try to clean up tmp files unless `--keep-tmp` flag is used.
 
 4. **Calling external tools**:
-   - Use `rolypoly.utils.command_runner.run_command_comp()` to run external commands.
+   - Ideally, please use `rolypoly.utils.command_runner.run_command_comp()` to run external commands, especially if a logger or output tracking is needed.
    - If that is not possible, use `subprocess.run()`.
 
 5. **Shared Code**:
