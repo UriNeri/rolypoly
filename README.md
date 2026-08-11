@@ -4,17 +4,19 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/rolypoly-tk.svg?cacheSeconds=300)](https://pypi.org/project/rolypoly-tk/) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/rolypoly-tk?period=monthly&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=Downloads+%28month%29)](https://pepy.tech/projects/rolypoly-tk) [![License](https://img.shields.io/github/license/UriNeri/rolypoly.svg)](LICENSE) [![Docs](https://img.shields.io/badge/docs-urineri.github.io%2Frolypoly-blue)](https://urineri.github.io/rolypoly/) [![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat)](http://bioconda.github.io/recipes/rolypoly-tk/README.html)
 
-RolyPoly is an RNA virus analysis toolkit, meant to be a "swiss-army knife" for RNA virus discovery and characterization by including a variety of commands, wrappers, parsers, automations, and some "quality of life" features for any many of a virus investigation process (from raw read processing to genome annotation). While it includes an "end-2-end" command that employs an entire pipeline, the main goals of rolypoly are:
+RolyPoly is an RNA virus analysis toolkit, meant to be a "swiss-army knife" for RNA virus discovery and characterization by including a variety of commands, wrappers, parsers, automations, and some "quality of life" features for any many of a virus investigation process (from raw read processing to genome annotation).  
+While it includes an "end-2-end" command that employs an entire pipeline, the main goals of rolypoly are:
 - Help non-computational researchers take a deep dive into their data without compromising on using tools that are non-techie friendly.  
 - Help (software) developers of virus analysis pipeline "plug" holes missing from their framework, by using specific RolyPoly commands to add features to their existing code base.
 
-## Note - Rolypoly is still under development (contributions welcome!)
-RolyPoly is an open, rolling-release, still in progress project. We hope to summarise the main functionality into a manuscript ~late 2026. Pull requests and contributions are welcome and will be considered (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+## RolyPoly is still under development (contributions welcome!)
+RolyPoly is an open, "rolling-release". We hope to summarise the main functionality into a v1 manuscript ~late 2026.  
+Pull requests and contributions are welcome and will be considered (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 
 ## Installation
 
-### Mamba/Conda (Quick and Easy - One complete environment)
+### Mamba/Conda
 **Recommended for most users** if you want a "just works" solution and intend to use rolypoly as a CLI tool in an independent environment.  
 First, install conda or [mamba](https://github.com/mamba-org/mamba), if you don't have it already:
 ```bash
@@ -35,7 +37,7 @@ micromamba activate rolypoly-tk
 rolypoly --help 
 ```
 
-### Developer / Modular setup: Command-Specific Pixi Environments
+### Developer install: Modular/Command-Specific Pixi Environments
 **Mostly for software developers** looking to try or make use of specific rolypoly features with minimal risk of dependency conflicts, by using [Pixi](https://pixi.sh/) to create isolated environments for each command group:
 
 ```bash
@@ -58,21 +60,15 @@ pixi run -e reads-only rolypoly filter-reads --help
 pixi shell -e reads-only
 rolypoly filter-reads --help
 ```  
-For details about specific command groups and their dependencies, see the [pyproject.toml file](https://github.com/UriNeri/rolypoly/blob/main/pyproject.toml).
+For details about specific command groups and their dependencies, see the [pyproject.toml](https://github.com/UriNeri/rolypoly/blob/main/pyproject.toml).
 
 ## Usage
-RolyPoly is a command-line tool with subcommands grouped by analysis stage. 
+RolyPoly is a command-line tool with subcommands grouped by analysis stage. It can also be used as a Python library (except for some commands that require external software).  
 Use `rolypoly <command> --help` for most up to date details. Some additional information is in the [docs](https://urineri.github.io/rolypoly/commands/).
 
 For some scientific background and common use-case scenario examples (different library types, preset selection, step-by-step workflow), see the **[Examples page](https://urineri.github.io/rolypoly/examples)**.
 
-```bash
-rolypoly  <COMMAND> [ARGS]...
-```
-
 ## Commands and Project Status
-Active development. Command groups and current implementation status are summarized below.  
-
 Legend: 
 - ✅ - Available (on pypi and has tests). Command default parameters are unlikely to change much. 
 - 🧪 - Experimental, might not be on pypi / have tests. Default parameters may change. Code might be in a seperate dev branch.
@@ -84,7 +80,6 @@ Legend:
 - ✅ [`version`](https://urineri.github.io/rolypoly/commands/version/) — Show code and data version info.  
 
 Note: The (mostly, hopefully) reproducible source workflows for these data are maintained in [UriNeri/rolypoly-db](https://github.com/UriNeri/rolypoly-db).
-
 
 
 #### Raw-Reads
@@ -104,7 +99,8 @@ Note: The (mostly, hopefully) reproducible source workflows for these data are m
 #### RNA Virus Identification
 - ✅ [`marker-search`](https://urineri.github.io/rolypoly/commands/marker_search) — Search for viral markers (mainly RdRps, genomad VVs, or user-provided), using profile-based methods (HMMER / MMseqs2). 
 - ✅ [`virus-mapping`](https://urineri.github.io/rolypoly/commands/virus_mapping) — Map and identify viruses using nucleic acid search (MMseqs2).
-- ✅ [`rdrp-motif-search`](https://urineri.github.io/rolypoly/commands/rdrp_motif_search) — Search RdRp motifs (A/B/C/D) in nucleotide or amino acid sequences.
+- 🧪 [`rdrp-motif-search`](https://urineri.github.io/rolypoly/commands/rdrp_motif_search) — Search RdRp motifs (A/B/C/D) in nucleotide or amino acid sequences.
+- 🧪 [`mmtax`](https://urineri.github.io/rolypoly/commands/mmtax) — Assign ICTV taxonomy to nucleotide or protein virus sequences with MMseqs2 or DIAMOND.
 
 #### Bining / Clustering
 - 🧪 [`cluster`](https://urineri.github.io/rolypoly/commands/cluster) — Average Nucleic identity (ANI) based contig grouping. Supports several common backends and methods.
@@ -119,7 +115,6 @@ Note: The (mostly, hopefully) reproducible source workflows for these data are m
 - ✅ [`fastx-calc`](https://urineri.github.io/rolypoly/commands/misc) — Calculate per-sequence metrics (length, GC content, hash, ...)
 - ✅ [`fastx-stats`](https://urineri.github.io/rolypoly/commands/misc) — Calculate (-->aggregate) statistics for sequences (min, max, mean, median, ...) (input is file/s)
 - ✅ [`rename-seqs`](https://urineri.github.io/rolypoly/commands/misc) — Rename sequences (add a prefix, suffix, hash, running number, etc.)
-- 🧪 [`mmtax`](https://urineri.github.io/rolypoly/commands/mmtax) — Assign ICTV taxonomy to nucleotide or protein virus sequences with MMseqs2 or DIAMOND.
 - 🤔 support for [genotate](https://github.com/deprekate/genotate) for gene prediction.
 - 🤔 Genome refinement / strain de-entalgement / variant/haplotype calling?
 - 🤔 Virus feature prediction (+/-ssRNA/dsRNA, circular/linear, mono/poly-segmented, capsid type, etc.)

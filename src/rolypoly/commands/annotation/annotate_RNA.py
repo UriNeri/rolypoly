@@ -427,7 +427,7 @@ def predict_secondary_structure_rnafold(config, input_fasta, output_file):
     config.logger.info(
         f"Secondary structure prediction completed. Output written to {output_file}"
     )
-    tools.append("rnafold")
+    tools.append("viennarna")
 
 def predict_secondary_structure_linearfold(config, input_fasta, output_file):
     """Predict RNA secondary structure using LinearFold."""

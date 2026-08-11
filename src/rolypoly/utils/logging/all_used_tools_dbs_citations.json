@@ -7,8 +7,8 @@
     "name": "RolyPoly",
     "citation": "Neri, U., Bushnell, B., Roux, S., & Camargo, A. P., Steindorff, A.S., Coclet, C., David P., (2025). RolyPoly: A pipeline for RNA virus identification from RNA-seq data. [Software]. Available from https://code.jgi.doe.gov/UNeri/rolypoly"
   },
-  "rnafold": {
-    "name": "ViennaRNA Package",
+  "viennarna": {
+    "name": "viennarna",
     "citation": "https://doi.org/10.1186/1748-7188-6-26"
   },
   "linearfold": {
@@ -42,8 +42,8 @@
     "note": "version nn"
   },
   "orffinder": {
-    "name": "NCBI ORFfinder",
-    "citation": "https://www.ncbi.nlm.nih.gov/orffinder/"
+    "name": "ORFfinder",
+    "citation": "https://doi.org/10.1093/nar/gkm1000"
   },
   "hmmer": {
     "name": "HMMER",
@@ -63,7 +63,7 @@
   },
   "pfam": {
     "name": "Pfam",
-    "citation": "https://doi.org/10.1093/nar/gkaa913",
+    "citation": "https://doi.org/10.1093/nar/gkae1276",
     "note": "version nn"
   },
   "interpro": {
@@ -105,14 +105,6 @@
     "code": "https://github.com/smithlabcode/falco",
     "citation": "https://doi.org/10.12688/f1000research.21142.2"
   },
-  "fastqc": {
-    "name": "fastqc",
-    "citation": "https://www.bioinformatics.babraham.ac.uk/projects/fastqc/fastqc_v0.12.1.zip"
-  },
-  "multiqc": {
-    "name": "multiqc",
-    "citation": "http://dx.doi.org/10.1093/bioinformatics/btw354"
-  },
   "mmseqs": {
     "name": "mmseqs",
     "citation": "https://doi.org/10.1038/nbt.3988",
@@ -120,7 +112,7 @@
   },
   "penguin": {
     "name": "penguin",
-    "citation": "https://doi.org/10.1101/2024.03.29.587318",
+    "citation": "https://doi.org/10.1186/s40168-024-01904-y",
     "code": "https://github.com/soedinglab/plass"
   },
   "blast": {
@@ -136,8 +128,8 @@
     "citation": "https://doi.org/10.1186/1471-2105-11-119"
   },
   "psi_blast": {
-    "name": "PSI-BLAST",
-    "citation": "https://doi.org/10.1093%2Fnar%2F25.17.3389"
+    "name": "PSI_BLAST",
+    "citation": "https://doi.org/10.1093/nar/25.17.3389"
   },
   "minimap2": {
     "name": "minimap2",
@@ -178,20 +170,16 @@
     "data": "https://drive.google.com/drive/folders/1liPyP9Qt_qh0Y2MBvBPZQS6Jrh9X0gyZ?usp=drive_link",
     "thesis": "https://www.repository.cam.ac.uk/items/1fabebd2-429b-45c9-b6eb-41d27d0a90c2"
   },
-  "palmdb_v2": {
-    "name": "PALMdb_v2",
-    "citation": "https://github.com/ababaian/palmdb2"
-  },
-  "pfam_A_38": {
-    "name": "pfam_A_38",
-    "citation": "https://doi.org/10.1093/nar/gkaa913",
-    "data": "https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam37.0/Pfam-A.hmm.gz",
+  "pfam_a_38": {
+    "name": "pfam_a_38",
+    "citation": "https://doi.org/10.1093/nar/gkae1276",
+    "data": "https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam38.0/Pfam-A.hmm.gz",
     "note": "RdRps and RT profiles from PFAM_A v.37: PF04197.17, PF04196.17, PF22212.1, PF22152.1, PF22260.1, PF05183.17, PF00680.25, PF00978.26, PF00998.28, PF02123.21, PF07925.16, PF00078.32, PF07727.19, PF13456.11"
   },
   "pfam_rts_rdrp": {
     "name": "pfam_rts_rdrp",
-    "citation": "https://doi.org/10.1093/nar/gkaa913",
-    "data": "https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam37.0/Pfam-A.hmm.gz",
+    "citation": "https://doi.org/10.1093/nar/gkae1276",
+    "data": "https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam38.0/Pfam-A.hmm.gz",
     "note": "RdRps and RT profiles from PFAM_A v.37: PF04197.17, PF04196.17, PF22212.1, PF22152.1, PF22260.1, PF05183.17, PF00680.25, PF00978.26, PF00998.28, PF02123.21, PF07925.16, PF00078.32, PF07727.19, PF13456.11"
   },
   "palmdb_v1": {
