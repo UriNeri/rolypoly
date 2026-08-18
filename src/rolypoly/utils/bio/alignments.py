@@ -706,6 +706,7 @@ def hmmdb_from_directory(
     logger: Optional[logging.Logger] = None,
     missing_include: bool = False,
     debug: bool = False,
+    default_description: str = None
 ):
     """Create a concatenated HMM database from a directory of MSA files.
 
@@ -719,6 +720,7 @@ def hmmdb_from_directory(
         desc_col: str, column name in the info table to use for the HMM description
         gath_col: str, column name for gathering threshold
         default_gath: str, default gathering threshold if none provided in info table
+        default_description: str, default description if none provided in info table
         missing_include: bool, whether to include MSAs with no matching info table entry (Default value = False)
         logger: logging.Logger, optional logger for debug output
         debug: bool, whether to enable debug logging - will override logger level if provided (Default value = False)
@@ -735,6 +737,8 @@ def hmmdb_from_directory(
     default_gath = default_gath.encode(
         "utf-8"
     )  # default gathering threshold if none provided
+    if default_description is not None:
+        default_description = default_description.encode("utf-8")
 
     if info_table is not None:
         info_table = Path(info_table)
@@ -809,7 +813,9 @@ def hmmdb_from_directory(
                         msa.description = str(info_row.get(desc_col)).encode(
                             "utf-8"
                         )
-
+                    else:
+                        msa.description = default_description.encode("utf-8")
+                        
                     if gath_col in info.columns:
                         this_gath = (
                             str(info_row.get(gath_col)).encode("utf-8")
