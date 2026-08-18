@@ -314,17 +314,6 @@ def filter_fasta_by_headers(
         raise Exception(f"Error filtering FASTA file {fasta_file}: {e}") from e
 
 
-def add_fasta_to_gff(config, gff_file):
-    """Add FASTA section to GFF file"""
-
-    with open(gff_file, "a") as f:
-        f.write("##FASTA\n")
-        write_fasta_file(
-            records=parse_fastx_file(config.input),
-            output_file=f,
-            format="fasta",
-        )
-
 
 def populate_pldf_withseqs_needletail(
     pldf,

@@ -1320,14 +1320,18 @@ def combine_results(config):
 
     combined_data = enrich_with_info_tables(combined_data, config.logger)
 
-    # Normalize column names for GFF3 compatibility
-    from rolypoly.utils.bio.polars_fastx import normalize_column_names
+    from rolypoly.utils.bio.polars_fastx import (
+        add_missing_gff_columns,
+        normalize_column_names,
+    )
 
     combined_data = normalize_column_names(combined_data)
 
     # Write output in requested format
     if config.output_format == "gff3":
-        combined_data = add_missing_gff_columns(combined_data)
+        combined_data = add_missing_gff_columns(
+            combined_data, default_type="protein_domain", default_score=0.0
+        )
         write_combined_results_to_gff(config, combined_data)
     elif config.output_format == "csv":
         output_file = config.output_dir / "combined_annotations.csv"
@@ -1487,132 +1491,19 @@ def enrich_with_info_tables(dataframe: pl.DataFrame, logger: logging.Logger):
     return enriched
 
 
-def add_missing_gff_columns(dataframe):
-    """Add missing GFF3 columns with defaults."""
-    import polars as pl
-
-    if "source" not in dataframe.columns:
-        dataframe = dataframe.with_columns(pl.lit("rp").alias("source"))
-    if "type" not in dataframe.columns:
-        dataframe = dataframe.with_columns(
-            pl.lit("protein_domain").alias("type")
-        )
-    if "score" not in dataframe.columns:
-        dataframe = dataframe.with_columns(pl.lit(0.0).alias("score"))
-    if "strand" not in dataframe.columns:
-        dataframe = dataframe.with_columns(pl.lit("+").alias("strand"))
-    if "phase" not in dataframe.columns:
-        dataframe = dataframe.with_columns(pl.lit(".").alias("phase"))
-
-    return dataframe
-
-
 def write_combined_results_to_gff(config, combined_data):
     """Write combined results to GFF3 format."""
-    from rolypoly.utils.bio.sequences import add_fasta_to_gff
+    from rolypoly.utils.bio.polars_fastx import write_gff3_dataframe
 
     output_file = config.output_dir / "combined_annotations.gff3"
-    with open(output_file, "w") as f:
-        f.write("##gff-version 3\n")
-        for row in combined_data.iter_rows(named=True):
-            record = convert_record_to_gff3_record(row)
-            f.write(f"{record}\n")
-
-    # Optionally add FASTA section
-    add_fasta_to_gff(config, output_file)
+    write_gff3_dataframe(
+        combined_data,
+        output_file,
+        input_fasta=config.input,
+        default_type="protein_domain",
+        default_score=0.0,
+    )
     config.logger.info(f"Combined annotation results written to {output_file}")
-
-
-def convert_record_to_gff3_record(row):
-    """Convert a row dict to GFF3 format string."""
-    # Try to identify sequence_id column
-    sequence_id_columns = [
-        "sequence_id",
-        "query",
-        "qseqid",
-        "contig_id",
-        "contig",
-        "id",
-        "name",
-        "query_full_name",
-    ]
-    sequence_id_col = next(
-        (col for col in sequence_id_columns if col in row.keys()), None
-    )
-    if sequence_id_col is None:
-        raise ValueError(
-            f"No sequence ID column found in row. Available columns: {list(row.keys())}"
-        )
-
-    # Try to identify other columns
-    score_columns = ["score", "Score", "bitscore", "qscore", "bit", "bits"]
-    score_col = next(
-        (col for col in score_columns if col in row.keys()), "score"
-    )
-
-    source_columns = ["source", "Source", "db", "DB", "database"]
-    source_col = next(
-        (col for col in source_columns if col in row.keys()), "source"
-    )
-
-    type_columns = ["type", "Type", "feature", "Feature"]
-    type_col = next((col for col in type_columns if col in row.keys()), "type")
-
-    strand_columns = ["strand", "Strand", "sense", "Sense"]
-    strand_col = next(
-        (col for col in strand_columns if col in row.keys()), "strand"
-    )
-
-    phase_columns = ["phase", "Phase"]
-    phase_col = next(
-        (col for col in phase_columns if col in row.keys()), "phase"
-    )
-
-    # Build GFF3 attributes string
-    attrs = []
-    excluded_cols = [
-        sequence_id_col,
-        source_col,
-        score_col,
-        type_col,
-        strand_col,
-        phase_col,
-        "start",
-        "end",
-    ]
-
-    for key, value in row.items():
-        if key not in excluded_cols:
-            if (
-                value
-                and str(value).strip()
-                and str(value) != "."
-                and str(value) != ""
-            ):
-                attrs.append(f"{key}={value}")
-
-    # Get values with defaults
-    sequence_id = row[sequence_id_col]
-    source = row.get(source_col, "rp")
-    score = row.get(score_col, "0")
-    feature_type = row.get(type_col, "protein_domain")
-    strand = row.get(strand_col, "+")
-    phase = row.get(phase_col, ".")
-
-    # Format GFF3 record
-    gff3_fields = [
-        sequence_id,
-        source,
-        feature_type,
-        str(row.get("start", "1")),
-        str(row.get("end", "1")),
-        str(score),
-        strand,
-        phase,
-        ";".join(attrs) if attrs else ".",
-    ]
-
-    return "\t".join(gff3_fields)
 
 
 if __name__ == "__main__":

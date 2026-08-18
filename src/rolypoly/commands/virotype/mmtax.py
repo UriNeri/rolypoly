@@ -12,6 +12,11 @@ from pathlib import Path
 import polars as pl
 import rich_click as click
 
+from rolypoly.utils.bio.polars_fastx import (
+    read_protein_gff_map,
+    validate_protein_to_contig_map,
+)
+
 DEFAULT_DATABASE_ALIASES = {"ncbi_virus", "ncbi_nr_ictv", "ncbi-nr-ictv"} # all these are the same
 PLACEHOLDER_DATABASES = {"rvmt", "nvpc"}
 ICTV_RANKS = (
@@ -204,9 +209,8 @@ def read_protein_map(path: Path) -> pl.DataFrame:
         ["protein_id", "contig_id"],
     ):
         frame = frame.slice(1)
-    return frame.with_columns(pl.all().cast(pl.String)).unique(
-        subset=["protein"]
-    )
+    frame = frame.with_columns(pl.all().cast(pl.String))
+    return validate_protein_to_contig_map(frame)
 
 
 def filter_top_hits(hits: pl.DataFrame, top: float) -> pl.DataFrame:
@@ -382,32 +386,58 @@ def prepare_proteins(
     alphabet: str,
     proteins: Path | None,
     protein_map_path: Path | None,
+    protein_gff_path: Path | None,
     infer_protein_map: bool,
     work_dir: Path,
     threads: int,
 ) -> tuple[Path, pl.DataFrame, list[str]]:
     """Resolve or predict proteins and their parent-contig mapping."""
     used_tools = []
+    if protein_map_path is not None and protein_gff_path is not None:
+        raise click.UsageError(
+            "Use either --protein-map or --protein-gff, not both."
+        )
     if proteins is not None:
         protein_fasta = proteins
         if protein_map_path is None and not infer_protein_map:
-            raise click.UsageError(
-                "--proteins with contig input requires --protein-map, or "
-                "--infer-protein-map for RolyPoly-style ORF headers."
-            )
+            if protein_gff_path is not None:
+                infer_protein_map = False
+            else:
+                raise click.UsageError(
+                    "--proteins with contig input requires --protein-map, "
+                    "--protein-gff, or --infer-protein-map for "
+                    "RolyPoly-style ORF headers."
+                )
     elif alphabet == "protein":
         protein_fasta = input_path
     else:
+        if protein_gff_path is not None:
+            raise click.UsageError(
+                "--protein-gff is only used with existing protein input; "
+                "nucleotide input predicted by mmtax uses its generated GFF."
+            )
         from rolypoly.utils.bio.translation import pyro_predict_orfs
 
         protein_fasta = work_dir / "predicted_orfs.faa"
         pyro_predict_orfs(input_path, protein_fasta, threads=threads)
-        infer_protein_map = True
+        protein_gff_path = protein_fasta.with_suffix(".gff")
         used_tools.append("pyrodigal-rv")
 
     identifiers = protein_ids(protein_fasta)
+    duplicate_identifiers = (
+        identifiers.group_by("protein")
+        .agg(pl.len().alias("count"))
+        .filter(pl.col("count") > 1)
+    )
+    if duplicate_identifiers.height:
+        raise click.ClickException(
+            "Protein FASTA has duplicate search identifiers after whitespace "
+            f"parsing; first duplicate: {duplicate_identifiers['protein'][0]}"
+        )
     if protein_map_path is not None:
         mapping = read_protein_map(protein_map_path)
+    elif protein_gff_path is not None:
+        mapping = read_protein_gff_map(protein_gff_path)
     elif infer_protein_map:
         mapping = identifiers.with_columns(
             pl.col("protein")
@@ -453,9 +483,7 @@ def search_mmseqs(
         positional_args_location="start",
         params={
             "threads": threads,
-            "split-memory-limit": memory,
-            "split-mode": 2,
-            "db-load-mode": 2,
+            "split-memory-limit": memory.upper(),
             "e": evalue,
             "min-seq-id": identity,
             "min-aln-len": min_aln_len,
@@ -494,6 +522,9 @@ def search_diamond(
         "tmpdir": tmp_dir,
         "evalue": evalue,
         "id": identity * 100,
+        "min-orf": 20,
+        "min-query-len": 20,
+        "header": "simple",
     }
     preset = SENSITIVITY_TO_DIAMOND[sensitivity]
     if preset:
@@ -533,21 +564,60 @@ def read_search_hits(
                 "bits": "bitscore",
             }
         ).with_columns(pl.col("fident").cast(pl.Float64).alias("identity"))
-    else:
-        frame = pl.read_csv(
-            path,
-            separator="\t",
-            has_header=False,
-            new_columns=[
-                "protein",
-                "target",
-                "identity",
-                "alignment_length",
-                "bitscore",
-                "evalue",
-                "taxid",
-            ],
-        ).with_columns((pl.col("identity") / 100.0).alias("identity"))
+    elif backend == "diamond":
+        diamond_columns = [
+            "protein",
+            "target",
+            "identity",
+            "alignment_length",
+            "bitscore",
+            "evalue",
+            "taxid",
+        ]
+        with path.open() as handle:
+            first_line = handle.readline()
+            has_header = first_line.startswith(("qseqid\t", "qtitle\t"))
+        if has_header:
+            frame = pl.read_csv(path, separator="\t")
+            rename_columns = {
+                "qseqid": "protein",
+                "qtitle": "protein",
+                "sseqid": "target",
+                "salltitles": "target",
+                "pident": "identity",
+                "length": "alignment_length",
+                "staxids": "taxid",
+            }
+            frame = frame.rename(
+                {
+                    old: new
+                    for old, new in rename_columns.items()
+                    if old in frame.columns
+                }
+            )
+        else:
+            frame = pl.read_csv(
+                path,
+                separator="\t",
+                has_header=False,
+                new_columns=diamond_columns,
+            )
+        frame = frame.with_columns(
+            pl.col("protein")
+            .cast(pl.String)
+            .str.split(" ")
+            .list.first()
+            .alias("protein"),
+            pl.col("target")
+            .cast(pl.String)
+            .str.split(" ")
+            .list.first()
+            .alias("target"),
+            (pl.col("identity").cast(pl.Float64) / 100.0).alias("identity"),
+            pl.col("alignment_length").cast(pl.Int64),
+            pl.col("bitscore").cast(pl.Float64),
+            pl.col("evalue").cast(pl.Float64),
+        )
     return (
         frame.with_columns(pl.col("taxid").cast(pl.String).str.split(";"))
         .explode("taxid", empty_as_null=True)
@@ -601,10 +671,22 @@ def read_search_hits(
     help="Two-column protein-to-contig TSV for --proteins.",
 )
 @click.option(
+    "-pg",
+    "--protein-gff",
+    type=click.Path(
+        exists=True, dir_okay=False, path_type=Path, resolve_path=True
+    ),
+    default=None,
+    help=(
+        "GFF/GTF with CDS IDs matching --proteins; uses seqid as the parent "
+        "contig."
+    ),
+)
+@click.option(
     "-ipm",
     "--infer-protein-map",
     is_flag=True,
-    help="Infer contigs from RolyPoly/pyrodigal ORF header suffixes.",
+    help="Infer contigs from RolyPoly-style ORF header suffixes.",
 )
 @click.option(
     "-o",
@@ -646,7 +728,7 @@ def read_search_hits(
     "sensitivity",
     default="normal",
     show_default=True,
-    help="Shared sensitivity preset or numeric level 1-8.",
+    help="Shared sensitivity preset or numeric level 1-8 (lower is less sensitive but faster)",
 )
 @click.option(
     "-tp",
@@ -654,7 +736,7 @@ def read_search_hits(
     type=click.FloatRange(0.0, 100.0),
     default=10.0,
     show_default=True,
-    help="Keep hits within this percent of each protein's best bitscore before LCA.",
+    help="Keep hits within this percent of each protein's best bitscore BEFORE LCA.",
 )
 @click.option(
     "-w",
@@ -691,8 +773,9 @@ def read_search_hits(
     "-id",
     "--identity",
     type=click.FloatRange(0, 1),
-    default=0.0,
+    default=0.1,
     show_default=True,
+    help="Minimum percent identity for protein hits (0-1)."
 )
 @click.option(
     "-al",
@@ -700,6 +783,7 @@ def read_search_hits(
     type=click.IntRange(min=0),
     default=30,
     show_default=True,
+    help="Minimum alignment length for protein hits (in AA residues)."
 )
 @click.option(
     "-t", "--threads", type=click.IntRange(min=1), default=1, show_default=True
@@ -725,6 +809,7 @@ def mmtax(
     query_type: str,
     proteins: Path | None,
     protein_map: Path | None,
+    protein_gff: Path | None,
     infer_protein_map: bool,
     output: Path,
     database: str,
@@ -775,6 +860,7 @@ def mmtax(
             "input": input_path,
             "proteins": proteins,
             "protein_map": protein_map,
+            "protein_gff": protein_gff,
             "output": output,
             "database": database_path,
             "taxdump": taxdump_path,
@@ -798,6 +884,7 @@ def mmtax(
             alphabet,
             proteins,
             protein_map,
+            protein_gff,
             infer_protein_map,
             work_dir,
             threads,

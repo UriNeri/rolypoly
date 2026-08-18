@@ -1075,6 +1075,7 @@ def roll(
         from rolypoly.commands.virotype.mmtax import mmtax
 
         predicted_orfs = annotation_output / "protein_annotation" / "predicted_orfs.faa"
+        predicted_orfs_gff = predicted_orfs.with_suffix(".gff")
         taxonomy_output_dir.mkdir(parents=True, exist_ok=True)
         ctx = click.Context(mmtax)
         ctx.invoke(
@@ -1083,7 +1084,9 @@ def roll(
             query_type="nucl",
             proteins=predicted_orfs if predicted_orfs.exists() else None,
             protein_map=None,
-            infer_protein_map=predicted_orfs.exists(),
+            protein_gff=predicted_orfs_gff if predicted_orfs_gff.exists() else None,
+            infer_protein_map=predicted_orfs.exists()
+            and not predicted_orfs_gff.exists(),
             output=taxonomy_output,
             database=taxonomy_db,
             taxdump=Path(taxonomy_taxdump) if taxonomy_taxdump else None,

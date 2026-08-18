@@ -8,7 +8,7 @@ TODO: Add write functions for GFF3 and FASTA/FASTQ files (partially done see fra
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Iterator, Optional, Union
+from typing import Any, Iterator, Mapping, Optional, Union
 
 import polars as pl
 from needletail import parse_fastx_file
@@ -199,6 +199,249 @@ def from_gff_eager(
             # .list.to_struct()
         )
     return df
+
+
+def validate_protein_to_contig_map(frame: pl.DataFrame) -> pl.DataFrame:
+    """Validate and deduplicate a protein-to-contig mapping."""
+    conflicts = (
+        frame.select(
+            pl.col("protein").cast(pl.String),
+            pl.col("contig").cast(pl.String),
+        )
+        .unique()
+        .group_by("protein")
+        .agg(
+            pl.col("contig").n_unique().alias("contig_count"),
+            pl.col("contig").unique().alias("contigs"),
+        )
+        .filter(pl.col("contig_count") > 1)
+    )
+    if conflicts.height:
+        raise ValueError(
+            "Protein map assigns at least one protein to multiple contigs; "
+            f"first conflict: {conflicts['protein'][0]} -> "
+            f"{';'.join(conflicts['contigs'][0])}"
+        )
+    return (
+        frame.select(
+            pl.col("protein").cast(pl.String),
+            pl.col("contig").cast(pl.String),
+        )
+        .drop_nulls(["protein", "contig"])
+        .unique(subset=["protein"])
+    )
+
+
+def read_protein_gff_map(path: Union[str, Path]) -> pl.DataFrame:
+    """Read a protein-to-contig map from CDS-like GFF/GTF records.
+
+    The protein ID is read from common GFF3/GTF attributes: ``ID``,
+    ``protein_id``, or ``transcript_id``. The parent contig is read from the
+    GFF ``seqid`` column. Both IDs are reduced to their first whitespace token,
+    matching FASTA search-tool query ID behavior.
+    """
+    columns = [
+        "seqid",
+        "source",
+        "type",
+        "start",
+        "end",
+        "score",
+        "strand",
+        "phase",
+        "attributes",
+    ]
+    frame = pl.scan_csv(
+        path,
+        has_header=False,
+        separator="\t",
+        comment_prefix="#",
+        new_columns=columns,
+        infer_schema=False,
+        truncate_ragged_lines=True,
+    )
+    protein_id = pl.coalesce(
+        [
+            pl.col("attributes").str.extract(r"(?:^|;)\s*ID=([^;]+)", 1),
+            pl.col("attributes").str.extract(
+                r"(?:^|;)\s*protein_id=([^;]+)", 1
+            ),
+            pl.col("attributes").str.extract(
+                r'(?:^|;)\s*protein_id "([^"]+)"', 1
+            ),
+            pl.col("attributes").str.extract(
+                r'(?:^|;)\s*transcript_id "([^"]+)"', 1
+            ),
+        ]
+    )
+    mapping = (
+        frame.filter(
+            pl.col("seqid").is_not_null()
+            & pl.col("attributes").is_not_null()
+        )
+        .with_columns(protein_id.alias("protein"))
+        .filter(pl.col("protein").is_not_null())
+        .select(
+            pl.col("protein").str.split(" ").list.first().alias("protein"),
+            pl.col("seqid").str.split(" ").list.first().alias("contig"),
+        )
+        .collect()
+    )
+    if mapping.is_empty():
+        raise ValueError(
+            f"No protein IDs could be parsed from GFF/GTF attributes in {path}"
+        )
+    return validate_protein_to_contig_map(mapping)
+
+
+def add_missing_gff_columns(
+    dataframe: pl.DataFrame,
+    default_source: str = "rp",
+    default_type: str = "feature",
+    default_score: Any = 0,
+    default_strand: str = "+",
+    default_phase: str = ".",
+    default_start: int = 0,
+    default_end: int = 1,
+    include_attributes: bool = False,
+) -> pl.DataFrame:
+    """Add common GFF3 columns that are missing from an annotation table."""
+    defaults = {
+        "source": default_source,
+        "type": default_type,
+        "score": default_score,
+        "strand": default_strand,
+        "phase": default_phase,
+        "start": default_start,
+        "end": default_end,
+    }
+    if include_attributes:
+        defaults["attributes"] = "."
+
+    for column, value in defaults.items():
+        if column not in dataframe.columns:
+            dataframe = dataframe.with_columns(pl.lit(value).alias(column))
+    return dataframe
+
+
+def convert_record_to_gff3_record(
+    row: Mapping[str, Any],
+    default_source: str = "rp",
+    default_type: str = "feature",
+    default_score: Any = "0",
+) -> str:
+    """Convert one annotation row to a GFF3 record string."""
+    sequence_id_columns = [
+        "sequence_id",
+        "query",
+        "qseqid",
+        "contig_id",
+        "contig",
+        "id",
+        "name",
+        "query_full_name",
+    ]
+    sequence_id_col = next(
+        (col for col in sequence_id_columns if col in row), None
+    )
+    if sequence_id_col is None:
+        raise ValueError(
+            f"No sequence ID column found in row. Available columns: {list(row.keys())}"
+        )
+
+    score_columns = ["score", "Score", "bitscore", "qscore", "bit", "bits"]
+    score_col = next((col for col in score_columns if col in row), "score")
+
+    source_columns = ["source", "Source", "db", "DB", "database"]
+    source_col = next((col for col in source_columns if col in row), "source")
+
+    type_columns = ["type", "Type", "feature", "Feature"]
+    type_col = next((col for col in type_columns if col in row), "type")
+
+    strand_columns = ["strand", "Strand", "sense", "Sense"]
+    strand_col = next((col for col in strand_columns if col in row), "strand")
+
+    phase_columns = ["phase", "Phase"]
+    phase_col = next((col for col in phase_columns if col in row), "phase")
+
+    excluded_cols = [
+        sequence_id_col,
+        source_col,
+        score_col,
+        type_col,
+        strand_col,
+        phase_col,
+        "start",
+        "end",
+    ]
+    attrs = []
+    for key, value in row.items():
+        if key not in excluded_cols:
+            if (
+                value
+                and str(value).strip()
+                and str(value) != "."
+                and str(value) != ""
+            ):
+                attrs.append(f"{key}={value}")
+
+    gff3_fields = [
+        str(row[sequence_id_col]),
+        str(row.get(source_col, default_source)),
+        str(row.get(type_col, default_type)),
+        str(row.get("start", "1")),
+        str(row.get("end", "1")),
+        str(row.get(score_col, default_score)),
+        str(row.get(strand_col, "+")),
+        str(row.get(phase_col, ".")),
+        ";".join(attrs) if attrs else ".",
+    ]
+    return "\t".join(gff3_fields)
+
+
+def append_fasta_to_gff(
+    input_fasta: Union[str, Path], gff_file: Union[str, Path]
+) -> None:
+    """Append a FASTA section to an existing GFF3 file."""
+    from rolypoly.utils.bio.sequences import write_fasta_file
+
+    with open(gff_file, "a") as output_handle:
+        output_handle.write("##FASTA\n")
+        write_fasta_file(
+            records=parse_fastx_file(input_fasta),
+            output_file=output_handle,
+            format="fasta",
+        )
+
+
+def write_gff3_dataframe(
+    dataframe: pl.DataFrame,
+    output_file: Union[str, Path],
+    input_fasta: Union[str, Path, None] = None,
+    default_source: str = "rp",
+    default_type: str = "feature",
+    default_score: Any = "0",
+    logger=None,
+    debug_records: bool = False,
+) -> None:
+    """Write annotation rows to GFF3 and optionally append source FASTA."""
+    with open(output_file, "w") as output_handle:
+        output_handle.write("##gff-version 3\n")
+        for row in dataframe.iter_rows(named=True):
+            if debug_records and logger:
+                logger.debug(f"Writing record:\n{row}")
+            output_handle.write(
+                convert_record_to_gff3_record(
+                    row,
+                    default_source=default_source,
+                    default_type=default_type,
+                    default_score=default_score,
+                )
+                + "\n"
+            )
+
+    if input_fasta is not None:
+        append_fasta_to_gff(input_fasta, output_file)
 
 
 def count_kmers_df_explicit(

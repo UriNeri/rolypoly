@@ -69,8 +69,8 @@ def translate_with_bbmap(
 
 
 def pyro_predict_orfs(
-    input_file: str,
-    output_file: str,
+    input_file: Union[str, Path],
+    output_file: Union[str, Path],
     threads: int,
     min_gene_length: int = 30,
     genetic_code: int = 11,  # NOT USED
@@ -88,16 +88,39 @@ def pyro_predict_orfs(
 
     Note:
         - Creates both protein sequences (.faa) and gene annotations (.gff)
+        - Uses each input header's first whitespace-delimited token as the
+          sequence ID in generated FASTA/GFF output. This keeps ORF identifiers
+          compatible with search tools that also key FASTA records by the first
+          token.
         - genetic_code is 11 for standard/bacterial
     """
     # import pyrodigal_gv as pyro_gv
     import pyrodigal_rv as pyro_rv
 
+    output_path = Path(output_file)
     sequences = []
     ids = []
-    for record in parse_fastx_file(input_file):
+    seen_ids = set()
+    for index, record in enumerate(parse_fastx_file(input_file), start=1):
+        source_id = (
+            record.id.decode()
+            if isinstance(record.id, bytes)
+            else str(record.id)
+        )
+        source_tokens = source_id.split()
+        sequence_id = source_tokens[0] if source_tokens else f"seq{index}"
+        candidate_id = sequence_id
+        suffix = 1
+        while candidate_id in seen_ids:
+            candidate_id = (
+                f"{sequence_id}_seq{index}"
+                if suffix == 1
+                else f"{sequence_id}_seq{index}_{suffix}"
+            )
+            suffix += 1
+        seen_ids.add(candidate_id)
         sequences.append((record.seq))  # type: ignore
-        ids.append((record.id))  # type: ignore
+        ids.append(candidate_id)
 
     gene_finder = pyro_rv.ViralGeneFinder(
         meta=True,
@@ -110,14 +133,17 @@ def pyro_predict_orfs(
     with multiprocessing.pool.Pool(processes=threads) as pool:
         orfs = pool.map(gene_finder.find_genes, sequences)
 
-    with open(output_file, "w") as dst:
+    with open(output_path, "w") as dst:
         for i, orf in enumerate(orfs):
             orf.write_translations(dst, sequence_id=ids[i], width=111110)
 
-    gff_path = output_file.with_suffix(".gff")
+    gff_path = output_path.with_suffix(".gff")
     with open(gff_path, "w") as dst:
+        dst.write("##gff-version 3\n")
         for i, orf in enumerate(orfs):
-            orf.write_gff(dst, sequence_id=ids[i], full_id=True)
+            orf.write_gff(
+                dst, sequence_id=ids[i], header=False, full_id=True
+            )
 
 
 def predict_orfs_orffinder(

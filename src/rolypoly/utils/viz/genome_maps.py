@@ -1396,10 +1396,32 @@ def table_to_tab(data, label, tab_id=None, columns=None, max_rows=5000):
     return {"id": tab_id, "label": label, "columns": columns, "rows": rows}
 
 
+TAXONOMY_REPORT_SUBRANK_COLUMNS = {
+    rank
+    for subrank in (
+        "subrealm",
+        "subkingdom",
+        "subphylum",
+        "subclass",
+        "suborder",
+        "subfamily",
+        "subgenus",
+    )
+    for rank in (subrank, f"{subrank}_support")
+}
+
+
 def taxonomy_to_tab(data, label="Taxonomy", tab_id="taxonomy", max_rows=5000):
     """Build a taxonomy table tab with a family-composition chart payload."""
     df = data if isinstance(data, pl.DataFrame) else read_hit_table(data)
-    payload = table_to_tab(df, label, tab_id=tab_id, max_rows=max_rows)
+    report_columns = [
+        column
+        for column in df.columns
+        if column not in TAXONOMY_REPORT_SUBRANK_COLUMNS
+    ]
+    payload = table_to_tab(
+        df.select(report_columns), label, tab_id=tab_id, max_rows=max_rows
+    )
     composition_column = next(
         (column for column in ("family", "taxon_name", "realm") if column in df.columns),
         None,

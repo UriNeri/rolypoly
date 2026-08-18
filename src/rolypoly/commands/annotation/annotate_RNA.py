@@ -1571,7 +1571,10 @@ def combine_results(config):
 
         # Combine all results using unified schema
         if all_results:
-            from rolypoly.utils.bio.polars_fastx import ensure_unified_schema
+            from rolypoly.utils.bio.polars_fastx import (
+                add_missing_gff_columns,
+                ensure_unified_schema,
+            )
 
             # Ensure all dataframes have the same schema
             unified_dataframes = ensure_unified_schema(all_results)
@@ -1581,7 +1584,11 @@ def combine_results(config):
                 combined_data = pl.concat(unified_dataframes, how="vertical")
                 config.logger.debug(f"Combined data:\n{combined_data.head()}")
                 if config.output_format == "gff3":
-                    combined_data = add_missing_gff_columns(combined_data)
+                    combined_data = add_missing_gff_columns(
+                        combined_data,
+                        default_score="0",
+                        include_attributes=True,
+                    )
                     write_combined_results_to_gff(config, combined_data)
                 elif config.output_format == "csv":
                     output_file = config.output_dir / "combined_annotations.csv"
@@ -1610,142 +1617,18 @@ def combine_results(config):
 
 
 def write_combined_results_to_gff(config, combined_data):
-    from rolypoly.utils.bio.sequences import add_fasta_to_gff
+    from rolypoly.utils.bio.polars_fastx import write_gff3_dataframe
 
     output_file = config.output_dir / "combined_annotations.gff3"
-    with open(output_file, "w") as f:
-        f.write("##gff-version 3\n")
-        for row in combined_data.iter_rows(named=True):
-            record = convert_record_to_gff3_record(row)
-            config.logger.debug(f"Writing record:\n{row}")
-            f.write(f"{record}\n")
-
-    # Optionally add FASTA section
-    add_fasta_to_gff(config, output_file)
+    write_gff3_dataframe(
+        combined_data,
+        output_file,
+        input_fasta=config.input,
+        default_score="0",
+        logger=config.logger,
+        debug_records=True,
+    )
     config.logger.info(f"Combined annotation results written to {output_file}")
-
-
-def convert_record_to_gff3_record(
-    row,
-):  # for dict objects expected to be coherced into a gff3
-    # try to identify a sequence_id columns (query, qseqid, contig_id, contig, id, name)
-    sequence_id_columns = [
-        "sequence_id",
-        "query",
-        "qseqid",
-        "contig_id",
-        "contig",
-        "id",
-        "name",
-        "query_full_name",
-    ]
-    sequence_id_col = next(
-        (col for col in sequence_id_columns if col in row.keys()), None
-    )
-    if sequence_id_col is None:
-        raise ValueError(
-            f"No sequence ID column found in row. Available columns: {list(row.keys())}"
-        )
-
-    # try to identify a score column (score, Score, bitscore, qscore, bit)
-    score_columns = ["score", "Score", "bitscore", "qscore", "bit", "bits"]
-    score_col = next(
-        (col for col in score_columns if col in row.keys()), "score"
-    )
-
-    # try to identify a source column (source, Source, db, DB)
-    source_columns = ["source", "Source", "db", "DB"]
-    source_col = next(
-        (col for col in source_columns if col in row.keys()), "source"
-    )
-
-    # try to identify a type column (type, Type, feature, Feature)
-    type_columns = ["type", "Type", "feature", "Feature"]
-    type_col = next((col for col in type_columns if col in row.keys()), "type")
-
-    # try to identify a strand column (strand, Strand, sense, Sense)
-    strand_columns = ["strand", "Strand", "sense", "Sense"]
-    strand_col = next(
-        (col for col in strand_columns if col in row.keys()), "strand"
-    )
-
-    # try to identify a phase column (phase, Phase)
-    phase_columns = ["phase", "Phase"]
-    phase_col = next(
-        (col for col in phase_columns if col in row.keys()), "phase"
-    )
-
-    # Build GFF3 attributes string
-    attrs = []
-    # Define columns that should not be included in attributes
-    excluded_cols = [
-        sequence_id_col,
-        source_col,
-        score_col,
-        type_col,
-        strand_col,
-        phase_col,
-        "start",
-        "end",  # Also exclude start/end since they're separate GFF3 fields
-    ]
-
-    for key, value in row.items():
-        if key not in excluded_cols:
-            # Skip empty values (empty strings, None, ".", etc.)
-            if (
-                value
-                and str(value).strip()
-                and str(value) != "."
-                and str(value) != ""
-            ):
-                attrs.append(f"{key}={value}")
-
-    # Get values, using defaults for missing columns
-    sequence_id = row[sequence_id_col]
-    source = row.get(source_col, "rp")
-    score = row.get(score_col, "0")
-    feature_type = row.get(type_col, "feature")
-    strand = row.get(strand_col, "+")
-    phase = row.get(phase_col, ".")
-
-    # Format GFF3 record
-    gff3_fields = [
-        sequence_id,
-        source,
-        feature_type,
-        str(row.get("start", "1")),
-        str(row.get("end", "1")),
-        str(score),
-        strand,
-        phase,
-        ";".join(attrs) if attrs else ".",
-    ]
-
-    return "\t".join(gff3_fields)
-
-
-def add_missing_gff_columns(dataframe):
-    import polars as pl
-
-    # check if the dataframe has the columns 'attributes',"source", "type", "score", "strand", "phase", if not add them
-    # cols_to_check = ['attributes', 'source', 'type', 'score', 'strand', 'phase']
-    if "source" not in dataframe.columns:
-        dataframe = dataframe.with_columns(pl.lit("rp").alias("source"))
-    if "type" not in dataframe.columns:
-        dataframe = dataframe.with_columns(pl.lit("feature").alias("type"))
-    if "score" not in dataframe.columns:
-        dataframe = dataframe.with_columns(pl.lit("0").alias("score"))
-    if "strand" not in dataframe.columns:
-        dataframe = dataframe.with_columns(pl.lit("+").alias("strand"))
-    if "phase" not in dataframe.columns:
-        dataframe = dataframe.with_columns(pl.lit(".").alias("phase"))
-    if "attributes" not in dataframe.columns:
-        dataframe = dataframe.with_columns(pl.lit(".").alias("attributes"))
-    if "start" not in dataframe.columns:
-        dataframe = dataframe.with_columns(pl.lit(0).alias("start"))
-    if "end" not in dataframe.columns:
-        dataframe = dataframe.with_columns(pl.lit(1).alias("end"))
-    return dataframe
 
 
 if __name__ == "__main__":
