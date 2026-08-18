@@ -3,6 +3,7 @@ from pathlib import Path as pt
 
 import rich_click as click
 
+
 global tools
 tools = []
 global matched_tabb
@@ -10,16 +11,11 @@ matched_tabb = []
 
 
 @click.command(name="virus-mapping")
-@click.option("-t", "--threads", default=1, help="Threads")
-@click.option("-M", "--memory", default="6g", help="MEMORY in gb")
 @click.option(
     "-o",
     "--output",
     default=lambda: f"{os.getcwd()}_RP_mapping",
     help="output file location - set suffix to .tab, .sam or html",
-)
-@click.option(
-    "--keep-tmp", is_flag=True, default=False, help="Keep temporary files"
 )
 @click.option(
     "--db",
@@ -32,15 +28,6 @@ matched_tabb = []
     "--db-path",
     default="",
     help="Path to the user-supplied source (required if --db is 'other'). Either a fasta or a path to formatted MMseqs2 virus database",
-)
-@click.option(
-    "-g",
-    "--log-file",
-    default=lambda: f"{os.getcwd()}/search_viruses_logfile.txt",
-    help="Abs path to logfile",
-)
-@click.option(
-    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
 )
 @click.option(
     "-i",
@@ -71,11 +58,6 @@ matched_tabb = []
     "--mmseqs-min-aln-len",
     default=95,
     help="Minimum alignment length for MMseqs2 search)",
-)
-@click.option(
-    "--temp-dir",
-    default=None,
-    help="Optional temp directory for mmseqs2 to use",
 )
 def virus_mapping(
     threads,

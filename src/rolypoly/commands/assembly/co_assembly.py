@@ -3,6 +3,7 @@ import os
 from rich_click import command, option
 
 
+
 @command()
 @option("-i", "--input", required=True, help="Input assembly file (FASTA)")
 @option(
@@ -17,21 +18,12 @@ from rich_click import command, option
     default=lambda: f"{os.getcwd()}_refined_assembly",
     help="Output directory",
 )
-@option("-t", "--threads", default=1, help="Number of threads to use")
-@option("-M", "--memory", default="6g", help="Maximum memory to use")
 @option(
     "-v",
     "--variant-caller",
     default="freebayes",
     help="Variant caller to use (freebayes, bcftools)",
 )
-@option(
-    "-g",
-    "--log-file",
-    default=lambda: f"{os.getcwd()}/refinement_logfile.txt",
-    help="Path to log file",
-)
-@option("-ll", "--log-level", hidden=True, default="INFO", help="Log level")
 def refinement(
     input, reads, output, threads, memory, variant_caller, log_file, log_level
 ):

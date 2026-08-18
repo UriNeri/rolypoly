@@ -25,12 +25,6 @@ tools = []
     required=False,
     help="If you do not want to download the the data to same location as the rolypoly code, specify an alternative path. TODO: remind user to provide such alt path in other scripts? envirometnal variable maybe",
 )
-@option(
-    "--log-file",
-    default="./get_external_data_logfile.txt",
-    help="Path to the log file",
-)
-@option("--log-level", hidden=True, default="INFO", help="Log level")
 def get_data(info, rolypoly_data, log_file, log_level):
     """Download pre-built external data required for RolyPoly.
 

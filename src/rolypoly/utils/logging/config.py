@@ -5,6 +5,8 @@ from typing import Any, Dict, Optional, Union
 
 from rolypoly.utils.logging.loggit import setup_logging
 
+DEFAULT_MEMORY = "8g"
+
 
 class BaseConfig:
     """Configuration manager for RolyPoly commands.
@@ -17,7 +19,7 @@ class BaseConfig:
         output (str, optional): Output directory or file path.
         config_file (Path, optional): Path to a JSON configuration file.
         threads (int, optional): Number of CPU threads to use.
-        memory (str, optional): Memory allocation (e.g., "6gb", "8000mb").
+        memory (str, optional): Memory allocation (e.g., "8g", "8000m").
         log_file (Path, optional): Path to log file.
         input (str, optional): Input file or directory path.
         temp_dir (str, optional): Temporary directory path. if not provided, a temporary directory will be created in the output directory.
@@ -33,7 +35,7 @@ class BaseConfig:
         output: Union[Path, str],
         config_file: Union[Path, str, None] = None,
         threads: Optional[int] = 1,
-        memory: str = "6gb",
+        memory: Optional[str] = None,
         log_file: Union[Path, logging.Logger, None] = None,
         temp_dir: Optional[str] = None,
         overwrite: bool = False,
@@ -47,9 +49,9 @@ class BaseConfig:
         # Basic parameter initialization
         self.input = input
         self.threads = threads
-        self.memory = self.parse_memory(memory)
+        self.memory = self.parse_memory(memory or DEFAULT_MEMORY)
         self.config_file = Path(config_file) if config_file else None
-        self.log_file = log_file
+        self.log_file = log_file or Path.cwd() / "rolypoly.log"
         self.overwrite = overwrite
         self.output = Path(output)
         self.output_dir = self.output if self.output.is_dir() else self.output
@@ -168,7 +170,7 @@ class BaseConfig:
             setattr(self, key, value)
 
     def parse_memory(self, memory_str: str) -> Dict[str, str]:
-        """Parse memory string (e.g., '6gb', '6000mb', '6g') into a dictionary with bytes, mega, giga"""
+        """Parse memory strings such as ``8g`` or ``8000m`` into unit variants."""
         import re
 
         # Convert memory string to lowercase and remove spaces
@@ -178,7 +180,7 @@ class BaseConfig:
         match = re.match(r"(\d+)([kmgt]?b?)", memory_str)
         if not match:
             raise ValueError(
-                f"Invalid memory format: {memory_str}. Expected format: NUMBER[UNIT] (e.g., 6gb, 6000mb, 6g)"
+                f"Invalid memory format: {memory_str}. Expected format: NUMBER[UNIT] (e.g., 8g or 8000m)"
             )
 
         number, unit = match.groups()

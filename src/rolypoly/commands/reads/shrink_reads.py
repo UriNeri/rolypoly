@@ -48,27 +48,6 @@ from rolypoly.utils.logging.loggit import log_start_info, setup_logging
     # hidden=True,
     help="Minimum depth threshold for bbnorm normalization (min in bbnorm.sh).",
 )
-@click.option(
-    "-t",
-    "--threads",
-    default=1,
-    type=int,
-    help="Threads to use for bbnorm (if subset-type is bbnorm). No real threading support yet for random/top_reads methods.",
-)
-@click.option(
-    "-g",
-    "--log-file",
-    type=click.Path(),
-    default=lambda: f"{os.getcwd()}/rolypoly.log",
-    help="Path to save loggging message to. defaults to current folder.",
-)
-@click.option(
-    "-ll",
-    "--log-level",
-    default="info",
-    type=click.Choice(["debug", "info", "warning", "error", "critical"]),
-    help="Log level. Options: debug, info, warning, error, critical",
-)
 def shrink_reads(
     input,
     output,

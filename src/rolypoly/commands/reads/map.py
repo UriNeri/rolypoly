@@ -156,23 +156,12 @@ def write_paired_sam_records(
 @click.option(
     "-r", "--reference", required=True, help="Reference FASTA to map against"
 )
-@click.option("-t", "--threads", default=1, type=int, help="Number of threads")
-@click.option("-M", "--memory", default="6gb", help="RAM limit (e.g. 6gb)")
 @click.option(
     "-o",
     "--output",
     type=click.Path(file_okay=False, dir_okay=True),
     default="RP_mapping_output",
     help="Output directory",
-)
-@click.option(
-    "-k", "--keep-tmp", is_flag=True, default=False, help="Keep temporary files"
-)
-@click.option(
-    "-g",
-    "--log-file",
-    default=lambda: f"{os.getcwd()}/map_logfile.txt",
-    help="Path to logfile",
 )
 @click.option(
     "--paired-end",
@@ -218,14 +207,6 @@ def write_paired_sam_records(
     help="Overwrite existing output directory",
 )
 @click.option(
-    "-ll", "--log-level", default="INFO", hidden=True, help="Log level"
-)
-@click.option(
-    "--temp-dir",
-    default=None,
-    help="Optional base directory for temporary files",
-)
-@click.option(
     "--bwa-mem2-all",
     is_flag=True,
     default=True,
@@ -268,7 +249,7 @@ def map(
         input_dir: Alias for --input (directory only).
         reference: Reference FASTA path.
         threads: Number of CPU threads.
-        memory: RAM limit string (e.g. '6gb').
+        memory: RAM limit string (e.g. ``8g``).
         output: Output directory.
         keep_tmp: If set, keep intermediate files.
         log_file: Path to log file.

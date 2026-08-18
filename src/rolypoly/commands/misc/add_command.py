@@ -151,10 +151,6 @@ from rolypoly.utils.logging.config import BaseConfig
         if common_args == "all":
             f.write("""@click.option('-i', '--input', required=True, help='Input file or directory')
 @click.option('-o', '--output', default='output', help='Output directory')
-@click.option('-t', '--threads', default=1, help='Number of threads')
-@click.option('-M', '--memory', default='6g', help='Memory allocation')
-@click.option('--log-file', default='command.log', help='Path to log file')
-@click.option('--log-level', default='INFO', help='Log level')
 """)
         else:
             for arg in common_args.split(","):
@@ -166,34 +162,36 @@ from rolypoly.utils.logging.config import BaseConfig
                     f.write(
                         "@click.option('-o', '--output', default='output', help='Output directory')\n"
                     )
-                if "threads" in arg:
-                    f.write(
-                        "@click.option('-t', '--threads', default=1, help='Number of threads')\n"
-                    )
-                if "memory" in arg:
-                    f.write(
-                        "@click.option('-M', '--memory', default='6g', help='Memory allocation')\n"
-                    )
-                if "logfile" in arg:
-                    f.write(
-                        "@click.option('--log-file', default='command.log', help='Path to log file')\n"
-                    )
-                if "loglevel" in arg:
-                    f.write(
-                        "@click.option('--log-level', default='INFO', help='Log level')\n"
-                    )
-
         for arg_name, arg_type, arg_required in args:
             f.write(
                 f"@click.option('--{arg_name}', {'required=True' if arg_required else 'default=None'}, type={arg_type}, help='{arg_name}')\n"
             )
 
-        f.write(f"""def {name}(input, output, threads, memory, log_file, log_level, {", ".join([arg[0] for arg in args])}):
+        common_parameter_names = {
+            "input": "input",
+            "output": "output",
+            "threads": "threads",
+            "memory": "memory",
+            "logfile": "log_file",
+            "loglevel": "log_level",
+        }
+        selected_common_args = (
+            list(common_parameter_names)
+            if common_args == "all"
+            else [arg.strip() for arg in common_args.split(",")]
+        )
+        function_parameters = [
+            common_parameter_names[arg]
+            for arg in selected_common_args
+            if arg in common_parameter_names
+        ] + [arg[0] for arg in args]
+
+        f.write(f"""def {name}({", ".join(function_parameters)}):
     \"\"\"
     {description}
     \"\"\"
-    logger = setup_logging(log_file)
-    logger.info(f"Starting {name} with input: {{input}}, output: {{output}}, threads: {{threads}}, memory: {{memory}}, log_level: {{log_level}}")
+    logger = setup_logging(locals().get("log_file"), locals().get("log_level", "INFO"))
+    logger.info(f"Starting {name} with parameters: {{locals()}}")
 
     # Add the main logic of the command here
     #     

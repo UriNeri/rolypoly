@@ -1,6 +1,7 @@
 import rich_click as click
 
 
+
 @click.command(name="fastx-calc")
 @click.option(
     "-i",
@@ -15,15 +16,6 @@ import rich_click as click
     default="rp_sequence_calc.tsv",
     type=click.Path(exists=False),
     help="Output path (use 'stdout' to print to console)",
-)
-@click.option(
-    "--log-file",
-    type=click.Path(exists=False),
-    help="Path to log file",
-    hidden=True,
-)
-@click.option(
-    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
 )
 @click.option(
     "--min_length",

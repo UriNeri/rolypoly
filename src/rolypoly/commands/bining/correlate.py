@@ -270,18 +270,6 @@ def build_groups(
     show_default=True,
     help="Input delimiter",
 )
-@click.option(
-    "-t", "--threads", default=1, show_default=True, help="Number of threads"
-)
-@click.option(
-    "-g",
-    "--log-file",
-    default=lambda: f"{Path.cwd()}/correlate_logfile.txt",
-    help="Path to log file",
-)
-@click.option(
-    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
-)
 def correlate(
     input,
     output_prefix,

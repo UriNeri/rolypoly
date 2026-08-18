@@ -32,7 +32,7 @@ class AnnotationConfig(BaseConfig):
             "threads": kwargs.get("threads", 1),
             "log_file": kwargs.get("log_file", ""),
             "log_level": kwargs.get("log_level", "INFO"),
-            "memory": kwargs.get("memory", "6gb"),
+            "memory": kwargs.get("memory"),
         }
         super().__init__(**base_config_params)
 
@@ -60,16 +60,6 @@ class AnnotationConfig(BaseConfig):
     "--output",
     default="rolypoly_annotation",
     help="Output file location.",
-)
-@click.option("-t", "--threads", default=1, help="Number of threads")
-@click.option(
-    "-g",
-    "--log-file",
-    default=lambda: Path(os.getcwd()) / "annotate_logfile.txt",
-    help="Path to log file",
-)
-@click.option(
-    "-M", "--memory", default="6gb", help="Memory in GB. Example: -M 8gb"
 )
 @click.option(
     "--override-parameters",
@@ -145,13 +135,6 @@ class AnnotationConfig(BaseConfig):
     help="Minimum ORF length for gene prediction",
 )
 @click.option(
-    "--log-level",
-    default="INFO",
-    type=click.Choice(["INFO", "DEBUG", "WARNING", "ERROR", "CRITICAL"]),
-    help="Log level",
-    hidden=True,
-)
-@click.option(
     "--search-tool",
     default="hmmsearch",
     type=click.Choice(
@@ -159,18 +142,6 @@ class AnnotationConfig(BaseConfig):
         case_sensitive=False,
     ),
     help="Tool/command for protein domain detection. hmmer commands are via pyhmmer bindings. ",
-)
-@click.option(
-    "--temp-dir",
-    default=None,
-    type=click.Path(),
-    help="Base temporary directory for intermediate files. If not specified, a timestamped temp directory is created inside each sub-step's output directory.",
-)
-@click.option(
-    "--keep-tmp",
-    is_flag=True,
-    default=False,
-    help="Keep temporary files instead of removing them after each sub-step completes.",
 )
 @click.option(
     "--html/--no-html",

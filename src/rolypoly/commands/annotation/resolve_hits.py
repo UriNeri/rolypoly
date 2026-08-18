@@ -9,6 +9,7 @@ from typing import Optional, Union
 import polars as pl
 import rich_click as click
 
+
 from rolypoly.utils.bio.interval_ops import consolidate_hits
 from rolypoly.utils.logging.loggit import setup_logging
 
@@ -127,9 +128,6 @@ def infer_rank_columns(input_df: pl.DataFrame, rank_columns: str) -> str:
     default=False,
     is_flag=True,
     help="Merge overlapping domains/profiles hits into one - not recommended unless the profiles are from the same functional family",
-)
-@click.option(
-    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
 )
 def consolidate_hits_rich(
     input: Union[str, pl.DataFrame],

@@ -652,14 +652,6 @@ def write_output(
     help="Tabular output format for assignments and summary tables",
 )
 @click.option(
-    "-t",
-    "--threads",
-    default=4,
-    show_default=True,
-    type=click.IntRange(1, 1000),
-    help="Number of threads for ANI computation backends",
-)
-@click.option(
     "--similarity-measure",
     type=click.Choice(SIMILARITY_MEASURES, case_sensitive=False),
     default="identity",
@@ -729,24 +721,6 @@ def write_output(
         "Maximum fraction of sequence length covered by the longest "
         "repeat track before the sequence is flagged. "
         "Lower values flag more aggressively."
-    ),
-)
-@click.option(
-    "--log-file",
-    type=click.Path(dir_okay=False, writable=True, path_type=Path),
-    default=None,
-    help="Optional log file path",
-)
-@click.option(
-    "-ll", "--log-level", default="INFO", show_default=True, hidden=True
-)
-@click.option(
-    "--temp-dir",
-    type=click.Path(dir_okay=True, writable=True, path_type=Path),
-    default=None,
-    help=(
-        "Optional temporary directory for intermediate files. "
-        "NOT USED HERE (YET)"
     ),
 )
 def cluster(

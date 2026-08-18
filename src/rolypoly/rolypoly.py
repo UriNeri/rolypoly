@@ -180,9 +180,6 @@ def rolypoly():
 
 
 @rolypoly.command(panel="Setup and Data")
-@click.option(
-    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
-)
 def version(log_level):
     """
     Print RolyPoly code and data version details.

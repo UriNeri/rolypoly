@@ -785,25 +785,6 @@ def read_search_hits(
     show_default=True,
     help="Minimum alignment length for protein hits (in AA residues)."
 )
-@click.option(
-    "-t", "--threads", type=click.IntRange(min=1), default=1, show_default=True
-)
-@click.option("-M", "--memory", default="6G", show_default=True)
-@click.option(
-    "-tmp",
-    "--temp-dir",
-    type=click.Path(file_okay=False, path_type=Path),
-    default=None,
-)
-@click.option("-k", "--keep-tmp", is_flag=True)
-@click.option(
-    "-g",
-    "--log-file",
-    type=click.Path(dir_okay=False, path_type=Path),
-    default="mmtax.log",
-    show_default=True,
-)
-@click.option("-ll", "--log-level", hidden=True, default="INFO")
 def mmtax(
     input_path: Path,
     query_type: str,

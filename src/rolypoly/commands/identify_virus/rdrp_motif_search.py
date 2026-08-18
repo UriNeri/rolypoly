@@ -38,7 +38,7 @@ class RdRpMotifSearchConfig(BaseConfig):
             keep_tmp=kwargs.get("keep_tmp", False),
             log_file=kwargs.get("log_file"),
             threads=kwargs.get("threads", 1),
-            memory=kwargs.get("memory", "4gb"),
+            memory=kwargs.get("memory"),
             config_file=kwargs.get("config_file", None),
             overwrite=kwargs.get("overwrite", False),
             log_level=kwargs.get("log_level", "INFO"),
@@ -107,16 +107,6 @@ class RdRpMotifSearchConfig(BaseConfig):
     default="./rdrp_motif_search_output",
     help="Output directory path",
 )
-@option("-t", "--threads", default=1, help="Number of threads for processing")
-@option(
-    "-g",
-    "--log-file",
-    default="./rdrp_motif_search_logfile.txt",
-    help="Path to log file",
-)
-@option(
-    "-M", "--memory", default="4gb", help="Memory limit in GB. Example: -M 8gb"
-)
 @option(
     "-e", "--evalue", default=1e-2, help="E-value threshold for motif searches"
 )
@@ -183,22 +173,11 @@ class RdRpMotifSearchConfig(BaseConfig):
     help="Output structure: nested (motif_details as JSON) or flat (separate columns per motif)",
 )
 @option(
-    "-k", "--keep-tmp", is_flag=True, default=False, help="Keep temporary files"
-)
-@option("-td", "--temp-dir", default=None, help="Path to temporary directory")
-@option(
     "-ow",
     "--overwrite",
     is_flag=True,
     default=False,
     help="Overwrite output directory if it exists",
-)
-@option(
-    "-ll",
-    "--log-level",
-    default="INFO",
-    type=Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
-    help="Logging level",
 )
 @option(
     "-cf",

@@ -89,8 +89,6 @@ def build_extra_tabs(extra_tab_specs):
 @click.option("--col-aligned", default=None,
               help="Override the aligned-region / consensus column shown on hover. "
                    "'' disables it. Default: auto-detect (identity_str for hmmsearch).")
-@click.option("-lf", "--log-file", default=None, help="Path to log file.")
-@click.option("-ll", "--log-level", hidden=True, default="INFO", help="Log level")
 def report(input_path, output_path, rna_path, nucleic_paths, extra_tab_specs, taxonomy_path, rrna_mapping,
            title, min_score, max_evalue, best_only, best_by, min_overlap, source_priority,
            start_tab, rna_bins, no_stats, col_query, col_profile, col_source, col_aligned,

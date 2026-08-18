@@ -6,6 +6,7 @@ import polars as pl
 import rich_click as click
 
 from rolypoly.utils.bio.polars_fastx import frame_to_fastx, load_sequences
+from rolypoly.utils.cli_options import add_shared_options
 from rolypoly.utils.logging.loggit import log_start_info, setup_logging
 
 
@@ -15,7 +16,7 @@ def run_subcommand(
     """Run a click subcommand in-process with explicit args."""
     logger.info("Running %s: %s", label, " ".join(args))
     try:
-        command.main(args=args, standalone_mode=False)
+        add_shared_options(command).main(args=args, standalone_mode=False)
     except SystemExit as exc:
         if exc.code not in (0, None):
             raise click.ClickException(
@@ -328,13 +329,6 @@ def build_candidate_pairs(
     help="Output directory for all intermediate and final workflow artifacts",
 )
 @click.option(
-    "-t",
-    "--threads",
-    default=8,
-    show_default=True,
-    help="Threads used by cluster/extend/termini stages",
-)
-@click.option(
     "--ani-min-identity",
     type=click.FloatRange(0.0, 1.0),
     default=0.90,
@@ -393,15 +387,6 @@ def build_candidate_pairs(
     default=False,
     show_default=True,
     help="Write strict candidate pairs that pass the complementarity check",
-)
-@click.option(
-    "--log-file",
-    type=click.Path(dir_okay=False, writable=True, path_type=Path),
-    default=None,
-    help="Optional workflow-level log file path",
-)
-@click.option(
-    "-ll", "--log-level", default="INFO", show_default=True, hidden=True
 )
 def binit(
     rdrp_fasta: Path,

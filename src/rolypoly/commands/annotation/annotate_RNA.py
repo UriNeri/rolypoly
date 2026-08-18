@@ -105,23 +105,6 @@ class RNAAnnotationConfig(BaseConfig):
     default="./annotate_RNA_output",
     help="Output directory path",
 )
-@click.option("-t", "--threads", default=1, help="Number of threads")
-@click.option(
-    "-g",
-    "--log-file",
-    default="./annotate_RNA_logfile.txt",
-    help="Path to log file",
-)
-@click.option(
-    "-l",
-    "--log-level",
-    default="INFO",
-    help="Log level",
-    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]),
-)
-@click.option(
-    "-M", "--memory", default="4gb", help="Memory in GB. Example: -M 8gb"
-)
 @click.option(
     "-op",
     "--override_parameters",

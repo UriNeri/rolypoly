@@ -4,6 +4,7 @@ from pathlib import Path
 
 import rich_click as click
 
+from rolypoly.utils.cli_options import shared_command_context
 from rolypoly.utils.logging.config import BaseConfig
 
 # TODO: cleaning assembly graph directly? by mmseqs nucleic / diamond amino searching against user supplied host sequence
@@ -30,7 +31,7 @@ class FilterContigsConfig(BaseConfig):
             keep_tmp=kwargs.get("keep_tmp", False),
             log_file=kwargs.get("log_file", "filter_contigs_log.txt"),
             threads=kwargs.get("threads", 1),
-            memory=kwargs.get("memory", "6gb"),
+            memory=kwargs.get("memory"),
             config_file=kwargs.get("config_file", None),
             overwrite=kwargs.get("overwrite", False),
             temp_dir=kwargs.get("temp_dir", None),
@@ -87,14 +88,6 @@ class FilterContigsConfig(BaseConfig):
     default="both",
     help="Filtering mode: nucleotide, amino acid, or both (nuc / aa / both)",
 )
-@click.option("-t", "--threads", default=1, help="Number of threads")
-@click.option(
-    "-M", "--memory", default="6g", help="Memory. Can be specified in gb "
-)
-@click.option(
-    "--keep-tmp", is_flag=True, default=False, help="Keep temporary files"
-)
-@click.option("-g", "--log-file", default=None, help="Path to log file")
 @click.option(
     "-Fm1",
     "--filter1_nuc",
@@ -140,18 +133,6 @@ class FilterContigsConfig(BaseConfig):
     is_flag=True,
     default=False,
     help="Do not overwrite the output directory if it already exists",
-)
-@click.option(
-    "-ll",
-    "--log-level",
-    default="info",
-    hidden=True,
-    help="Log level. Options: debug, info, warning, error, critical",
-)
-@click.option(
-    "--temp-dir",
-    default=None,
-    help="Optional base directory for temporary files.",
 )
 def filter_contigs(
     input,
@@ -257,8 +238,6 @@ def filter_contigs_nuc(config: FilterContigsConfig):
 
     import polars as pl
     import pyfastx
-    from rich_click import Context
-
     from rolypoly.commands.reads.mask_dna import mask_dna
     from rolypoly.utils.bio.sequences import ensure_faidx
     from rolypoly.utils.various import apply_filter, ensure_memory
@@ -310,7 +289,9 @@ def filter_contigs_nuc(config: FilterContigsConfig):
                 "flatten": False,
                 "input": config.host,
             }
-            context = Context(mask_dna, ignore_unknown_options=True)
+            context = shared_command_context(
+                mask_dna, ignore_unknown_options=True
+            )
             context.invoke(mask_dna, **mask_args)
         else:
             host_fasta = config.host

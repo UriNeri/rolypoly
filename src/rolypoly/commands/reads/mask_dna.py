@@ -21,8 +21,6 @@ datadir = Path(
 
 
 @click.command()
-@click.option("-t", "--threads", default=1, help="Number of threads to use")
-@click.option("-M", "--memory", default="6gb", help="Memory in GB")
 @click.option("-o", "--output", required=True, help="Output file name")
 @click.option(
     "-f",
@@ -68,9 +66,6 @@ datadir = Path(
     "--tmpdir",
     default=None,
     help="Temporary directory to use (default: output file's parent/tmp - if you have enough RAM, you can set this to /dev/shm/ or /tmp/ for faster I/O)",
-)
-@click.option(
-    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
 )
 def mask_dna(
     threads,

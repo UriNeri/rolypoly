@@ -10,6 +10,7 @@ from rolypoly.utils.bio.library_detection import (
     handle_input_fastq,
     probe_fastq_inputs,
 )
+from rolypoly.utils.cli_options import shared_command_context
 from rolypoly.utils.logging.config import BaseConfig
 from rolypoly.utils.logging.output_tracker import OutputTracker
 from rolypoly.utils.various import (
@@ -350,7 +351,7 @@ class ReadFilterConfig(BaseConfig):
             keep_tmp=kwargs.get("keep_tmp") or False,
             log_file=kwargs.get("log_file") or None,
             threads=kwargs.get("threads") or 1,
-            memory=kwargs.get("memory") or "10gb",
+            memory=kwargs.get("memory"),
             config_file=kwargs.get("config_file") or None,
             overwrite=kwargs.get("overwrite") or False,
             log_level=kwargs.get("log_level") or "info",
@@ -688,32 +689,12 @@ def process_reads(
 
 @click.command(no_args_is_help=True)
 @click.option(
-    "-t",
-    "--threads",
-    default=1,
-    type=int,
-    help="Number of threads to use. Example: -t 4",
-)
-@click.option(
-    "-M", "-mem", "--memory", default="10gb", help="Memory. Example: -M 8gb"
-)
-@click.option(
     "-o",
     "-out",
     "--output",
     default=os.getcwd(),
     type=click.Path(),
     help="Output directory. Example: -o output",
-)
-@click.option(
-    "--keep-tmp", is_flag=True, default=False, help="Keep temporary files"
-)
-@click.option(
-    "-g",
-    "--log-file",
-    type=click.Path(),
-    default=lambda: f"{os.getcwd()}/rolypoly.log",
-    help="Path to log_file. Example: -g logfile.log, if not provided, a log file will be created in the current directory.",
 )
 @click.option(
     "-i",
@@ -839,19 +820,6 @@ If --input is a directory, all fastq files in the directory will be used - paire
     is_flag=True,
     default=False,
     help="Zip the reports into a single file",
-)
-@click.option(
-    "-ll",
-    "--log-level",
-    default="info",
-    hidden=True,
-    help="Log level. Options: debug, info, warning, error, critical",
-)
-@click.option(
-    "--temp-dir",
-    default=None,
-    hidden=True,
-    help="Directory for temporary files. If not provided, will create one inside the output directory.",
 )
 @click.option(
     "-mg",
@@ -1162,7 +1130,7 @@ def filter_known_dna(
             "flatten": False,
             "input": config.known_dna,
         }
-        context = click.Context(mask_dna, ignore_unknown_options=True)
+        context = shared_command_context(mask_dna, ignore_unknown_options=True)
         context.invoke(mask_dna, **mask_args)
 
     output_file = config.temp_dir / f"filter_known_dna_{config.file_name}.fq.gz"
@@ -1321,7 +1289,7 @@ def fetch_and_mask_genomes(config: ReadFilterConfig) -> Union[str, Path]:
             "flatten": False,
             "input": str(abs_gbs_file),
         }
-        context = click.Context(mask_dna, ignore_unknown_options=True)
+        context = shared_command_context(mask_dna, ignore_unknown_options=True)
         context.invoke(mask_dna, **mask_args)
         return fetched_dna_dir / f"masked_gbs_50m_{config.file_name}.fasta"
     return abs_gbs_file

@@ -21,7 +21,7 @@ class RVirusSearchConfig(BaseConfig):
             keep_tmp=kwargs.get("keep_tmp", False),
             log_file=kwargs.get("log_file"),
             threads=kwargs.get("threads", 1),
-            memory=kwargs.get("memory", "3gb"),
+            memory=kwargs.get("memory"),
             config_file=kwargs.get("config_file", None),
             overwrite=kwargs.get("overwrite", False),
             log_level=kwargs.get("log_level", "INFO"),
@@ -267,22 +267,6 @@ console = Console(width=150)
         For custom path, either an .hmm file, a directory with .hmm files, or a folder with MSA files (which would be used to build an HMM DB)""",
 )
 @option(
-    "-t", "--threads", default=1, help="Number of threads to use for searching"
-)
-@option(
-    "-g",
-    "--log-file",
-    default="./marker_search_logfile.txt",
-    help="Absolute path to logfile",
-)
-@option(
-    "-m",
-    "--memory",
-    hidden=True,
-    default="6g",
-    help="Memory limit for the job in GB",
-)
-@option(
     "-cf",
     "--config-file",
     hidden=True,
@@ -297,33 +281,11 @@ console = Console(width=150)
     help="basename for the output files (default is the basename of the input file)",
 )
 @option(
-    "-k",
-    "--keep-tmp",
-    hidden=True,
-    is_flag=True,
-    default=False,
-    help="Keep the temporary files",
-)
-@option(
     "-ow",
     "--overwrite",
     is_flag=True,
     default=False,
     help="Do not overwrite the output directory if it already exists",
-)
-@option(
-    "-ll",
-    "--log-level",
-    default="info",
-    hidden=True,
-    help="Log level. Options: debug, info, warning, error, critical",
-)
-@option(
-    "-td",
-    "-tempdir",
-    "--temp-dir",
-    default="./marker_search_tmp/",
-    help="Path to temporary directory",
 )
 @option(
     "--write-matched-regions/--no-write-matched-regions",
@@ -396,9 +358,6 @@ def marker_search(
     • RdRp-Scan \n
         GitHub: https://github.com/JustineCharon/RdRp-scan  |  Paper: https://doi.org/10.1093/ve/veac082 \n
             ⤷ (which IIRC incorporated PALMdb, GitHub: https://github.com/rcedgar/palmdb, Paper: https://doi.org/10.7717/peerj.14055 \n
-    # • TSA_Olendraite (TSA_2018) \n
-    #     Data: https://drive.google.com/drive/folders/1liPyP9Qt_qh0Y2MBvBPZQS6Jrh9X0gyZ?usp=drive_link  |  Paper: https://doi.org/10.1093/molbev/msad060 \n
-    #     Thesis: https://www.repository.cam.ac.uk/items/1fabebd2-429b-45c9-b6eb-41d27d0a90c2
     • Pfam_RTs_RdRp \n
         RdRps and RT profiles from PFAM_A v.37 --- PF04197.17,PF04196.17,PF22212.1,PF22152.1,PF22260.1,PF05183.17,PF00680.25,PF00978.26,PF00998.28,PF02123.21,PF07925.16,PF00078.32,PF07727.19,PF13456.11
         Data: https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam37.0/Pfam-A.hmm.gz | Paper https://doi.org/10.1093/nar/gkaa913

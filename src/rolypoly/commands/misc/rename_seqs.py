@@ -17,7 +17,6 @@ console = Console()
 @click.option(
     "-p", "--prefix", default="CID", help="Prefix for new sequence IDs"
 )
-@click.option("-g", "--log-file", default=None, help="Path to log file")
 @click.option(
     "--hash/--no-hash",
     default=False,
@@ -27,9 +26,6 @@ console = Console()
     "--stats/--no-stats",
     default=True,
     help="Include sequence statistics in mapping file (length, GC content)",
-)
-@click.option(
-    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
 )
 def rename_seqs(
     input: str,

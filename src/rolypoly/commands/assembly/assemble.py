@@ -178,7 +178,7 @@ class AssemblyConfig(BaseConfig):
             keep_tmp=kwargs.get("keep_tmp", False),
             log_file=kwargs.get("log_file", "assemble_logfile.txt"),
             threads=kwargs.get("threads", 1),
-            memory=kwargs.get("memory", "6gb"),
+            memory=kwargs.get("memory"),
             config_file=kwargs.get("config_file", None),
             temp_dir=kwargs.get("temp_dir", None),
             overwrite=kwargs.get("overwrite", False),
@@ -533,28 +533,12 @@ def run_penguin(config, libraries):
 
 
 @click.command(name="assemble", no_args_is_help=True)
-@click.option("-t", "--threads", default=1, help="Threads ", type=int)
-@click.option(
-    "-M",
-    "--memory",
-    default="6gb",
-    help=" RAM limit  (more is betterer, see the docs for more info)",
-)
 @click.option(
     "-o",
     "--output",
     type=click.Path(file_okay=False, dir_okay=True, exists=False),
     default="RP_assembly_output",
     help="Output path (folder will be created if it doesn't exist)",
-)
-@click.option(
-    "-k", "--keep-tmp", is_flag=True, default=False, help="Keep temporary files"
-)
-@click.option(
-    "-g",
-    "--log-file",
-    default=lambda: f"{os.getcwd()}/assemble_logfile.txt",
-    help="Path to a logfile, should exist and be writable (permission wise)",
 )
 @click.option(
     "-id",
@@ -658,18 +642,6 @@ def run_penguin(config, libraries):
     is_flag=True,
     default=False,
     help="Do not overwrite the output directory if it already exists",
-)
-@click.option(
-    "-ll",
-    "--log-level",
-    default="info",
-    hidden=True,
-    help="Log level. Options: debug, info, warning, error, critical",
-)
-@click.option(
-    "--temp-dir",
-    default=None,
-    help="Directory for temporary files. If not provided, a timestamped temp directory is created in the output directory.",
 )
 @click.option(
     "--dereplicate/--no-rmdup",

@@ -1,6 +1,7 @@
 import rich_click as click
 from rich.console import Console
 
+from rolypoly.utils.cli_options import add_shared_options
 from rolypoly.utils.logging.loggit import get_logger
 
 console = Console()
@@ -30,6 +31,10 @@ class LazyGroup(click.RichGroup):
         self._lazy_command_group_by_key = {}
         self._panel_command_mapping = {}
         self.init_command_groups()
+
+    def add_command(self, cmd, name=None):
+        """Register an eager command after attaching applicable shared options."""
+        super().add_command(add_shared_options(cmd), name=name)
 
     def init_command_groups(self):
         """Initialize command groups from lazy_subcommands configuration."""
@@ -132,6 +137,8 @@ class LazyGroup(click.RichGroup):
             raise ValueError(
                 f"Object '{cmd_object_name}' in module '{modname}' is not a Click command"
             )
+
+        add_shared_options(cmd_object)
 
         group_display_name = self._lazy_command_group_by_key.get(cmd_name)
         if group_display_name:

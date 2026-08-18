@@ -239,9 +239,6 @@ def download_xml(run_id, output_path):
     type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
     help="Directory to save downloaded files",
 )
-@click.option(
-    "-ll", "--log-level", hidden=True, default="INFO", help="Log level"
-)
 @click.option("--report", is_flag=True, help="Download XML report for each run")
 def fetch_sra(input, output_dir, log_level, report):
     """Download SRA run FASTQ files and optional XML metadata from *ENA*

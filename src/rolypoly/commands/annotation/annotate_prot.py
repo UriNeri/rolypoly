@@ -107,7 +107,7 @@ class ProteinAnnotationConfig(BaseConfig):
         threads: int,
         log_file: Union[Path, logging.Logger, None],
         log_level: str = "INFO",
-        memory: str = "6gb",
+        memory: str | None = None,
         override_parameters: dict[str, object] = {},
         skip_steps: list[str] = [],
         search_tool: str = "hmmsearch",
@@ -226,27 +226,6 @@ def stage_protein_input_as_orfs(config) -> bool:
     "--output-dir",
     default="./annotate_prot_output",
     help="Output directory path",
-)
-@click.option("-t", "--threads", default=1, help="Number of threads")
-@click.option(
-    "-g",
-    "--log-file",
-    default="./annotate_prot_logfile.txt",
-    help="Path to log file",
-)
-@click.option(
-    "--log-level",
-    default="INFO",
-    type=click.Choice(["INFO", "DEBUG", "WARNING", "ERROR", "CRITICAL"]),
-    help="Log level",
-    hidden=True,
-)
-@click.option(
-    "-M",
-    "--memory",
-    default="8gb",
-    help="Memory in GB. Example: -M 8gb",
-    hidden=True,
 )
 @click.option(
     "-op",

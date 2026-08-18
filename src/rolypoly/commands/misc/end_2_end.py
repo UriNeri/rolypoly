@@ -8,6 +8,7 @@ import rich_click as click
 from rolypoly.commands.assembly.assemble import ASSEMBLY_PRESETS
 from rolypoly.commands.identify_virus.search_viruses import virus_mapping
 from rolypoly.commands.reads.filter_reads import FILTER_READS_PRESETS
+from rolypoly.utils.cli_options import shared_command_context
 
 ### TODOs:
 ### simplify the presets / align preset name and description with those in the read-filtering and assembly commands
@@ -72,8 +73,6 @@ ROLL_PRESET_MAP: dict[str, tuple[str, str, str]] = {
     default=lambda: f"{os.getcwd()}_rp_e2e",
     help="Output directory",
 )
-@click.option("-t", "--threads", default=1, help="Number of threads")
-@click.option("-M", "--memory", default="6g", help="Memory allocation")
 @click.option(
     "-D",
     "--host",
@@ -132,23 +131,6 @@ ROLL_PRESET_MAP: dict[str, tuple[str, str, str]] = {
     default="random",
     type=click.Choice(["random", "first", "bbnorm"]),
     help="Subset type used if --mini is set. note: first is quicker than random which is quicker than bbnorm, but bbnorm is the only one that might be useful in a non 'quick and dirty' attempt. 'first' assumes your input isn't sorted by anything.",
-)
-@click.option("--keep-tmp", is_flag=True, help="Keep temporary files")
-@click.option(
-    "--temp-dir",
-    default=None,
-    help="Optional base directory for temporary files across roll steps. Useful for reproducible debugging with --skip-existing.",
-)
-@click.option(
-    "--log-file",
-    # default=lambda: f"{os.getcwd()}/rolypoly_pipeline.log",
-    help="Path to log file. default would be inside the output directory.",
-)
-@click.option(
-    "-ll",
-    "--log-level",
-    default="INFO",
-    help="Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
 )
 @click.option(
     "--skip-existing",
@@ -529,7 +511,7 @@ def roll(
             if overwrite and mini_input_dir.exists():
                 shutil.rmtree(mini_input_dir, ignore_errors=True)
             mini_input_dir.mkdir(parents=True, exist_ok=True)
-            ctx = click.Context(shrink_reads)
+            ctx = shared_command_context(shrink_reads)
             ctx.invoke(
                 shrink_reads,
                 input=input,
@@ -561,7 +543,7 @@ def roll(
         )
     else:
         filtered_reads.mkdir(parents=True, exist_ok=True)
-        ctx = click.Context(filter_reads)
+        ctx = shared_command_context(filter_reads)
         ctx.invoke(
             filter_reads,
             input=input_for_filter,
@@ -671,7 +653,7 @@ def roll(
             final_assembly_file,
         )
     else:
-        ctx = click.Context(assembly)
+        ctx = shared_command_context(assembly)
         ctx.invoke(
             assembly,
             threads=threads,
@@ -719,7 +701,7 @@ def roll(
             symlink_path.symlink_to(final_assembly_file.resolve())
             final_assembly_file = symlink_path
         else:
-            ctx = click.Context(filter_contigs)
+            ctx = shared_command_context(filter_contigs)
             ctx.invoke(
                 filter_contigs,
                 input=str(final_assembly_file),
@@ -756,7 +738,7 @@ def roll(
     else:
         if cluster_backend != "none":
             cluster_output = assembly_output / "cluster_memberships.tsv"
-            ctx = click.Context(cluster_sequences)
+            ctx = shared_command_context(cluster_sequences)
             ctx.invoke(
                 cluster_sequences,
                 input_path=final_assembly_file,
@@ -867,7 +849,7 @@ def roll(
         )
     else:
         logger.info("Step %d: Searching for marker protein sequences    ", step)
-        ctx = click.Context(marker_search)
+        ctx = shared_command_context(marker_search)
         ctx.invoke(
             marker_search,
             input=str(final_assembly_file),
@@ -907,7 +889,7 @@ def roll(
         )
     else:
         logger.info("Step %d: Searching for nucleic sequences", step)
-        ctx = click.Context(virus_mapping)
+        ctx = shared_command_context(virus_mapping)
         ctx.invoke(
             virus_mapping,
             input=str(final_assembly_file),
@@ -982,7 +964,7 @@ def roll(
         logger.info(
             "Step %d: Mapping original reads to matched contigs    ", step
         )
-        ctx = click.Context(map_reads)
+        ctx = shared_command_context(map_reads)
         ctx.invoke(
             map_reads,
             input=input,
@@ -1012,7 +994,7 @@ def roll(
             annotation_output,
         )
     else:
-        ctx = click.Context(annotate)
+        ctx = shared_command_context(annotate)
         ctx.invoke(
             annotate,
             input=str(matched_contigs_file),
@@ -1046,7 +1028,7 @@ def roll(
             rdrp_motif_search,
         )
 
-        ctx = click.Context(rdrp_motif_search)
+        ctx = shared_command_context(rdrp_motif_search)
         ctx.invoke(
             rdrp_motif_search,
             input=str(matched_contigs_file),
@@ -1077,7 +1059,7 @@ def roll(
         predicted_orfs = annotation_output / "protein_annotation" / "predicted_orfs.faa"
         predicted_orfs_gff = predicted_orfs.with_suffix(".gff")
         taxonomy_output_dir.mkdir(parents=True, exist_ok=True)
-        ctx = click.Context(mmtax)
+        ctx = shared_command_context(mmtax)
         ctx.invoke(
             mmtax,
             input_path=Path(matched_contigs_file),

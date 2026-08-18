@@ -1256,23 +1256,6 @@ def write_table(
     type=click.Choice(["tsv", "csv", "parquet", "jsonl"], case_sensitive=False),
     help="Tabular output format for assignments and groups tables",
 )
-@click.option(
-    "--log-file",
-    type=click.Path(dir_okay=False, writable=True, path_type=Path),
-    default=None,
-    help="Optional log file path",
-)
-@click.option(
-    "-ll", "--log-level", default="INFO", show_default=True, hidden=True
-)
-@click.option(
-    "-t",
-    "--threads",
-    default=4,
-    show_default=True,
-    type=click.IntRange(1, 1000),
-    help="Number of threads to use for parallel processing IF applicable",
-)
 def termini(
     input: Path,
     length_spec: str,
