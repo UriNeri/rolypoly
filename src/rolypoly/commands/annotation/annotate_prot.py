@@ -34,7 +34,8 @@ output_files = init_output_files_table()
 #schemas
 INFO_TABLE_SPECS = {
     "nvpc": {
-        "relative_path": Path("profiles") / "NVPC_descriptions.csv",
+        "relative_path": Path("profiles") / "NVPC_descriptions.csv.gz",
+        "fallback_relative_paths": [Path("profiles") / "NVPC_descriptions.csv"],
         "join_column": "profile_accession",
         "prefix": "nvpc_meta",
         "columns": ["profile_accession", "Name", "Description", "neff", "nseq"],
@@ -42,7 +43,10 @@ INFO_TABLE_SPECS = {
     },
     "genomad": {
         "relative_path": Path("profiles")
-        / "genomad_rna_viral_markers_with_annotation.csv",
+        / "genomad_rna_viral_markers_with_annotation.csv.gz",
+        "fallback_relative_paths": [
+            Path("profiles") / "genomad_rna_viral_markers_with_annotation.csv"
+        ],
         "join_column": "MARKER",
         "prefix": "genomad_meta",
         "columns": [
@@ -54,7 +58,8 @@ INFO_TABLE_SPECS = {
         "read_csv_kwargs": {"separator": ",", "has_header": True},
     },
     "vfam": {
-        "relative_path": Path("profiles") / "vfam.annotations.tsv",
+        "relative_path": Path("profiles") / "vfam.annotations.tsv.gz",
+        "fallback_relative_paths": [Path("profiles") / "vfam.annotations.tsv"],
         "join_column": "GroupName",
         "prefix": "vfam_meta",
         "columns": [
@@ -70,7 +75,10 @@ INFO_TABLE_SPECS = {
     "uniref50": {
         "relative_path": Path("reference_seqs")
         / "uniref"
-        / "uniref50_viral.tsv",
+        / "uniref50_viral.tsv.gz",
+        "fallback_relative_paths": [
+            Path("reference_seqs") / "uniref" / "uniref50_viral.tsv"
+        ],
         "join_column": "Cluster_ID",
         "prefix": "uniref50_meta",
         "columns": [
@@ -570,8 +578,8 @@ def get_database_paths(config, tool_name):
         },
         "diamond": {
             "uniref50".lower(): reference_seqs_dir
-            / "uniref/uniref50_viral.fasta",
-            "RVMT".lower(): reference_seqs_dir / "RVMT/RVMT_cleaned_orfs.faa",
+            / "uniref/uniref50_viral.fasta.gz",
+            "RVMT".lower(): reference_seqs_dir / "RVMT/RVMT_cleaned_orfs.faa.gz",
         },
     }
 
@@ -1410,10 +1418,18 @@ def enrich_with_info_tables(dataframe: pl.DataFrame, logger: logging.Logger):
     enriched = dataframe
     for db_key in matched_specs:
         spec = INFO_TABLE_SPECS[db_key]
-        info_path = data_root / spec["relative_path"]
-        if not info_path.exists():
+        candidate_paths = [
+            data_root / path
+            for path in [
+                spec["relative_path"],
+                *spec.get("fallback_relative_paths", []),
+            ]
+        ]
+        info_path = next((path for path in candidate_paths if path.exists()), None)
+        if info_path is None:
             log.warning(
-                f"Metadata table for '{db_key}' not found at {info_path}, skipping join"
+                f"Metadata table for '{db_key}' not found at "
+                f"{', '.join(str(path) for path in candidate_paths)}, skipping join"
             )
             continue
 

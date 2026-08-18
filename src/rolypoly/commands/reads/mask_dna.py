@@ -47,7 +47,7 @@ datadir = Path(
 @click.option(
     "-r",
     "--reference",
-    default=datadir / "contam/masking/combined_entropy_masked.fasta",
+    default=datadir / "contam/masking/combined_entropy_masked.fasta.gz",
     help="Provide an input fasta file to be used for masking, instead of the pre-generated collection of RNA viral sequences",
 )
 @click.option(
@@ -265,8 +265,8 @@ def mask_dna(
         reference = (
             reference
             if str(reference)
-            != str(datadir / "contam/masking/combined_entropy_masked.fasta")
-            else str(datadir / "contam/masking/combined_deduplicated_orfs.faa")
+            != str(datadir / "contam/masking/combined_entropy_masked.fasta.gz")
+            else str(datadir / "contam/masking/combined_deduplicated_orfs.faa.gz")
         )
         logger.info(f"Note! using as reference: {reference} ")
         run_command_comp(

@@ -11,10 +11,11 @@ Key functions: (subject to change...)
     - revcomp: Calculate reverse complement of sequences
 """
 
+import gzip
 import logging
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, TextIO, Tuple, Union
 
 import polars as pl
 from needletail import parse_fastx_file
@@ -29,6 +30,17 @@ tab = bytes.maketrans(b"ACTG", b"TGAC")
 tab_b = bytearray(tab)
 tab_extended = bytes.maketrans(b"ACGTURYSWKMBDHVN", b"TGCAAYRSWMKVHDBN")
 tab_extended_b = bytearray(tab_extended)
+
+
+def open_text_writer(output_file: Union[str, Path, TextIO]) -> Tuple[TextIO, bool]:
+    """Open a text output path, using gzip compression when the name ends in .gz."""
+    if hasattr(output_file, "write"):
+        return output_file, False
+
+    path = Path(output_file)
+    if path.suffix == ".gz":
+        return gzip.open(path, "wt", encoding="utf-8"), True
+    return open(path, "w", encoding="utf-8"), True
 
 
 def read_fasta_needletail(fasta_file: str) -> Tuple[list[str], list[str]]:
@@ -56,7 +68,7 @@ def write_fasta_file(
     output_file=None,
     format: str = "fasta",
 ) -> None:
-    """Write sequences to a FASTA file or stdout if no output file is provided"""
+    """Write sequences to FASTA, gzipping path outputs that end in .gz."""
     import sys
 
     if format == "fasta":
@@ -71,11 +83,8 @@ def write_fasta_file(
     should_close = False
     if output_file is None:
         output_handle = sys.stdout
-    elif hasattr(output_file, "write"):
-        output_handle = output_file
     else:
-        output_handle = open(output_file, "w")
-        should_close = True
+        output_handle, should_close = open_text_writer(output_file)
 
     try:
         if records:
@@ -538,13 +547,13 @@ def revcomp(
 
 
 def remove_duplicates(
-    input_file: Union[str, List[str]],
-    output_file: Optional[str] = None,
+    input_file: Union[str, Path, List[Union[str, Path]]],
+    output_file: Optional[Union[str, Path]] = None,
     by: str = "name",
     revcomp_as_distinct: bool = True,
     ignore_case: bool = False,
-    save_duplicates: Optional[str] = None,
-    save_dup_list: Optional[str] = None,
+    save_duplicates: Optional[Union[str, Path]] = None,
+    save_dup_list: Optional[Union[str, Path]] = None,
     return_stats: bool = False,
     return_sequences: bool = False,
     streaming: bool = True,
@@ -557,8 +566,10 @@ def remove_duplicates(
     Supports processing multiple input files without concatenation.
 
     Args:
-        input_file: Path to input FASTA/FASTQ file, or list of paths to process multiple files
-        output_file: Path to output file with unique sequences. If None and return_sequences=False,
+        input_file: Path to input FASTA/FASTQ file, or list of paths to process multiple files.
+                    Gzipped inputs are handled by needletail.
+        output_file: Path to output file with unique sequences. Gzipped output
+                    is written when the file name ends in .gz. If None and return_sequences=False,
                     prints to stdout. If return_sequences=True, output_file is optional.
         by: Deduplication criterion - "id", "name", or "seq"
             - "id": Use sequence ID (first word of header)
@@ -567,8 +578,8 @@ def remove_duplicates(
         revcomp_as_distinct: If False and by="seq", treats reverse complement as duplicate.
                            Only applies when by="seq". Default True (revcomp is distinct).
         ignore_case: Ignore case when comparing sequences/names. Default False.
-        save_duplicates: Optional path to save duplicate sequences
-        save_dup_list: Optional path to save list of duplicate IDs with counts
+        save_duplicates: Optional path to save duplicate sequences; .gz suffix writes gzip
+        save_dup_list: Optional path to save list of duplicate IDs with counts; .gz suffix writes gzip
         return_stats: Return statistics dictionary. Default False.
         return_sequences: If True, return sequences in memory instead of/in addition to writing.
                          When True and streaming=False, all sequences are loaded into memory first.
@@ -625,7 +636,11 @@ def remove_duplicates(
     logger = get_logger(logger)
 
     # Normalize input to list
-    input_files = [input_file] if isinstance(input_file, str) else input_file
+    input_files = (
+        [str(input_file)]
+        if isinstance(input_file, (str, Path))
+        else [str(path) for path in input_file]
+    )
 
     if len(input_files) > 1:
         logger.info(f"Processing {len(input_files)} input files")
@@ -648,14 +663,16 @@ def remove_duplicates(
 
     # Open output files
     out_fh = None
+    close_out_fh = False
     if output_file:
-        out_fh = open(output_file, "w")
+        out_fh, close_out_fh = open_text_writer(output_file)
     elif not return_sequences:
         out_fh = sys.stdout
 
     dup_fh = None
+    close_dup_fh = False
     if save_duplicates:
-        dup_fh = open(save_duplicates, "w")
+        dup_fh, close_dup_fh = open_text_writer(save_duplicates)
 
     # Tracking data structures
     seen_hashes = set()  # Set of hashes we've seen
@@ -791,14 +808,15 @@ def remove_duplicates(
 
     finally:
         # Close output files
-        if out_fh and output_file:
+        if out_fh and close_out_fh:
             out_fh.close()
-        if dup_fh:
+        if dup_fh and close_dup_fh:
             dup_fh.close()
 
     # Save duplicate list if requested
     if save_dup_list:
-        with open(save_dup_list, "w") as dup_list_fh:
+        dup_list_fh, close_dup_list_fh = open_text_writer(save_dup_list)
+        try:
             # Sort by number of duplicates (descending)
             sorted_groups = sorted(
                 [
@@ -812,6 +830,9 @@ def remove_duplicates(
 
             for _, ids in sorted_groups:
                 dup_list_fh.write(f"{len(ids)}\t{', '.join(ids)}\n")
+        finally:
+            if close_dup_list_fh:
+                dup_list_fh.close()
 
     # Return results if requested
     if return_stats or return_sequences:

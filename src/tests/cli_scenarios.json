@@ -441,7 +441,7 @@
       "diamond"
     ],
     "required_paths": [
-      "data/reference_seqs/RVMT/RVMT_cleaned_orfs.faa"
+      "data/reference_seqs/RVMT/RVMT_cleaned_orfs.faa.gz"
     ],
     "args": [
       "annotate-prot",

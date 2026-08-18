@@ -1209,11 +1209,11 @@ def decontaminate_rrna(
     )
     rrna_fas1 = (
         Path(config.datadir)
-        / "contam/rrna/ncbi_rRNA_all_sequences_masked_entropy.fasta"
+        / "contam/rrna/ncbi_rRNA_all_sequences_masked_entropy.fasta.gz"
     )  # type: ignore
     rrna_fas2 = (
         Path(config.datadir)
-        / "contam/rrna/silva_rRNA_all_sequences_masked_entropy.fasta"
+        / "contam/rrna/silva_rRNA_all_sequences_masked_entropy.fasta.gz"
     )  # type: ignore
     try:
         params = config.step_params["decontaminate_rrna"]
