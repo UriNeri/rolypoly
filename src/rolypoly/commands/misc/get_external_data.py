@@ -10,6 +10,15 @@ console = Console()
 global tools
 tools = []
 
+# The release date is recorded inside the bundle README. Keep the public
+# archive name stable so get-data does not need release-specific URL changes.
+NERSC_DATA_URL = (
+    "https://portal.nersc.gov/dna/microbial/prokpubs/rolypoly/data/data.tar.gz"
+)
+ZENODO_DATA_URL = (
+    "https://zenodo.org/records/21639934/files/data.tar.gz?download=1"
+)
+
 
 @command(name="get-data")
 @option(
@@ -84,36 +93,28 @@ def get_data(info, rolypoly_data, log_file, log_level):
 
     ROLYPOLY_DATA.mkdir(parents=True, exist_ok=True)
 
-    # Download the tarball
-    # first try from nersc, if that fails, try from zenodo
+    # Download the tarball.  The archive's release timestamp/name is not used
+    # locally: every source is saved as data.tar.gz before extraction.
     logger.info("Downloading data tarball...")
-    try: 
-        response = requests.get(
-            "https://portal.nersc.gov/dna/microbial/prokpubs/rolypoly/data/data.tar.gz",
-            stream=True,
-        )
-        response.raise_for_status()
-    except requests.RequestException as e:
-        logger.warning(f"Failed to download from NERSC: {e}. Trying Zenodo...")
-        try:
-            response = requests.get(
-                "https://zenodo.org/record/1234567/files/data.tar.gz?download=1",
-                stream=True,
-            )
-            response.raise_for_status()
-        except requests.RequestException as e:
-            logger.error(f"Failed to download from Zenodo: {e}. Aborting.")
-            return 1
-    # response = requests.get(
-    #     "https://portal.nersc.gov/dna/microbial/prokpubs/rolypoly/data/data.tar.gz",
-    #     stream=True,
-    # )
-
     tar_path = ROLYPOLY_DATA / "data.tar.gz"
-    with open(str(tar_path), "wb") as f:
-        for chunk in response.iter_content(chunk_size=1024):
-            if chunk:
-                f.write(chunk)
+    downloaded = False
+    for url in (NERSC_DATA_URL, ZENODO_DATA_URL):
+        try:
+            logger.info(f"Trying data source: {url}")
+            with requests.get(url, stream=True, timeout=(30, 120)) as response:
+                response.raise_for_status()
+                with tar_path.open("wb") as archive:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            archive.write(chunk)
+            downloaded = True
+            break
+        except (OSError, requests.RequestException) as e:
+            tar_path.unlink(missing_ok=True)
+            logger.warning(f"Failed to download from {url}: {e}")
+    if not downloaded:
+        logger.error("All configured data sources failed. Aborting.")
+        return 1
 
     logger.info("Extracting data tarball...")
     # Extract directly to ROLYPOLY_DATA
