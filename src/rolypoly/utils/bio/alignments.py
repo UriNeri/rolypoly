@@ -706,7 +706,10 @@ def hmmdb_from_directory(
     logger: Optional[logging.Logger] = None,
     missing_include: bool = False,
     debug: bool = False,
-    default_description: str = None
+    default_description: str = None,
+    pyhmmer_builder_args: Optional[dict] = None,
+    min_nseq_effective: Optional[float] = None,
+    return_kept_msa_paths: bool = False,
 ):
     """Create a concatenated HMM database from a directory of MSA files.
 
@@ -724,6 +727,18 @@ def hmmdb_from_directory(
         missing_include: bool, whether to include MSAs with no matching info table entry (Default value = False)
         logger: logging.Logger, optional logger for debug output
         debug: bool, whether to enable debug logging - will override logger level if provided (Default value = False)
+        pyhmmer_builder_args: optional keyword arguments passed to
+            ``pyhmmer.plan7.Builder``. Existing builder defaults are preserved
+            when this is not provided.
+        min_nseq_effective: if provided, retain only HMMs whose
+            ``nseq_effective`` is strictly greater than this value.
+        return_kept_msa_paths: return ``(output, kept_msa_paths)`` instead of
+            only ``output``. This is useful when another profile backend must
+            be built from exactly the same filtered alignments.
+
+    Returns:
+        The output path, or ``(output, kept_msa_paths)`` when
+        ``return_kept_msa_paths`` is enabled.
 
     """
 
@@ -750,7 +765,9 @@ def hmmdb_from_directory(
     else:
         some_bool = False
 
+    builder_args = dict(pyhmmer_builder_args or {})
     hmms = []
+    kept_msa_paths = []
     # create a temporary directory
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_dir = Path(temp_dir)
@@ -855,9 +872,20 @@ def hmmdb_from_directory(
                     except Exception:
                         pass
             # Build the HMM
-            builder = pyhmmer.plan7.Builder(msa.alphabet)
+            builder = pyhmmer.plan7.Builder(msa.alphabet, **builder_args)
             background = pyhmmer.plan7.Background(msa.alphabet)
             hmm, _, _ = builder.build_msa(msa, background)
+            if min_nseq_effective is not None and (
+                hmm.nseq_effective is None
+                or hmm.nseq_effective <= min_nseq_effective
+            ):
+                logger.debug(
+                    "Skipping MSA '%s': nseq_effective=%s is not greater than %s",
+                    msa_file.name,
+                    hmm.nseq_effective,
+                    min_nseq_effective,
+                )
+                continue
 
             # Transfer metadata from MSA to HMM
             hmm.name = msa.name
@@ -919,8 +947,13 @@ def hmmdb_from_directory(
             # Set gathering threshold if provided (or default to 1)
             hmm.cutoffs.gathering = (float(this_gath), float(this_gath))
             hmms.append(hmm)
+            kept_msa_paths.append(msa_file)
             # write the hmm to a file
-            safe_name = msa.name.decode().replace("/", "_")
+            safe_name = (
+                msa.name.decode("utf-8")
+                if isinstance(msa.name, bytes)
+                else str(msa.name)
+            ).replace("/", "_")
             fh = open(temp_dir / f"{safe_name}.hmm", "wb")
             hmm.write(fh, binary=False)
             fh.close()
@@ -930,6 +963,8 @@ def hmmdb_from_directory(
             for hmm in hmms:
                 hmm.write(out_f, binary=False)
                 out_f.write(b"\n")
+    if return_kept_msa_paths:
+        return output, kept_msa_paths
     return output
 
 
