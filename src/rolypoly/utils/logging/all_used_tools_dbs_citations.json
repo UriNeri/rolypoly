@@ -173,14 +173,14 @@
   "pfam_a_38": {
     "name": "pfam_a_38",
     "citation": "https://doi.org/10.1093/nar/gkae1276",
-    "data": "https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam38.0/Pfam-A.hmm.gz",
-    "note": "RdRps and RT profiles from PFAM_A v.37: PF04197.17, PF04196.17, PF22212.1, PF22152.1, PF22260.1, PF05183.17, PF00680.25, PF00978.26, PF00998.28, PF02123.21, PF07925.16, PF00078.32, PF07727.19, PF13456.11"
+    "data": "https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam38.2/Pfam-A.hmm.gz",
+    "note": "Pfam-A release 38.2"
   },
   "pfam_rts_rdrp": {
     "name": "pfam_rts_rdrp",
     "citation": "https://doi.org/10.1093/nar/gkae1276",
-    "data": "https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam38.0/Pfam-A.hmm.gz",
-    "note": "RdRps and RT profiles from PFAM_A v.37: PF04197.17, PF04196.17, PF22212.1, PF22152.1, PF22260.1, PF05183.17, PF00680.25, PF00978.26, PF00998.28, PF02123.21, PF07925.16, PF00078.32, PF07727.19, PF13456.11"
+    "data": "https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam38.2/Pfam-A.hmm.gz",
+    "note": "RdRp and RT profiles from Pfam 38.2: PF04197.18, PF04196.18, PF22212.2, PF22152.2, PF22260.2, PF00680.26, PF00978.27, PF00998.29, PF02123.22, PF07925.16, PF00078.33, PF07727.20, PF13456.13"
   },
   "palmdb_v1": {
     "name": "PALMdb_v1",
