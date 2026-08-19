@@ -9,6 +9,22 @@ tools = []
 global matched_tabb
 matched_tabb = []
 
+BUILT_IN_DB_PATHS = {
+    "ncbi_ribovirus": (
+        "reference_seqs/ncbi_virus/mmseqs/refseq_ribovirus_genomes_cleaned"
+    ),
+    "ncbi_non_riboviria": (
+        "reference_seqs/ncbi_virus/mmseqs/refseq_non_riboviria_genomes"
+    ),
+    "rvmt": "reference_seqs/RVMT/mmseqs/RVMT_cleaned",
+}
+
+
+def get_builtin_virus_db_paths(datadir):
+    """Resolve built-in virus-mapping database paths below ROLYPOLY_DATA."""
+    datadir = pt(datadir)
+    return {name: datadir / path for name, path in BUILT_IN_DB_PATHS.items()}
+
 
 @click.command(name="virus-mapping")
 @click.option(
@@ -20,9 +36,14 @@ matched_tabb = []
 @click.option(
     "--db",
     "--database",
-    type=click.Choice(["RVMT", "NCBI_Ribovirus", "all", "other"]),
+    type=click.Choice(
+        ["RVMT", "NCBI_Ribovirus", "NCBI_Non_Riboviria", "all", "other"]
+    ),
     default="all",
-    help="""Select the database to search against.""",
+    help=(
+        "Select the database to search against. 'all' retains its historical "
+        "meaning: the two RNA-virus databases (RVMT and NCBI_Ribovirus)."
+    ),
 )
 @click.option(
     "--db-path",
@@ -79,8 +100,9 @@ def virus_mapping(
 
     Input can be FASTA/FASTQ or an existing MMseqs2 database. The command
     converts sequence inputs to MMseqs2 format as needed and runs searches
-    against built-in viral databases (`RVMT`, `NCBI_Ribovirus`, or `all`) or a
-    user-supplied target via `--db other --db-path`.
+    against built-in viral databases (`RVMT`, `NCBI_Ribovirus`,
+    `NCBI_Non_Riboviria`, or `all`) or a user-supplied target via `--db other
+    --db-path`.
     """
     import shutil
     import subprocess
@@ -191,15 +213,14 @@ def virus_mapping(
             tmp / "mmdb"
         )  # Ensure the path is updated correctly after creation
     db = db.lower()  # Normalize db_name to lowercase for comparison
-    DB_PATHS = {
-        "ncbi_ribovirus": datadir
-        / "reference_seqs/ncbi_virus/mmseqs/refseq_ribovirus_genomes_cleaned",
-        "rvmt": datadir / "reference_seqs/RVMT/mmseqs/RVMT_cleaned",
-    }
+    db_paths_available = get_builtin_virus_db_paths(datadir)
 
     # Determine the databases to use
     if db == "all":
-        db_paths = DB_PATHS
+        db_paths = {
+            name: db_paths_available[name]
+            for name in ("ncbi_ribovirus", "rvmt")
+        }
     elif db == "other":
         if not db_path:
             logger.warning(
@@ -219,7 +240,7 @@ def virus_mapping(
             )  # Ensure the path is updated correctly after creation
         db_paths = {"Custom": db_path}
     else:
-        db_paths = {db: DB_PATHS[db]}
+        db_paths = {db: db_paths_available[db]}
 
     for db_name, db_path in db_paths.items():
         logger.info(f"Searching against {db_name}")
