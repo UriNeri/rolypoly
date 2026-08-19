@@ -274,7 +274,7 @@ def stage_protein_input_as_orfs(config) -> bool:
     * RVMT: RVMT RdRp profiles \n
     * NVPC: RVMT's New Viral Profile Clusters, filtered to remove "hypothetical" proteins \n
     * genomad: genomad virus-specific markers - note these can be good for identification but not ideal for annotation. \n
-    * vfam: VFam profiles fetched on December 2025, filtered to remove "hypothetical" proteins \n
+    * vfam: VFam profiles from VOGDB release 236, filtered to remove low-information profiles \n
     * uniref50: UniRef50 viral subset (for diamond only) \n
     * custom: custom (path to a custom database in HMM format or a directory of MSA/hmms files) \n
     * all: all (all databases) \n
@@ -732,7 +732,7 @@ def search_protein_domains_hmmsearch(config):
             f"No valid databases found for hmmsearch. Requested: {config.domain_db}. "
             f"Supported: Pfam, NVPC, RVMT, genomad, vfam. Please check your --domain-db parameter."
         )
-        raise ValueError(f"No valid databases found for hmmsearch search")
+        raise ValueError("No valid databases found for hmmsearch search")
 
     global output_files
     config.logger.info(
@@ -775,7 +775,6 @@ def search_protein_domains_hmmsearch(config):
 
 def predict_orfs_with_orffinder(config):
     """Predict ORFs using ORFfinder."""
-    import os
     from shutil import which
 
     from rolypoly.utils.bio.translation import predict_orfs_orffinder
@@ -864,7 +863,7 @@ def search_protein_domains_mmseqs2(config):
             f"No valid databases found for mmseqs2. Requested: {config.domain_db}. "
             f"Supported: NVPC, RVMT, vfam, Pfam, genomad. Please check your --domain-db parameter."
         )
-        raise ValueError(f"No valid databases found for mmseqs2 search")
+        raise ValueError("No valid databases found for mmseqs2 search")
 
     global output_files
     config.logger.info(
@@ -963,7 +962,7 @@ def search_protein_domains_diamond(config):
             f"No valid databases found for diamond. Requested: {config.domain_db}. "
             f"Supported: uniref50, RVMT. Please check your --domain-db parameter."
         )
-        raise ValueError(f"No valid databases found for diamond search")
+        raise ValueError("No valid databases found for diamond search")
 
     global output_files
     config.logger.info(
