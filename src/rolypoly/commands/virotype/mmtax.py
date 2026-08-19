@@ -91,8 +91,7 @@ def default_taxdump_path() -> Path:
         Path(os.environ["ROLYPOLY_DATA"])
         / "reference_seqs"
         / "ncbi_virus"
-        / "protein_taxdb"
-        / "ictv_taxdump"
+        / "taxonomy"
     )
 
 
