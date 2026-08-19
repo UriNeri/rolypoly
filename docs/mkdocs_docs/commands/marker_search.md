@@ -36,8 +36,8 @@ Most pre-made DBs are based on RdRp domain (except for geNomad).
     #     Thesis: https://www.repository.cam.ac.uk/items/1fabebd2-429b-45c9-b6eb-41d27d0a90c2
     • Pfam_RTs_RdRp
 
-        RdRps and RT profiles from PFAM_A v.37 --- PF04197.17,PF04196.17,PF22212.1,PF22152.1,PF22260.1,PF05183.17,PF00680.25,PF00978.26,PF00998.28,PF02123.21,PF07925.16,PF00078.32,PF07727.19,PF13456.11
-        Data: https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam37.0/Pfam-A.hmm.gz | Paper https://doi.org/10.1093/nar/gkaa913
+        RdRps and RT profiles from Pfam 38.2 --- PF04197.18,PF04196.18,PF22212.2,PF22152.2,PF22260.2,PF00680.26,PF00978.27,PF00998.29,PF02123.22,PF07925.16,PF00078.33,PF07727.20,PF13456.13
+        Data: https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam38.2/ | Paper https://doi.org/10.1093/nar/gkaa913
     • geNomad
 
         RNA virus marker genes from geNomad v1.9 --- https://zenodo.org/records/14886553
@@ -69,6 +69,4 @@ rolypoly marker-search [OPTIONS]
 - `-mro`, `--matched-regions-output`: Output FASTA path for matched regions (default: <output>/marker_search_matched_regions.faa) (type: `TEXT`)
 - `--include-aligned-region`, `--no-include-aligned-region`: Include aligned query region sequence in marker_search_results.tsv (enabled by default) (type: `BOOLEAN`; default: `True`)
 - `--include-alignment-string`, `--no-include-alignment-string`: Include alignment identity string in marker_search_results.tsv (disabled by default) (type: `BOOLEAN`; default: `False`)
-
-
 
