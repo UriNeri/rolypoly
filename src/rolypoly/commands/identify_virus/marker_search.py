@@ -29,6 +29,7 @@ class RVirusSearchConfig(BaseConfig):
         )  # initialize the BaseConfig class
         # initialize the rest of the parameters (i.e. the ones that are not in the BaseConfig class)
         self.database = kwargs.get("database", "RVMT,genomad")
+        self.search_tool = kwargs.get("search_tool", "hmmsearch")
         self.inc_evalue = kwargs.get("inc_evalue", 0.001)
         self.score = kwargs.get("score", 20)
         self.min_ali_len = kwargs.get("min_ali_len", 15)
@@ -51,6 +52,114 @@ class RVirusSearchConfig(BaseConfig):
         self.matched_input_seqs_output = (
             kwargs.get("matched_input_seqs_output") or None
         )
+
+
+def search_mmseqs_marker_db(
+    amino_file,
+    db_path,
+    output,
+    temp_dir,
+    threads,
+    inc_evalue,
+    score,
+    min_ali_len,
+    include_aligned_region,
+    include_alignment_string,
+    include_full_query,
+    logger,
+):
+    """Search an MMseqs profile database and write marker-search hit columns."""
+    import polars as pl
+
+    from rolypoly.utils.bio.alignments import mmseqs_easy_search
+
+    output = Path(output)
+    raw_output = output.with_suffix(".mmseqs.tsv")
+    format_columns = [
+        "query",
+        "qheader",
+        "target",
+        "theader",
+        "evalue",
+        "bits",
+        "qstart",
+        "qend",
+        "tstart",
+        "tend",
+        "qlen",
+        "tlen",
+        "alnlen",
+        "qcov",
+        "tcov",
+        "qaln",
+        "taln",
+    ]
+    if include_full_query:
+        format_columns.append("qseq")
+
+    mmseqs_easy_search(
+        query=amino_file,
+        target=db_path,
+        output=raw_output,
+        tmp_dir=Path(temp_dir) / f"mmseqs_{output.stem}",
+        threads=threads,
+        evalue=inc_evalue,
+        format_mode=4,
+        format_output=format_columns,
+        logger=logger,
+    )
+    if not raw_output.exists():
+        raise RuntimeError(
+            f"MMseqs2 marker search did not create its output: {raw_output}"
+        )
+
+    raw_hits = pl.read_csv(raw_output, separator="\t")
+    hits = raw_hits.filter(
+        (pl.col("evalue") <= inc_evalue)
+        & (pl.col("bits") >= score)
+        & (pl.col("alnlen") >= min_ali_len)
+    )
+    profile_id = pl.col("target").str.replace(r"_seed$", "")
+    output_columns = [
+        pl.col("qheader").alias("query_full_name"),
+        profile_id.alias("hmm_full_name"),
+        profile_id.alias("profile_accession"),
+        pl.col("tlen").alias("hmm_len"),
+        pl.col("qlen"),
+        pl.col("evalue").alias("full_hmm_evalue"),
+        pl.col("bits").alias("full_hmm_score"),
+        pl.lit(0.0).alias("full_hmm_bias"),
+        pl.col("bits").alias("this_dom_score"),
+        pl.lit(0.0).alias("this_dom_bias"),
+        pl.col("tstart").alias("hmm_from"),
+        pl.col("tend").alias("hmm_to"),
+        pl.col("qstart").alias("q1"),
+        pl.col("qend").alias("q2"),
+        pl.col("qstart").alias("env_from"),
+        pl.col("qend").alias("env_to"),
+        pl.col("tcov").alias("hmm_cov"),
+        pl.col("alnlen").alias("ali_len"),
+        pl.col("theader").str.replace(r"^\S+\s*", "").alias("dom_desc"),
+    ]
+    if include_aligned_region:
+        output_columns.append(pl.col("qaln").alias("aligned_region"))
+    if include_full_query:
+        output_columns.append(pl.col("qseq").alias("full_qseq"))
+    if include_alignment_string:
+        output_columns.append(
+            pl.struct("qaln", "taln")
+            .map_elements(
+                lambda row: "".join(
+                    "|" if query == target and query != "-" else " "
+                    for query, target in zip(row["qaln"], row["taln"])
+                ),
+                return_dtype=pl.String,
+            )
+            .alias("identity_str")
+        )
+
+    hits.select(output_columns).write_csv(output, separator="\t")
+    return output
 
 
 def write_matched_regions_fasta(
@@ -263,8 +372,16 @@ console = Console(width=150)
     type=str,
     default="RVMT,genomad",
     help="""comma separated list of databases to search against (or `all`), or path to a custom database. \n
-        options: NeoRdRp_v2.1, RdRp-scan, RVMT, TSA_2018, Pfam_RTs_RdRp, genomad, all, \n
-        For custom path, either an .hmm file, a directory with .hmm files, or a folder with MSA files (which would be used to build an HMM DB)""",
+        options: NeoRdRp_v2.1, RdRp-scan, RVMT, Pfam_RTs_RdRp, genomad, all. Availability depends on the selected backend. \n
+        With hmmsearch, a custom path may be an HMM, an MSA, or a directory of either. With mmseqs2, provide an MMseqs database prefix.""",
+)
+@option(
+    "-st",
+    "--search-tool",
+    type=Choice(["hmmsearch", "mmseqs2"]),
+    default="hmmsearch",
+    show_default=True,
+    help="Profile-search backend. MMseqs2 uses the corresponding prebuilt MMseqs profile databases.",
 )
 @option(
     "-cf",
@@ -329,6 +446,7 @@ def marker_search(
     score,
     aa_method,
     database,
+    search_tool,
     threads,
     log_file,
     memory,
@@ -346,7 +464,7 @@ def marker_search(
     write_matched_input_seqs,
     matched_input_seqs_output,
 ):
-    """RNA virus marker protein search - using pre-made/user-supplied DBs.
+    """RNA virus marker protein search using HMMER or MMseqs2 profile databases.
     Most pre-made DBs are based on RdRp domain (except for geNomad).
     Input can be nucleotide contigs or amino acid seqs.
     If nucleotide, by default all contigs will be translated to six end-to-end frames (with stops replaced by `X`), or into ORFs called by pyrodigal (meta) or callgenes.sh \n
@@ -359,11 +477,11 @@ def marker_search(
         GitHub: https://github.com/JustineCharon/RdRp-scan  |  Paper: https://doi.org/10.1093/ve/veac082 \n
             ⤷ (which IIRC incorporated PALMdb, GitHub: https://github.com/rcedgar/palmdb, Paper: https://doi.org/10.7717/peerj.14055 \n
     • Pfam_RTs_RdRp \n
-        RdRps and RT profiles from PFAM_A v.37 --- PF04197.17,PF04196.17,PF22212.1,PF22152.1,PF22260.1,PF05183.17,PF00680.25,PF00978.26,PF00998.28,PF02123.21,PF07925.16,PF00078.32,PF07727.19,PF13456.11
-        Data: https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam37.0/Pfam-A.hmm.gz | Paper https://doi.org/10.1093/nar/gkaa913
+        RdRp and RT profiles from Pfam 38.2 --- PF04197.18,PF04196.18,PF22212.2,PF22152.2,PF22260.2,PF00680.26,PF00978.27,PF00998.29,PF02123.22,PF07925.16,PF00078.33,PF07727.20,PF13456.13
+        Data: https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam38.2/ | Paper https://doi.org/10.1093/nar/gkaa913
     • geNomad \n
         RNA virus marker genes from geNomad v1.9 --- https://zenodo.org/records/14886553
-    For custom path, either an .hmm file, a directory with .hmm files, or a folder with MSA files (which would be used to build an HMM DB).
+    For a custom path, use an HMM/MSA source with hmmsearch or an MMseqs database prefix with mmseqs2.
     Please cite accordingly based on the DBs you select.
     """
     import json
@@ -410,6 +528,7 @@ def marker_search(
             aa_method=aa_method,
             temp_dir=temp_dir,
             database=database,
+            search_tool=search_tool,
             overwrite=overwrite,
             log_level=log_level,
             threads=threads,
@@ -438,25 +557,40 @@ def marker_search(
 
     # Determine the databases to use
     hmmdbdir = Path(os.environ["ROLYPOLY_DATA"]) / "profiles/hmmdbs"
+    mmseqsdbdir = Path(os.environ["ROLYPOLY_DATA"]) / "profiles/mmseqs_dbs"
 
-    DB_PATHS = {
-        "NeoRdRp_v2.1".lower(): hmmdbdir / "neordrp2.1.hmm",
-        "RdRp-scan".lower(): hmmdbdir / "rdrp_scan.hmm",
-        "RVMT".lower(): hmmdbdir / "rvmt.hmm",
-        # "TSA_2018".lower(): hmmdbdir / "TSA_Olendraite.hmm",
-        "Pfam_RTs_RdRp".lower(): hmmdbdir / "pfam_rdrps_and_rts.hmm",
-        "genomad".lower(): hmmdbdir / "genomad_rna_viral_markers.hmm",
+    database_paths_by_tool = {
+        "hmmsearch": {
+            "NeoRdRp_v2.1".lower(): hmmdbdir / "neordrp2.1.hmm",
+            "RdRp-scan".lower(): hmmdbdir / "rdrp_scan.hmm",
+            "RVMT".lower(): hmmdbdir / "rvmt.hmm",
+            "Pfam_RTs_RdRp".lower(): hmmdbdir / "pfam_rdrps_and_rts.hmm",
+            "genomad".lower(): hmmdbdir / "genomad_rna_viral_markers.hmm",
+        },
+        "mmseqs2": {
+            "RdRp-scan".lower(): mmseqsdbdir / "rdrp_scan/rdrp_scan",
+            "RVMT".lower(): mmseqsdbdir / "RVMT/RVMT",
+            "Pfam_RTs_RdRp".lower(): mmseqsdbdir
+            / "pfam_rdrps_and_rts/pfam_rdrps_and_rts",
+            "genomad".lower(): mmseqsdbdir / "genomad/rna_viral_markers",
+        },
     }
+    db_paths = database_paths_by_tool[config.search_tool]
 
-    if database == "all":
-        database_paths = DB_PATHS
-    elif database.startswith("/") or database.startswith("./"):
-        custom_database = str(Path(database).resolve())
+    requested_database = config.database
+    if requested_database == "all":
+        database_paths = db_paths
+    elif requested_database.startswith("/") or requested_database.startswith(
+        "./"
+    ):
+        custom_database = str(Path(requested_database).resolve())
         if not Path(custom_database).exists():
             config.logger.error(
                 f"Custom database path {custom_database} does not exist"
             )
             return
+        elif config.search_tool == "mmseqs2":
+            database_paths = {"Custom": custom_database}
         else:
             # check if a file it's an hmm or an msa file
             if custom_database.endswith(".hmm"):
@@ -466,9 +600,9 @@ def marker_search(
 
                 database_paths = {
                     "Custom": hmm_from_msa(
-                        msa_file=database,
-                        output=database.replace(".faa", ".hmm"),
-                        name=Path(database).stem,
+                        msa_file=requested_database,
+                        output=requested_database.replace(".faa", ".hmm"),
+                        name=Path(requested_database).stem,
                     )
                 }
             # if it's a directory:
@@ -523,10 +657,20 @@ def marker_search(
                 )
                 return
     else:
-        databases = database.split(",")
-        database_paths = {db: DB_PATHS[db.lower()] for db in databases}
+        databases = [
+            db.strip() for db in requested_database.split(",") if db.strip()
+        ]
+        unsupported = [db for db in databases if db.lower() not in db_paths]
+        if unsupported:
+            raise ValueError(
+                f"Databases {unsupported} are not available for {config.search_tool}. "
+                f"Supported databases: {', '.join(db_paths)}"
+            )
+        database_paths = {db: db_paths[db.lower()] for db in databases}
 
     input_alpha = guess_fasta_alpha(input)
+    if input_alpha == "amino":
+        input_alpha = "aa"
 
     if input_alpha == "nucl":
         config.logger.info("Input identified as nucl")
@@ -565,20 +709,36 @@ def marker_search(
         tools.append(f"{db_name}") if db_name != "Custom" else None
 
         tmp_output = config.temp_dir / f"raw_{config.name}_vs_{db_name}.tsv"
-        search_hmmdb(
-            amino_file=amino_file,
-            db_path=db_path,
-            output=tmp_output,
-            threads=threads,
-            logger=config.logger,
-            inc_e=config.inc_evalue,
-            mscore=config.score,
-            min_ali_len=config.min_ali_len,
-            output_format="modomtblout",
-            ali_str=config.include_alignment_string,
-            full_qseq=config.write_matched_regions,
-            match_region=config.include_aligned_region,
-        )
+        if config.search_tool == "mmseqs2":
+            search_mmseqs_marker_db(
+                amino_file=amino_file,
+                db_path=db_path,
+                output=tmp_output,
+                temp_dir=config.temp_dir,
+                threads=threads,
+                logger=config.logger,
+                inc_evalue=config.inc_evalue,
+                score=config.score,
+                min_ali_len=config.min_ali_len,
+                include_aligned_region=config.include_aligned_region,
+                include_alignment_string=config.include_alignment_string,
+                include_full_query=config.write_matched_regions,
+            )
+        else:
+            search_hmmdb(
+                amino_file=amino_file,
+                db_path=db_path,
+                output=tmp_output,
+                threads=threads,
+                logger=config.logger,
+                inc_e=config.inc_evalue,
+                mscore=config.score,
+                min_ali_len=config.min_ali_len,
+                output_format="modomtblout",
+                ali_str=config.include_alignment_string,
+                full_qseq=config.write_matched_regions,
+                match_region=config.include_aligned_region,
+            )
         config.logger.debug(f"temp output: {tmp_output}")
         all_outputs.append(tmp_output)
 
@@ -768,8 +928,11 @@ def marker_search(
     output_files = [ix.absolute() for ix in Path(output).glob("*.tsv")]
     config.logger.info(f"""Outputs saved to {output_files}""")
 
-    tools.append("pyhmmer")
-    tools.append("hmmer")
+    if config.search_tool == "mmseqs2":
+        tools.append("mmseqs2")
+    else:
+        tools.append("pyhmmer")
+        tools.append("hmmer")
 
     with open(f"{config.log_file}", "a") as f_out:
         f_out.write(remind_citations(tools, return_bibtex=True) or "")
