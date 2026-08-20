@@ -74,7 +74,7 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
    - Every committed fixture should be referenced by a persistent test or a
      documented reproducible example. Remove its fixture when removing the last
      consumer, unless it has a separately documented purpose.
-   - **Run standardized CLI tests**: `pixi run -e dev pytest -q src/tests/test_cli_contracts.py`
+   - **Run standardized CLI tests**: `pixi run -e dev pytest -q src/tests/test_cli_contracts.py`(or just pixi run test-cli)
    - **Run fast help-only smoke tests** (just `--help` for top-level + each command): `pixi run -e dev pytest -q src/tests/test_cli_help_smoke.py`
    - **Run one command's scenarios**: `pixi run -e dev pytest -q src/tests/test_cli_contracts.py --cli-commands fetch-sra`
    - **Run multiple commands' scenarios**: `pixi run -e dev pytest -q src/tests/test_cli_contracts.py --cli-commands annotate,assemble,marker-search`
@@ -171,25 +171,76 @@ Then create the GitHub Release that triggers publishing and gives Bioconda a tag
 
 `--generate-notes` has GitHub auto-draft the release notes (merged PRs/commits and any first-time contributors) since the previous tag - prefer this over a hand-written `--notes` string so the notes and contributor list stay accurate without manual upkeep.
 
-### One-command release prep (bump + commit + release)
+### Three-step release commands
 
-Use the pixi task:
-- `pixi run -e dev bump-commit-publish`
+Release preparation and publication are deliberately separate Pixi tasks. Run them
+from a clean `main` working tree in this order:
 
-This task runs `src/setup/bump_commit_publish.sh` and by default:
-- merges the latest `origin/main` into the deployment branch first, so it never ships stale code or a stale copy of the workflow file (GitHub Actions runs the workflow version from the ref that triggered it, not from `main`)
-- bumps version in `src/rolypoly/__init__.py` (`micro` by default; or `major`/`minor`/explicit `X.Y.Z`)
-- refreshes `src/setup/env_big.yaml` from `pixi workspace export conda-environment -e complete`, with cleanup for micromamba compatibility
-- runs help-smoke tests locally
-- commits `src/rolypoly/__init__.py` and `src/setup/env_big.yaml`, and pushes to `origin/release` (build/smoke-test only, no publish)
-- creates the GitHub Release `vX.Y.Z` targeting `release` via `gh release create ... --generate-notes`, which is what actually triggers the publish workflow
+1. `pixi run -e dev bump` — update local release files only.
+2. Review `git diff`, especially the version and exported environment.
+3. `pixi run -e dev commit-release` — test, commit, and push `main` and `release`.
+4. Wait for the build/help-smoke workflow triggered by the `release` push to pass.
+5. `pixi run -e dev publish-release -- --dry-run` — validate the release without creating it.
+6. `pixi run -e dev publish-release` — create the GitHub Release and start package publishing.
 
-Common options:
-- `pixi run -e dev bump-commit-publish -- --bump minor`
-- `pixi run -e dev bump-commit-publish -- --bump 0.7.0`
-- `pixi run -e dev bump-commit-publish -- --branch release --remote origin`
-- `pixi run -e dev bump-commit-publish -- --skip-smoke`
-- `pixi run -e dev bump-commit-publish -- --skip-release` (push the branch only; create the GitHub Release yourself later)
+#### What `bump` does internally
+
+`bump` runs `src/setup/bump.sh`. It requires a clean working tree and defaults to a
+micro version increment. It accepts a positional value or `--bump`:
+
+- `pixi run -e dev bump` or `pixi run -e dev bump -- micro`: `0.7.17` -> `0.7.18`
+- `pixi run -e dev bump -- patch`: alias for `micro`
+- `pixi run -e dev bump -- minor`: `0.7.17` -> `0.8.0`
+- `pixi run -e dev bump -- major`: `0.7.17` -> `1.0.0`
+- `pixi run -e dev bump -- 0.7.18`: use that explicit `X.Y.Z` version
+
+Internally, the command:
+
+1. Parses `__version__` from `src/rolypoly/__init__.py` and removes any local
+   suffix after `+` before calculating the next version.
+2. Prepares a replacement `__version__ = "X.Y.Z"` line in a temporary file.
+   `pyproject.toml` is not edited because Hatch reads its dynamic version from
+   this Python file.
+3. Runs `pixi workspace export conda-environment -e complete -n rolypoly-tk`.
+4. Normalizes the export for micromamba compatibility: it separates conda and
+   pip dependencies, de-duplicates them, preserves the stronger top-level
+   constraints, ensures `pip` is present, and removes the editable `-e .` entry.
+5. Appends `rolypoly-tk >=X.Y.Z,<1` to the exported pip dependencies and replaces
+   `src/setup/env_big.yaml`.
+6. Replaces both release files only after the version calculation and environment
+   export succeed.
+
+`bump` does not test, stage, commit, switch branches, push, tag, create a GitHub
+Release, or publish a package. Its only intended working-tree changes are
+`src/rolypoly/__init__.py` and `src/setup/env_big.yaml`.
+
+#### What `commit-release` does
+
+`commit-release` runs `src/setup/commit_release.sh`. It requires `main` to contain
+exactly the two unstaged files produced by `bump`. It fetches the remote branch
+state, refuses to proceed if local `main` is behind or diverged, runs
+`src/tests/test_cli_help_smoke.py`, commits the two files as
+`release: bump version to vX.Y.Z`, and pushes `main`. It refreshes `origin/main`,
+checks out and updates `release`, runs `git merge --ff-only origin/main`, pushes
+`release`, and checks `main` out again. The release branch push runs CI
+build/smoke checks but does not publish a package.
+
+Options:
+
+- `pixi run -e dev commit-release -- --skip-smoke`
+- `pixi run -e dev commit-release -- --source-branch main --branch release --remote origin`
+
+#### What `publish-release` does
+
+`publish-release` runs `src/setup/publish_release.sh`. It requires a clean working
+tree, fetches the deployment branch and tags, and verifies that the local version
+matches the version on `origin/release`. It then uses `gh release create` with a
+`vX.Y.Z` tag, the `release` target, and generated release notes. Publishing that
+GitHub Release triggers the build -> TestPyPI -> install smoke test -> PyPI workflow
+and provides the tagged source archive used by Bioconda.
+
+Use `pixi run -e dev publish-release -- --dry-run` to perform the checks, including
+GitHub CLI authentication, and print the `gh` command without creating a tag or release.
 
 ### Local fallback (manual upload)
 
@@ -201,14 +252,13 @@ If needed, manual upload with twine is still supported:
 
 ## Example Workflow: Adding a New Command
 
-Here's a high-level workflow for adding a new command to RolyPoly:
-
 1. **Check for existing utilities**: Search `src/rolypoly/utils/` for existing functions that might help (especially `utils/bio/` for sequence operations)
 
 2. **Create the command file**: Add your command in the appropriate subdirectory under `src/rolypoly/commands/` (e.g., `commands/misc/my_command.py`)
    - Use `@click.command()` decorator
    - Follow naming conventions (short + long options, snake_case for parameters)
    - Import and reuse existing utilities from `utils/` where possible
+   - You might reuse some of the defaults click.option decorators from `utils.cli_options.py`
 
 3. **Add shared utilities if needed**: If you create reusable functions, place them in `src/rolypoly/utils/` (NOT in `commands/`)
    - Use existing modules when appropriate (e.g., `utils/bio/polars_fastx.py` for FASTA/FASTQ operations)
@@ -220,7 +270,7 @@ Here's a high-level workflow for adding a new command to RolyPoly:
 5. **Test the command**:
    - Run `pixi run rolypoly <command-name> --help` to verify it loads
    - Test with actual data
-   - Add test cases to `src/tests/` if appropriate
+   - Add test cases to `src/tests/` (ONLY if appropriate)
 
 6. **Document**: Update help strings and consider adding examples to README or docs
    - Add a markdown file in the appropriate location under `docs/`
