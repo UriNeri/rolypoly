@@ -17,7 +17,7 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
 ## Code Organization
 1. **File Structure**:
    - `src/rolypoly/utils/`: Utility functions and helpers
-   - `src/rolypoly/commands/`: Command-line interface modules (using click). 
+   - `src/rolypoly/commands/`: Command-line interface modules (using click).
   - `rolypoly.utils.various` for general-purpose functions that don't fit into other categories (e.g. dataframe operations)
   - `rolypoly.utils.logging` for logging, configuration, output tracking etc
 
@@ -37,13 +37,14 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
    - Module-level docstrings are recommended for larger utility modules, especially when they contain multiple related functions.
 
 3. **Temporary Files**:
-   - Optionally, create temp directory (hidden argument in some commands `--temp-dir`, if not specified it's within user's output path).  
+   - Optionally, create temp directory (hidden argument in some commands `--temp-dir`, if not specified it's within user's output path).
    - When done, move only final output files to user's output path, or rename the temp-dir if it's easier (same parent path maybe).
    - Try to clean up tmp files unless `--keep-tmp` flag is used.
 
 4. **Calling external tools**:
    - Ideally, please use `rolypoly.utils.command_runner.run_command_comp()` to run external commands, especially if a logger or output tracking is needed.
    - If that is not possible, use `subprocess.run()`.
+   - If there is a `tools` list global variable, update it accordingly, that would expose it if the citation reminder is called.
 
 5. **Shared Code**:
    - **Avoid creating intermediate helper modules** in `commands/` - utilities belong in `utils/`
@@ -52,11 +53,27 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
 
 ## Testing & Benchmarking
 1. **Testing**:
-   - Add tests under `src/tests/*`.
-   - Prefer `pytest` for new tests, and keep command smoke tests in `src/tests/test_cli_contracts.py` with scenarios in `src/tests/cli_scenarios.json`.
+   - Add persistent tests only for stable behavior that is important to users or
+     scientific correctness: CLI contracts, output schemas, backend adapters,
+     resumability, shared command policy, and regressions likely to recur.
+   - Keep one-off migration checks, documentation-generation checks, exploratory
+     data audits, benchmarks, and trivial implementation-detail assertions local
+     and transient. Record the command and result in the change/PR instead of
+     adding them to the repository test suite.
+   - Prefer the lowest-cost level that expresses the contract. Put command
+     workflow scenarios in `src/tests/cli_scenarios.json`, exercised by
+     `src/tests/test_cli_contracts.py`; use focused pytest modules under
+     `src/tests/` for stable scientific transformations or output behavior that
+     is clearer to validate directly.
    - For most (ideally all) click commands, include a hidden log-level option so tests can consistently enable debug logging:
      - `@click.option("-ll", "--log-level", hidden=True, default="INFO", help="Log level")`
-   - Use small/local fixtures from `testing_folder/` when possible.
+   - Keep committed fixtures synthetic, deterministic, and as small as practical.
+     Do not commit generated indexes, command outputs, external databases, or
+     large real datasets for smoke tests. Generate them temporarily, download
+     them explicitly, or document the external data source instead.
+   - Every committed fixture should be referenced by a persistent test or a
+     documented reproducible example. Remove its fixture when removing the last
+     consumer, unless it has a separately documented purpose.
    - **Run standardized CLI tests**: `pixi run -e dev pytest -q src/tests/test_cli_contracts.py`
    - **Run fast help-only smoke tests** (just `--help` for top-level + each command): `pixi run -e dev pytest -q src/tests/test_cli_help_smoke.py`
    - **Run one command's scenarios**: `pixi run -e dev pytest -q src/tests/test_cli_contracts.py --cli-commands fetch-sra`
@@ -67,9 +84,11 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
      - `RP_CLI_COMMANDS=fetch-sra,marker-search pixi run -e dev pytest -q src/tests/test_cli_contracts.py`
      - `RP_CLI_SCENARIOS=assemble_megahit_runtime pixi run -e dev pytest -q src/tests/test_cli_contracts.py`
      - `RP_CLI_MATCH=identify pixi run -e dev pytest -q src/tests/test_cli_contracts.py`
-   - **Run all command scenarios + unit tests**: `pixi run -e dev pytest -q src/tests`
    - **Run all tests**: `pixi run -e dev pytest -q src/tests`
-   - Legacy ad-hoc scripts under `testing_folder/*.sh` are still useful for manual debugging, but new command validation should be added to the pytest flow above.
+   - Temporary validation scripts should normally live outside the repository
+     (for example under `/tmp`) and should not be left as untracked test files.
+     Promote one to a persistent pytest or CLI scenario only when it protects a
+     stable contract under the criteria above.
 2. **Benchmarking**:
    - Use `/usr/bin/time` for resource monitoring. Alternatively, hyperfine is great too but. Ideallt - use SLURM and keep track of the job IDs for later analysis with seff/pyseff.
 

@@ -3,9 +3,6 @@
 <!-- Auto-generated draft from CLI metadata for `rolypoly termini`. -->
 <!-- Expand this page with command-specific context, examples, and citations. -->
 
-!!! warning "🚧 Under Construction"
-   This command is under active development and behavior or outputs may change.
-
 ## Summary
 
 Group contigs that share termini of length *n* (or a range).
@@ -13,25 +10,25 @@ Group contigs that share termini of length *n* (or a range).
 ## Description
 
 Workflow:
-    1) Optional ANI pre-pass (on by default) clusters highly similar contigs and keeps
-       the longest representative per cluster. For overlap pileup extension use the
-       extend command (under the assembly group).
-    2) First pass groups contigs by the minimum-window motif seed (exact when --distance 0,
-       Hamming-tolerant otherwise).
-    3) Motifs are then extended up to --length max while all members share the same added bases.
-    4) Optional second pass (on by default) collapses groups when one motif is contained in another
-       by clipped containment (--clip-mode), up to --max-clipped bases.
+1) Optional ANI pre-pass (on by default) clusters highly similar contigs and keeps
+   the longest representative per cluster. For overlap pileup extension use the
+   extend command (under the assembly group).
+2) First pass groups contigs by the minimum-window motif seed (exact when --distance 0,
+   Hamming-tolerant otherwise).
+3) Motifs are then extended up to --length max while all members share the same added bases.
+4) Optional second pass (on by default) collapses groups when one motif is contained in another
+   by clipped containment (--clip-mode), up to --max-clipped bases.
 
-    Outputs:
-    - Assignments table at --output.
-    - Group summary table at --groups-output (or <output>.groups.<ext> by default).
-    - Group motifs FASTA at --motifs-fasta (or <output>.motifs.fasta by default).
+Outputs:
+- Assignments table at --output.
+- Group summary table at --groups-output (or <output>.groups.<ext> by default).
+- Group motifs FASTA at --motifs-fasta (or <output>.motifs.fasta by default).
 
-    Group-output columns:
-    - found_in: orientation-aware labels for member placement (e.g., fwd_on_5_end, rev_on_3_end).
-    - source_group_ids: first-pass group IDs represented in the final row.
-    - clip_contains_source_ids: source groups whose motifs are clipped-contained by this group.
-    - clip_contained_by_source_ids: source groups that clipped-contain this group.
+Group-output columns:
+- found_in: orientation-aware labels for member placement (e.g., fwd_on_5_end, rev_on_3_end).
+- source_group_ids: first-pass group IDs represented in the final row.
+- clip_contains_source_ids: source groups whose motifs are clipped-contained by this group.
+- clip_contained_by_source_ids: source groups that clipped-contain this group.
 
 ## Usage
 
@@ -55,8 +52,8 @@ rolypoly termini [OPTIONS]
 - `--groups-output`: Optional output path for grouped motif summary (default: <output>.groups.<ext>) (type: `FILE`)
 - `--motifs-fasta`: Output path for group motif FASTA entries (defaults to <output>.motifs.fasta) (type: `FILE`)
 - `--output-format`: Tabular output format for assignments and groups tables (type: `CHOICE`; default: `tsv`)
-- `--log-file`: Optional log file path (type: `FILE`)
-- `-t`, `--threads`: Number of threads to use for parallel processing IF applicable (type: `INTEGER RANGE`; default: `4`)
+- `-t`, `--threads`: Number of worker threads. (type: `INTEGER RANGE`; default: `1`)
+- `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
 
 
 

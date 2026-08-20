@@ -10,18 +10,18 @@ Download SRA run FASTQ files and optional XML metadata from *ENA*
 ## Description
 
 Takes either a single SRA run ID (e.g., SRR12345678) or a file containing multiple run IDs (one per line).
-    Downloads FASTQ files and optionally XML metadata reports to the specified output directory.
+Downloads FASTQ files and optionally XML metadata reports to the specified output directory.
 
-    Example usage:
+Example usage:
 
 
-    # Download single run:
-    rolypoly fetch-sra -i SRR12345678 -o output_dir
+# Download single run:
+rolypoly fetch-sra -i SRR12345678 -o output_dir
 
-    # Download multiple runs with metadata:
-    rolypoly fetch-sra -i run_ids.txt -o output_dir --report
+# Download multiple runs with metadata:
+rolypoly fetch-sra -i run_ids.txt -o output_dir --report
 
-    * Note: The fastq headers may vary for the same SRA run/expriemtn based on the source and fetching method (s3, ftp, ena...)
+* Note: The fastq headers may vary for the same SRA run/expriemtn based on the source and fetching method (s3, ftp, ena...)
 
 ## Usage
 

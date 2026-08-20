@@ -55,6 +55,95 @@ def clean_click_text(text: str) -> str:
     return normalized.strip()
 
 
+def normalize_markdown_lists(text: str) -> str:
+    """Normalize docstring-style unordered lists for Markdown renderers.
+
+    Click preserves indentation and list markers from command docstrings. That
+    can turn an indented top-level bullet into a code block, while alternating
+    ``*`` and ``-`` markers remain siblings even when the latter were intended
+    as children of a colon-terminated item. Emit canonical ``-`` markers,
+    remove incidental common indentation, and make that mixed-marker hierarchy
+    explicit.
+    """
+    lines = text.splitlines()
+    list_pattern = re.compile(
+        r"^(?P<indent>[ \t]*)(?P<marker>[*+-])\s+(?P<body>.*)$"
+    )
+    index = 0
+
+    while index < len(lines):
+        if not list_pattern.match(lines[index]):
+            index += 1
+            continue
+
+        block_start = index
+        block_end = index
+        list_indexes: list[int] = []
+        while block_end < len(lines):
+            if list_pattern.match(lines[block_end]):
+                list_indexes.append(block_end)
+            elif lines[block_end].strip():
+                break
+            block_end += 1
+
+        base_indent = min(
+            len(list_pattern.match(lines[item]).group("indent").expandtabs(4))
+            for item in list_indexes
+        )
+        parent_marker: str | None = None
+        nested_marker: str | None = None
+
+        for item in list_indexes:
+            match = list_pattern.match(lines[item])
+            indent = len(match.group("indent").expandtabs(4)) - base_indent
+            marker = match.group("marker")
+            body = match.group("body").rstrip()
+
+            if indent == 0:
+                if (
+                    parent_marker is not None
+                    and nested_marker is None
+                    and marker != parent_marker
+                ):
+                    nested_marker = marker
+
+                if nested_marker is not None and marker == nested_marker:
+                    indent = 4
+                else:
+                    nested_marker = None
+                    parent_marker = marker if body.endswith(":") else None
+
+            lines[item] = f"{' ' * indent}- {body}"
+
+        index = max(block_end, block_start + 1)
+
+    spaced_lines: list[str] = []
+    for line in lines:
+        is_list_item = bool(list_pattern.match(line))
+        previous_is_list_item = bool(
+            spaced_lines and list_pattern.match(spaced_lines[-1])
+        )
+
+        if (
+            is_list_item
+            and spaced_lines
+            and spaced_lines[-1].strip()
+            and not previous_is_list_item
+        ):
+            spaced_lines.append("")
+        elif (
+            line.strip()
+            and spaced_lines
+            and previous_is_list_item
+            and not is_list_item
+        ):
+            spaced_lines.append("")
+
+        spaced_lines.append(line)
+
+    return "\n".join(spaced_lines)
+
+
 def strip_docstring_sections(description: str) -> str:
     """Remove structured docstring sections that duplicate CLI options.
 
@@ -172,8 +261,10 @@ def option_default_text(
 def option_help_text(parameter: click.Option) -> str:
     """Get clean help text for an option."""
     raw_help = parameter.help or "No description provided."
-    compact = re.sub(r"\s+", " ", clean_click_text(raw_help)).strip()
-    return compact
+    cleaned = clean_click_text(raw_help)
+    if any(re.match(r"^[ \t]*[*+-]\s+", line) for line in cleaned.splitlines()):
+        return normalize_markdown_lists(cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip()
 
 
 def render_options_markdown(command: click.Command) -> str:
@@ -198,7 +289,14 @@ def render_options_markdown(command: click.Command) -> str:
             tags.append(f"default: `{default_text}`")
 
         tag_text = "; ".join(tags)
-        option_lines.append(f"- {names}: {description} ({tag_text})")
+        description_lines = description.splitlines()
+        option_line = f"- {names}: {description_lines[0]} ({tag_text})"
+        if len(description_lines) > 1:
+            nested_description = "\n".join(
+                f"    {line}" if line else "" for line in description_lines[1:]
+            )
+            option_line = f"{option_line}\n{nested_description}\n"
+        option_lines.append(option_line)
 
     if not option_lines:
         return "No documented CLI options found."
@@ -320,7 +418,7 @@ def render_page(
 ) -> str:
     """Render a docs page from template placeholders."""
     deduped_description = dedupe_summary_from_description(summary, description)
-    return (
+    rendered = (
         template_text.replace("__TITLE__", command_to_title(command_name))
         .replace("__COMMAND__", command_name)
         .replace("__SUMMARY__", summary)
@@ -329,6 +427,7 @@ def render_page(
         .replace("__EPILOG_MD__", epilog_md)
         .replace("__PINNED_MD__", pinned_md)
     )
+    return f"{rendered.rstrip()}\n"
 
 
 def get_command_summary(command_name: str) -> str:
@@ -347,6 +446,7 @@ def get_command_description(command_name: str) -> str:
         return "Auto-generated command help page."
 
     description = clean_click_text(command.help or "")
+    description = normalize_markdown_lists(description)
     description = strip_docstring_sections(description)
     if description:
         return description

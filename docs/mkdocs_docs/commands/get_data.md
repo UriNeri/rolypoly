@@ -10,7 +10,7 @@ Download pre-built external data required for RolyPoly.
 ## Description
 
 This command downloads pre-built databases and reference data from
- a public repository. Reproducible construction workflows are maintained at https://github.com/UriNeri/rolypoly-db.
+a public repository. Reproducible builders are maintained in UriNeri/rolypoly-db.
 
 ## Usage
 
@@ -21,10 +21,9 @@ rolypoly get-data [OPTIONS]
 ## Options
 
 - `--info`: Display current RolyPoly version, installation type, and configuration paths (type: `BOOLEAN`; default: `False`)
-- `--rolypoly-data`: If you do not want to download the the data to same location as the rolypoly code, specify an alternative path. TODO: remind user to provide such alt path in other scripts? envirometnal variable maybe (type: `TEXT`; default: `Sentinel.UNSET`)
-- `--log-file`: Path to the log file (type: `TEXT`; default: `./get_external_data_logfile.txt`)
+- `-rd`, `--rolypoly-data`, `--data-dir`: If you do not want to download the the data to same location as the rolypoly code, specify an alternative path. TODO: remind user to provide such alt path in other scripts? envirometnal variable maybe (type: `TEXT`; default: `Sentinel.UNSET`)
+- `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
 
-`get-data` first downloads `data.tar.gz` from the NERSC mirror. If that request
-fails or returns an error response, it downloads the same archive from Zenodo.
+
 
 

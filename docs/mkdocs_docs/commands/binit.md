@@ -3,9 +3,6 @@
 <!-- Auto-generated draft from CLI metadata for `rolypoly binit`. -->
 <!-- Expand this page with command-specific context, examples, and citations. -->
 
-!!! warning "🚧 Under Construction"
-	This command is under active development and behavior or outputs may change.
-
 ## Summary
 
 Run integrated segment binning workflow
@@ -14,9 +11,9 @@ Run integrated segment binning workflow
 
 Run an integrated segment-binning workflow over RdRp and CP contigs.
 
-	The workflow chains cluster, correlate, extend, and termini steps, then
-	joins their outputs to report candidate segment pairs with supporting
-	evidence from abundance/correlation and termini/motif consistency.
+The workflow chains cluster, correlate, extend, and termini steps, then
+joins their outputs to report candidate segment pairs with supporting
+evidence from abundance/correlation and termini/motif consistency.
 
 ## Usage
 
@@ -29,7 +26,6 @@ rolypoly binit [OPTIONS]
 - `--rdrp-fasta`: Input FASTA containing RdRp candidate contigs (type: `FILE`; required; default: `Sentinel.UNSET`)
 - `--cp-fasta`: Input FASTA containing CP candidate contigs (type: `FILE`; required; default: `Sentinel.UNSET`)
 - `-o`, `--outdir`: Output directory for all intermediate and final workflow artifacts (type: `DIRECTORY`; required; default: `Sentinel.UNSET`)
-- `-t`, `--threads`: Threads used by cluster/extend/termini stages (type: `INTEGER`; default: `8`)
 - `--ani-min-identity`: ANI identity threshold (0-1) used for cluster and extend (type: `FLOAT RANGE`; default: `0.9`)
 - `--ani-min-af`: ANI aligned fraction threshold (0-1) used for cluster and extend (type: `FLOAT RANGE`; default: `0.8`)
 - `--min-correlation`: Minimum correlation for the correlate stage (type: `FLOAT`; default: `0.01`)
@@ -39,7 +35,8 @@ rolypoly binit [OPTIONS]
 - `--termini-distance`: Maximum Hamming mismatch distance for termini seed grouping (type: `INTEGER RANGE`; default: `0`)
 - `--reuse-extend`, `--no-reuse-extend`: Reuse existing extend outputs if present instead of rerunning extend (type: `BOOLEAN`; default: `False`)
 - `--write-single-rdrp-strict`, `--no-write-single-rdrp-strict`: Write strict candidate pairs that pass the complementarity check (type: `BOOLEAN`; default: `False`)
-- `--log-file`: Optional workflow-level log file path (type: `FILE`)
+- `-t`, `--threads`: Number of worker threads. (type: `INTEGER RANGE`; default: `1`)
+- `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
 
 
 

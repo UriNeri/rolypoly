@@ -10,8 +10,8 @@ Rename sequences in a FASTA file with consistent IDs (supports numbering or hash
 ## Description
 
 This tool renames sequences in a FASTA file using either sequential numbers
-    or hashes, and generates a lookup table mapping old IDs to new IDs.
-    Optionally includes sequence statistics (length, GC content).
+or hashes, and generates a lookup table mapping old IDs to new IDs.
+Optionally includes sequence statistics (length, GC content).
 
 ## Usage
 
@@ -27,6 +27,7 @@ rolypoly rename-seqs [OPTIONS]
 - `-p`, `--prefix`: Prefix for new sequence IDs (type: `TEXT`; default: `CID`)
 - `--hash`, `--no-hash`: Use hash instead of a padded running number for IDs (type: `BOOLEAN`; default: `False`)
 - `--stats`, `--no-stats`: Include sequence statistics in mapping file (length, GC content) (type: `BOOLEAN`; default: `True`)
+- `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
 
 
 

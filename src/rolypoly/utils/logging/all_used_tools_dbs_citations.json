@@ -63,8 +63,8 @@
   },
   "pfam": {
     "name": "Pfam",
-    "citation": "https://doi.org/10.1093/nar/gkae1276",
-    "note": "version nn"
+    "citation": "https://doi.org/10.1093/nar/gkae997",
+    "note": "prefer to cite the main piece not the author list/correction addition"
   },
   "interpro": {
     "name": "InterPro",

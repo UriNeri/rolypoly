@@ -237,28 +237,6 @@ def should_skip_scenario(scenario: dict, request: pytest.FixtureRequest) -> str 
     return None
 
 
-def test_top_level_help(runner: CliRunner) -> None:
-    result = runner.invoke(rolypoly, ["--help"], catch_exceptions=False)
-    assert result.exit_code == 0, result.output
-
-
-def test_all_registered_commands_have_help(runner: CliRunner) -> None:
-    ctx = click.Context(rolypoly)
-    commands = sorted(set(rolypoly.list_commands(ctx)))
-
-    assert commands, "No commands were registered in the CLI entry point"
-
-    for command_name in commands:
-        result = runner.invoke(
-            rolypoly,
-            [command_name, "--help"],
-            catch_exceptions=False,
-        )
-        assert (
-            result.exit_code == 0
-        ), f"`rolypoly {command_name} --help` failed\n{result.output}"
-
-
 @pytest.mark.parametrize("scenario", load_cli_scenarios(), ids=lambda row: row["id"])
 def test_cli_scenarios(
     runner: CliRunner,

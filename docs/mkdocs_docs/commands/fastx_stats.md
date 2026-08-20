@@ -27,6 +27,7 @@ rolypoly fastx-stats [OPTIONS]
 - `--format`: Output format for aggregate statistics (type: `CHOICE`; default: `tsv`)
 - `-f`, `--fields`: Fields to calculate statistics for (type: `CHOICE`; default: `length, gc_content, n_count`)
 - `-c`, `--circular`: Treat sequences as circular (rotate to minimal lexicographical form before analysis) (type: `BOOLEAN`; default: `False`)
+- `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
 
 
 

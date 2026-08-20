@@ -23,11 +23,12 @@ rolypoly shrink-reads [OPTIONS]
 
 ## Options
 
-- `-i`, `-in`, `--input`: Input raw reads file(s) or directory containing them. For paired-end reads, you can provide an interleaved file or the R1 and R2 files separated by comma. (type: `TEXT`; default: `Sentinel.UNSET`)
+- `-i`, `-in`, `--input`: Input raw reads file(s) or directory containing them. For paired-end reads, you can provide an interleaved file or the R1 and R2 files separated by comma. If a directory is provided, one output per input identified file/pair will be created. (type: `TEXT`; default: `Sentinel.UNSET`)
 - `-st`, `--subset-type`: how to sample reads from input. (type: `CHOICE`; default: `top_reads`)
-- `-sz`, `--sample-size`: Will only return (at most) this much reads (if <1, will be interpreted as a proportion of total reads, else as the exact number of reads to get) (type: `FLOAT`; default: `1000`)
-- `-g`, `--log-file`: Path to save loggging message to. defaults to current folder. (type: `PATH`; default: `/clusterfs/jgi/scratch/science/metagen/neri/code/rolypoly/rolypoly.log`)
-- `-ll`, `--log-level`: Log level. Options: debug, info, warning, error, critical (type: `CHOICE`; default: `info`)
+- `-sz`, `--sample-size`: For top_reads/random, at most this many reads (or proportion if <1). For bbnorm, this is the target k-mer depth. (type: `FLOAT`; default: `1000`)
+- `--bbnorm-min-depth`: Minimum depth threshold for bbnorm normalization (min in bbnorm.sh). (type: `INTEGER`; default: `2`)
+- `-t`, `--threads`: Number of worker threads. (type: `INTEGER RANGE`; default: `1`)
+- `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
 
 
 

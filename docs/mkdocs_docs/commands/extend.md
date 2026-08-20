@@ -3,9 +3,6 @@
 <!-- Auto-generated draft from CLI metadata for `rolypoly extend`. -->
 <!-- Expand this page with command-specific context, examples, and citations. -->
 
-!!! warning "🚧 Under Construction"
-    This command is under active development and behavior or outputs may change.
-
 ## Summary
 
 Extend contigs by ANI-guided overlap pileup.
@@ -13,16 +10,16 @@ Extend contigs by ANI-guided overlap pileup.
 ## Description
 
 Workflow:
-    1) Read input seqs (FASTA/FASTQ).
-    2) Cluster input by ANI using pyskani.
-    3) Within each multi-contig cluster, attempt overlap pileup extension
-       to produce a longer representative contig.
-    4) Write extended contigs (FASTA) and cluster membership table.
+1) Read input seqs (FASTA/FASTQ).
+2) Cluster input by ANI using pyskani.
+3) Within each multi-contig cluster, attempt overlap pileup extension
+   to produce a longer representative contig.
+4) Write extended contigs (FASTA) and cluster membership table.
 
-    Use this command to get more complete genomes from fragmented assemblies,
-    for example when combining data from multiple experiments or samples.
-    Supports multiple input files, e.g. one file with contigs from sample A and
-    another file with contigs/reads-derived contigs from sample B.
+Use this command to get more complete genomes from fragmented assemblies,
+for example when combining data from multiple experiments or samples.
+Supports multiple input files, e.g. one file with contigs from sample A and
+another file with contigs/reads-derived contigs from sample B.
 
 ## Usage
 
@@ -54,8 +51,8 @@ rolypoly extend [OPTIONS]
 - `--pileup-repeat-risk-policy`: How repeat-risk flags are applied to candidate pair filtering (type: `CHOICE`; default: `target-only`)
 - `--pileup-repeat-dotplot-min-track-len`: Minimum self dotplot track span to flag internal direct/inverted repeats (type: `INTEGER RANGE`; default: `80`)
 - `--output-format`: Tabular output format for the cluster membership table (type: `CHOICE`; default: `tsv`)
-- `--log-file`: Optional log file path (type: `FILE`)
-- `-t`, `--threads`: Number of worker processes for parallel pileup alignment (type: `INTEGER RANGE`; default: `4`)
+- `-t`, `--threads`: Number of worker threads. (type: `INTEGER RANGE`; default: `1`)
+- `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
 
 
 
