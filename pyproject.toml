@@ -54,7 +54,7 @@ rolypoly = "rolypoly.rolypoly:rolypoly"
 [dependency-groups]
 build = ["hatch>=1.17.1,<2", "pip"]
 format = ["ruff>=0.15.22,<0.16"]
-publish = ["twine>=6.2.0,<7"]
+publish = ["twine>=7.0.0,<8"]
 dev = [
     "aria2p>=0.12.1,<0.13",
     "tqdm>=4.69.0,<5",
