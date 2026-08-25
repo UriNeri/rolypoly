@@ -294,7 +294,7 @@ ROLL_PRESET_MAP: dict[str, tuple[str, str, str]] = {
     "make_report",
     default=True,
     show_default=True,
-    help="Write an interactive HTML genome-map report (genome_maps.html) from the "
+    help="Write an interactive HTML roll report (roll_report.html) from the "
     "annotation results (marker/protein hits + RNA track) at the end of the run.",
 )
 @click.option(
@@ -840,9 +840,10 @@ def roll(
     # Step: Marker protein Search
     step += 1
     marker_output = output_dir / "marker_search_results"
+    marker_hits_path = marker_output / "marker_search_results.tsv"
     if "marker_search" in skip_steps:
         logger.info("Step %d: Skipping marker search (in --skip-steps)", step)
-    elif skip_existing and marker_output.exists():
+    elif skip_existing and marker_hits_path.is_file():
         logger.info(
             "Marker search results %s already exist, skipping step",
             marker_output,
@@ -866,9 +867,10 @@ def roll(
             # matched_input_seqs_output=str(marker_output / "marker_matched_contigs.fasta"),
         )
 
-        # get only the contigs that have hits to the marker genes for downstream annotation
-        marker_hits = str(marker_output / "marker_search_results.tsv")
-        marker_hits = pl.read_csv(marker_hits, separator="\t")
+    if "marker_search" not in skip_steps:
+        # Reused results must populate the downstream selection exactly like
+        # results produced in this invocation.
+        marker_hits = pl.read_csv(marker_hits_path, separator="\t")
         marker_matched_contigs = marker_hits["source_seq_id"].unique().to_list()
         if len(marker_matched_contigs) == 0:
             logger.warning("No marker contigs found =/")
@@ -1102,7 +1104,7 @@ def roll(
 
     # Step: Report (interactive genome maps)
     step += 1
-    report_output = output_dir / "genome_maps.html"
+    report_output = output_dir / "roll_report.html"
     if "report" in skip_steps or not make_report:
         logger.info("Step %d: Skipping report (disabled)", step)
     elif skip_existing and report_output.exists():
