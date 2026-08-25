@@ -818,9 +818,20 @@
         "taxid",
         "taxon_name",
         "support",
+        "informative_fraction",
+        "best_match_target",
+        "best_match_taxon",
+        "best_match_bitscore",
+        "proteins_assigned",
+        "total_proteins",
+        "protein_hit_fraction",
+        "aligned_residues",
+        "residue_alignment_fraction",
+        "projected_alignment_genome_fraction",
         "realm",
         "species",
-        "backend"
+        "backend",
+        "method"
       ]
     },
     "expected_table_min_rows": {
@@ -829,7 +840,8 @@
     "expected_contains": {
       "{tmp}/mmtax.tsv": [
         "contig_alpha",
-        "Examplevirus testii"
+        "Examplevirus testii",
+        "rank-aware-weighted:bitscore"
       ]
     }
   },
@@ -876,9 +888,20 @@
         "taxid",
         "taxon_name",
         "support",
+        "informative_fraction",
+        "best_match_target",
+        "best_match_taxon",
+        "best_match_bitscore",
+        "proteins_assigned",
+        "total_proteins",
+        "protein_hit_fraction",
+        "aligned_residues",
+        "residue_alignment_fraction",
+        "projected_alignment_genome_fraction",
         "realm",
         "species",
-        "backend"
+        "backend",
+        "method"
       ]
     },
     "expected_table_min_rows": {
@@ -887,7 +910,8 @@
     "expected_contains": {
       "{tmp}/mmtax_diamond.tsv": [
         "contig_alpha",
-        "Examplevirus testii"
+        "Examplevirus testii",
+        "rank-aware-weighted:bitscore"
       ]
     }
   },

@@ -151,7 +151,7 @@ ipython = ">=8.37.0,<9"
 jupyter = ">=1.1.1,<2"
 ipykernel = ">=7.3.0,<8"
 aria2 = ">=1.37.0,<2"
-google-cloud-sdk = ">=578.0.0,<579"
+google-cloud-sdk = ">=578.0.0,<579" # TODO: check if this is needed
 blast = ">=2.17.0,<3"        
 entrez-direct = ">=24.0,<25"
 eutils = ">=0.6.1,<0.7"

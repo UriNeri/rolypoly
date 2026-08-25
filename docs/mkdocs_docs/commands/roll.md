@@ -62,7 +62,7 @@ rolypoly roll [OPTIONS]
 - `-txd`, `--taxonomy-db`: Built-in mmtax database name or custom backend database path. (type: `TEXT`; default: `ncbi_virus`)
 - `-txt`, `--taxonomy-taxdump`: Taxdump required when --taxonomy-db is a custom path. (type: `DIRECTORY`)
 - `-txs`, `--taxonomy-sensitivity`: Shared mmtax sensitivity preset or level 1-8. (type: `TEXT`; default: `normal`)
-- `--report`, `--no-report`: Write an interactive HTML genome-map report (genome_maps.html) from the annotation results (marker/protein hits + RNA track) at the end of the run. (type: `BOOLEAN`; default: `True`)
+- `--report`, `--no-report`: Write an interactive HTML roll report (roll_report.html) from the annotation results (marker/protein hits + RNA track) at the end of the run. (type: `BOOLEAN`; default: `True`)
 - `--report-best-by`: Initial 'best hit per range' criterion shown in the report (toggleable in the viewer). (type: `CHOICE`; default: `score`)
 - `-t`, `--threads`: Number of worker threads. (type: `INTEGER RANGE`; default: `1`)
 - `-M`, `--memory`: Memory limit, for example 8g. (type: `MEMORY`; default: `8g`)

@@ -62,7 +62,7 @@ __all__ = [
     "MotifSpec", "build_motifs_by_contig", "attach_motifs", "find_motif_tables",
     "load_run_stats", "parse_rrna_reference",
     "table_to_tab", "render_html", "write_genome_maps", "build_palette",
-    "find_annotation_tables", "write_report_for_dir",
+    "find_annotation_tables", "write_report_for_dir", "load_contig_lengths",
     "DEFAULT_PALETTE", "BEST_CRITERIA", "DEFAULT_SOURCE_PRIORITY",
 ]
 
@@ -1461,6 +1461,43 @@ def load_original_contig_ids(path):
     }
 
 
+def load_contig_lengths(path):
+    """Return authoritative ``new_id -> sequence length`` values from an ID map."""
+    mapping = read_hit_table(path)
+    if not {"new_id", "length"}.issubset(mapping.columns):
+        return {}
+    rows = (
+        mapping.select(
+            pl.col("new_id").cast(pl.String),
+            pl.col("length").cast(pl.Int64, strict=False),
+        )
+        .filter(pl.col("length").is_not_null() & (pl.col("length") > 0))
+    )
+    lengths: dict[str, int] = {}
+    for new_id, length in rows.iter_rows():
+        key, value = str(new_id), int(length)
+        if key in lengths and lengths[key] != value:
+            logger.warning(
+                "genome_maps: conflicting lengths for %s in %s (%d and %d); "
+                "keeping the first",
+                key, path, lengths[key], value,
+            )
+            continue
+        lengths[key] = value
+    return lengths
+
+
+def apply_contig_metadata(contigs, original_ids=None, contig_lengths=None):
+    """Attach ID-map provenance and authoritative lengths to contig models."""
+    for contig in contigs:
+        contig_id = contig["contig"]
+        if original_ids:
+            contig["raw_id"] = original_ids.get(contig_id)
+        if contig_lengths and contig_id in contig_lengths:
+            contig["length"] = contig_lengths[contig_id]
+    return contigs
+
+
 def find_report_log(output_dir):
     """Find and read the primary pipeline log for embedding in a report."""
     output_dir = Path(output_dir)
@@ -1610,7 +1647,8 @@ def write_genome_maps(data, output, spec=None, palette=None,
                       nucleic=None, nucleic_spec=None, motifs=None, motif_spec=None,
                       run_stats=None, extra_tabs=None,
                       initial_mode="all", initial_criterion=None, initial_tab="table",
-                      original_ids=None, command_line=None, log_text=None,
+                      original_ids=None, contig_lengths=None,
+                      command_line=None, log_text=None,
                       source_files=None):
     """Read a protein table (+ optional annotate-rna, nucleic-search, rdrp-motif
     tables, a run-stats dict, and extra tabs) and write a standalone interactive
@@ -1630,9 +1668,7 @@ def write_genome_maps(data, output, spec=None, palette=None,
         contigs = attach_nucleic(contigs, nucleic_map)
     if motifs is not None:
         contigs = attach_motifs(contigs, build_motifs_by_contig(motifs, motif_spec))
-    if original_ids:
-        for contig in contigs:
-            contig["raw_id"] = original_ids.get(contig["contig"])
+    apply_contig_metadata(contigs, original_ids, contig_lengths)
     contigs.sort(key=lambda c: -c["best_score"])
     html = render_html(contigs, palette, title=title, initial_mode=initial_mode,
                        initial_criterion=initial_criterion, initial_tab=initial_tab,
@@ -1707,6 +1743,7 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
         iter(sorted(output_dir.glob("**/contigs_id_map.tsv"))), None
     )
     original_ids = load_original_contig_ids(id_map_path) if id_map_path else None
+    contig_lengths = load_contig_lengths(id_map_path) if id_map_path else None
     if log_file:
         log_path = Path(log_file)
         log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else None
@@ -1735,9 +1772,7 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
             contigs = attach_nucleic(contigs, nucleic_map)
         if motif_tables:
             contigs = attach_motifs(contigs, build_motifs_by_contig(list(motif_tables)))
-        if original_ids:
-            for contig in contigs:
-                contig["raw_id"] = original_ids.get(contig["contig"])
+        apply_contig_metadata(contigs, original_ids, contig_lengths)
         contigs.sort(key=lambda c: -c["length"])
         html = render_html(contigs, kwargs.get("palette"), title=title,
                            initial_tab=kwargs.get("initial_tab", "table"),
@@ -1755,6 +1790,7 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
         nucleic=nucleic_tables,
         motifs=list(motif_tables) if motif_tables else None,
         run_stats=run_stats, extra_tabs=extra_tabs, original_ids=original_ids,
+        contig_lengths=contig_lengths,
         command_line=command_line, log_text=log_text, source_files=source_files,
         **kwargs,
     )
@@ -1856,7 +1892,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           <button data-view="hits">All hits</button>
         </div>
         <input type="text" id="tblSearch" placeholder="Filter…" style="margin-left:10px;flex:1">
-        <label class="chk" id="rawIdControl" style="margin-left:12px;display:none"><input type="checkbox" id="rawIdToggle"> Show raw contig ID</label>
+        <label class="chk raw-id-control" style="margin-left:12px;display:none"><input type="checkbox" class="raw-id-toggle"> Show original contig IDs</label>
       </div>
       <div class="exportbar"><button onclick="exportCurrentTable()">Export shown TSV</button><span id="tableOriginalLinks"></span></div>
       <div id="bigtable"></div>
@@ -1900,7 +1936,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <div id="pane-nucleic" class="pane">
   <div class="wrap"><div class="main" style="flex:1 1 100%">
     <div class="card">
-      <div class="exportbar"><button onclick="exportNucleicTable()">Export shown TSV</button><span id="nucOriginalLinks"></span></div>
+      <div class="exportbar"><button onclick="exportNucleicTable()">Export shown TSV</button><span id="nucOriginalLinks"></span><label class="chk raw-id-control" style="margin-left:auto;display:none"><input type="checkbox" class="raw-id-toggle"> Show original contig IDs</label></div>
       <input type="text" id="nucSearch" placeholder="Filter nucleic hits…" style="width:100%;margin-bottom:10px">
       <div id="nuctable"></div>
     </div>
@@ -1926,6 +1962,9 @@ const CRIT=DATA.criteria;
 const NUCLEIC=DATA.nucleic||[], STATS=DATA.stats||null, EXTRA=DATA.extra_tabs||[];
 const FILES=DATA.source_files||{tables:[],fastas:[]};
 const hasMaps=contigs.length>0, hasNucleic=NUCLEIC.length>0, hasStats=!!STATS, hasLog=!!DATA.log_text;
+const contigById=new Map(contigs.map(c=>[String(c.contig),c]));
+const RAW_ID_COLUMNS=new Set(['contig','contig_id','sequence_id','query','qheader','qseqid']);
+const hasOriginalIds=contigs.some(c=>c.raw_id);
 let active=new Set(Object.keys(colors)), idx=0, mode=DATA.initial_mode||"all", showRNA=true, showNuc=true, showMotif=true;
 let crit=DATA.initial_criterion||Object.keys(CRIT)[0]||"score", minScore=0, maxEexp=0, showRawIds=false;
 let currentTableExport={columns:[],rows:[],name:'contigs.tsv'},currentNucleicExport={columns:[],rows:[]};
@@ -1942,7 +1981,8 @@ const extraPanes=document.getElementById('extra-panes');
 EXTRA.forEach(t=>{const d=document.createElement('div');d.className='pane';d.id='pane-'+t.id;
   d.innerHTML=`<div class="wrap"><div class="main" style="flex:1 1 100%"><div class="card">`+
     `<div id="xchart-${t.id}"></div>`+
-    `<div class="exportbar"><button onclick="exportExtraTable('${t.id}')">Export shown TSV</button><span id="xoriginal-${t.id}"></span></div>`+
+    `<div class="exportbar"><button onclick="exportExtraTable('${t.id}')">Export shown TSV</button><span id="xoriginal-${t.id}"></span>`+
+    `${tabHasContigColumn(t)?'<label class="chk raw-id-control" style="margin-left:auto;display:none"><input type="checkbox" class="raw-id-toggle"> Show original contig IDs</label>':''}</div>`+
     `<input type="text" class="xsearch" data-for="${t.id}" placeholder="Filter ${t.label}…" style="width:100%;margin-bottom:10px">`+
     `<div id="xtable-${t.id}"></div></div></div></div>`;
   extraPanes.appendChild(d);});
@@ -2000,8 +2040,12 @@ document.getElementById('exp').onclick=()=>{const svg=document.querySelector('#m
  a.href=URL.createObjectURL(blob);a.download=contigs[idx].contig+'_map.svg';a.click();};
 
 let tblView="contigs";
-if(contigs.some(c=>c.raw_id))document.getElementById('rawIdControl').style.display='flex';
-document.getElementById('rawIdToggle').onchange=e=>{showRawIds=e.target.checked;renderTable();};
+document.querySelectorAll('.raw-id-control').forEach(control=>control.style.display=hasOriginalIds?'flex':'none');
+document.querySelectorAll('.raw-id-toggle').forEach(toggle=>toggle.onchange=e=>{
+  showRawIds=e.target.checked;
+  document.querySelectorAll('.raw-id-toggle').forEach(other=>other.checked=showRawIds);
+  renderTable();renderNucleic();EXTRA.forEach(t=>renderExtra(t.id));
+});
 document.querySelectorAll('#tblSeg button').forEach(b=>{b.onclick=()=>{tblView=b.dataset.view;
   document.querySelectorAll('#tblSeg button').forEach(x=>x.classList.toggle('on',x===b));renderTable();};});
 document.getElementById('tblSearch').oninput=renderTable;
@@ -2025,7 +2069,14 @@ function downloadTsv(name,columns,rows){const text=[columns,...rows].map(r=>r.ma
 function exportCurrentTable(){downloadTsv(currentTableExport.name,currentTableExport.columns,currentTableExport.rows);}
 function exportNucleicTable(){downloadTsv('nucleic_hits_shown.tsv',currentNucleicExport.columns,currentNucleicExport.rows);}
 function exportMapTable(){downloadTsv(currentMapExport.name,currentMapExport.columns,currentMapExport.rows);}
-function exportExtraTable(id){const t=EXTRA.find(x=>x.id===id);if(!t)return;const inp=document.querySelector('.xsearch[data-for="'+id+'"]'),f=(inp&&inp.value||'').toLowerCase();downloadTsv(safeName(t.label)+'_shown.tsv',t.columns,t.rows.filter(r=>!f||r.join(' ').toLowerCase().includes(f)));}
+function normalizeColumnName(name){return String(name||'').trim().toLowerCase().replace(/[ -]+/g,'_');}
+function isContigColumn(name){return RAW_ID_COLUMNS.has(normalizeColumnName(name));}
+function tabHasContigColumn(tab){return (tab.columns||[]).some(isContigColumn);}
+function contigForCell(column,value){return isContigColumn(column)?contigById.get(String(value))||null:null;}
+function displayContigCell(column,value){const c=contigForCell(column,value);return showRawIds&&c&&c.raw_id?c.raw_id:value;}
+function rowSearchText(tab,row){return row.map((value,i)=>{const c=contigForCell(tab.columns[i],value);return c&&c.raw_id?value+' '+c.raw_id:value;}).join(' ').toLowerCase();}
+function renderExtraCell(column,value){const c=contigForCell(column,value),display=displayContigCell(column,value);return c&&hasMaps?`<span class="cid" onclick="openContig('${c.contig}')">${esc(display)}</span>`:esc(display);}
+function exportExtraTable(id){const t=EXTRA.find(x=>x.id===id);if(!t)return;const inp=document.querySelector('.xsearch[data-for="'+id+'"]'),f=(inp&&inp.value||'').toLowerCase();downloadTsv(safeName(t.label)+'_shown.tsv',t.columns,t.rows.filter(r=>!f||rowSearchText(t,r).includes(f)));}
 function sourceLinks(kind){return FILES.tables.filter(f=>f.kind===kind).map(f=>`<a href="${encodeURI(f.path)}" download title="Untouched pipeline output">${esc(f.label)}</a>`).join(' ');}
 document.getElementById('tableOriginalLinks').innerHTML=[sourceLinks('protein'),sourceLinks('rna')].filter(Boolean).join(' ');
 document.getElementById('nucOriginalLinks').innerHTML=sourceLinks('nucleic');
@@ -2068,8 +2119,8 @@ function renderExtra(id){
   const inp=document.querySelector('.xsearch[data-for="'+id+'"]');
   const f=(inp&&inp.value||'').toLowerCase();
   let html=`<table><thead><tr>`+t.columns.map(c=>`<th>${esc(c)}</th>`).join('')+`</tr></thead><tbody>`;
-  t.rows.forEach(r=>{if(f&&!r.join(' ').toLowerCase().includes(f))return;
-    html+=`<tr>`+r.map(v=>`<td>${esc(v)}</td>`).join('')+`</tr>`;});
+  t.rows.forEach(r=>{if(f&&!rowSearchText(t,r).includes(f))return;
+    html+=`<tr>`+r.map((v,i)=>`<td>${renderExtraCell(t.columns[i],v)}</td>`).join('')+`</tr>`;});
   html+=`</tbody></table>`;
   document.getElementById('xtable-'+id).innerHTML=html;
   renderComposition(t);
@@ -2307,9 +2358,10 @@ function renderNucleic(){
   const f=(document.getElementById('nucSearch').value||'').toLowerCase();
   const columns=['contig','source','target','pident','score','evalue','qstart','qend','tstart','tend','qcov','tcov','strand'],rows=[];
   let t=`<table><thead><tr><th>Contig</th><th>Source</th><th>Target</th><th>%id</th><th>Score</th><th>E-value</th><th>contig span</th><th>target span</th><th>qcov</th><th>strand</th><th>Sequence</th></tr></thead><tbody>`;
-  NUCLEIC.forEach(h=>{const hay=(h.contig+' '+h.target+' '+h.source).toLowerCase();if(f&&!hay.includes(f))return;
+  NUCLEIC.forEach(h=>{const c=contigById.get(String(h.contig)),displayId=showRawIds&&c&&c.raw_id?c.raw_id:h.contig;
+    const hay=(h.contig+' '+(c&&c.raw_id||'')+' '+h.target+' '+h.source).toLowerCase();if(f&&!hay.includes(f))return;
     rows.push([h.contig,h.source,h.target,h.pident,h.score,h.evalue,h.qstart,h.qend,h.tstart,h.tend,h.qcov,h.tcov,h.strand||'']);
-    const link=hasMaps&&contigs.some(c=>c.contig===h.contig)?`<span class="cid" onclick="openContig('${h.contig}')">${h.contig}</span>`:h.contig;
+    const link=hasMaps&&c?`<span class="cid" onclick="openContig('${h.contig}')">${esc(displayId)}</span>`:esc(displayId);
     t+=`<tr><td>${link}</td><td><span class="pill" style="background:${nucColors[h.source]||'#6b7280'}">${h.source}</span></td>`+
       `<td>${esc(h.target)}</td><td>${h.pident}</td><td>${h.score}</td><td class="mono">${fmtE(h.evalue)}</td>`+
       `<td class="mono">${h.qstart.toLocaleString()}–${h.qend.toLocaleString()}</td>`+
