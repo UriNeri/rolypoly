@@ -871,7 +871,33 @@ def roll(
         # Reused results must populate the downstream selection exactly like
         # results produced in this invocation.
         marker_hits = pl.read_csv(marker_hits_path, separator="\t")
-        marker_matched_contigs = marker_hits["source_seq_id"].unique().to_list()
+        if "marker_role" in marker_hits.columns:
+            marker_candidate_hits = marker_hits.filter(
+                pl.col("marker_role") == "candidate"
+            )
+            rt_evidence_count = marker_hits.filter(
+                pl.col("marker_role") == "rt_evidence"
+            ).height
+            if rt_evidence_count:
+                logger.info(
+                    "Excluded %d RT-evidence marker hits from downstream contig selection",
+                    rt_evidence_count,
+                )
+        elif "profile_class" in marker_hits.columns:
+            marker_candidate_hits = marker_hits.filter(
+                pl.col("profile_class") != "rt"
+            )
+        else:
+            # Backward compatibility for results made with older data/code,
+            # which did not distinguish candidate and RT evidence.
+            marker_candidate_hits = marker_hits
+            logger.warning(
+                "Reused marker results lack marker-role metadata; historical RT hits "
+                "cannot be separated without rerunning marker-search"
+            )
+        marker_matched_contigs = (
+            marker_candidate_hits["source_seq_id"].unique().to_list()
+        )
         if len(marker_matched_contigs) == 0:
             logger.warning("No marker contigs found =/")
         matched_contigs.update(marker_matched_contigs)
@@ -926,7 +952,8 @@ def roll(
             matched_contigs.update(nucleic_matched_contigs)
 
     matched_contigs_file = output_dir / "all_matched_contigs.fasta"
-    if len(matched_contigs) > 0:
+    has_matched_contigs = len(matched_contigs) > 0
+    if has_matched_contigs:
         from rolypoly.utils.bio.sequences import filter_fasta_by_headers
 
         filter_fasta_by_headers(
@@ -935,16 +962,43 @@ def roll(
             output_file=str(matched_contigs_file),
         )
         logger.info("Written matched contigs to %s", matched_contigs_file)
-    else:
+    elif {"marker_search", "nucleic_search"}.issubset(skip_steps):
         logger.warning(
-            "No marker or nucleic matched contigs found; using final assembly for annotation input"
+            "Marker and nucleic searches were both skipped; using the final assembly "
+            "for annotation input"
         )
         matched_contigs_file = final_assembly_file
+        has_matched_contigs = True
+    else:
+        matched_contigs_file.write_text("", encoding="utf-8")
+        logger.warning(
+            "No candidate marker or nucleic matched contigs were found; downstream "
+            "mapping, annotation, motif search, and taxonomy will be skipped"
+        )
+        stale_downstream = [
+            path
+            for path in (
+                output_dir / "read_mapping",
+                output_dir / "annotation_results",
+                output_dir / "rdrp_motif_search",
+                output_dir / "taxonomy",
+            )
+            if path.exists()
+        ]
+        if stale_downstream:
+            logger.warning(
+                "Existing downstream outputs were not reused and remain on disk: %s",
+                ", ".join(str(path) for path in stale_downstream),
+            )
 
     # Step: Map **original** reads back to the chosen assembly
     step += 1
     mapping_output = output_dir / "read_mapping"
-    if "map_reads" in skip_steps:
+    if not has_matched_contigs:
+        logger.info(
+            "Step %d: Skipping read mapping (no candidate contigs)", step
+        )
+    elif "map_reads" in skip_steps:
         # This includes the contigs mode (filter-reads + assemble skipped), where
         # there are no processed reads to map back.
         logger.info(
@@ -988,7 +1042,9 @@ def roll(
     step += 1
     logger.info("Step %d: Annotation", step)
     annotation_output = output_dir / "annotation_results"
-    if "annotate" in skip_steps:
+    if not has_matched_contigs:
+        logger.info("Step %d: Skipping annotation (no candidate contigs)", step)
+    elif "annotate" in skip_steps:
         logger.info("Step %d: Skipping annotate (in --skip-steps)", step)
     elif skip_existing and annotation_output.exists():
         logger.info(
@@ -1018,8 +1074,14 @@ def roll(
     step += 1
     logger.info("Step %d: RdRp motifs marking", step)
     rdrp_motif_search_output = output_dir / "rdrp_motif_search"
-    if "rdrp_motif_search" in skip_steps:
-        logger.info("Step %d: Skipping RdRp motif search (in --skip-steps)", step)
+    if not has_matched_contigs:
+        logger.info(
+            "Step %d: Skipping RdRp motif search (no candidate contigs)", step
+        )
+    elif "rdrp_motif_search" in skip_steps:
+        logger.info(
+            "Step %d: Skipping RdRp motif search (in --skip-steps)", step
+        )
     elif skip_existing and rdrp_motif_search_output.exists():
         logger.info(
             "Annotation results %s already exist, skipping step",
@@ -1050,7 +1112,9 @@ def roll(
     step += 1
     taxonomy_output_dir = output_dir / "taxonomy"
     taxonomy_output = taxonomy_output_dir / "mmtax.tsv"
-    if "taxonomy" in skip_steps:
+    if not has_matched_contigs:
+        logger.info("Step %d: Skipping taxonomy (no candidate contigs)", step)
+    elif "taxonomy" in skip_steps:
         logger.info("Step %d: Skipping taxonomy (in --skip-steps)", step)
     elif skip_existing and taxonomy_output.exists():
         logger.info("Taxonomy output %s already exists, skipping step", taxonomy_output)
@@ -1105,7 +1169,9 @@ def roll(
     # Step: Report (interactive genome maps)
     step += 1
     report_output = output_dir / "roll_report.html"
-    if "report" in skip_steps or not make_report:
+    if not has_matched_contigs:
+        logger.info("Step %d: Skipping report (no candidate contigs)", step)
+    elif "report" in skip_steps or not make_report:
         logger.info("Step %d: Skipping report (disabled)", step)
     elif skip_existing and report_output.exists():
         logger.info(

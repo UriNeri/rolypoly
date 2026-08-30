@@ -740,13 +740,100 @@ def marker_search(
                 match_region=config.include_aligned_region,
             )
         config.logger.debug(f"temp output: {tmp_output}")
-        all_outputs.append(tmp_output)
+        all_outputs.append((db_name, tmp_output))
 
     # read all output files, stack them, and resolve overlaps
     config.logger.debug(f"Reading {len(all_outputs)} output files")
-    stack_df = pl.scan_csv(
-        all_outputs, separator="\t", infer_schema_length=123123
+    stack_df = pl.concat(
+        [
+            pl.scan_csv(
+                output_path, separator="\t", infer_schema_length=123123
+            ).with_columns(pl.lit(db_name).alias("database_id"))
+            for db_name, output_path in all_outputs
+        ],
+        how="diagonal_relaxed",
     ).collect()
+
+    # Profile-class metadata is a build artifact rather than a collection of
+    # command-specific name checks. RT hits remain reportable evidence, but do
+    # not nominate a contig as a viral candidate.
+    profile_manifest = (
+        Path(os.environ["ROLYPOLY_DATA"])
+        / "profiles"
+        / "pfam_rdrps_and_rts_profiles.tsv.gz"
+    )
+    if profile_manifest.exists():
+        profile_metadata = pl.read_csv(profile_manifest, separator="\t")
+        required_manifest_columns = {
+            "database_id",
+            "profile_name",
+            "profile_accession",
+            "profile_accession_base",
+            "mmseqs_target",
+            "profile_class",
+        }
+        missing_manifest_columns = required_manifest_columns.difference(
+            profile_metadata.columns
+        )
+        if missing_manifest_columns:
+            raise ValueError(
+                f"Profile metadata {profile_manifest} is missing columns: "
+                f"{sorted(missing_manifest_columns)}"
+            )
+        profile_classes = {}
+        for row in profile_metadata.iter_rows(named=True):
+            database_key = row["database_id"].lower()
+            for alias_column in (
+                "profile_name",
+                "profile_accession",
+                "profile_accession_base",
+                "mmseqs_target",
+            ):
+                alias = str(row[alias_column]).lower().removesuffix("_seed")
+                profile_classes[(database_key, alias)] = row["profile_class"]
+        stack_df = stack_df.with_columns(
+            pl.struct("database_id", "profile_accession", "hmm_full_name")
+            .map_elements(
+                lambda row: profile_classes.get(
+                    (
+                        row["database_id"].lower(),
+                        str(
+                            row["profile_accession"] or row["hmm_full_name"]
+                        ).lower().removesuffix("_seed"),
+                    ),
+                    "unclassified",
+                ),
+                return_dtype=pl.String,
+            )
+            .alias("profile_class")
+        )
+        unmapped_pfam = stack_df.filter(
+            (pl.col("database_id").str.to_lowercase() == "pfam_rts_rdrp")
+            & (pl.col("profile_class") == "unclassified")
+        )
+        if not unmapped_pfam.is_empty():
+            config.logger.warning(
+                "%d Pfam RdRp/RT hits could not be classified from %s; "
+                "they remain candidate evidence",
+                unmapped_pfam.height,
+                profile_manifest,
+            )
+    else:
+        stack_df = stack_df.with_columns(
+            pl.lit("unclassified").alias("profile_class")
+        )
+        if any(db_name.lower() == "pfam_rts_rdrp" for db_name, _ in all_outputs):
+            config.logger.warning(
+                "Pfam profile metadata is absent at %s; RT hits cannot be separated "
+                "from candidate evidence with this database bundle",
+                profile_manifest,
+            )
+    stack_df = stack_df.with_columns(
+        pl.when(pl.col("profile_class") == "rt")
+        .then(pl.lit("rt_evidence"))
+        .otherwise(pl.lit("candidate"))
+        .alias("marker_role")
+    )
     config.logger.debug(stack_df)
     if stack_df.is_empty():
         config.logger.info("No hits found in any DB")
@@ -754,14 +841,20 @@ def marker_search(
         config.resolve_mode = "none"
 
     if config.repeat_filter and not stack_df.is_empty():
-        from rolypoly.utils.bio.interval_ops import filter_repeated_profile_regions
+        from rolypoly.utils.bio.interval_ops import (
+            filter_repeated_profile_regions,
+        )
 
         raw_hit_count = stack_df.height
         stack_df, repeat_filtered_df = filter_repeated_profile_regions(stack_df)
         if repeat_filtered_df.is_empty():
-            config.logger.info("Repeat filter found no repeated profile-region hits")
+            config.logger.info(
+                "Repeat filter found no repeated profile-region hits"
+            )
         else:
-            repeat_filtered_file = Path(output) / "marker_search_repeat_filtered.tsv"
+            repeat_filtered_file = (
+                Path(output) / "marker_search_repeat_filtered.tsv"
+            )
             repeat_filtered_df.write_csv(repeat_filtered_file, separator="\t")
             config.logger.info(
                 "Repeat filter removed %d/%d hits; audit table written to %s",
@@ -770,10 +863,25 @@ def marker_search(
                 repeat_filtered_file,
             )
             if stack_df.is_empty():
-                config.logger.info("No hits remain after repeat filtering; skipping overlap resolution")
+                config.logger.info(
+                    "No hits remain after repeat filtering; skipping overlap resolution"
+                )
                 config.resolve_mode = "none"
     elif not config.repeat_filter:
         config.logger.info("Repeat filter disabled by --no-repeat-filter")
+
+    rt_evidence_df = stack_df.filter(pl.col("marker_role") == "rt_evidence")
+    stack_df = stack_df.filter(pl.col("marker_role") == "candidate")
+    if not rt_evidence_df.is_empty():
+        config.logger.info(
+            "Retaining %d RT hits as evidence without nominating their contigs",
+            rt_evidence_df.height,
+        )
+    if stack_df.is_empty():
+        config.logger.info(
+            "No candidate marker hits remain; skipping overlap resolution"
+        )
+        config.resolve_mode = "none"
 
     results_file = Path(output) / "marker_search_results.tsv"
 
@@ -830,6 +938,11 @@ def marker_search(
         )
     else:
         testdf = stack_df
+
+    # RT evidence is kept in the result table, but is deliberately excluded
+    # from candidate overlap resolution and downstream contig nomination.
+    if not rt_evidence_df.is_empty():
+        testdf = pl.concat([testdf, rt_evidence_df], how="diagonal_relaxed")
 
     # Write optional matched regions before dropping helper columns.
     if config.write_matched_regions:
