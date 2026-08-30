@@ -11,7 +11,8 @@ While it includes an "end-2-end" command that employs an entire pipeline, the ma
 
 ## RolyPoly is still under development (contributions welcome!)
 RolyPoly is an open, "rolling-release". We hope to summarise the main functionality into a v1 manuscript ~late 2026.  
-Pull requests and contributions are welcome and will be considered (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+Pull requests and contributions are welcome and will be considered (see [CONTRIBUTING.md](CONTRIBUTING.md)).  
+Please report bugs you find in the [Issues](https://github.com/UriNeri/rolypoly/issues) page.    
 
 
 ## Installation
@@ -51,7 +52,6 @@ cd rolypoly
 # Install for specific functionality (examples):
 pixi install -e reads-only        # Just read processing tools
 pixi install -e assembly-only     # Just assembly tools  
-pixi install -e basic-analysis    # Reads + assembly + identification
 pixi install -e complete          # All tools (equivalent to legacy install)
 
 # Run commands in the appropriate environment
@@ -193,10 +193,6 @@ RolyPoly will try to remind you to cite these too based on the commands you run.
 ## Motivation
 There are many good virus analysis tools out there*. Many of them are custom made for specific virus groups, some are generalists, but most require complete control over the analysis process (so one or two points of entry for data). Apart from input requirements, these pipelines vary in implementation (language, workflow management system (snakemake, nextflow...), dependencies), methodologies (tool choice for a similar step such as assembly), and goals (e.g. specific pathogen analysis vs whole virome analysis). These differences affect design and tooling choices (such as selecting a fast nucleotide-based sequence search method limited to high identity, over a slower but more sensitive profile- or structure-based (amino acid) search method). This has created some "lock in" (IMO), and I have found myself asked by people "what do you recommend for xyz" or "which pipeline should I use". Most people have limited time to invest in custom analysis pipeline design and so end up opting for an existing, off-the-shelf option, potentially compromising or having to align their goals with what the given software offers (if they are already aligned - great!). 
 * Checkout [awesome-rna-virus-tools](https://github.com/rdrp-summit/awesome-rna-virus-tools) for an awesome list of RNA virus (and related) software.
-
-### Reporting Issues
-Please report bugs you find in the [Issues](https://github.com/UriNeri/rolypoly/issues) page.    
-
 
 ### Contribution
 All forms of contributions are welcome - please see the [CONTRIBUTING.md](./CONTRIBUTING.md) file for more details.
