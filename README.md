@@ -52,7 +52,7 @@ cd rolypoly
 # Install for specific functionality (examples):
 pixi install -e reads-only        # Just read processing tools
 pixi install -e assembly-only     # Just assembly tools  
-pixi install -e complete          # All tools (equivalent to legacy install)
+pixi install -e dev          # All tools + tools only needed for creating the db / docs / tests
 
 # Run commands in the appropriate environment
 pixi run -e reads-only rolypoly filter-reads --help
