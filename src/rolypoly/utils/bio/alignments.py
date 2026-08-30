@@ -978,6 +978,7 @@ def mmseqs_profile_db_from_directory(
     desc_col="ANNOTATION_DESCRIPTION",
     match_mode: int = 1,
     match_ratio: float = 0.5,
+    threads: int = 1,
 ):
     """Create a concatenated HMM database from a directory of MSA files.
 
@@ -991,6 +992,7 @@ def mmseqs_profile_db_from_directory(
         desc_col: str, column name in the info table to use for the profile description
         match_mode: int, passed to `mmseqs msa2profile --match-mode` (0 = by first sequence, 1 = by gap fraction). Default is 1 (safer for diverse MSAs).
         match_ratio: float, passed to `mmseqs msa2profile --match-ratio` (threshold for gap fraction). Default is 0.5.
+        threads: int, number of threads passed to MMseqs profile construction. Default is 1.
 
     Note:
         The function now uses `mmseqs msa2profile` with configurable `--match-mode` and `--match-ratio`.
@@ -1136,6 +1138,7 @@ def mmseqs_profile_db_from_directory(
                 params={
                     "match-mode": int(match_mode),
                     "match-ratio": float(match_ratio),
+                    "threads": int(threads),
                 },
                 positional_args_location="start",
                 return_final_cmd=True,
