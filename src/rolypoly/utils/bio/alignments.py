@@ -194,6 +194,7 @@ def search_hmmdb(
     ali_str=False,
     output_format="modomtblout",
     pyhmmer_hmmsearch_args={},
+    include_alignment_path=False,
 ):
     """Search an HMM database using pyhmmer.
 
@@ -213,6 +214,8 @@ def search_hmmdb(
       full_qseq(bool, optional): Include full query sequence in output. Only works with modomtblout format.
       ali_str(bool, optional): Include alignment string in output. Only works with modomtblout format.
       output_format(str, optional): Format of the output file. One of: "modomtblout", "domtblout", "tblout".
+      include_alignment_path(bool, optional): Include the profile and query
+        alignment strings and a stable per-hit domain ordinal.
 
     Returns:
         str: Path to the output file containing search results
@@ -281,6 +284,9 @@ def search_hmmdb(
             "aligned_region": match_region,
             "full_qseq": full_qseq,
             "identity_str": ali_str,
+            "domain_index": include_alignment_path,
+            "profile_alignment": include_alignment_path,
+            "query_alignment": include_alignment_path,
         }.items()
         if value
     )
@@ -335,7 +341,11 @@ def search_hmmdb(
                             full_prot_name = f"{hit_name} {hit_desc}"
                             if full_qseq:
                                 protein_seq = seqs_dict[full_prot_name]
-                            for domain in hit.domains.included:
+                            for domain_index, domain in enumerate(
+                                hit.domains, start=1
+                            ):
+                                if not domain.included:
+                                    continue
                                 # Get alignment length
                                 alignment_length = get_hmmali_length(domain)
                                 if alignment_length < min_ali_len:
@@ -379,6 +389,14 @@ def search_hmmdb(
                                 if ali_str:
                                     outputline.append(
                                         f"{domain.alignment.identity_sequence}"
+                                    )
+                                if include_alignment_path:
+                                    outputline.extend(
+                                        (
+                                            str(domain_index),
+                                            f"{domain.alignment.hmm_sequence}",
+                                            f"{domain.alignment.target_sequence}",
+                                        )
                                     )
                                 outfile.write(
                                     ("\t".join(outputline) + "\n").encode()

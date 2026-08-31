@@ -67,6 +67,7 @@ def search_mmseqs_marker_db(
     include_alignment_string,
     include_full_query,
     logger,
+    include_alignment_path=False,
 ):
     """Search an MMseqs profile database and write marker-search hit columns."""
     import polars as pl
@@ -143,6 +144,14 @@ def search_mmseqs_marker_db(
     ]
     if include_aligned_region:
         output_columns.append(pl.col("qaln").alias("aligned_region"))
+    if include_alignment_path:
+        output_columns.extend(
+            (
+                pl.lit("1").alias("domain_index"),
+                pl.col("taln").alias("profile_alignment"),
+                pl.col("qaln").alias("query_alignment"),
+            )
+        )
     if include_full_query:
         output_columns.append(pl.col("qseq").alias("full_qseq"))
     if include_alignment_string:
@@ -160,6 +169,509 @@ def search_mmseqs_marker_db(
 
     hits.select(output_columns).write_csv(output, separator="\t")
     return output
+
+
+FEATURE_PROJECTION_COLUMNS = (
+    "marker_path_id",
+    "database_id",
+    "query_full_name",
+    "hmm_full_name",
+    "profile_accession",
+    "domain_index",
+    "feature_id",
+    "canonical_term_id",
+    "raw_source_label",
+    "backend",
+    "full_hmm_evalue",
+    "full_hmm_score",
+    "this_dom_score",
+    "profile_states_1based",
+    "mapped_profile_states_1based",
+    "projected_query_positions_1based",
+    "projected_query_residues",
+    "unresolved_profile_states_1based",
+    "unresolved_query_positions_1based",
+    "unresolved_query_residues",
+    "deleted_profile_states_1based",
+    "out_of_span_profile_states_1based",
+    "feature_query_start_1based",
+    "feature_query_end_1based",
+    "insertion_query_positions_1based",
+    "insertion_query_residues",
+    "mapped_state_count",
+    "unresolved_state_count",
+    "deleted_state_count",
+    "out_of_span_state_count",
+    "projection_status",
+    "projection_reason",
+    "hmm_from",
+    "hmm_to",
+    "q1",
+    "q2",
+)
+
+
+def project_marker_features(
+    hit_df, feature_path: Path, output_path: Path, backend: str, logger=None
+) -> None:
+    """Project labelled profile states through retained local alignments.
+
+    This is deliberately an annotation/reporting pass.  It does not alter the
+    marker hit table or apply motif order, completeness, or residue filters.
+    ``profile_alignment`` and ``query_alignment`` use the same profile/query
+    orientation for HMMER and MMseqs2, so one coordinate walker handles both.
+    """
+    import polars as pl
+
+    if backend not in {"hmmsearch", "mmseqs2"}:
+        raise ValueError(f"Unsupported marker projection backend: {backend}")
+    features = pl.read_csv(feature_path, separator="\t")
+    required = {
+        "marker_db",
+        "profile_id",
+        "feature_id",
+        "canonical_term_id",
+        "raw_source_label",
+    }
+    state_columns = {
+        "hmmer_states_1based",
+        "hmm_states_1based",
+        "mmseqs_states_1based",
+    }
+    missing = required.difference(features.columns)
+    backend_state_column_present = (
+        (
+            "hmmer_states_1based" in features.columns
+            or "hmm_states_1based" in features.columns
+        )
+        if backend == "hmmsearch"
+        else "mmseqs_states_1based" in features.columns
+    )
+    if (
+        missing
+        or not state_columns.intersection(features.columns)
+        or not backend_state_column_present
+    ):
+        missing_text = sorted(missing)
+        if not backend_state_column_present:
+            missing_text.append(f"{backend} state column")
+        raise ValueError(
+            f"Marker feature table {feature_path} is missing columns: "
+            f"{missing_text}"
+        )
+
+    def parse_states(value, field: str, row_number: int) -> list[int]:
+        if value is None:
+            return []
+        text = str(value).strip()
+        if not text or text.lower() in {"na", "none", "null", "not_applicable"}:
+            return []
+        try:
+            states = [int(token) for token in text.replace(",", ";").split(";")]
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid {field} in {feature_path} row {row_number}: {text!r}"
+            ) from exc
+        if any(state < 1 for state in states):
+            raise ValueError(
+                f"{field} must contain positive 1-based states in "
+                f"{feature_path} row {row_number}"
+            )
+        if len(states) != len(set(states)):
+            raise ValueError(
+                f"{field} contains duplicate states in {feature_path} "
+                f"row {row_number}"
+            )
+        return states
+
+    feature_rows = []
+    feature_keys = set()
+    for row_number, row in enumerate(features.iter_rows(named=True), start=2):
+        marker_db = str(row["marker_db"] or "").strip().lower()
+        profile_id = (
+            str(row["profile_id"] or "").strip().lower().removesuffix("_seed")
+        )
+        feature_id = str(row["feature_id"] or "").strip()
+        canonical_term_id = str(row["canonical_term_id"] or "").strip()
+        raw_source_label = str(row["raw_source_label"] or "").strip()
+        if (
+            not marker_db
+            or not profile_id
+            or not feature_id
+            or not canonical_term_id
+            or not raw_source_label
+        ):
+            raise ValueError(
+                f"Marker feature row {row_number} has an empty database, profile, "
+                "feature identity, canonical term, or source label"
+            )
+        key = (marker_db, profile_id, feature_id)
+        if key in feature_keys:
+            raise ValueError(
+                f"Duplicate marker feature identity in {feature_path}: {key}"
+            )
+        feature_keys.add(key)
+        feature_rows.append(
+            {
+                "marker_db": marker_db,
+                "profile_id": profile_id,
+                "feature_id": feature_id,
+                "canonical_term_id": canonical_term_id,
+                "raw_source_label": raw_source_label,
+                "hmmer_states": parse_states(
+                    row.get(
+                        "hmmer_states_1based", row.get("hmm_states_1based")
+                    ),
+                    "hmmer_states_1based",
+                    row_number,
+                ),
+                "mmseqs_states": parse_states(
+                    row.get("mmseqs_states_1based"),
+                    "mmseqs_states_1based",
+                    row_number,
+                ),
+            }
+        )
+
+    by_profile = {}
+    for feature in feature_rows:
+        by_profile.setdefault(
+            (feature["marker_db"], feature["profile_id"]), []
+        ).append(feature)
+    annotated_databases = {key[0] for key in by_profile}
+
+    profile_states = (
+        "hmmer_states" if backend == "hmmsearch" else "mmseqs_states"
+    )
+    canonical_residues = set("ACDEFGHIKLMNPQRSTVWY")
+
+    def walk_alignment(
+        profile_alignment: str,
+        query_alignment: str,
+        profile_start: int,
+        query_start: int,
+        profile_end: int,
+        query_end: int,
+    ):
+        if len(profile_alignment) != len(query_alignment):
+            raise ValueError(
+                "Profile/query alignment paths have different lengths"
+            )
+        profile_position = profile_start - 1
+        query_position = query_start - 1
+        state_map = {}
+        insertions = []
+        for profile_residue, query_residue in zip(
+            profile_alignment, query_alignment
+        ):
+            profile_gap = profile_residue in {"-", "."}
+            query_gap = query_residue == "-"
+            if profile_gap and query_gap:
+                raise ValueError("Alignment path contains a double gap")
+            if not profile_gap:
+                profile_position += 1
+            if not query_gap:
+                query_position += 1
+            if profile_gap:
+                if not query_gap:
+                    insertions.append(
+                        (
+                            profile_position,
+                            profile_position + 1,
+                            query_position,
+                            query_residue.upper(),
+                        )
+                    )
+                continue
+            if query_gap:
+                state_map[profile_position] = ("deleted", None, None)
+            elif query_residue.upper() in canonical_residues:
+                state_map[profile_position] = (
+                    "mapped",
+                    query_position,
+                    query_residue.upper(),
+                )
+            else:
+                state_map[profile_position] = (
+                    "unresolved",
+                    query_position,
+                    query_residue.upper(),
+                )
+        if profile_position != profile_end or query_position != query_end:
+            raise ValueError(
+                "Alignment path coordinates do not match its endpoint columns"
+            )
+        return state_map, insertions
+
+    rows = []
+    for hit in hit_df.iter_rows(named=True):
+        database_id = str(hit.get("database_id", "")).strip()
+        database_key = database_id.lower()
+        profile_aliases = {
+            str(hit.get(alias) or "").strip().lower().removesuffix("_seed")
+            for alias in ("profile_accession", "hmm_full_name")
+        }
+        profile_aliases.discard("")
+        profile_id = next(iter(profile_aliases), "")
+        # The currently bundled sidecar is specifically for RVMT.  Other
+        # marker DBs remain ordinary broad detection results.
+        candidate_keys = {
+            (database_key, alias)
+            for alias in profile_aliases
+            if (database_key, alias) in by_profile
+        }
+        if len(candidate_keys) > 1:
+            raise ValueError(
+                f"Hit profile aliases disagree with marker feature identities: "
+                f"{sorted(candidate_keys)}"
+            )
+        candidates = (
+            by_profile.get(next(iter(candidate_keys)), [])
+            if candidate_keys
+            else []
+        )
+        if not candidates and database_key not in annotated_databases:
+            continue
+        if not profile_aliases:
+            raise ValueError(
+                f"Marker hit for {database_id} has no profile identity"
+            )
+
+        common = {
+            "marker_path_id": str(hit.get("marker_path_id") or ""),
+            "database_id": database_id,
+            "query_full_name": str(hit.get("query_full_name", "")),
+            "hmm_full_name": str(hit.get("hmm_full_name", "")),
+            "profile_accession": str(hit.get("profile_accession") or ""),
+            "domain_index": str(hit.get("domain_index", "1")),
+            "backend": backend,
+            "full_hmm_evalue": str(
+                hit.get("full_hmm_evalue")
+                if hit.get("full_hmm_evalue") is not None
+                else ""
+            ),
+            "full_hmm_score": str(
+                hit.get("full_hmm_score")
+                if hit.get("full_hmm_score") is not None
+                else ""
+            ),
+            "this_dom_score": str(
+                hit.get("this_dom_score")
+                if hit.get("this_dom_score") is not None
+                else ""
+            ),
+            "hmm_from": str(hit.get("hmm_from", "")),
+            "hmm_to": str(hit.get("hmm_to", "")),
+            "q1": str(hit.get("q1", "")),
+            "q2": str(hit.get("q2", "")),
+        }
+        if not candidates:
+            rows.append(
+                {
+                    **common,
+                    "feature_id": "",
+                    "canonical_term_id": "",
+                    "raw_source_label": "",
+                    "profile_states_1based": "",
+                    "mapped_profile_states_1based": "",
+                    "projected_query_positions_1based": "",
+                    "projected_query_residues": "",
+                    "unresolved_profile_states_1based": "",
+                    "unresolved_query_positions_1based": "",
+                    "unresolved_query_residues": "",
+                    "deleted_profile_states_1based": "",
+                    "out_of_span_profile_states_1based": "",
+                    "feature_query_start_1based": "",
+                    "feature_query_end_1based": "",
+                    "insertion_query_positions_1based": "",
+                    "insertion_query_residues": "",
+                    "mapped_state_count": "0",
+                    "unresolved_state_count": "0",
+                    "deleted_state_count": "0",
+                    "out_of_span_state_count": "0",
+                    "projection_status": "unlabelled_profile",
+                    "projection_reason": "no_feature_definition_for_profile",
+                }
+            )
+            continue
+
+        try:
+            profile_start = int(hit["hmm_from"])
+            profile_end = int(hit["hmm_to"])
+            query_start = int(hit["q1"])
+            query_end = int(hit["q2"])
+            profile_length = int(hit["hmm_len"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                "Marker hit lacks valid alignment coordinates for "
+                f"{sorted(profile_aliases)}"
+            ) from exc
+        if not (1 <= profile_start <= profile_end <= profile_length):
+            raise ValueError(
+                f"Invalid profile alignment span {profile_start}-{profile_end} "
+                f"for {profile_id} (length {profile_length})"
+            )
+        if not 1 <= query_start <= query_end:
+            raise ValueError(
+                f"Invalid query alignment span {query_start}-{query_end} "
+                f"for {profile_id}"
+            )
+        profile_alignment = str(hit.get("profile_alignment", ""))
+        query_alignment = str(hit.get("query_alignment", ""))
+        if not profile_alignment or not query_alignment:
+            raise ValueError(
+                "Feature projection requires retained profile/query alignment paths"
+            )
+
+        for feature in candidates:
+            states = feature[profile_states]
+            if any(state > profile_length for state in states):
+                raise ValueError(
+                    f"Feature {feature['feature_id']} state exceeds profile length "
+                    f"for {profile_id}"
+                )
+        state_map, insertions = walk_alignment(
+            profile_alignment,
+            query_alignment,
+            profile_start,
+            query_start,
+            profile_end,
+            query_end,
+        )
+
+        for feature in candidates:
+            states = feature[profile_states]
+            state_status = {
+                state: state_map.get(state, ("out_of_span", None, None))
+                for state in states
+            }
+            mapped_values = [
+                state_status[state][1:]
+                for state in states
+                if state_status[state][0] == "mapped"
+            ]
+            unresolved_values = [
+                state_status[state][1:]
+                for state in states
+                if state_status[state][0] == "unresolved"
+            ]
+            mapped_states = [
+                state
+                for state in states
+                if state_status[state][0] == "mapped"
+            ]
+            unresolved_states = [
+                state
+                for state in states
+                if state_status[state][0] == "unresolved"
+            ]
+            deleted_states = [
+                state
+                for state in states
+                if state_status[state][0] == "deleted"
+            ]
+            out_of_span_states = [
+                state
+                for state in states
+                if state_status[state][0] == "out_of_span"
+            ]
+            deleted_count = len(deleted_states)
+            out_of_span_count = len(out_of_span_states)
+            if not states:
+                status = "absent"
+                reason = "no_backend_state_map"
+            elif len(mapped_values) == len(states):
+                status = "complete"
+                reason = "all_feature_states_projected"
+            elif mapped_values:
+                status = "partial"
+                reason = "some_feature_states_not_projected"
+            else:
+                status = "absent"
+                reason_parts = []
+                if unresolved_states:
+                    reason_parts.append("unresolved")
+                if deleted_states:
+                    reason_parts.append("deleted")
+                if out_of_span_states:
+                    reason_parts.append("out_of_span")
+                reason = "feature_states_" + "_and_".join(reason_parts)
+            state_set = set(states)
+            feature_insertions = [
+                (query_position, residue)
+                for left, right, query_position, residue in insertions
+                if left in state_set and right in state_set
+            ]
+            feature_query_positions = [
+                value[0] for value in mapped_values + unresolved_values
+            ] + [value[0] for value in feature_insertions]
+            rows.append(
+                {
+                    **common,
+                    "feature_id": feature["feature_id"],
+                    "canonical_term_id": feature["canonical_term_id"],
+                    "raw_source_label": feature["raw_source_label"],
+                    "profile_states_1based": ";".join(map(str, states)),
+                    "mapped_profile_states_1based": ";".join(
+                        map(str, mapped_states)
+                    ),
+                    "projected_query_positions_1based": ";".join(
+                        map(str, (value[0] for value in mapped_values))
+                    ),
+                    "projected_query_residues": "".join(
+                        value[1] for value in mapped_values
+                    ),
+                    "unresolved_profile_states_1based": ";".join(
+                        map(str, unresolved_states)
+                    ),
+                    "unresolved_query_positions_1based": ";".join(
+                        map(str, (value[0] for value in unresolved_values))
+                    ),
+                    "unresolved_query_residues": "".join(
+                        value[1] for value in unresolved_values
+                    ),
+                    "deleted_profile_states_1based": ";".join(
+                        map(str, deleted_states)
+                    ),
+                    "out_of_span_profile_states_1based": ";".join(
+                        map(str, out_of_span_states)
+                    ),
+                    "feature_query_start_1based": (
+                        str(min(feature_query_positions))
+                        if feature_query_positions
+                        else ""
+                    ),
+                    "feature_query_end_1based": (
+                        str(max(feature_query_positions))
+                        if feature_query_positions
+                        else ""
+                    ),
+                    "insertion_query_positions_1based": ";".join(
+                        map(str, (value[0] for value in feature_insertions))
+                    ),
+                    "insertion_query_residues": "".join(
+                        value[1] for value in feature_insertions
+                    ),
+                    "mapped_state_count": str(len(mapped_values)),
+                    "unresolved_state_count": str(len(unresolved_values)),
+                    "deleted_state_count": str(deleted_count),
+                    "out_of_span_state_count": str(out_of_span_count),
+                    "projection_status": status,
+                    "projection_reason": reason,
+                }
+            )
+
+    projection_df = pl.DataFrame(
+        rows,
+        schema={column: pl.String for column in FEATURE_PROJECTION_COLUMNS},
+    )
+    projection_df.write_csv(output_path, separator="\t")
+    if logger:
+        logger.info(
+            "Marker feature projection table written to %s (%d rows)",
+            output_path,
+            projection_df.height,
+        )
 
 
 def write_matched_regions_fasta(
@@ -356,9 +868,11 @@ console = Console(width=150)
     help="Minimal score for including a domain match in the results",
 )
 @option(
-    "-mla", "--min-ali-len",
+    "-mla",
+    "--min-ali-len",
     default=15,
-    help="Minimal alignment length for including a domain match in the results")
+    help="Minimal alignment length for including a domain match in the results",
+)
 @option(
     "-am",
     "--aa-method",
@@ -545,7 +1059,7 @@ def marker_search(
             include_alignment_string=include_alignment_string,
             write_matched_input_seqs=write_matched_input_seqs,
             matched_input_seqs_output=matched_input_seqs_output,
-            min_ali_len=min_ali_len
+            min_ali_len=min_ali_len,
         )
 
     # Logging
@@ -576,6 +1090,11 @@ def marker_search(
         },
     }
     db_paths = database_paths_by_tool[config.search_tool]
+    marker_features_path = (
+        Path(os.environ["ROLYPOLY_DATA"])
+        / "profiles"
+        / "marker_features.tsv.gz"
+    )
 
     requested_database = config.database
     if requested_database == "all":
@@ -668,6 +1187,10 @@ def marker_search(
             )
         database_paths = {db: db_paths[db.lower()] for db in databases}
 
+    feature_projection_enabled = marker_features_path.exists() and any(
+        db_name.lower() == "rvmt" for db_name in database_paths
+    )
+
     input_alpha = guess_fasta_alpha(input)
     if input_alpha == "amino":
         input_alpha = "aa"
@@ -709,6 +1232,9 @@ def marker_search(
         tools.append(f"{db_name}") if db_name != "Custom" else None
 
         tmp_output = config.temp_dir / f"raw_{config.name}_vs_{db_name}.tsv"
+        retain_feature_path = (
+            feature_projection_enabled and db_name.lower() == "rvmt"
+        )
         if config.search_tool == "mmseqs2":
             search_mmseqs_marker_db(
                 amino_file=amino_file,
@@ -723,6 +1249,7 @@ def marker_search(
                 include_aligned_region=config.include_aligned_region,
                 include_alignment_string=config.include_alignment_string,
                 include_full_query=config.write_matched_regions,
+                include_alignment_path=retain_feature_path,
             )
         else:
             search_hmmdb(
@@ -738,6 +1265,7 @@ def marker_search(
                 ali_str=config.include_alignment_string,
                 full_qseq=config.write_matched_regions,
                 match_region=config.include_aligned_region,
+                include_alignment_path=retain_feature_path,
             )
         config.logger.debug(f"temp output: {tmp_output}")
         all_outputs.append((db_name, tmp_output))
@@ -797,9 +1325,9 @@ def marker_search(
                 lambda row: profile_classes.get(
                     (
                         row["database_id"].lower(),
-                        str(
-                            row["profile_accession"] or row["hmm_full_name"]
-                        ).lower().removesuffix("_seed"),
+                        str(row["profile_accession"] or row["hmm_full_name"])
+                        .lower()
+                        .removesuffix("_seed"),
                     ),
                     "unclassified",
                 ),
@@ -822,7 +1350,9 @@ def marker_search(
         stack_df = stack_df.with_columns(
             pl.lit("unclassified").alias("profile_class")
         )
-        if any(db_name.lower() == "pfam_rts_rdrp" for db_name, _ in all_outputs):
+        if any(
+            db_name.lower() == "pfam_rts_rdrp" for db_name, _ in all_outputs
+        ):
             config.logger.warning(
                 "Pfam profile metadata is absent at %s; RT hits cannot be separated "
                 "from candidate evidence with this database bundle",
@@ -869,6 +1399,33 @@ def marker_search(
                 config.resolve_mode = "none"
     elif not config.repeat_filter:
         config.logger.info("Repeat filter disabled by --no-repeat-filter")
+
+    if feature_projection_enabled:
+        stack_df = stack_df.with_row_index("marker_path_id", offset=1)
+        # Project while every row still represents one authentic backend
+        # alignment path. Overlap modes such as ``merge`` may synthesize a
+        # wider interval without synthesizing a corresponding traceback.
+        project_marker_features(
+            hit_df=stack_df,
+            feature_path=marker_features_path,
+            output_path=Path(output) / "marker_evidence.tsv",
+            backend=config.search_tool,
+            logger=config.logger,
+        )
+
+    # Tracebacks are internal projection inputs, not part of the established
+    # marker-search result-table contract.
+    helper_columns = [
+        column
+        for column in (
+            "domain_index",
+            "profile_alignment",
+            "query_alignment",
+        )
+        if column in stack_df.columns
+    ]
+    if helper_columns:
+        stack_df = stack_df.drop(helper_columns)
 
     rt_evidence_df = stack_df.filter(pl.col("marker_role") == "rt_evidence")
     stack_df = stack_df.filter(pl.col("marker_role") == "candidate")
@@ -944,7 +1501,7 @@ def marker_search(
     if not rt_evidence_df.is_empty():
         testdf = pl.concat([testdf, rt_evidence_df], how="diagonal_relaxed")
 
-    # Write optional matched regions before dropping helper columns.
+    # Write optional matched regions from the retained marker hits.
     if config.write_matched_regions:
         matched_region_output = (
             Path(config.matched_regions_output)
