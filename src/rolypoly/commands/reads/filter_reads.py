@@ -220,25 +220,23 @@ def auto_tune_params(
 
 
 def format_bbmapy_output(stdout_obj, stderr_obj) -> str:
-    parts = []
+    parts: list[str] = []
+
     for item in (stderr_obj, stdout_obj):
         if item is None:
             continue
-        if isinstance(item, str):
-            text = item.strip()
-            if text:
-                parts.append(text)
-            continue
-        if isinstance(item, (list, tuple)):
-            text = "\n".join(str(x) for x in item if x is not None).strip()
-            if text:
-                parts.append(text)
-            continue
-        text = str(item).strip()
-        if text:
-            parts.append(text)
-    return "\n".join(parts)
 
+        items = item if isinstance(item, (list, tuple)) else (item,)
+        for value in items:
+            if value is None:
+                continue
+            parts.extend(
+                line.strip()
+                for line in str(value).splitlines()
+                if line.strip()
+            )
+
+    return "\n".join(parts)
 
 def validate_adapter_fasta(
     adapter_path: Path, min_non_n_bases: int = 25
