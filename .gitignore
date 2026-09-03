@@ -157,3 +157,4 @@ agents.md
 .github/*.md
 AGENTS.md
 scripts/*
+testing_folder/inputs/reads/interleaved.fastq.gz

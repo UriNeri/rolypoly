@@ -1,17 +1,14 @@
 """Stable contracts for paired-read SAM filtering in ``rolypoly map``."""
 
 import gzip
-from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from rolypoly.commands.reads.map import build_bwa_mem2_call
 from rolypoly.utils.bio.alignments import (
     filter_sam_by_pair_status,
     sam_record_matches_pair_filters,
 )
 from rolypoly.rolypoly import rolypoly
-from rolypoly.utils.various import run_command_comp
 
 
 def sam_fields(
@@ -35,6 +32,13 @@ def sam_fields(
         "A" * 50,
         "I" * 50,
     ]
+
+
+def test_map_exposes_mapper_independent_compression_flag():
+    result = CliRunner().invoke(rolypoly, ["map", "--help"])
+
+    assert result.exit_code == 0
+    assert "--compressed" in result.output
 
 
 def test_concordant_requires_same_reference_inward_facing_pair():
@@ -80,41 +84,6 @@ def test_pair_filter_preserves_header_and_supports_gzip(tmp_path):
         filtered = handle.read()
 
     assert filtered == f"@HD\tVN:1.6\n{kept}\n"
-
-
-def test_bwa_mem2_flags_use_run_command_comp_params():
-    positional_args, params = build_bwa_mem2_call(
-        "index/ref",
-        ["reads_R1.fq", "reads_R2.fq"],
-        "mapped.sam",
-        4,
-        report_all=True,
-        interleaved=True,
-        extra_flags="-Y -R '@RG ID:sample'",
-    )
-
-    assert positional_args == [
-        "-Y -R '@RG ID:sample'",
-        "index/ref",
-        "reads_R1.fq",
-        "reads_R2.fq",
-    ]
-    assert params == {"t": 4, "o": "mapped.sam", "a": True, "p": True}
-
-    with patch("subprocess.run"):
-        command = run_command_comp(
-            "bwa-mem2 mem",
-            positional_args=positional_args,
-            params=params,
-            check_output=False,
-            return_final_cmd=True,
-            prefix_style="single",
-        )
-
-    assert " ".join(command.split()) == (
-        "bwa-mem2 mem -t 4 -o mapped.sam -a -p "
-        "-Y -R '@RG ID:sample' index/ref reads_R1.fq reads_R2.fq"
-    )
 
 
 def test_map_accepts_comma_pair_before_rejecting_mmseqs_pair_filter(tmp_path):

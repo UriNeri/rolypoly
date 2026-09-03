@@ -1,5 +1,6 @@
 """Alignments (MSAs, HMMs, and collection of them) and mapping utility functions."""
 
+import gzip
 import io
 import json
 import logging
@@ -14,6 +15,84 @@ from rich.progress import track
 
 from rolypoly.utils.logging.loggit import get_logger
 from rolypoly.utils.various import find_files_by_extension, run_command_comp
+
+
+def sam_record_matches_pair_filters(
+    fields: list[str], concordant: bool = False, proper: bool = False
+) -> bool:
+    """Return whether one SAM record satisfies requested mate-pair filters.
+
+    ``concordant`` means that both mates are mapped to the same reference in
+    inward-facing FR orientation. ``proper`` follows the mapper-defined SAM
+    proper-pair flag (0x2), which may additionally enforce an inferred fragment
+    length distribution.
+    """
+    if not concordant and not proper:
+        return True
+    if len(fields) < 9:
+        return False
+
+    flag = int(fields[1])
+    if not flag & 0x1 or flag & 0x4 or flag & 0x8:
+        return False
+    if proper and not flag & 0x2:
+        return False
+    if not concordant:
+        return True
+
+    reference = fields[2]
+    mate_reference = fields[6]
+    if reference == "*" or mate_reference not in {"=", reference}:
+        return False
+
+    reverse = bool(flag & 0x10)
+    mate_reverse = bool(flag & 0x20)
+    if reverse == mate_reverse:
+        return False
+
+    position = int(fields[3])
+    mate_position = int(fields[7])
+    if position <= 0 or mate_position <= 0:
+        return False
+    return (not reverse and position <= mate_position) or (
+        reverse and position >= mate_position
+    )
+
+
+def filter_sam_by_pair_status(
+    sam_path: str | Path, concordant: bool = False, proper: bool = False
+) -> tuple[int, int]:
+    """Filter a SAM or gzip-compressed SAM in place by mate-pair status."""
+    sam_path = Path(sam_path)
+    compressed = sam_path.suffix.lower() == ".gz"
+    temporary_path = sam_path.with_name(f".{sam_path.name}.pair-filter.tmp")
+    open_input = gzip.open if compressed else open
+    open_output = gzip.open if compressed else open
+    read_count = 0
+    written_count = 0
+
+    try:
+        with (
+            open_input(sam_path, "rt", encoding="utf-8") as source,
+            open_output(temporary_path, "wt", encoding="utf-8") as destination,
+        ):
+            for line in source:
+                if line.startswith("@"):
+                    destination.write(line)
+                    continue
+                read_count += 1
+                fields = line.rstrip("\n").split("\t")
+                if sam_record_matches_pair_filters(
+                    fields, concordant=concordant, proper=proper
+                ):
+                    destination.write(line)
+                    written_count += 1
+        temporary_path.replace(sam_path)
+    except Exception:
+        temporary_path.unlink(missing_ok=True)
+        raise
+
+    return read_count, written_count
 
 
 def find_msa_files(
@@ -209,7 +288,7 @@ def search_hmmdb(
       logger(logging.Logger, optional): Logger object for debug messages.
       inc_e(float, optional): Inclusion E-value threshold for reporting domains.
       mscore(float, optional): Minimum score threshold for reporting domains.
-      min_ali_len(int, optional): Minimum alignment length for reporting domains. 
+      min_ali_len(int, optional): Minimum alignment length for reporting domains.
       match_region(bool, optional): Include aligned region in output. Only works with modomtblout format.
       full_qseq(bool, optional): Include full query sequence in output. Only works with modomtblout format.
       ali_str(bool, optional): Include alignment string in output. Only works with modomtblout format.

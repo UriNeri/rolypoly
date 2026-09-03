@@ -1,7 +1,7 @@
-"""File format detection and analysis functions.
+"""Sequence-library path, format, and layout detection functions.
 
-This module provides comprehensive FASTQ file detection, analysis, and classification
-functionality with support for paired-end, interleaved, and single-end files.
+Includes generic FASTA/FASTQ path discovery plus FASTQ classification with
+support for paired-end, interleaved, and single-end libraries.
 """
 
 import gzip
@@ -12,6 +12,35 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 from rolypoly.utils.logging.loggit import get_logger
 from rolypoly.utils.various import find_files_by_extension, is_gzipped
+
+NUCLEOTIDE_FASTA_FILE_PATTERNS = [
+    "*.fasta",
+    "*.fa",
+    "*.fna",
+    "*.fasta.gz",
+    "*.fa.gz",
+    "*.fna.gz",
+]
+FASTA_FILE_PATTERNS = [
+    *NUCLEOTIDE_FASTA_FILE_PATTERNS,
+    "*.faa",
+    "*.fas",
+    "*.faa.gz",
+    "*.fas.gz",
+]
+FASTQ_FILE_PATTERNS = [
+    "*.fastq",
+    "*.fq",
+    "*.fastq.gz",
+    "*.fq.gz",
+]
+SEQUENCE_FILE_PATTERNS = FASTA_FILE_PATTERNS + FASTQ_FILE_PATTERNS
+FASTA_FILE_SUFFIXES = tuple(
+    pattern.lstrip("*") for pattern in FASTA_FILE_PATTERNS
+)
+SEQUENCE_FILE_SUFFIXES = tuple(
+    pattern.lstrip("*") for pattern in SEQUENCE_FILE_PATTERNS
+)
 
 CASAVA_HEADER_RE = re.compile(
     r"^(?P<instrument>[^:\s]+):(?P<run_id>[^:\s]+):(?P<flowcell_id>[^:\s]+):"
@@ -29,6 +58,59 @@ MATE_SUFFIX_RE = re.compile(r"([_\.-])(R?[12])$")
 READ_EXT_SUFFIX_RE = re.compile(
     r"\.(?:f(?:ast)?q|fq|fa|fasta|fna)(?:_[A-Za-z0-9]+)?$", re.IGNORECASE
 )
+
+
+def is_sequence_file(path: Union[str, Path]) -> bool:
+    """Return whether a path has a supported FASTA or FASTQ suffix."""
+    return str(path).lower().endswith(SEQUENCE_FILE_SUFFIXES)
+
+
+def is_fasta_file(path: Union[str, Path]) -> bool:
+    """Return whether a path has a supported FASTA suffix, including gzip."""
+    return str(path).lower().endswith(FASTA_FILE_SUFFIXES)
+
+
+def resolve_sequence_inputs(
+    input_value: Union[str, Path], allow_single_nonsequence: bool = False
+) -> list[Path]:
+    """Resolve one path, comma-separated paths, or a directory of sequences.
+
+    ``allow_single_nonsequence`` supports callers that also accept a database
+    prefix. Multiple inputs must always be FASTA/FASTQ files.
+    """
+    requested = [
+        item.strip() for item in str(input_value).split(",") if item.strip()
+    ]
+    if not requested:
+        raise ValueError("No sequence input paths were provided.")
+
+    resolved: list[Path] = []
+    for item in requested:
+        candidate = Path(item).expanduser().absolute().resolve()
+        if candidate.is_dir():
+            resolved.extend(
+                find_files_by_extension(
+                    candidate, SEQUENCE_FILE_PATTERNS, "FASTA/FASTQ files"
+                )
+            )
+        elif candidate.exists():
+            resolved.append(candidate)
+        else:
+            raise FileNotFoundError(f"Input path does not exist: {candidate}")
+
+    resolved = list(dict.fromkeys(resolved))
+    if not resolved:
+        raise ValueError(
+            "No supported FASTA/FASTQ files were found in the input."
+        )
+    if any(not is_sequence_file(path) for path in resolved) and not (
+        allow_single_nonsequence and len(resolved) == 1
+    ):
+        raise ValueError(
+            "Multiple inputs must all be FASTA/FASTQ sequence files; "
+            "a non-sequence database prefix can only be supplied by itself."
+        )
+    return resolved
 
 
 def _append_unique(values: list[str], value: str, limit: int = 5) -> None:
@@ -851,7 +933,7 @@ def identify_fastq_files(
         # Process all FASTQ files
         all_fastq = find_files_by_extension(
             input_path,
-            ["*.fq", "*.fastq", "*.fq.gz", "*.fastq.gz"],
+            FASTQ_FILE_PATTERNS,
             "FASTQ files",
             logger,
         )
@@ -933,6 +1015,19 @@ def identify_fastq_files(
     return file_info
 
 
+def find_fasta_files(
+    input_path: Union[str, Path],
+    extensions: list[str] | None = None,
+    logger: Optional[logging.Logger] = None,
+) -> list[Path]:
+    """Find FASTA files while preserving the historical nucleotide defaults."""
+    if extensions is None:
+        extensions = NUCLEOTIDE_FASTA_FILE_PATTERNS
+    return find_files_by_extension(
+        input_path, extensions, "FASTA files", logger
+    )
+
+
 def identify_fasta_files(
     input_path: Union[str, Path], logger: Optional[logging.Logger] = None
 ) -> Dict:
@@ -947,10 +1042,7 @@ def identify_fasta_files(
 
     logger.info(f"Identifying FASTA files in: {input_path}")
 
-    fasta_files = find_files_by_extension(
-        input_path,
-        ["*.fa", "*.fasta", "*.fa.gz", "*.fasta.gz", "*.fna", "*.fna.gz"],
-    )
+    fasta_files = find_fasta_files(input_path, logger=logger)
     return {"fasta_files": fasta_files}
 
 

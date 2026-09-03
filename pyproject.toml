@@ -36,10 +36,11 @@ dependencies = [
     "parasail>=1.3.4,<2",
     "pyopal>=0.7.3,<0.8",
     "pydustmasker>=3.2.0,<4",
-    "pyarrow>=25.0.0,<26",
+    # "pyarrow>=25.0.0,<26",
     "linearfold>=1.1,<2",
     "viennarna>=2.7.2,<3",
     "numpy>=2.3.0,<3",
+    "polars-bio>=0.35.1,<0.36",
 ]
 
 [project.urls]

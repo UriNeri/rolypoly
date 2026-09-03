@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased [planned v0.7.19]
+
+### Added
+- `nucleic-search`: accept comma-separated FASTA/FASTQ files or a directory and combine them into one MMseqs2 query database.
+- `map`: add `--concordant` / `--concord` and `--proper` SAM pair filters, with an explicit warning that same-contig pair filters can discard valid links across fragmented assembly contigs.
+- `map`: accept comma-separated FASTQ input through the shared library detector, in addition to directories and repeatable explicit library options.
+- `map`: add mapper-independent `-z` / `--compressed` final SAM output; mapper outputs remain uncompressed unless requested.
+- `nucleic-search`: accept uncompressed or gzip-compressed FASTA as a custom `--db-path` and build the temporary MMseqs2 target database automatically.
+
+### Changed
+- Rename `virus-mapping` to `nucleic-search`; retain the old command as a hidden deprecated alias.
+- `map`: make bwa-mem2 `-a` opt-in and describe its single-end/unpaired paired-end scope accurately; `--no-bwa-mem2-all` is now available explicitly.
+
 ## 19.07.2026 [v0.7.16]
 - remove `git` as a dependency for version check.
 

@@ -39,6 +39,7 @@ rolypoly map [OPTIONS]
 - `-ow`, `--overwrite`: Overwrite existing output directory (type: `BOOLEAN`; default: `False`)
 - `--concordant`, `--concord`: Keep only paired alignments whose mates map to the same reference in inward-facing FR orientation. Does not enforce insert size. (type: `BOOLEAN`; default: `False`)
 - `--proper`: Keep only alignments marked proper-pair (SAM flag 0x2) by the mapper. Supported by bbmap and bwa-mem2. (type: `BOOLEAN`; default: `False`)
+- `-z`, `--compressed`: Compress final SAM output from every mapper with pigz. (type: `BOOLEAN`; default: `False`)
 - `--bwa-mem2-all`, `--no-bwa-mem2-all`: bwa-mem2: pass -a, which reports all alignments for single-end or unpaired paired-end reads. (type: `BOOLEAN`; default: `False`)
 - `--bwa-mem2-extra-flags`: Additional flags to pass verbatim to bwa-mem2 mem (e.g. '-Y -q'). (type: `TEXT`; default: ``)
 - `-t`, `--threads`: Number of worker threads. (type: `INTEGER RANGE`; default: `1`)

@@ -1,19 +1,18 @@
 """Read mapping command: map reads to a reference using one or more aligners.
 
 Supports bbmap (via bbmapy), minimap2 (via mappy Python bindings), bwa-mem2,
-and mmseqs. Input discovery follows the same pattern as assemble:
+and mmseqs. Input discovery follows the same pattern as filter-reads and assemble:
 --input / --input-dir for auto-detection, plus explicit --paired-end /
 --single-end / --merged / --long-read library flags. Each input file is mapped
 individually (no concatenation).
 """
 
-import os
 import shutil
 from pathlib import Path
 
 import rich_click as click
 
-from rolypoly.utils.bio.library_detection import identify_fastq_files
+from rolypoly.utils.bio.library_detection import handle_input_fastq
 from rolypoly.utils.logging.loggit import get_logger, setup_logging
 from rolypoly.utils.various import (
     ensure_memory,
@@ -144,7 +143,10 @@ def write_paired_sam_records(
     "-i",
     "--input",
     default=None,
-    help="Input FASTQ file or directory to auto-detect libraries from",
+    help=(
+        "Input FASTQ file, comma-separated FASTQ files, or directory to "
+        "auto-detect libraries from"
+    ),
 )
 @click.option(
     "-id",
@@ -207,10 +209,38 @@ def write_paired_sam_records(
     help="Overwrite existing output directory",
 )
 @click.option(
-    "--bwa-mem2-all",
+    "--concordant",
+    "--concord",
     is_flag=True,
-    default=True,
-    help="bwa-mem2: report all valid alignments (-a flag). Recommended for quasispecies/strain disentangling.",
+    default=False,
+    help=(
+        "Keep only paired alignments whose mates map to the same reference "
+        "in inward-facing FR orientation. Does not enforce insert size."
+    ),
+)
+@click.option(
+    "--proper",
+    is_flag=True,
+    default=False,
+    help=(
+        "Keep only alignments marked proper-pair (SAM flag 0x2) by the mapper. "
+        "Supported by bbmap and bwa-mem2."
+    ),
+)
+@click.option(
+    "-z",
+    "--compressed",
+    is_flag=True,
+    default=False,
+    help="Compress final SAM output from every mapper with pigz.",
+)
+@click.option(
+    "--bwa-mem2-all/--no-bwa-mem2-all",
+    default=False,
+    help=(
+        "bwa-mem2: pass -a, which reports all alignments for single-end or "
+        "unpaired paired-end reads."
+    ),
 )
 @click.option(
     "--bwa-mem2-extra-flags",
@@ -232,17 +262,25 @@ def map(
     long_read,
     mapper,
     overwrite,
+    concordant,
+    proper,
+    compressed,
     log_level,
-    temp_dir=None, # TBD
-    bwa_mem2_all=True,
+    temp_dir=None,  # TBD
+    bwa_mem2_all=False,
     bwa_mem2_extra_flags="",
 ):
     """Map reads to a reference FASTA with one or more aligners.
 
-    Input libraries are auto-detected from --input / --input-dir (same detection
-    logic as assemble) or declared explicitly via --paired-end / --single-end /
-    --merged / --long-read. Each input file is mapped independently; outputs land
-    in per-mapper sub-directories under --output.
+    Input libraries are auto-detected from a file, comma-separated file list, or
+    directory supplied with --input / --input-dir, or declared explicitly via
+    --paired-end / --single-end / --merged / --long-read. Each input file is
+    mapped independently; outputs land in per-mapper sub-directories under
+    --output.
+
+    Pair filtering is deliberately optional. In fragmented assemblies, a real
+    biological fragment may span an unassembled gap and place its mates on two
+    different contigs; --concordant and --proper will exclude such evidence.
 
     Args:
         input: Path to a FASTQ file or directory for auto-detection.
@@ -259,9 +297,12 @@ def map(
         long_read: Long-read FASTQ files.
         mapper: Aligner(s) to run.
         overwrite: Overwrite output directory if it exists.
+        concordant: Keep same-reference, inward-facing FR mate alignments.
+        proper: Keep records carrying the mapper-defined SAM proper-pair flag.
+        compressed: Compress final SAM output from every mapper with pigz.
         log_level: Logging verbosity.
         temp_dir: Optional stable temp directory (useful with --skip-existing).
-        bwa_mem2_all: If True, pass -a to bwa-mem2 to report all valid alignments.
+        bwa_mem2_all: If True, pass -a to bwa-mem2.
         bwa_mem2_extra_flags: Additional verbatim flags for bwa-mem2 mem.
     """
     setup_logging(log_file, log_level)
@@ -298,16 +339,16 @@ def map(
     single_reads = []  # list of path_str
 
     if input is not None:
-        file_info = identify_fastq_files(
-            Path(input).resolve(), return_rolypoly=True, logger=logger
-        )
+        file_info = handle_input_fastq(input, logger=logger)
         paired_reads.extend(
             (str(r1), str(r2)) for r1, r2 in file_info.get("R1_R2_pairs", [])
         )
         interleaved_reads.extend(
             str(x) for x in file_info.get("interleaved_files", [])
         )
-        single_reads.extend(str(x) for x in file_info.get("single_end", []))
+        single_reads.extend(
+            str(x) for x in file_info.get("single_end_files", [])
+        )
         for lib_data in file_info.get("rolypoly_data", {}).values():
             if lib_data.get("interleaved"):
                 interleaved_reads.append(str(lib_data["interleaved"]))
@@ -352,6 +393,21 @@ def map(
             if token and token not in seen:
                 seen.add(token)
                 requested_mappers.append(token)
+
+    if (concordant or proper) and not paired_reads and not interleaved_reads:
+        raise click.ClickException(
+            "--concordant/--proper require paired-end or interleaved input."
+        )
+    if (concordant or proper) and "mmseqs" in requested_mappers:
+        raise click.ClickException(
+            "The mmseqs mapper searches reads independently and cannot apply "
+            "--concordant or --proper. Choose bbmap, bwa-mem2, or minimap2."
+        )
+    if proper and "minimap2" in requested_mappers:
+        raise click.ClickException(
+            "The current minimap2/mappy backend does not assign SAM proper-pair "
+            "flags. Use --concordant or choose bbmap/bwa-mem2."
+        )
 
     mapper_outputs: dict = {}
 
@@ -412,15 +468,7 @@ def map(
                 )
                 first = False
             if bbmap_sam.exists() and bbmap_sam.stat().st_size > 0:
-                run_command_comp(
-                    "pigz",
-                    params={"p": str(threads)},
-                    positional_args=[str(bbmap_sam)],
-                    logger=logger,
-                    check_status=True,
-                    prefix_style="single",
-                )
-                outputs.append(str(bbmap_sam) + ".gz")
+                outputs.append(str(bbmap_sam))
 
         # ── minimap2 via mappy Python bindings ───────────────────────────────
         elif mapper_name == "minimap2":
@@ -533,78 +581,42 @@ def map(
                 prefix_style="single",
             )
 
-            # -a: report all valid alignments (not just primary) so that
-            # multi-mapping reads carry information about shared regions
-            # between strains/quasispecies — critical for downstream
-            # haplotyping/variant-phasing tools.
-            # -o: use native output-file flag instead of shell redirection.
-            mem_flags = ["-t", str(threads), "-a"]
-            if not bwa_mem2_all:
-                mem_flags.remove("-a")
-            if bwa_mem2_extra_flags:
-                mem_flags.extend(bwa_mem2_extra_flags.split())
+            mapping_jobs = [
+                ("paired", [str(r1), str(r2)], False)
+                for r1, r2 in paired_reads
+            ]
+            mapping_jobs.extend(
+                ("interleaved", [str(fq)], True) for fq in interleaved_reads
+            )
+            mapping_jobs.extend(
+                ("single", [str(fq)], False) for fq in single_reads
+            )
 
-            idx = 0
-            for r1, r2 in paired_reads:
-                out_sam = mapper_outdir / f"bwa_mem2_paired_{idx}.sam"
+            for idx, (library_type, reads, is_interleaved) in enumerate(
+                mapping_jobs
+            ):
+                out_sam = mapper_outdir / f"bwa_mem2_{library_type}_{idx}.sam"
+                params = {"t": threads, "o": str(out_sam)}
+                if bwa_mem2_all:
+                    params["a"] = True
+                if is_interleaved:
+                    params["p"] = True
+
+                positional_args = []
+                if bwa_mem2_extra_flags.strip():
+                    positional_args.append(bwa_mem2_extra_flags.strip())
+                positional_args.extend([str(bwa_index_prefix), *reads])
+
                 run_command_comp(
-                    "bwa-mem2",
-                    positional_args=[
-                        "mem",
-                        *mem_flags,
-                        "-o",
-                        str(out_sam),
-                        str(bwa_index_prefix),
-                        str(r1),
-                        str(r2),
-                    ],
-                    positional_args_location="start",
+                    "bwa-mem2 mem",
+                    positional_args=positional_args,
+                    params=params,
                     logger=logger,
                     check_status=True,
+                    check_output=False,
                     prefix_style="single",
                 )
                 outputs.append(str(out_sam))
-                idx += 1
-            for fq in interleaved_reads:
-                # -p: smart pairing mode (reads interleaved paired-end from single file)
-                out_sam = mapper_outdir / f"bwa_mem2_interleaved_{idx}.sam"
-                run_command_comp(
-                    "bwa-mem2",
-                    positional_args=[
-                        "mem",
-                        *mem_flags,
-                        "-p",
-                        "-o",
-                        str(out_sam),
-                        str(bwa_index_prefix),
-                        str(fq),
-                    ],
-                    positional_args_location="start",
-                    logger=logger,
-                    check_status=True,
-                    prefix_style="single",
-                )
-                outputs.append(str(out_sam))
-                idx += 1
-            for fq in single_reads:
-                out_sam = mapper_outdir / f"bwa_mem2_single_{idx}.sam"
-                run_command_comp(
-                    "bwa-mem2",
-                    positional_args=[
-                        "mem",
-                        *mem_flags,
-                        "-o",
-                        str(out_sam),
-                        str(bwa_index_prefix),
-                        str(fq),
-                    ],
-                    positional_args_location="start",
-                    logger=logger,
-                    check_status=True,
-                    prefix_style="single",
-                )
-                outputs.append(str(out_sam))
-                idx += 1
 
         # ── mmseqs easy-search (SAM via format-mode 1) ───────────────────────
         elif mapper_name == "mmseqs":
@@ -641,6 +653,32 @@ def map(
 
         else:
             raise click.ClickException(f"Unsupported mapper: {mapper_name}")
+
+        if concordant or proper:
+            from rolypoly.utils.bio.alignments import filter_sam_by_pair_status
+
+            for sam_output in outputs:
+                read_count, written_count = filter_sam_by_pair_status(
+                    sam_output, concordant=concordant, proper=proper
+                )
+                logger.info(
+                    "Pair-filtered %s: retained %d of %d alignment records",
+                    sam_output,
+                    written_count,
+                    read_count,
+                )
+
+        if compressed and outputs:
+            for sam_output in outputs:
+                run_command_comp(
+                    "pigz",
+                    params={"p": str(threads)},
+                    positional_args=[sam_output],
+                    logger=logger,
+                    check_status=True,
+                    prefix_style="single",
+                )
+            outputs = [f"{sam_output}.gz" for sam_output in outputs]
 
         mapper_outputs[mapper_name] = outputs
 

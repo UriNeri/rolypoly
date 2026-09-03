@@ -15,12 +15,17 @@ import gzip
 import logging
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, TextIO, Tuple, Union
+from typing import Dict, List, Optional, Sequence, TextIO, Tuple, Union
 
 import polars as pl
 from needletail import parse_fastx_file
 
-from rolypoly.utils.various import find_files_by_extension
+from rolypoly.utils.bio.library_detection import (
+    find_fasta_files as find_fasta_files,
+    is_fasta_file as is_fasta_file,
+    is_sequence_file as is_sequence_file,
+    resolve_sequence_inputs as resolve_sequence_inputs,
+)
 
 global tab
 global tab_b
@@ -179,139 +184,98 @@ def clean_fasta_headers(
 
 
 def filter_fasta_by_headers(
-    fasta_file: str,
-    headers: Union[str, List[str]],
-    output_file: str,
+    fasta_file: Union[str, Path, Sequence[Union[str, Path]]],
+    headers: Union[str, Path, Sequence[str], set[str]],
+    output_file: Union[str, Path],
     wrap: bool = False,
     invert: bool = False,
     return_counts: bool = False,
 ) -> Union[None, Dict[str, int]]:
-    """Filter sequences in a FASTA file based on their headers.
+    """Filter one or more FASTA/FASTQ files into one FASTA output by header.
 
     Extracts sequences whose headers match (or don't match if inverted) any of
-    the provided header patterns.
+    the provided header patterns. Exact positive matching writes each requested
+    complete header at most once across all input files.
 
     Args:
-        fasta_file (str): Path to input FASTA file
-        headers (Union[str, List[str]]): Either a file containing headers (one per line)
-            or a list of header patterns to match
-        output_file (str): Path to write filtered sequences
+        fasta_file: One input path or a sequence of input paths.
+        headers: A file containing headers or a collection of header strings.
+        output_file: Path to the combined FASTA output.
         wrap (bool, optional): If True, match headers that contain the patterns as substrings (substring match). Default False (exact match).
         invert (bool, optional): If True, keep sequences that don't match.
         return_counts (bool, optional): If True, return counts of filtered, and written records.
     """
-    import gzip
-
-    from rolypoly.utils.various import is_gzipped
-
-    # Load headers and optimize for lookup pattern
-    headers_exact = set()  # For exact matches
-    headers_patterns = []  # For substring patterns only if needed - # TODO: is this needed?
-    if not isinstance(headers, list):
-        with open(headers, "r") as f:
-            for line in f:
-                header = line.strip()
-                if wrap:
-                    headers_patterns.append(header)
-                else:
-                    headers_exact.add(header)
+    if isinstance(headers, (str, Path)):
+        with open(headers, "r", encoding="utf-8") as header_handle:
+            header_values = [line.strip() for line in header_handle]
     else:
-        if wrap:
-            headers_patterns.extend(headers)
-        else:
-            headers_exact.update(headers)
+        header_values = list(headers)
 
-    # Determine if files are gzipped
-    is_gz_input = is_gzipped(
-        fasta_file
-    )  # not really needed, handled in the needletail parser
-    is_gz_output = output_file.endswith(".gz")
+    headers_exact = set(header_values)
+    headers_patterns = header_values if wrap else []
+    if isinstance(fasta_file, (str, Path)):
+        input_paths = [Path(fasta_file)]
+    else:
+        input_paths = [Path(path) for path in fasta_file]
+    output_handle = None
+    should_close = False
 
     try:
-        # Open output file with appropriate method
-        if is_gz_output:
-            out_f = gzip.open(output_file, "wt", encoding="utf-8")
-        else:
-            out_f = open(output_file, "w", encoding="utf-8")
-
-        # Stream through records for memory efficiency
+        output_handle, should_close = open_text_writer(output_file)
         records_processed = 0
         records_written = 0
+        remaining_headers = headers_exact.copy()
+        all_exact_headers_written = False
 
-        if not invert:
-            # Optimized path for non-inverted case
-            if not wrap:
-                # Fast membership test (default, backward compatible)
-                target_headers = headers_exact.copy()
-                for record in parse_fastx_file(fasta_file):
-                    records_processed += 1
-                    record_id = str(getattr(record, "id", ""))
-                    if record_id in target_headers:
-                        record_seq = str(getattr(record, "seq", ""))
-                        target_headers.remove(record_id)
-                        out_f.write(f">{record_id}\n{record_seq}\n")
-                        records_written += 1
-                        if not target_headers:
-                            break
-                    if records_processed % 100000 == 0:
-                        print(
-                            f"Processed {records_processed} records, written {records_written}"
-                        )
-            else:
-                # Substring match (wrap=True)
-                for record in parse_fastx_file(fasta_file):
-                    records_processed += 1
-                    record_id = str(getattr(record, "id", ""))
-                    if any(
-                        pattern in record_id for pattern in headers_patterns
-                    ):
-                        record_seq = str(getattr(record, "seq", ""))
-                        out_f.write(f">{record_id}\n{record_seq}\n")
-                        records_written += 1
-                    if records_processed % 100000 == 0:
-                        print(
-                            f"Processed {records_processed} records, written {records_written}"
-                        )
-        else:
-            # Inverted case
-            if not wrap:
-                for record in parse_fastx_file(fasta_file):
-                    records_processed += 1
-                    record_id = str(getattr(record, "id", ""))
-                    if record_id not in headers_exact:
-                        record_seq = str(getattr(record, "seq", ""))
-                        out_f.write(f">{record_id}\n{record_seq}\n")
-                        records_written += 1
-                    if records_processed % 100000 == 0:
-                        print(
-                            f"Processed {records_processed} records, written {records_written}"
-                        )
-            else:
-                for record in parse_fastx_file(fasta_file):
-                    records_processed += 1
-                    record_id = str(getattr(record, "id", ""))
-                    if not any(
-                        pattern in record_id for pattern in headers_patterns
-                    ):
-                        record_seq = str(getattr(record, "seq", ""))
-                        out_f.write(f">{record_id}\n{record_seq}\n")
-                        records_written += 1
-                    if records_processed % 100000 == 0:
-                        print(
-                            f"Processed {records_processed} records, written {records_written}"
-                        )
+        for fasta_file in input_paths:
+            for record in parse_fastx_file(fasta_file):
+                records_processed += 1
+                record_id = str(getattr(record, "id", ""))
 
-        out_f.close()
+                if wrap:
+                    matches = any(
+                        pattern in record_id for pattern in headers_patterns
+                    )
+                elif not invert:
+                    matches = record_id in remaining_headers
+                else:
+                    matches = record_id in headers_exact
+
+                should_write = not matches if invert else matches
+                if should_write:
+                    record_seq = str(getattr(record, "seq", ""))
+                    output_handle.write(f">{record_id}\n{record_seq}\n")
+                    records_written += 1
+                    if not wrap and not invert:
+                        remaining_headers.remove(record_id)
+                        if not remaining_headers:
+                            all_exact_headers_written = True
+
+                if records_processed % 100000 == 0:
+                    print(
+                        f"Processed {records_processed} records, written {records_written}"
+                    )
+
+                if all_exact_headers_written:
+                    break
+
+            if all_exact_headers_written:
+                break
+
         if return_counts:
             return {
                 "records_processed": records_processed,
                 "records_written": records_written,
             }
-
     except Exception as e:
-        if "out_f" in locals():
-            out_f.close()
-        raise Exception(f"Error filtering FASTA file {fasta_file}: {e}") from e
+        raise Exception(
+            f"Error filtering FASTA files {input_paths}: {e}"
+        ) from e
+    finally:
+        if output_handle is not None and should_close:
+            output_handle.close()
+
+
 
 
 
@@ -916,36 +880,6 @@ def rename_sequences(
     id_map = dict(zip(df["header"], new_headers))
 
     return df.with_columns(pl.Series("header", new_headers)), id_map
-
-
-def find_fasta_files(
-    input_path: Union[str, Path],
-    extensions: List[str] = None,
-    logger: Optional[logging.Logger] = None,
-) -> List[Path]:
-    """Find all FASTA files in a directory or return single file.
-
-    Args:
-        input_path: Path to directory or file
-        extensions: List of extensions to look for
-        logger: Logger instance
-
-    Returns:
-        List of FASTA file paths
-    """
-    if extensions is None:
-        extensions = [
-            "*.fa",
-            "*.fasta",
-            "*.fna",
-            "*.fa.gz",
-            "*.fasta.gz",
-            "*.fna.gz",
-        ]
-
-    return find_files_by_extension(
-        input_path, extensions, "FASTA files", logger
-    )
 
 
 def ensure_faidx(
