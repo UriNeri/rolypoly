@@ -13,6 +13,16 @@ def test_top_level_help_smoke() -> None:
     assert result.exit_code == 0, result.output
 
 
+def test_nucleic_search_is_canonical_and_legacy_alias_is_hidden() -> None:
+    runner = CliRunner()
+    result = runner.invoke(rolypoly, ["--help"], catch_exceptions=False)
+    context = click.Context(rolypoly)
+
+    assert "nucleic-search" in result.output
+    assert "virus-mapping" not in result.output
+    assert rolypoly.get_command(context, "virus-mapping") is not None
+
+
 def pick_log_file_option(command_name: str) -> str | None:
     ctx = click.Context(rolypoly)
     command = rolypoly.get_command(ctx, command_name)

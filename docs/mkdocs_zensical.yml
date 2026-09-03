@@ -104,7 +104,7 @@ nav:
       - "extend": commands/extend.md
       - "filter-contigs": commands/filter_contigs.md
     - Virus Search:
-      - "virus-mapping": commands/virus_mapping.md
+      - "nucleic-search": commands/nucleic_search.md
       - "marker-search": commands/marker_search.md
       - "rdrp-motif-search": commands/rdrp_motif_search.md
       - "mmtax": commands/mmtax.md

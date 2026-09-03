@@ -53,7 +53,7 @@ graph TB
         MARKER["marker-search<br><i>ORF/translation, HMM search, resolve hits</i>"]
   end
  subgraph VIRUS["<b>Virus Search</b>"]
-      SEARCHV["virus-mapping<br><i>MMseqs2 DB/search, tab/sam/html</i>"]
+      SEARCHV["nucleic-search<br><i>MMseqs2 DB/search, tab/sam/html</i>"]
   end
  subgraph BINHOST["<b>Binning &amp; Host</b>"]
       BINCORR["correlate<br><i>Experimental</i>"]

@@ -18,7 +18,6 @@ description = "RNA virus analysis toolkit"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
-# License-File = "license"
 dependencies = [
     # "lightmotif>=0.10.0,<0.11", # not yet on conda-forge, will be added later. Our use case (rnamotif_tool) is not yet mature.
     "mappy>=2.31,<3",
@@ -151,7 +150,7 @@ ipython = ">=8.37.0,<9"
 jupyter = ">=1.1.1,<2"
 ipykernel = ">=7.3.0,<8"
 aria2 = ">=1.37.0,<2"
-google-cloud-sdk = ">=578.0.0,<579" # TODO: check if this is needed
+# google-cloud-sdk = ">=578.0.0,<579" # TODO: check if this is needed
 blast = ">=2.17.0,<3"        
 entrez-direct = ">=24.0,<25"
 eutils = ">=0.6.1,<0.7"

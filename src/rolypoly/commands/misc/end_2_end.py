@@ -6,7 +6,7 @@ from pathlib import Path
 import rich_click as click
 
 from rolypoly.commands.assembly.assemble import ASSEMBLY_PRESETS
-from rolypoly.commands.identify_virus.search_viruses import virus_mapping
+from rolypoly.commands.identify_virus.search_viruses import nucleic_search
 from rolypoly.commands.reads.filter_reads import FILTER_READS_PRESETS
 from rolypoly.utils.cli_options import shared_command_context
 
@@ -917,13 +917,13 @@ def roll(
         )
     else:
         logger.info("Step %d: Searching for nucleic sequences", step)
-        ctx = shared_command_context(virus_mapping)
+        ctx = shared_command_context(nucleic_search)
         ctx.invoke(
-            virus_mapping,
+            nucleic_search,
             input=str(final_assembly_file),
             output=str(nucleic_search_output),
             threads=threads,
-            temp_dir=str(temp_base_dir / "virus_mapping")
+            temp_dir=str(temp_base_dir / "nucleic_search")
             if temp_base_dir
             else None,
             memory=memory,

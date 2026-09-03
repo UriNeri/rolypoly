@@ -802,7 +802,7 @@ def attach_rna(contigs, rna_by_contig, criteria=tuple(BEST_CRITERIA)):
 # NUCLEIC search (results_vs_*.tab)
 @dataclass
 class NucleicSpec:
-    """Column mapping for nucleic-search (virus-mapping / mmseqs) output."""
+    """Column mapping for nucleic-search MMseqs2 output."""
 
     query: str = "qheader"
     target: str = "theader"

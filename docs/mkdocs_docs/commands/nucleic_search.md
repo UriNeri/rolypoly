@@ -1,24 +1,30 @@
-# Virus Mapping
+# Nucleic Search
 
-<!-- Auto-generated draft from CLI metadata for `rolypoly virus-mapping`. -->
+<!-- Auto-generated draft from CLI metadata for `rolypoly nucleic-search`. -->
 <!-- Expand this page with command-specific context, examples, and citations. -->
 
 ## Summary
 
-Search nucleotide reads/contigs against virus reference databases.
+Search nucleotide reads or contigs against virus reference databases.
 
 ## Description
 
-Input can be FASTA/FASTQ or an existing MMseqs2 database. The command
-converts sequence inputs to MMseqs2 format as needed and runs searches
-against built-in viral databases (`RVMT`, `NCBI_Ribovirus`,
-`NCBI_Non_Riboviria`, or `all`) or a user-supplied target via `--db other
---db-path`.
+Input can be one FASTA/FASTQ file, a comma-separated list, a directory, or
+an existing MMseqs2 database. Sequence inputs are combined into one MMseqs2
+query database. Records are searched independently; paired-read
+concordance is not evaluated here. Use ``rolypoly map`` for pair-aware read
+mapping.
+
+For a custom nucleotide reference distributed as FASTA (including
+gzip-compressed FASTA), use `--db other --db-path reference.fasta.gz`; RolyPoly
+will create the temporary MMseqs2 target database. This can also serve as a
+workaround when an older installation points to an obsolete built-in database
+path.
 
 ## Usage
 
 ```bash
-rolypoly virus-mapping [OPTIONS]
+rolypoly nucleic-search [OPTIONS]
 ```
 
 ## Options
@@ -26,7 +32,7 @@ rolypoly virus-mapping [OPTIONS]
 - `-o`, `--output`: output file location - set suffix to .tab, .sam or html (type: `TEXT`; default: `/home/neri/Documents/GitHub/rps/rolypoly_RP_mapping`)
 - `--db`, `--database`: Select the database to search against. 'all' retains its historical meaning: the two RNA-virus databases (RVMT and NCBI_Ribovirus). (type: `CHOICE`; default: `all`)
 - `--db-path`: Path to the user-supplied source (required if --db is 'other'). Either a fasta or a path to formatted MMseqs2 virus database (type: `TEXT`; default: ``)
-- `-i`, `--input`: Input path to nucl fasta file OR preformatted mmseqs db (type: `TEXT`; required; default: `Sentinel.UNSET`)
+- `-i`, `--input`: Input FASTA/FASTQ file, comma-separated sequence files, directory of sequence files, or one preformatted MMseqs2 database prefix (type: `TEXT`; required; default: `Sentinel.UNSET`)
 - `-mo`, `--matched-output`: Output path for matched virus contigs. set to 'no' to skip writing matched contigs (type: `TEXT`; default: `Sentinel.UNSET`)
 - `-e`, `--mmseqs-evalue`: E-value threshold for MMseqs2 search) (type: `FLOAT`; default: `0.1`)
 - `-id`, `--mmseqs-identity`: minimum Identity threshold for MMseqs2 search) (type: `FLOAT`; default: `0.7`)
@@ -36,7 +42,3 @@ rolypoly virus-mapping [OPTIONS]
 - `-k`, `--keep-tmp`: Keep temporary files. (type: `BOOLEAN`; default: `False`)
 - `-tmp`, `--temp-dir`: Temporary working directory. (type: `DIRECTORY`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
-
-
-
-

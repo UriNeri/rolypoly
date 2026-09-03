@@ -649,20 +649,23 @@
     ]
   },
   {
-    "id": "virus_mapping_runtime_custom_db",
-    "description": "Runtime smoke test virus-mapping with tiny custom local database",
+    "id": "nucleic_search_runtime_custom_db",
+    "description": "Runtime smoke test nucleic-search with tiny custom local database",
     "required_any_commands": [
       [
         "mmseqs",
         "mmseqs2"
       ]
     ],
+    "fixtures": [
+      "nucleic_search_inputs"
+    ],
     "args": [
-      "virus-mapping",
+      "nucleic-search",
       "-i",
-      "testing_folder/inputs/contigs/test_contigs.fasta",
+      "{tmp}/nucleic_queries_1.fasta,{tmp}/nucleic_queries_2.fasta",
       "-o",
-      "{tmp}/virus_mapping_custom.tab",
+      "{tmp}/nucleic_search_custom.tab",
       "--db",
       "other",
       "--db-path",
@@ -671,7 +674,7 @@
       "1"
     ],
     "expected_files": [
-      "{tmp}/virus_mapping_custom_vs_Custom.tab"
+      "{tmp}/nucleic_search_custom_vs_Custom.tab"
     ]
   },
   {

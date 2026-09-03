@@ -938,7 +938,7 @@ rolypoly marker-search \
   -t 16
 
 # 5. Nucleotide-level search against known RNA virus databases
-rolypoly virus-mapping \
+rolypoly nucleic-search \
   -i assemblies/filtered_assembly.fasta \
   -o virus_hits.tab \
   -t 16
@@ -964,13 +964,27 @@ rolypoly marker-search \
   -i contigs.fasta -o marker_out/ --database rdrp -t 8
 ```
 
-## Virus nucleotide mapping (`virus-mapping`)
+## Virus nucleotide search (`nucleic-search`)
 
 ```bash
-rolypoly virus-mapping \
+rolypoly nucleic-search \
   -i contigs.fasta \
   -o virus_hits.tab \
   -t 8
+
+# Multiple sequence files can be comma-separated; a directory is also accepted
+rolypoly nucleic-search \
+  -i sample_1_contigs.fasta,sample_2_contigs.fasta \
+  -o combined_virus_hits.tab \
+  -t 8
+
+# Preserve paired-read evidence when mapping reads back to candidate contigs
+rolypoly map \
+  --reference candidate_contigs.fasta \
+  --paired-end 1 reads_R1.fastq.gz reads_R2.fastq.gz \
+  --mapper bbmap \
+  --concordant \
+  --output candidate_read_mapping
 ```
 
 ## Shrink / subsample reads

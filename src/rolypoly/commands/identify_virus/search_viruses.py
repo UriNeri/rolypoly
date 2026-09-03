@@ -21,12 +21,12 @@ BUILT_IN_DB_PATHS = {
 
 
 def get_builtin_virus_db_paths(datadir):
-    """Resolve built-in virus-mapping database paths below ROLYPOLY_DATA."""
+    """Resolve built-in nucleic-search database paths below ROLYPOLY_DATA."""
     datadir = pt(datadir)
     return {name: datadir / path for name, path in BUILT_IN_DB_PATHS.items()}
 
 
-@click.command(name="virus-mapping")
+@click.command(name="nucleic-search")
 @click.option(
     "-o",
     "--output",
@@ -54,7 +54,10 @@ def get_builtin_virus_db_paths(datadir):
     "-i",
     "--input",
     required=True,
-    help="Input path to nucl fasta file OR preformatted mmseqs db",
+    help=(
+        "Input FASTA/FASTQ file, comma-separated sequence files, directory of "
+        "sequence files, or one preformatted MMseqs2 database prefix"
+    ),
 )
 @click.option(
     "-mo",
@@ -80,7 +83,7 @@ def get_builtin_virus_db_paths(datadir):
     default=95,
     help="Minimum alignment length for MMseqs2 search)",
 )
-def virus_mapping(
+def nucleic_search(
     threads,
     memory,
     output,
@@ -96,13 +99,13 @@ def virus_mapping(
     mmseqs_min_aln_len,
     temp_dir,
 ):
-    """Search nucleotide reads/contigs against virus reference databases.
+    """Search nucleotide reads or contigs against virus reference databases.
 
-    Input can be FASTA/FASTQ or an existing MMseqs2 database. The command
-    converts sequence inputs to MMseqs2 format as needed and runs searches
-    against built-in viral databases (`RVMT`, `NCBI_Ribovirus`,
-    `NCBI_Non_Riboviria`, or `all`) or a user-supplied target via `--db other
-    --db-path`.
+    Input can be one FASTA/FASTQ file, a comma-separated list, a directory, or
+    an existing MMseqs2 database. Sequence inputs are combined into one MMseqs2
+    query database. Records are searched independently; paired-read
+    concordance is not evaluated here. Use ``rolypoly map`` for pair-aware read
+    mapping.
     """
     import shutil
     import subprocess
@@ -113,13 +116,23 @@ def virus_mapping(
         consolidate_hits,
         derive_strand_from_coordinates,
     )
+    from rolypoly.utils.bio.library_detection import (
+        is_fasta_file,
+        is_sequence_file,
+        resolve_sequence_inputs,
+    )
     from rolypoly.utils.bio.sequences import filter_fasta_by_headers
     from rolypoly.utils.logging.citation_reminder import remind_citations
     from rolypoly.utils.logging.loggit import log_start_info, setup_logging
 
     # TODO: functionalize / use wrappers for mmseqs2.
-    input = pt(input).absolute().resolve()
-    og_input = input
+    try:
+        input_paths = resolve_sequence_inputs(
+            input, allow_single_nonsequence=True
+        )
+    except (FileNotFoundError, ValueError) as error:
+        raise click.ClickException(str(error)) from error
+    original_input_paths = input_paths.copy()
     output = pt(output).absolute().resolve()
     # Logging
     logger = setup_logging(log_file, log_level)
@@ -139,7 +152,12 @@ def virus_mapping(
             "temp_dir": temp_dir,
         },
     )
-    logger.info(f"Input : {input}")
+    invocation_name = click.get_current_context(silent=True)
+    if invocation_name and invocation_name.info_name == "virus-mapping":
+        logger.warning(
+            "'virus-mapping' is deprecated; use 'nucleic-search' instead."
+        )
+    logger.info("Input: %s", ", ".join(str(path) for path in input_paths))
     logger.info(f"Virus db: {db}")
 
     # Get environment
@@ -159,7 +177,9 @@ def virus_mapping(
     output_suffix = output.suffix.lower()
     valid_output_formats = {".tab", ".sam", ".html"}
     if output_suffix == "":
-        logger.info("No output suffix provided for --output; defaulting to '.tab'.")
+        logger.info(
+            "No output suffix provided for --output; defaulting to '.tab'."
+        )
         output_format = ".tab"
         output_prefix = output
     elif output_suffix in valid_output_formats:
@@ -169,7 +189,10 @@ def virus_mapping(
         raise click.BadParameter(
             "Unsupported --output suffix. Use one of: .tab, .sam, .html"
         )
-    logger.info(f"Started virus mapping for: {input}")
+    logger.info(
+        "Started nucleic search for: %s",
+        ", ".join(str(path) for path in input_paths),
+    )
 
     # Create folders for MMseqs2 to use
     if temp_dir:
@@ -182,36 +205,30 @@ def virus_mapping(
     shutil.rmtree(res_path, ignore_errors=True)
     os.makedirs(res_path, exist_ok=True)
 
-    seq_input_suffixes = [
-        ".faa",
-        ".fasta",
-        ".fas",
-        ".fa",
-        ".fna",
-        ".fastq",
-        ".fq",
-        ".gz",
-        ".fastq.gz",
-        ".fq.gz",
-        ".fasta.gz",
-        ".fa.gz",
-        ".fas.gz",
-        ".faa.gz",
-    ]
-    input_is_sequence_file = str(input).endswith(tuple(seq_input_suffixes))
+    input_is_sequence_file = all(is_sequence_file(path) for path in input_paths)
 
-    # if the input is fasta/fastq convert the input into an mmseqs DB
+    # If the input is FASTA/FASTQ, combine it into one MMseqs2 query DB.
     if input_is_sequence_file:
-        logger.info("Converting input to mmseqs DB")
+        logger.info(
+            "Converting %d sequence input file(s) to an MMseqs2 DB",
+            len(input_paths),
+        )
         tmp = pt(tmpdir) / "pl_sv_contig_db"
         os.makedirs(tmp, exist_ok=True)
-        mmseqs_createdb_cmd = (
-            f"mmseqs createdb {str(input)} {tmp}/mmdb  --dbtype 2"
+        subprocess.run(
+            [
+                "mmseqs",
+                "createdb",
+                *(str(path) for path in input_paths),
+                str(tmp / "mmdb"),
+                "--dbtype",
+                "2",
+            ],
+            check=True,
         )
-        subprocess.run(mmseqs_createdb_cmd, shell=True, check=True)
-        input = (
-            tmp / "mmdb"
-        )  # Ensure the path is updated correctly after creation
+        input = tmp / "mmdb"
+    else:
+        input = input_paths[0]
     db = db.lower()  # Normalize db_name to lowercase for comparison
     db_paths_available = get_builtin_virus_db_paths(datadir)
 
@@ -227,7 +244,7 @@ def virus_mapping(
                 "Please provide a path to the user-supplied database with --db-path"
             )
             return
-        if pt(db_path).suffix in [".faa", ".fasta", ".fas", ".fa", ".fna"]:
+        if is_fasta_file(db_path):
             logger.info("Converting target db to mmseqs DB")
             tmp = pt(tmpdir) / "rp_sv_custom_db"
             os.makedirs(tmp, exist_ok=True)
@@ -319,8 +336,8 @@ def virus_mapping(
         matched_output.parent.mkdir(parents=True, exist_ok=True)
 
         if input_is_sequence_file:
-            # Preferred path: get matched query headers then reuse shared FASTA filter util.
-            matched_ids = set()
+            # Get matched query headers and recover records across every input.
+            matched_headers = set()
             for db_name, db_path in db_paths.items():
                 this_resdb = res_path / db_name
                 header_tsv = tmpdir / f"matched_query_headers_{db_name}.tsv"
@@ -335,15 +352,19 @@ def virus_mapping(
                         for line in fin:
                             qheader = line.strip().split("\t")[0]
                             if qheader:
-                                matched_ids.add(qheader.split()[0])
+                                matched_headers.add(qheader)
 
-            filter_fasta_by_headers(
-                fasta_file=str(og_input),
-                headers=list(matched_ids),
-                output_file=str(matched_output),
+            filter_counts = filter_fasta_by_headers(
+                original_input_paths,
+                matched_headers,
+                matched_output,
+                return_counts=True,
             )
+            written_count = filter_counts["records_written"]
             logger.info(
-                f"Wrote {len(matched_ids)} unique matched virus contigs to {matched_output}"
+                "Wrote %d unique matched nucleotide sequences to %s",
+                written_count,
+                matched_output,
             )
         else:
             logger.warning(
@@ -375,7 +396,7 @@ def virus_mapping(
                     with open(fasta_part, "r") as fin:
                         for line in fin:
                             if line.startswith(">"):
-                                header = line[1:].strip().split()[0]
+                                header = line[1:].strip()
                                 write_record = header not in seen_headers
                                 if write_record:
                                     seen_headers.add(header)
@@ -409,9 +430,10 @@ def virus_mapping(
             else:
                 tmp_file.unlink()
 
-    # subprocess.run(f"bgzip -@{threads} *_virus_mapping_out.tab", shell=True, check=True)
-
-    logger.info(f"Finished virus mapping for: {og_input}")
+    logger.info(
+        "Finished nucleic search for: %s",
+        ", ".join(str(path) for path in original_input_paths),
+    )
     logger.info(f"Final output: {matched_tabb}")
     tools.append("mmseqs2")
     # remind_citations(tools)
@@ -420,5 +442,9 @@ def virus_mapping(
             f_out.write(remind_citations(tools, return_bibtex=True) or "")
 
 
+# Python-level compatibility for integrations importing the historical name.
+virus_mapping = nucleic_search
+
+
 if __name__ == "__main__":
-    virus_mapping()
+    nucleic_search()

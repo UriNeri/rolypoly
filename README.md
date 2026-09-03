@@ -98,7 +98,7 @@ Note: The (mostly, hopefully) reproducible source workflows for these data are m
 
 #### RNA Virus Identification
 - ✅ [`marker-search`](https://urineri.github.io/rolypoly/commands/marker_search) — Search for viral markers (mainly RdRps, genomad VVs, or user-provided), using profile-based methods (HMMER / MMseqs2). 
-- ✅ [`virus-mapping`](https://urineri.github.io/rolypoly/commands/virus_mapping) — Map and identify viruses using nucleic acid search (MMseqs2).
+- ✅ [`nucleic-search`](https://urineri.github.io/rolypoly/commands/nucleic_search) — Search nucleotide reads or contigs against known virus sequences with MMseqs2.
 - 🧪 [`rdrp-motif-search`](https://urineri.github.io/rolypoly/commands/rdrp_motif_search) — Search RdRp motifs (A/B/C/D) in nucleotide or amino acid sequences.
 - 🧪 [`mmtax`](https://urineri.github.io/rolypoly/commands/mmtax) — Assign ICTV taxonomy to nucleotide or protein virus sequences with MMseqs2 or DIAMOND.
 

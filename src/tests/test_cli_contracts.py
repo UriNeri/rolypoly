@@ -184,6 +184,16 @@ def apply_preconditions(scenario: dict, tmp_path: Path) -> None:
                  str(source / "taxonomy" / "names.dmp"), "--threads", "1"],
                 check=True,
             )
+        elif fixture_name == "nucleic_search_inputs":
+            contig_source = repo_root() / "testing_folder/inputs/contigs"
+            shutil.copyfile(
+                contig_source / "test_contigs.fasta",
+                tmp_path / "nucleic_queries_1.fasta",
+            )
+            shutil.copyfile(
+                contig_source / "test_fasta_for_masking.fasta",
+                tmp_path / "nucleic_queries_2.fasta",
+            )
         else:
             raise ValueError(f"Unknown CLI fixture: {fixture_name}")
 

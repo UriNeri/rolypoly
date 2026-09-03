@@ -53,19 +53,18 @@ class LazyGroup(click.RichGroup):
 
                 # Add commands directly to main group but track their group
                 for cmd_name, cmd_path in value["commands"].items():
-                    if not cmd_path.startswith("hidden:"):
-                        self.lazy_subcommands[cmd_name] = cmd_path
-                        self._lazy_command_group_by_key[cmd_name] = (
-                            group_display_name
-                        )
-                        self._command_groups[name]["commands"][cmd_name] = (
-                            cmd_path
-                        )
-                        # rich-click help rendering uses panel mappings, not format_commands()
-                        self._panel_command_mapping.setdefault(cmd_name, [])
-                        self._panel_command_mapping[cmd_name].append(
-                            group_display_name
-                        )
+                    self.lazy_subcommands[cmd_name] = cmd_path
+                    if cmd_path.startswith("hidden:"):
+                        continue
+                    self._lazy_command_group_by_key[cmd_name] = (
+                        group_display_name
+                    )
+                    self._command_groups[name]["commands"][cmd_name] = cmd_path
+                    # rich-click help rendering uses panel mappings, not format_commands()
+                    self._panel_command_mapping.setdefault(cmd_name, [])
+                    self._panel_command_mapping[cmd_name].append(
+                        group_display_name
+                    )
 
                 # Remove the group definition from lazy_subcommands
                 del self.lazy_subcommands[name]
