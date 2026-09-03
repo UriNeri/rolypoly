@@ -8,10 +8,17 @@
 - `map`: accept comma-separated FASTQ input through the shared library detector, in addition to directories and repeatable explicit library options.
 - `map`: add mapper-independent `-z` / `--compressed` final SAM output; mapper outputs remain uncompressed unless requested.
 - `nucleic-search`: accept uncompressed or gzip-compressed FASTA as a custom `--db-path` and build the temporary MMseqs2 target database automatically.
+- `marker-search`: project labelled marker features from the database onto query coordinates and report them with supporting profile evidence.
+- `mmtax`: add rank-aware taxonomy aggregation and expanded taxonomy evidence in reports.
 
 ### Changed
 - Rename `virus-mapping` to `nucleic-search`; retain the old command as a hidden deprecated alias.
 - `map`: make bwa-mem2 `-a` opt-in and describe its single-end/unpaired paired-end scope accurately; `--no-bwa-mem2-all` is now available explicitly.
+- `marker-search`: classify reverse-transcriptase profiles as supporting evidence without treating RT-only hits as virus candidates.
+- MMseqs2 profile database construction now respects the requested thread limit.
+
+### Fixed
+- Include marker-search candidates in the final FASTA and use the corrected report filename.
 
 ## 19.07.2026 [v0.7.16]
 - remove `git` as a dependency for version check.
