@@ -13,6 +13,7 @@
 
 ### Changed
 - Rename `virus-mapping` to `nucleic-search`; retain the old command as a hidden deprecated alias.
+- `get-data`: use the versioned Zenodo data bundle as the primary source and retain NERSC as the fallback mirror.
 - `map`: make bwa-mem2 `-a` opt-in and describe its single-end/unpaired paired-end scope accurately; `--no-bwa-mem2-all` is now available explicitly.
 - `marker-search`: classify reverse-transcriptase profiles as supporting evidence without treating RT-only hits as virus candidates.
 - MMseqs2 profile database construction now respects the requested thread limit.

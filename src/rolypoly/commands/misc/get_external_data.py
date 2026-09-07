@@ -11,13 +11,15 @@ global tools
 tools = []
 
 # The release date is recorded inside the bundle README. Keep the public
-# archive name stable so get-data does not need release-specific URL changes.
+# archive name stable at both mirrors; Zenodo is authoritative and NERSC is
+# retained as the fallback mirror.
 NERSC_DATA_URL = (
     "https://portal.nersc.gov/dna/microbial/prokpubs/rolypoly/data/data.tar.gz"
 )
 ZENODO_DATA_URL = (
-    "https://zenodo.org/records/21639934/files/data.tar.gz?download=1"
+    "https://zenodo.org/records/22636256/files/data.tar.gz?download=1"
 )
+DATA_URLS = (ZENODO_DATA_URL, NERSC_DATA_URL)
 
 
 @command(name="get-data")
@@ -98,7 +100,7 @@ def get_data(info, rolypoly_data, log_file, log_level):
     logger.info("Downloading data tarball...")
     tar_path = ROLYPOLY_DATA / "data.tar.gz"
     downloaded = False
-    for url in (NERSC_DATA_URL, ZENODO_DATA_URL):
+    for url in DATA_URLS:
         try:
             logger.info(f"Trying data source: {url}")
             with requests.get(url, stream=True, timeout=(30, 120)) as response:
