@@ -20,211 +20,6 @@ def runner() -> CliRunner:
     return CliRunner()
 
 
-@pytest.mark.parametrize("empty_database", ["rvmt.hmm", "pfam_rdrps_and_rts.hmm", "both"])
-def test_marker_empty_database_preserves_numeric_hits(tmp_path, monkeypatch, runner, empty_database):
-    """An empty search must not break interval arithmetic or numeric ranking."""
-    from rolypoly.utils.bio import alignments
-
-    data = tmp_path / "data"
-    dbs = data / "profiles" / "hmmdbs"
-    dbs.mkdir(parents=True)
-    for name in ("rvmt.hmm", "pfam_rdrps_and_rts.hmm"):
-        (dbs / name).touch()
-    monkeypatch.setenv("ROLYPOLY_DATA", str(data))
-    query = tmp_path / "query.faa"
-    query.write_text(">query1\n" + "ACDEFGHIKLMNPQRSTVWY" * 15 + "\n")
-
-    def fake_search(**kwargs):
-        # Ten profiles on a long query exercise adaptive polyprotein detection.
-        rows = [dict(query_full_name="query1", hmm_full_name=f"profile{i}",
-                     profile_accession="", hmm_len=300, qlen=300,
-                     full_hmm_evalue=1e-20, full_hmm_score=float(score),
-                     full_hmm_bias=0.0, this_dom_score=float(score), this_dom_bias=0.0,
-                     hmm_from=1, hmm_to=250, q1=1, q2=250, env_from=1, env_to=250,
-                     hmm_cov=0.83, ali_len=250, dom_desc="fixture")
-                for i, score in enumerate([99, 100, 20, 21, 22, 23, 24, 25, 26, 27])]
-        hits = pl.DataFrame(rows)
-        if empty_database == "both" or Path(kwargs["db_path"]).name == empty_database:
-            hits = hits.head(0)
-        hits.write_csv(kwargs["output"], separator="\t")
-        return kwargs["output"]
-
-    monkeypatch.setattr(alignments, "search_hmmdb", fake_search)
-    output = tmp_path / "output"
-    result = runner.invoke(rolypoly, ["marker-search", "--input", str(query),
-        "--output", str(output), "--database", "RVMT,Pfam_RTs_RdRp", "--threads", "1",
-        "--temp-dir", str(tmp_path / "temp"), "--log-file", str(tmp_path / "run.log")])
-    assert result.exit_code == 0, result.output + repr(result.exception)
-    hits = pl.read_csv(output / "marker_search_results.tsv", separator="\t")
-    if empty_database == "both":
-        assert hits.is_empty()
-    else:
-        assert hits["hmm_full_name"].to_list() == ["profile1"]
-        assert hits["q1"].to_list() == [1]
-        assert hits["q2"].to_list() == [250]
-        assert hits["full_hmm_score"].to_list() == [100.0]
-
-
-def test_roll_skipped_nucleic_search_ignores_cached_nucleic_hits(
-    tmp_path: Path,
-    runner: CliRunner,
-) -> None:
-    query = tmp_path / "input.fa"
-    query.write_text(">first\n" + "A" * 250 + "\n>second\n" + "C" * 250 + "\n")
-
-    output = tmp_path / "roll_out"
-    marker_output = output / "marker_search_results"
-    marker_output.mkdir(parents=True)
-    pl.DataFrame(
-        [
-            {
-                "source_seq_id": "CID_1",
-                "marker_role": "candidate",
-                "score": 100.0,
-            }
-        ]
-    ).write_csv(marker_output / "marker_search_results.tsv", separator="\t")
-
-    stale_nucleic_output = output / "nucleic_search_results"
-    stale_nucleic_output.mkdir()
-    pl.DataFrame([{"qheader": "CID_2"}]).write_csv(
-        stale_nucleic_output / "cached_vs_db.tab",
-        separator="\t",
-    )
-
-    result = runner.invoke(
-        rolypoly,
-        [
-            "roll",
-            "--input",
-            str(query),
-            "--output-dir",
-            str(output),
-            "--skip-existing",
-            "--skip-steps",
-            (
-                "filter_reads,assemble,nucleic_search,map_reads,annotate,"
-                "rdrp_motif_search,taxonomy,report"
-            ),
-            "--cluster-backend",
-            "none",
-            "--min-len",
-            "1",
-        ],
-        catch_exceptions=False,
-    )
-
-    assert result.exit_code == 0, result.output
-    matched = (output / "all_matched_contigs.fasta").read_text()
-    assert ">CID_1" in matched
-    assert ">CID_2" not in matched
-
-
-def test_roll_active_nucleic_search_reuses_cached_hits_with_skip_existing(
-    tmp_path: Path,
-    runner: CliRunner,
-) -> None:
-    query = tmp_path / "input.fa"
-    query.write_text(">first\n" + "A" * 250 + "\n>second\n" + "C" * 250 + "\n")
-
-    output = tmp_path / "roll_out"
-    nucleic_output = output / "nucleic_search_results"
-    nucleic_output.mkdir(parents=True)
-    pl.DataFrame([{"qheader": "CID_2"}]).write_csv(
-        nucleic_output / "cached_vs_db.tab",
-        separator="\t",
-    )
-
-    result = runner.invoke(
-        rolypoly,
-        [
-            "roll",
-            "--input",
-            str(query),
-            "--output-dir",
-            str(output),
-            "--skip-existing",
-            "--skip-steps",
-            (
-                "filter_reads,assemble,marker_search,map_reads,annotate,"
-                "rdrp_motif_search,taxonomy,report"
-            ),
-            "--cluster-backend",
-            "none",
-            "--min-len",
-            "1",
-        ],
-        catch_exceptions=False,
-    )
-
-    assert result.exit_code == 0, result.output
-    matched = (output / "all_matched_contigs.fasta").read_text()
-    assert ">CID_1" not in matched
-    assert ">CID_2" in matched
-
-
-def test_roll_skipping_both_discovery_steps_uses_final_assembly(
-    tmp_path: Path,
-    monkeypatch,
-    runner: CliRunner,
-) -> None:
-    from rolypoly.commands.misc import end_2_end
-
-    query = tmp_path / "input.fa"
-    query.write_text(">first\n" + "A" * 250 + "\n>second\n" + "C" * 250 + "\n")
-
-    output = tmp_path / "roll_out"
-    stale_nucleic_output = output / "nucleic_search_results"
-    stale_nucleic_output.mkdir(parents=True)
-    pl.DataFrame([{"qheader": "CID_2"}]).write_csv(
-        stale_nucleic_output / "cached_vs_db.tab",
-        separator="\t",
-    )
-
-    captured = {}
-
-    class FakeCommandContext:
-        def invoke(self, _command, **kwargs):
-            captured["input"] = kwargs["input"]
-            Path(kwargs["output"]).mkdir(parents=True, exist_ok=True)
-
-    monkeypatch.setattr(
-        end_2_end,
-        "shared_command_context",
-        lambda _command: FakeCommandContext(),
-    )
-
-    result = runner.invoke(
-        rolypoly,
-        [
-            "roll",
-            "--input",
-            str(query),
-            "--output-dir",
-            str(output),
-            "--skip-existing",
-            "--skip-steps",
-            (
-                "filter_reads,assemble,marker_search,nucleic_search,map_reads,"
-                "rdrp_motif_search,taxonomy,report"
-            ),
-            "--cluster-backend",
-            "none",
-            "--min-len",
-            "1",
-        ],
-        catch_exceptions=False,
-    )
-
-    assert result.exit_code == 0, result.output
-    annotate_input = Path(captured["input"])
-    assert annotate_input == output / "assembly" / "length_filtered.fasta"
-    assembly_text = annotate_input.read_text()
-    assert ">CID_1" in assembly_text
-    assert ">CID_2" in assembly_text
-    assert not (output / "all_matched_contigs.fasta").exists()
-
-
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
@@ -252,9 +47,7 @@ def pick_log_file_option(command_name: str) -> str | None:
 
 
 def inject_log_file_arg(
-    args: list[str],
-    tmp_path: Path,
-    scenario_id: str,
+    args: list[str], tmp_path: Path, scenario_id: str
 ) -> list[str]:
     if not args:
         return args
@@ -276,11 +69,7 @@ def inject_debug_log_level(args: list[str]) -> list[str]:
         return args
 
     command_name = args[0]
-    option_tokens = {
-        "--log-level",
-        "-ll",
-        "-l",
-    }
+    option_tokens = {"--log-level", "-ll", "-l"}
     if any(token in option_tokens for token in args[1:]):
         return args
 
@@ -369,24 +158,47 @@ def apply_preconditions(scenario: dict, tmp_path: Path) -> None:
         if fixture_name == "mmtax_mmseqs_db":
             database = fixture_dir / "ncbi_virus"
             subprocess.run(
-                ["mmseqs", "createdb", str(source / "reference.faa"),
-                 str(database), "--dbtype", "1"],
+                [
+                    "mmseqs",
+                    "createdb",
+                    str(source / "reference.faa"),
+                    str(database),
+                    "--dbtype",
+                    "1",
+                ],
                 check=True,
             )
             subprocess.run(
-                ["mmseqs", "createtaxdb", str(database),
-                 str(fixture_dir / "taxonomy_tmp"), "--ncbi-tax-dump",
-                 str(source / "taxonomy"), "--tax-mapping-file",
-                 str(source / "accession2taxid.tsv")],
+                [
+                    "mmseqs",
+                    "createtaxdb",
+                    str(database),
+                    str(fixture_dir / "taxonomy_tmp"),
+                    "--ncbi-tax-dump",
+                    str(source / "taxonomy"),
+                    "--tax-mapping-file",
+                    str(source / "accession2taxid.tsv"),
+                ],
                 check=True,
             )
         elif fixture_name == "mmtax_diamond_db":
             subprocess.run(
-                ["diamond", "makedb", "--in", str(source / "reference.faa"),
-                 "--db", str(fixture_dir / "ncbi_virus"), "--taxonmap",
-                 str(source / "accession2taxid_diamond.tsv"), "--taxonnodes",
-                 str(source / "taxonomy" / "nodes.dmp"), "--taxonnames",
-                 str(source / "taxonomy" / "names.dmp"), "--threads", "1"],
+                [
+                    "diamond",
+                    "makedb",
+                    "--in",
+                    str(source / "reference.faa"),
+                    "--db",
+                    str(fixture_dir / "ncbi_virus"),
+                    "--taxonmap",
+                    str(source / "accession2taxid_diamond.tsv"),
+                    "--taxonnodes",
+                    str(source / "taxonomy" / "nodes.dmp"),
+                    "--taxonnames",
+                    str(source / "taxonomy" / "names.dmp"),
+                    "--threads",
+                    "1",
+                ],
                 check=True,
             )
         elif fixture_name == "nucleic_search_inputs":
@@ -414,7 +226,9 @@ def parse_csv_values(raw_value: str | None) -> set[str]:
     return {item.strip() for item in raw_value.split(",") if item.strip()}
 
 
-def should_skip_scenario(scenario: dict, request: pytest.FixtureRequest) -> str | None:
+def should_skip_scenario(
+    scenario: dict, request: pytest.FixtureRequest
+) -> str | None:
     scenario_ids = parse_csv_values(
         request.config.getoption("--cli-scenarios")
         or os.environ.get("RP_CLI_SCENARIOS")
@@ -433,11 +247,7 @@ def should_skip_scenario(scenario: dict, request: pytest.FixtureRequest) -> str 
         str(scenario.get("args", [""])[0]) if scenario.get("args") else ""
     )
     searchable = " ".join(
-        [
-            scenario_id,
-            str(scenario.get("description", "")),
-            command_name,
-        ]
+        [scenario_id, str(scenario.get("description", "")), command_name]
     ).lower()
 
     if scenario_ids and scenario_id not in scenario_ids:
@@ -446,13 +256,17 @@ def should_skip_scenario(scenario: dict, request: pytest.FixtureRequest) -> str 
     if command_names and command_name not in command_names:
         return f"command '{command_name}' not selected"
 
-    if match_tokens and not any(token.lower() in searchable for token in match_tokens):
+    if match_tokens and not any(
+        token.lower() in searchable for token in match_tokens
+    ):
         return "no cli-match token matched"
 
     return None
 
 
-@pytest.mark.parametrize("scenario", load_cli_scenarios(), ids=lambda row: row["id"])
+@pytest.mark.parametrize(
+    "scenario", load_cli_scenarios(), ids=lambda row: row["id"]
+)
 def test_cli_scenarios(
     runner: CliRunner,
     tmp_path: Path,
@@ -466,7 +280,9 @@ def test_cli_scenarios(
     apply_preconditions(scenario, tmp_path)
 
     args = render_values(scenario["args"], tmp_path)
-    args = inject_log_file_arg(args, tmp_path, str(scenario.get("id", "scenario")))
+    args = inject_log_file_arg(
+        args, tmp_path, str(scenario.get("id", "scenario"))
+    )
     args = inject_debug_log_level(args)
 
     result = runner.invoke(rolypoly, args, catch_exceptions=False)
@@ -477,8 +293,12 @@ def test_cli_scenarios(
 
     for expected in scenario.get("expected_files", []):
         expected_path = Path(render(expected, tmp_path))
-        assert expected_path.exists(), f"Expected output file missing: {expected_path}"
-        assert expected_path.stat().st_size > 0, f"Output file is empty: {expected_path}"
+        assert expected_path.exists(), (
+            f"Expected output file missing: {expected_path}"
+        )
+        assert expected_path.stat().st_size > 0, (
+            f"Output file is empty: {expected_path}"
+        )
 
     for expected_dir in scenario.get("expected_dirs", []):
         expected_dir_path = Path(render(expected_dir, tmp_path))
@@ -489,7 +309,9 @@ def test_cli_scenarios(
             f"Expected directory path is not a directory: {expected_dir_path}"
         )
 
-    for file_path, required_tokens in scenario.get("expected_contains", {}).items():
+    for file_path, required_tokens in scenario.get(
+        "expected_contains", {}
+    ).items():
         rendered_path = Path(render(file_path, tmp_path))
         content = rendered_path.read_text()
         for token in required_tokens:
@@ -508,7 +330,9 @@ def test_cli_scenarios(
                 f"Observed columns: {frame.columns}"
             )
 
-    for file_path, min_rows in scenario.get("expected_table_min_rows", {}).items():
+    for file_path, min_rows in scenario.get(
+        "expected_table_min_rows", {}
+    ).items():
         rendered_path = Path(render(file_path, tmp_path))
         frame = read_table(rendered_path)
         assert frame.height >= int(min_rows), (

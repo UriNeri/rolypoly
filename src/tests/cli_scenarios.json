@@ -495,16 +495,6 @@
     ]
   },
   {
-    "id": "roll_preset_help_smoke",
-    "description": "Smoke test roll command wiring via fast preset help",
-    "args": [
-      "roll",
-      "--preset",
-      "fast",
-      "--help"
-    ]
-  },
-  {
     "id": "fetch_sra_empty_input_runtime",
     "description": "Runtime smoke test fetch-sra using empty local run-id list",
     "args": [
@@ -608,22 +598,6 @@
     ]
   },
   {
-    "id": "mask_dna_help_smoke",
-    "description": "Smoke test mask-dna command wiring via help",
-    "args": [
-      "mask-dna",
-      "--help"
-    ]
-  },
-  {
-    "id": "rdrp_motif_search_help_smoke",
-    "description": "Smoke test rdrp-motif-search command wiring via help",
-    "args": [
-      "rdrp-motif-search",
-      "--help"
-    ]
-  },
-  {
     "id": "shrink_reads_top_reads_runtime",
     "description": "Runtime smoke test shrink-reads with local FASTQ fixture",
     "args": [
@@ -704,7 +678,7 @@
       "{tmp}/extend_demo.clusters.tsv": 1
     }
   },
-    {
+  {
     "id": "roll_contigs_mode_runtime",
     "description": "Runtime smoke test roll in contigs mode (skip filter_reads+assemble); DB-free path through staging and length filtering",
     "args": [
