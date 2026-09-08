@@ -75,7 +75,7 @@ def extract(
         # final_path = decompressed_path
         if is_tarred:
             with tarfile.open(decompressed_path, "r:*") as tar:
-                tar.extractall(path=extract_to)
+                tar.extractall(path=extract_to, filter="data")
             if is_compressed:
                 decompressed_path.unlink()  # Remove intermediate decompressed file
         elif not is_compressed and archive_path.suffix == ".zip":
@@ -502,7 +502,7 @@ def extract_tar(archive_path: Path, extract_dir: Path, logger) -> Path:
     import tarfile
 
     with tarfile.open(archive_path, "r:*") as tar:
-        tar.extractall(path=extract_dir)
+        tar.extractall(path=extract_dir, filter="data")
 
     return extract_dir
 
@@ -639,18 +639,6 @@ def run_bash_script_with_time(script_name: str) -> Dict[str, str]:
                 key, value = line.split(":", 1)
                 time_info[key.strip()] = value.strip()
     return time_info
-
-
-def extract_zip(zip_file):
-    import zipfile
-
-    try:
-        with zipfile.ZipFile(zip_file, "r") as zip_ref:
-            zip_ref.extractall(os.path.dirname(zip_file))
-        return True
-    except Exception as e:
-        print(f"Error extracting {zip_file}: {e}")
-        return False
 
 
 def parse_filter(filter_str):
@@ -1095,30 +1083,6 @@ def convert_nested_cols(
             .alias(col)
         )
     return df
-
-
-def run_command(
-    cmd, logger, to_check, skip_existing=False, check=True
-):  # TODO: add an option "try-hard" that save hash of the input /+ code.
-    """Run a command and log its output"""
-    import subprocess
-
-    if skip_existing == True:
-        if Path(to_check).exists():
-            if Path(to_check).stat().st_size > 28:
-                logger.info(
-                    f"{to_check} seems to exist and isn't empty, and --skip-existing flag was set     so skipppingggg yolo! "
-                )
-                return True
-
-    logger.info(f"Running command: {' '.join(cmd)}")
-    try:
-        subprocess.run(cmd, check=check)
-    except subprocess.CalledProcessError as e:
-        logger.warning(f"Error : {e}")
-        return False
-
-    return check_file_exist_isempty(f"{to_check}")
 
 
 def find_files_by_extension(
