@@ -125,7 +125,7 @@ class RdRpMotifSearchConfig(BaseConfig):
     "--search-tool",
     default="hmmsearch",
     type=Choice(["hmmsearch", "mmseqs"], case_sensitive=False),
-    help="Search tool to use (currently only hmmsearch supported)",
+    # help="Search tool to use (currently only hmmsearch supported)",
 )
 @option(
     "--aa-method",
