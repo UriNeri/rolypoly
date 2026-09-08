@@ -1234,12 +1234,15 @@ def load_sequences(fasta_path: Union[str, Path]) -> pl.DataFrame:
 
 
 ##### Single-pass streaming dereplication (identical-sequence) with stats (used in assemble and roll)
-def seq_hash_xxh3(seq: str) -> str:
-    """Return a hex xxh3-64 hash of a sequence (fast, low-collision).
+def seq_hash_xxh3(seq: str, ignore_case: bool = True) -> str:
+    """Return a hex xxh3-64 hash, ignoring sequence case by default.
+
+    With ignore_case=True, uppercase the sequence before hashing. Set False
+    to hash the original case.
 
     Falls back to blake2b if xxhash is unavailable (both already used by
     sequences.remove_duplicates)."""
-    field = seq.upper().encode()
+    field = (seq.upper() if ignore_case else seq).encode()
     try:
         import xxhash
 
@@ -1263,7 +1266,7 @@ def dereplicate_fasta(
 ) -> pl.DataFrame:
     """Dereplicate identical sequences in a single, low-memory streaming pass.
 
-    Reads the input FASTA in batches (via the ``from_fastx`` lazy reader), computes
+    Reads the input FASTA in batches via Needletail, computes
     per-sequence length / GC / N-count natively (the ``.seq`` expressions) and an
     ``xxh3`` content hash, keeps the first occurrence of each unique sequence, and
     writes the representatives to ``output_file`` while streaming (only the hash
@@ -1275,7 +1278,7 @@ def dereplicate_fasta(
     stats (``contigs_id_map``-style: old id, new id, length, gc, n_count, hash) and
     the redundancy map (representative -> collapsed members), so the raw
     ``all_contigs.fasta`` / ``all_contigs_renamed.fasta`` copies are no longer
-    needed.
+    needed. Supplying a prefix adds a streaming pass to rewrite headers.
 
     Args:
         input_file: FASTA path to dereplicate.
@@ -1337,7 +1340,7 @@ def dereplicate_fasta(
             for header, seq, length, gc, n in zip(headers, seqs, lengths, gcs, ns):
                 total += 1
                 old_id = header.split()[0] if header else header
-                h = seq_hash_xxh3(seq if not ignore_case else seq.upper())
+                h = seq_hash_xxh3(seq, ignore_case=ignore_case)
                 idx = seen.get(h)
                 if idx is None:
                     seen[h] = len(reps)

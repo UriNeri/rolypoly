@@ -330,7 +330,9 @@ def consolidate_hits(
         merge: Merge overlapping hits
         column_specs: Query and target column names (comma-separated)
         drop_contained: Drop hits contained within other hits
-        split: Split overlapping ranges
+        split: Subtract higher-ranked ranges per query/strand using inclusive
+            coordinates. A hit may yield multiple fragments; other fields are
+            retained as original-hit provenance, not recomputed per fragment.
         alphabet: Sequence alphabet ('aa' for amino acid, 'nucl' for nucleotide)
         adaptive_overlap: Use adaptive overlap thresholds based on alignment length and polyprotein detection
 
@@ -349,6 +351,7 @@ def consolidate_hits(
     og_cols = hit_table.columns
 
     work_table = hit_table.clone().unique()
+    query_overlap_thresholds = {}
 
     # Apply adaptive overlap thresholds if requested (only for amino acid sequences)
     if adaptive_overlap and alphabet == "aa":
@@ -377,7 +380,7 @@ def consolidate_hits(
 
         # Calculate adaptive thresholds for each hit
         def calc_overlap_threshold(row):
-            ali_len = int(row[q2_col]) - int(row[q1_col])
+            ali_len = abs(int(row[q2_col]) - int(row[q1_col])) + 1
             is_polyprotein = row[query_id_col] in polyprotein_queries
             return calculate_adaptive_overlap_threshold(ali_len, is_polyprotein)
 
@@ -388,10 +391,15 @@ def consolidate_hits(
             .alias("adaptive_threshold")
         )
 
-        # Use minimum threshold as conservative baseline for this batch
-        min_overlap_positions = work_table.select(
-            pl.col("adaptive_threshold").min()
-        ).item()
+        # Keep the conservative minimum local to each query. Unrelated hits
+        # must not change which annotations survive for this query.
+        query_overlap_thresholds = dict(
+            work_table.group_by(query_id_col)
+            .agg(pl.col("adaptive_threshold").min())
+            .iter_rows()
+        )
+        if not one_per_range:
+            min_overlap_positions = work_table["adaptive_threshold"].min()
 
         # Drop the adaptive threshold column before processing
         work_table = work_table.drop("adaptive_threshold")
@@ -443,12 +451,14 @@ def consolidate_hits(
     work_table = work_table.with_row_index(name="uid")
 
     if split:
-        work_table = work_table.with_columns(
-            pl.col(q1_col).alias("start"), pl.col(q2_col).alias("end")
-        )
         logger.info("Splitting overlapping hits")
-        work_table = clip_overlapping_ranges_pl(
-            input_df=work_table, min_overlap=min_overlap_positions, id_col="uid"
+        work_table = _split_overlapping_hits(
+            work_table=work_table,
+            query_id_col=query_id_col,
+            q1_col=q1_col,
+            q2_col=q2_col,
+            strand_col=strand_col,
+            min_overlap_positions=min_overlap_positions,
         )
         work_table = work_table.rename(
             {rank_list_renamed[i]: rank_list[i] for i in range(len(rank_list))}
@@ -518,10 +528,11 @@ def consolidate_hits(
                 end = row[q2_col]
                 uid = row["uid"]
 
-                # Normalize coordinates for interval tree (must have norm_start < norm_end)
+                # Normalize inclusive sequence coordinates for intervaltree,
+                # which stores half-open intervals.
                 # This preserves the original coordinates in the dataframe
                 norm_start = min(start, end)
-                norm_end = max(start, end)
+                norm_end = max(start, end) + 1
 
                 # Check if this interval significantly overlaps with any kept interval
                 overlaps = tree.overlap(norm_start, norm_end)
@@ -531,7 +542,9 @@ def consolidate_hits(
                     overlap_size = min(norm_end, ovl.end) - max(
                         norm_start, ovl.begin
                     )
-                    if overlap_size >= min_overlap_positions:
+                    if overlap_size >= query_overlap_thresholds.get(
+                        row[query_id_col], min_overlap_positions
+                    ):
                         has_significant_overlap = True
                         break
 
@@ -875,6 +888,46 @@ def _merge_overlapping_hits(
         {rank_list_renamed[i]: rank_list[i] for i in range(len(rank_list))}
     )
     return result.select(og_cols).unique()
+
+
+def _split_overlapping_hits(
+    work_table: pl.DataFrame,
+    query_id_col: str,
+    q1_col: str,
+    q2_col: str,
+    strand_col: Optional[str],
+    min_overlap_positions: int,
+) -> pl.DataFrame:
+    """Subtract higher-ranked query intervals from lower-ranked intervals."""
+    partition_cols = [query_id_col]
+    if strand_col and strand_col in work_table.columns:
+        partition_cols.append(strand_col)
+
+    fragments = []
+    for subdf in work_table.partition_by(partition_cols, maintain_order=True):
+        occupied = itree.IntervalTree()
+        for row in subdf.iter_rows(named=True):
+            start, end = row[q1_col], row[q2_col]
+            low, high = min(start, end), max(start, end) + 1
+            remaining = itree.IntervalTree.from_tuples([(low, high)])
+
+            for overlap in occupied.overlap(low, high):
+                if overlap.overlap_size(low, high) >= min_overlap_positions:
+                    remaining.chop(overlap.begin, overlap.end)
+
+            for fragment in sorted(remaining):
+                clipped = row.copy()
+                first, last = fragment.begin, fragment.end - 1
+                clipped[q1_col], clipped[q2_col] = (
+                    (first, last) if start <= end else (last, first)
+                )
+                fragments.append(clipped)
+                occupied.addi(fragment.begin, fragment.end)
+
+    if not fragments:
+        return work_table.head(0)
+
+    return pl.DataFrame(fragments, schema=work_table.schema)
 
 
 def return_or_write(df: pl.DataFrame, output: Optional[str]):
