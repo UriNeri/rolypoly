@@ -158,3 +158,5 @@ agents.md
 AGENTS.md
 scripts/*
 testing_folder/inputs/reads/interleaved.fastq.gz
+misc/
+codebase-audits/
