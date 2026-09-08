@@ -908,7 +908,8 @@ def roll(
     nucleic_search_dir.mkdir(parents=True, exist_ok=True)
     nucleic_search_output = nucleic_search_dir / "results.tab"
     nucleic_result_files = sorted(nucleic_search_dir.glob("*_vs_*.tab"))
-    if "nucleic_search" in skip_steps:
+    use_nucleic_results = "nucleic_search" not in skip_steps
+    if not use_nucleic_results:
         logger.info("Step %d: Skipping nucleic search (in --skip-steps)", step)
     elif skip_existing and nucleic_result_files:
         logger.info(
@@ -933,12 +934,15 @@ def roll(
         )
 
     # get only the contigs that have hits to the known RNA viruses for downstream annotation
-    nucleic_result_files = sorted(nucleic_search_dir.glob("*_vs_*.tab"))
-    if not nucleic_result_files:
+    nucleic_result_files = (
+        sorted(nucleic_search_dir.glob("*_vs_*.tab"))
+        if use_nucleic_results else []
+    )
+    if use_nucleic_results and not nucleic_result_files:
         logger.warning(
             "No nucleic search result files found in %s", nucleic_search_dir
         )
-    else:
+    elif nucleic_result_files:
         contig_hit_table = pl.scan_csv(
             source=str(nucleic_search_dir / "*_vs_*.tab"),
             separator="\t",
