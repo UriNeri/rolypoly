@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Callable
 
 import polars as pl
+from needletail import parse_fastx_file
 
 try:
     from rolypoly.utils.logging.loggit import get_logger
@@ -1046,23 +1047,14 @@ def summarize_lengths(lengths):
 
 
 def fasta_lengths(path):
-    """Stream a FASTA and return the list of sequence lengths, without loading the
-    whole file (accumulates one record at a time). Returns [] on any read error."""
+    """Stream a FASTA and return sequence lengths without loading all records."""
     lengths = []
-    current = 0
     try:
-        with open(path) as handle:
-            for line in handle:
-                if line.startswith(">"):
-                    if current:
-                        lengths.append(current)
-                    current = 0
-                else:
-                    current += len(line.strip())
-        if current:
-            lengths.append(current)
-    except Exception:
-        return []
+        for record in parse_fastx_file(path):
+            lengths.append(len(record.seq))
+    except Exception as exc:
+        logger.warning("genome_maps: could not read FASTA lengths from %s (%s)", path, exc)
+        return None
     return lengths
 
 
@@ -1257,10 +1249,12 @@ def load_run_stats(output_dir, rrna_mapping_path=None):
             None,
         )
         if final_fasta is not None:
-            assembly.update(summarize_lengths(fasta_lengths(final_fasta)))
-            assembly["source"] = final_fasta.name
-        else:
-            # No endpoint FASTA found: fall back to the raw id-map lengths.
+            lengths = fasta_lengths(final_fasta)
+            if lengths is not None:
+                assembly.update(summarize_lengths(lengths))
+                assembly["source"] = final_fasta.name
+        if final_fasta is None or "source" not in assembly:
+            # No readable endpoint FASTA found: fall back to the raw id-map lengths.
             try:
                 assembly.update(summarize_lengths(
                     [int(to_float(x, 0)) for x in amap["length"].to_list()]))

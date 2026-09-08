@@ -232,6 +232,67 @@ def validate_protein_to_contig_map(frame: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+GFF_COLUMNS = [
+    "seqid",
+    "source",
+    "type",
+    "start",
+    "end",
+    "score",
+    "strand",
+    "phase",
+    "attributes",
+]
+
+
+def gff_protein_id_expr() -> pl.Expr:
+    """Return a normalized protein ID expression for GFF3/GTF attributes."""
+    return (
+        pl.coalesce(
+            [
+                pl.col("attributes").str.extract(r"(?:^|;)\s*ID=([^;]+)", 1),
+                pl.col("attributes").str.extract(
+                    r"(?:^|;)\s*protein_id=([^;]+)", 1
+                ),
+                pl.col("attributes").str.extract(
+                    r'(?:^|;)\s*protein_id "([^"]+)"', 1
+                ),
+                pl.col("attributes").str.extract(
+                    r'(?:^|;)\s*transcript_id "([^"]+)"', 1
+                ),
+            ]
+        )
+        .str.split(" ")
+        .list.first()
+    )
+
+
+def scan_gff_records(path: Union[str, Path]) -> pl.LazyFrame:
+    """Scan tabular GFF/GTF records with standard column names."""
+    return pl.scan_csv(
+        path,
+        has_header=False,
+        separator="\t",
+        comment_prefix="#",
+        new_columns=GFF_COLUMNS,
+        infer_schema=False,
+        truncate_ragged_lines=True,
+    )
+
+
+def scan_protein_gff_records(path: Union[str, Path]) -> pl.LazyFrame:
+    """Scan GFF/GTF records and add the normalized ``protein`` column.
+
+    Feature type is not filtered here; callers own CDS-like feature policy.
+    """
+    return (
+        scan_gff_records(path)
+        .filter(pl.col("attributes").is_not_null())
+        .with_columns(gff_protein_id_expr().alias("protein"))
+        .filter(pl.col("protein").is_not_null())
+    )
+
+
 def read_protein_gff_map(path: Union[str, Path]) -> pl.DataFrame:
     """Read a protein-to-contig map from CDS-like GFF/GTF records.
 
@@ -240,49 +301,11 @@ def read_protein_gff_map(path: Union[str, Path]) -> pl.DataFrame:
     GFF ``seqid`` column. Both IDs are reduced to their first whitespace token,
     matching FASTA search-tool query ID behavior.
     """
-    columns = [
-        "seqid",
-        "source",
-        "type",
-        "start",
-        "end",
-        "score",
-        "strand",
-        "phase",
-        "attributes",
-    ]
-    frame = pl.scan_csv(
-        path,
-        has_header=False,
-        separator="\t",
-        comment_prefix="#",
-        new_columns=columns,
-        infer_schema=False,
-        truncate_ragged_lines=True,
-    )
-    protein_id = pl.coalesce(
-        [
-            pl.col("attributes").str.extract(r"(?:^|;)\s*ID=([^;]+)", 1),
-            pl.col("attributes").str.extract(
-                r"(?:^|;)\s*protein_id=([^;]+)", 1
-            ),
-            pl.col("attributes").str.extract(
-                r'(?:^|;)\s*protein_id "([^"]+)"', 1
-            ),
-            pl.col("attributes").str.extract(
-                r'(?:^|;)\s*transcript_id "([^"]+)"', 1
-            ),
-        ]
-    )
     mapping = (
-        frame.filter(
-            pl.col("seqid").is_not_null()
-            & pl.col("attributes").is_not_null()
-        )
-        .with_columns(protein_id.alias("protein"))
-        .filter(pl.col("protein").is_not_null())
+        scan_protein_gff_records(path)
+        .filter(pl.col("seqid").is_not_null())
         .select(
-            pl.col("protein").str.split(" ").list.first().alias("protein"),
+            pl.col("protein"),
             pl.col("seqid").str.split(" ").list.first().alias("contig"),
         )
         .collect()

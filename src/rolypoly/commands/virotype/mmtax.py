@@ -14,6 +14,7 @@ import rich_click as click
 
 from rolypoly.utils.bio.polars_fastx import (
     read_protein_gff_map,
+    scan_protein_gff_records,
     validate_protein_to_contig_map,
 )
 
@@ -204,49 +205,13 @@ def sequence_lengths(
 
 def read_single_cds_coordinates(path: Path) -> pl.DataFrame:
     """Read coordinates for proteins represented by one CDS feature."""
-    columns = [
-        "seqid",
-        "source",
-        "type",
-        "start",
-        "end",
-        "score",
-        "strand",
-        "phase",
-        "attributes",
-    ]
-    protein_id = pl.coalesce(
-        [
-            pl.col("attributes").str.extract(r"(?:^|;)\s*ID=([^;]+)", 1),
-            pl.col("attributes").str.extract(
-                r"(?:^|;)\s*protein_id=([^;]+)", 1
-            ),
-            pl.col("attributes").str.extract(
-                r'(?:^|;)\s*protein_id "([^"]+)"', 1
-            ),
-            pl.col("attributes").str.extract(
-                r'(?:^|;)\s*transcript_id "([^"]+)"', 1
-            ),
-        ]
-    )
     return (
-        pl.scan_csv(
-            path,
-            has_header=False,
-            separator="\t",
-            comment_prefix="#",
-            new_columns=columns,
-            infer_schema=False,
-            truncate_ragged_lines=True,
-        )
-        .filter(pl.col("attributes").is_not_null())
+        scan_protein_gff_records(path)
         .with_columns(
-            protein_id.str.split(" ").list.first().alias("protein"),
             pl.col("start").cast(pl.Int64, strict=False).alias("cds_start"),
             pl.col("end").cast(pl.Int64, strict=False).alias("cds_end"),
             pl.col("strand").alias("cds_strand"),
         )
-        .filter(pl.col("protein").is_not_null())
         .group_by("protein")
         .agg(
             pl.len().alias("cds_segment_count"),

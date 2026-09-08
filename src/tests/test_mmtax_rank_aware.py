@@ -5,8 +5,10 @@ import taxopy
 from rolypoly.commands.virotype.mmtax import (
     assign_contig_taxonomy,
     rank_vote_metrics,
+    read_single_cds_coordinates,
     weighted_majority_taxid,
 )
+from rolypoly.utils.bio.polars_fastx import read_protein_gff_map
 
 
 def make_taxdb(tmp_path):
@@ -36,6 +38,30 @@ def make_taxdb(tmp_path):
     return taxopy.TaxDb(
         nodes_dmp=str(nodes), names_dmp=str(names), keep_files=True
     )
+
+
+def test_gff_protein_map_and_single_cds_coordinates_share_id_parsing(tmp_path):
+    gff = tmp_path / "proteins.gff"
+    gff.write_text(
+        "contig one\trp\tCDS\t5\t20\t.\t+\t0\tID=prot1 description\n"
+        "contig2\trp\tCDS\t30\t60\t.\t-\t0\tprotein_id=prot2 extra\n"
+        'contig3\trp\tCDS\t70\t90\t.\t+\t0\ttranscript_id "prot3 note"\n'
+        'contig3\trp\tCDS\t95\t120\t.\t+\t0\ttranscript_id "prot3 note"\n'
+    )
+
+    mapping = read_protein_gff_map(gff).sort("protein")
+    assert mapping.to_dict(as_series=False) == {
+        "protein": ["prot1", "prot2", "prot3"],
+        "contig": ["contig", "contig2", "contig3"],
+    }
+
+    coordinates = read_single_cds_coordinates(gff).sort("protein")
+    assert coordinates.to_dict(as_series=False) == {
+        "protein": ["prot1", "prot2"],
+        "cds_start": [5, 30],
+        "cds_end": [20, 60],
+        "cds_strand": ["+", "-"],
+    }
 
 
 def test_shallow_taxa_are_neutral_at_deeper_ranks(tmp_path):
