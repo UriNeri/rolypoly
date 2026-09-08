@@ -4,6 +4,16 @@
 
 ### Fixed
 - `marker-search`: preserve numeric hit coordinates and scores when a searched database returns no hits, preventing consolidation failures and string-based ranking.
+- `marker-search`: make adaptive overlap selection query-local and use inclusive alignment lengths for overlap thresholds.
+- `marker-search`: fix split and one-per-range overlap handling so inclusive endpoint overlaps, reverse coordinates, query boundaries and strand partitions are handled consistently.
+- `assemble`: honor `dereplicate_fasta(ignore_case=False)` by passing the case policy into the sequence hash helper.
+- `roll`: ignore stale nucleic-search result files when `nucleic_search` is explicitly skipped, while preserving intentional `--skip-existing` reuse.
+- `mmtax`: share GFF/GTF protein ID parsing between protein-to-contig maps and CDS coordinate projection.
+- `report`: warn and fall back to `contigs_id_map.tsv` lengths when an endpoint assembly FASTA exists but cannot be read.
+- `get-data`: keep local archive extraction covered for ZIP and tarball inputs and use the standard tar data filter.
+
+### Removed
+- Removed unused `extract_zip` and retired `run_command` utility wrappers; maintained command execution continues through `run_command_comp`.
 
 ## v0.7.19
 
