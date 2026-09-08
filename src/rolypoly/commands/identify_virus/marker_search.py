@@ -1272,10 +1272,23 @@ def marker_search(
 
     # read all output files, stack them, and resolve overlaps
     config.logger.debug(f"Reading {len(all_outputs)} output files")
+    # Header-only search outputs otherwise infer String columns and can coerce
+    # nonempty databases' coordinates and ranking scores during concatenation.
+    numeric_schema = {
+        **dict.fromkeys(
+            ("hmm_len", "qlen", "hmm_from", "hmm_to", "q1", "q2",
+             "env_from", "env_to", "ali_len"), pl.Int64
+        ),
+        **dict.fromkeys(
+            ("full_hmm_evalue", "full_hmm_score", "full_hmm_bias",
+             "this_dom_score", "this_dom_bias", "hmm_cov"), pl.Float64
+        ),
+    }
     stack_df = pl.concat(
         [
             pl.scan_csv(
-                output_path, separator="\t", infer_schema_length=123123
+                output_path, separator="\t", infer_schema_length=123123,
+                schema_overrides=numeric_schema,
             ).with_columns(pl.lit(db_name).alias("database_id"))
             for db_name, output_path in all_outputs
         ],

@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased [planned v0.7.19]
+## (unreleased) v0.7.20
+
+### Fixed
+- `marker-search`: preserve numeric hit coordinates and scores when a searched database returns no hits, preventing consolidation failures and string-based ranking.
+
+## v0.7.19
 
 ### Added
 - `nucleic-search`: accept comma-separated FASTA/FASTQ files or a directory and combine them into one MMseqs2 query database.
