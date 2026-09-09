@@ -210,10 +210,6 @@ Internally, the command:
 6. Replaces both release files only after the version calculation and environment
    export succeed.
 
-`bump` does not test, stage, commit, switch branches, push, tag, create a GitHub
-Release, or publish a package. Its only intended working-tree changes are
-`src/rolypoly/__init__.py` and `src/setup/env_big.yaml`.
-
 #### What `commit-release` does
 
 `commit-release` runs `src/setup/commit_release.sh`. It requires `main` to contain
