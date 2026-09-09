@@ -42,7 +42,7 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
    - Try to clean up tmp files unless `--keep-tmp` flag is used.
 
 4. **Calling external tools**:
-   - Ideally, please use `rolypoly.utils.command_runner.run_command_comp()` to run external commands, especially if a logger or output tracking is needed.
+   - Ideally, please use `rolypoly.utils.various.run_command_comp()` to run external commands, especially if a logger or output tracking is needed.
    - If that is not possible, use `subprocess.run()`.
    - If there is a `tools` list global variable, update it accordingly, that would expose it if the citation reminder is called.
 
@@ -95,9 +95,9 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
 ## Documentation workflow
 
 - Docs source pages are in `docs/mkdocs_docs/`.
-- Docs site navigation is configured in `docs/mkdocs.yml` (`nav:` section).
+- Docs site navigation is configured in `docs/mkdocs_zensical.yml,` (`nav:` section).
 - Command docs are under `docs/mkdocs_docs/commands/`.
-- Keep command links in `README.md` aligned with pages listed in `docs/mkdocs.yml`.
+- Keep command links in `README.md` aligned with pages listed in `docs/mkdocs_zensical.yml,`.
 
 Use pixi docs tasks:
 - Serve locally (live reload): `pixi run -e dev docs-serve`
@@ -114,7 +114,7 @@ The exporter injects scaffold content into generated pages under **Pinned Sectio
 
 When adding a new command page:
 1. Add the markdown page in `docs/mkdocs_docs/commands/`.
-2. Add it to `nav` in `docs/mkdocs.yml`.
+2. Add it to `nav` in `docs/mkdocs_zensical.yml,`.
 3. Add/update links in `README.md` and relevant command pages under `docs/mkdocs_docs/commands/`.
 
 ## PyPI / TestPyPI release automation
