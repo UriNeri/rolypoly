@@ -1,6 +1,7 @@
 import os
 import shutil
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Tuple, Union
 
 import rich_click as click
@@ -670,10 +671,10 @@ def process_reads(
             Path(unmerged_file), config, output_tracker, "final_interleaved"
         )  # noqa (F841)
 
-    generate_reports(
+    falco_ready = generate_reports(
         config.file_name, config.threads, config.skip_existing, config.logger
     )
-    cleanup_and_move_files(config, output_tracker)
+    cleanup_and_move_files(config, output_tracker, falco_ready=falco_ready)
     # output_tracker.to_csv(f"{config.output_dir}/run_info/output_tracker.csv")
     if not config.keep_tmp:
         try:
@@ -966,36 +967,74 @@ def probe_inputs(config: ReadFilterConfig) -> dict[str, Any]:
     )
 
 
-def generate_reports(file_name: str, threads: int, skip_existing: bool, logger):
-    import glob
+def generate_reports(file_name: str, threads: int, skip_existing: bool, logger) -> bool:
+    """Generate optional Falco QC and return whether complete reports are available.
 
-    # Generate falco report
+    Failed runs warn and preserve previous reports. New reports replace them
+    only after a successful exit and nonempty data, summary, and HTML outputs.
+    """
+    all_remaining_fastqs = sorted(config.temp_dir.glob("*final*.fq.gz"))
+    if not all_remaining_fastqs:
+        logger.warning("Skipping Falco: no final FASTQ files found in %s", config.temp_dir)
+        return False
+
     falco_output = config.temp_dir / "falco_post_trim_reads"
-    falco_output.mkdir(exist_ok=True)
-    all_remaining_fastqs = glob.glob(
-        str(config.temp_dir / "*final*.fq.gz"), recursive=True
+    prefixes = (
+        [f"{path.name}_" for path in all_remaining_fastqs]
+        if len(all_remaining_fastqs) > 1 else [""]
     )
-
-    if (
-        not skip_existing
-        or not (falco_output / f"merged_{file_name}_falco.html").exists()
-    ):
-        run_command_comp(
-            base_cmd="falco",
-            positional_args=[*all_remaining_fastqs],
-            params={"t": str(threads), "outdir": str(falco_output)},
-            assign_operator=" ",
-            positional_args_location="end",
-            logger=logger,
-            # output_file=str(falco_output / f"{file_name}_falco.html"),
-            skip_existing=skip_existing,
-            check_status=True,
-            check_output=False,
-        )
-        logger.info("falco report generated")
-        tools.append("falco")
+    # Cleanup moves QC into run_info. Prefer temporary outputs when present:
+    # cleanup would replace run_info with them, so they must be complete.
+    existing_dir = (
+        falco_output if falco_output.exists()
+        else config.output_dir / "run_info" / falco_output.name
+    )
+    expected_names = [
+        f"{prefix}{suffix}"
+        for prefix in prefixes
+        for suffix in ("fastqc_data.txt", "summary.txt", "fastqc_report.html")
+    ]
+    existing_complete = all(
+        path.is_file() and path.stat().st_size > 0
+        for path in (existing_dir / name for name in expected_names)
+    )
+    if skip_existing and existing_complete:
+        logger.info("Falco reports already exist in %s, skipping", existing_dir)
     else:
-        logger.info("falco report already exists, skipping")
+        # Isolate this attempt so old files cannot mask missing new outputs or
+        # be overwritten by a failed backend. Cleanup never publishes staging.
+        with TemporaryDirectory(prefix=".qc-", dir=config.temp_dir) as scratch:
+            staged = Path(scratch) / "reports"
+            staged.mkdir()
+            succeeded = run_command_comp(
+                base_cmd="falco",
+                positional_args=[str(path) for path in all_remaining_fastqs],
+                params={"t": str(threads), "outdir": str(staged)},
+                assign_operator=" ",
+                positional_args_location="end",
+                logger=logger,
+                check_status=True,
+                check_output=False,
+            )
+            missing = [
+                name for name in expected_names
+                if not (staged / name).is_file() or (staged / name).stat().st_size == 0
+            ]
+            if not succeeded or missing:
+                reason = "command failed" if not succeeded else f"missing or empty outputs: {', '.join(missing)}"
+                logger.warning(
+                    "Falco QC unavailable for %s (%s); continuing with filtered reads. "
+                    "Existing reports, if any, are from an earlier run and have been preserved.",
+                    file_name, reason,
+                )
+                return existing_complete
+            if falco_output.exists():
+                shutil.rmtree(falco_output)
+            staged.rename(falco_output)
+        logger.info("Falco reports generated")
+    if "falco" not in tools:
+        tools.append("falco")
+    return True
 
 
 # Using the file_detection module instead of local implementation, below takes the library detection from there.
@@ -1719,12 +1758,13 @@ def quality_trim_unmerged(
 
 
 def cleanup_and_move_files(
-    config: ReadFilterConfig, output_tracker: OutputTracker
+    config: ReadFilterConfig, output_tracker: OutputTracker, *, falco_ready: bool = True
 ):
     """Clean up and move files to their final locations.
     Args:
         output_tracker: Tracks output files
         config: Configuration object
+        falco_ready: Whether temporary Falco reports are complete and may be moved.
     """
     # Ensure all paths are absolute
     temp_dir = Path(config.temp_dir).resolve()
@@ -1741,6 +1781,8 @@ def cleanup_and_move_files(
     # Move fastqc/falco reports to run_info
     for pattern in ["*fastqc*", "falco*"]:
         for qc_dir in temp_dir.glob(pattern):
+            if qc_dir.name == "falco_post_trim_reads" and not falco_ready:
+                continue
             if qc_dir.exists():
                 # breakpoint()
                 config.logger.info(f"Moving {qc_dir} to run_info")

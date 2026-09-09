@@ -5,6 +5,8 @@
 ### Fixed
 - `report`: validate assembly-map lengths before aggregation and warn on malformed maps instead of reporting partial totals; preserve valid final-FASTA statistics and group unlabelled raw contigs as unknown.
 - `report`: include single-input Falco outputs, preserve zero sequence counts, and warn on malformed BBDuk counts or Falco files while retaining other valid statistics.
+- `filter-reads`: honor `--skip-existing` for complete Falco outputs in temporary storage or `run_info`, regenerate missing or empty outputs, and skip QC with a warning when no final FASTQs exist.
+- `filter-reads`: warn and continue when Falco fails or produces incomplete outputs; stage new QC separately so failed attempts cannot overwrite earlier complete reports or publish partial reports.
 - `report`: respect output-tracker CSV quoting, warn and try another tracker when sizes or structure are invalid, and omit invalid rRNA percentage breakdowns instead of substituting zero.
 
 ## v0.7.20
