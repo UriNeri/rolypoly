@@ -114,7 +114,26 @@ def search_mmseqs_marker_db(
             f"MMseqs2 marker search did not create its output: {raw_output}"
         )
 
-    raw_hits = pl.read_csv(raw_output, separator="\t")
+    # MMseqs2 writes the requested header even when this database has no hits.
+    # Explicit numeric types keep that valid empty result composable with later
+    # databases instead of letting CSV inference turn every column into String.
+    raw_hits = pl.read_csv(
+        raw_output,
+        separator="\t",
+        schema_overrides={
+            "evalue": pl.Float64,
+            "bits": pl.Float64,
+            "qstart": pl.Int64,
+            "qend": pl.Int64,
+            "tstart": pl.Int64,
+            "tend": pl.Int64,
+            "qlen": pl.Int64,
+            "tlen": pl.Int64,
+            "alnlen": pl.Int64,
+            "qcov": pl.Float64,
+            "tcov": pl.Float64,
+        },
+    )
     hits = raw_hits.filter(
         (pl.col("evalue") <= inc_evalue)
         & (pl.col("bits") >= score)
@@ -991,7 +1010,7 @@ def marker_search(
         GitHub: https://github.com/JustineCharon/RdRp-scan  |  Paper: https://doi.org/10.1093/ve/veac082 \n
             ⤷ (which IIRC incorporated PALMdb, GitHub: https://github.com/rcedgar/palmdb, Paper: https://doi.org/10.7717/peerj.14055 \n
     • Pfam_RTs_RdRp \n
-        RdRp and RT profiles from Pfam 38.2 --- PF04197.18,PF04196.18,PF22212.2,PF22152.2,PF22260.2,PF00680.26,PF00978.27,PF00998.29,PF02123.22,PF07925.16,PF00078.33,PF07727.20,PF13456.13
+        RdRp and RT profiles from Pfam 38.2 --- PF06317.17,PF04197.18,PF04196.18,PF22212.2,PF00602.23,PF00946.25,PF22152.2,PF22260.2,PF00680.26,PF00978.27,PF00998.29,PF02123.22,PF07925.16,PF00078.33,PF07727.20,PF13456.13
         Data: https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam38.2/ | Paper https://doi.org/10.1093/nar/gkaa913
     • geNomad \n
         RNA virus marker genes from geNomad v1.9 --- https://zenodo.org/records/14886553

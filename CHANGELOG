@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Fixed
+- `marker-search`: accept header-only MMseqs2 results so one database with no hits does not abort a multi-database search.
 - `report`: validate assembly-map lengths before aggregation and warn on malformed maps instead of reporting partial totals; preserve valid final-FASTA statistics and group unlabelled raw contigs as unknown.
 - `report`: include single-input Falco outputs, preserve zero sequence counts, and warn on malformed BBDuk counts or Falco files while retaining other valid statistics.
 - `filter-reads`: honor `--skip-existing` for complete Falco outputs in temporary storage or `run_info`, regenerate missing or empty outputs, and skip QC with a warning when no final FASTQs exist.
