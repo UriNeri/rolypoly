@@ -1133,6 +1133,16 @@ def load_run_stats(output_dir, rrna_mapping_path=None):
     ``rrna_mapping_path`` (or the env var ``ROLYPOLY_DATA`` ->
     ``contam/rrna/rrna_to_genome_mapping.parquet``) optionally enriches the top
     rRNA matches with reference organism names.
+
+    Assembly-map lengths must all be positive integers. Invalid maps are warned
+    about and omitted from aggregate statistics; a readable final FASTA remains
+    authoritative even when the map is invalid.
+
+    Falco's single- and multiple-input filenames are supported. Malformed BBDuk
+    or Falco statistics are warned about and omitted without losing other files.
+    Invalid rRNA percentages omit that file's rRNA breakdown, retaining its read
+    counts. Tracker CSV quoting is respected; invalid trackers warn and allow
+    another tracker to be tried without publishing partial rows.
     """
     output_dir = Path(output_dir)
     stats: dict = {"reads": [], "rrna_top": [], "rrna_domain": {},
@@ -1158,17 +1168,20 @@ def load_run_stats(output_dir, rrna_mapping_path=None):
         rows = []
         try:
             for line in Path(path).read_text().splitlines():
-                if line.startswith("#Total"):
-                    total = int(line.split("\t")[1])
-                elif line.startswith("#Matched"):
+                if line.partition("\t")[0] == "#Total":
+                    total = int(line.partition("\t")[2])
+                elif line.partition("\t")[0] == "#Matched":
                     cells = line.split("\t")
-                    matched = int(cells[1])
+                    matched = int(cells[1] if len(cells) > 1 else "")
                     pct = cells[2].strip() if len(cells) > 2 else ""
-                elif line and not line.startswith("#") and "\t" in line:
+                elif line and not line.startswith("#"):
                     cells = line.split("\t")
                     rows.append((cells[0], cells[1] if len(cells) > 1 else "",
                                  cells[2].strip() if len(cells) > 2 else ""))
-        except Exception:
+            if total is None or matched is None or not 0 <= matched <= total:
+                raise ValueError("expected #Total and #Matched with 0 <= matched <= total")
+        except (OSError, ValueError) as exc:
+            logger.warning("genome_maps: could not read BBDuk statistics from %s (%s)", path, exc)
             continue
         step = Path(path).name.replace("stats_", "", 1)[:-4]
         # bbduk #Matched = reads matching the reference; for decontamination /
@@ -1180,11 +1193,19 @@ def load_run_stats(output_dir, rrna_mapping_path=None):
                                "pct": pct, "kept": kept, "kept_pct": kept_pct})
         # rRNA decontamination stats -> structured top table + domain totals.
         if "rrna" in Path(path).name.lower() and rows:
+            try:
+                percentages = [float(pct_str.removesuffix("%")) for _, _, pct_str in rows]
+                if any(not 0 <= value <= 100 for value in percentages):
+                    raise ValueError("rRNA percentages must be between 0 and 100")
+            except ValueError as exc:
+                logger.warning(
+                    "genome_maps: could not read rRNA percentages from %s (%s)", path, exc
+                )
+                continue
             top = []
             euk = prok = unk = 0.0
-            for name, reads, pct_str in rows:
+            for (name, reads, pct_str), pct_val in zip(rows, percentages):
                 info = parse_rrna_reference(name)
-                pct_val = to_float(pct_str.replace("%", ""), 0.0)
                 if info["domain"] == "eukaryotic":
                     euk += pct_val
                 elif info["domain"] == "prokaryotic":
@@ -1204,16 +1225,26 @@ def load_run_stats(output_dir, rrna_mapping_path=None):
     # --- files: output_tracker.csv ---
     for path in sorted(output_dir.glob("**/output_tracker.csv")):
         try:
-            tracker = read_hit_table(path)
+            # OutputTracker.to_csv uses standard CSV quoting, including commas
+            # and newlines in filenames/commands. The hit-table reader does not.
+            tracker = pl.read_csv(path, infer_schema_length=0).select(
+                "command_name", "file_type", pl.col("file_size").cast(pl.Int64), "is_merged"
+            )
+            sizes = tracker.get_column("file_size")
+            if sizes.null_count() or (sizes < 0).any():
+                raise ValueError("file sizes must be non-null non-negative integers")
+            files = []
             for row in tracker.iter_rows(named=True):
-                stats["files"].append({
+                files.append({
                     "step": row.get("command_name", ""),
                     "type": row.get("file_type", ""),
-                    "size": int(to_float(row.get("file_size"), 0)),
+                    "size": row["file_size"],
                     "merged": str(row.get("is_merged", "")).lower() in ("true", "1"),
                 })
-        except Exception:
-            pass
+        except (OSError, ValueError, pl.exceptions.PolarsError) as exc:
+            logger.warning("genome_maps: could not read output tracker from %s (%s)", path, exc)
+            continue
+        stats["files"] = files
         break
 
     # assembly stats. The headline numbers are the *final* assembly (after any
@@ -1223,22 +1254,31 @@ def load_run_stats(output_dir, rrna_mapping_path=None):
     for path in sorted(output_dir.glob("**/contigs_id_map.tsv")):
         assembly_dir = path.parent
         assembly = {}
-        # Per-assembler stats from the id map (raw, pre-dereplication contigs).
+        raw_lengths = None
+        # Validate once before using the map for totals or assembler breakdowns.
+        # Dropping malformed lengths would make partial totals look complete.
         try:
             amap = read_hit_table(path)
-            if "length" in amap.columns and "assembler" in amap.columns:
-                lengths = [int(to_float(x, 0)) for x in amap["length"].to_list()]
+            length_column = amap.get_column("length").cast(pl.Int64)
+            if length_column.null_count() or (length_column <= 0).any():
+                raise ValueError("contig lengths must be non-null positive integers")
+        except (OSError, ValueError, pl.exceptions.PolarsError) as exc:
+            logger.warning(
+                "genome_maps: could not read assembly lengths from %s (%s)", path, exc
+            )
+        else:
+            raw_lengths = length_column.to_list()
+            # Per-assembler stats describe raw, pre-dereplication contigs.
+            if "assembler" in amap.columns:
                 assemblers = amap["assembler"].to_list()
                 per = {}
-                for asm, length in zip(assemblers, lengths):
-                    per.setdefault(asm, []).append(length)
+                for asm, length in zip(assemblers, raw_lengths):
+                    per.setdefault(asm or "unknown", []).append(length)
                 if len(per) > 1:
                     assembly["assemblers"] = [
                         dict(name=asm, **summarize_lengths(vals))
                         for asm, vals in sorted(per.items())
                     ]
-        except Exception:
-            pass
         # Headline = the final assembly endpoint FASTA if we can find one, else the
         # raw id-map totals.
         final_fasta = next(
@@ -1253,64 +1293,81 @@ def load_run_stats(output_dir, rrna_mapping_path=None):
             if lengths is not None:
                 assembly.update(summarize_lengths(lengths))
                 assembly["source"] = final_fasta.name
-        if final_fasta is None or "source" not in assembly:
-            # No readable endpoint FASTA found: fall back to the raw id-map lengths.
-            try:
-                assembly.update(summarize_lengths(
-                    [int(to_float(x, 0)) for x in amap["length"].to_list()]))
-                assembly["source"] = "contigs_id_map.tsv"
-            except Exception:
-                pass
+        if "source" not in assembly and raw_lengths is not None:
+            # No readable endpoint FASTA found: use only a fully validated map.
+            assembly.update(summarize_lengths(raw_lengths))
+            assembly["source"] = "contigs_id_map.tsv"
         if assembly.get("n_contigs") or assembly.get("assemblers"):
             stats["assembly"] = assembly
         break
 
-    # --- falco / FastQC: <falco dir>/*_fastqc_data.txt + *_summary.txt ---
-    falco_data = sorted(set(output_dir.glob("**/*_fastqc_data.txt")), key=str)
+    # Falco uses bare FastQC-compatible filenames for one input, and prefixes
+    # each filename with <input>_ for multiple inputs in the same output folder.
+    falco_data = sorted(
+        set(output_dir.glob("**/fastqc_data.txt"))
+        | set(output_dir.glob("**/*_fastqc_data.txt")), key=str
+    )
     for path in falco_data:
         basic = {}
         try:
-            in_basic = False
+            in_basic = complete_basic = False
             for line in Path(path).read_text().splitlines():
-                if line.startswith(">>Basic Statistics"):
+                if line.partition("\t")[0] == ">>Basic Statistics":
                     in_basic = True
                     continue
                 if in_basic:
-                    if line.startswith(">>END_MODULE"):
+                    if line == ">>END_MODULE":
+                        complete_basic = True
                         break
-                    if line.startswith("#") or "\t" not in line:
+                    if line.startswith("#") or not line:
                         continue
+                    if "\t" not in line or line.startswith(">>"):
+                        raise ValueError("malformed Basic Statistics row")
                     key, _, val = line.partition("\t")
                     basic[key.strip()] = val.strip()
-        except Exception:
+            if not complete_basic or "Total Sequences" not in basic:
+                raise ValueError("missing or incomplete Basic Statistics module")
+            total_sequences = int(basic["Total Sequences"])
+            if total_sequences < 0:
+                raise ValueError("Total Sequences must be a non-negative integer")
+            gc = float(basic["%GC"]) if "%GC" in basic else None
+            if gc is not None and not 0 <= gc <= 100:
+                raise ValueError("%GC must be between 0 and 100")
+        except (OSError, ValueError) as exc:
+            logger.warning("genome_maps: could not read Falco statistics from %s (%s)", path, exc)
             continue
-        if not basic:
-            continue
-        # matching PASS/WARN/FAIL module flags from the sibling *_summary.txt
+        prefix = path.name.removesuffix("fastqc_data.txt")
+        # Matching PASS/WARN/FAIL module flags from the sibling summary.
         modules = {}
-        summary = Path(str(path).replace("_fastqc_data.txt", "_summary.txt"))
+        summary = path.with_name(f"{prefix}summary.txt")
         if summary.exists():
             try:
                 for line in summary.read_text().splitlines():
+                    if not line.strip():
+                        continue
                     cells = line.split("\t")
-                    if len(cells) >= 2:
-                        modules[cells[1]] = cells[0]  # module -> PASS/WARN/FAIL
-            except Exception:
-                pass
-        # Embed the falco/FastQC HTML report itself (if present) so the user can
+                    if len(cells) < 2 or cells[0] not in {"PASS", "WARN", "FAIL"} or not cells[1].strip():
+                        raise ValueError("expected a PASS/WARN/FAIL flag and module name")
+                    modules[cells[1]] = cells[0]
+                if not modules:
+                    raise ValueError("empty module summary")
+            except (OSError, ValueError) as exc:
+                modules = {}
+                logger.warning("genome_maps: could not read Falco summary from %s (%s)", summary, exc)
+        # Embed the Falco HTML report itself (if present) so the user can
         # see the full per-module plots inside an iframe, not just a flag summary.
         report_html = ""
-        report = Path(str(path).replace("_fastqc_data.txt", "_fastqc_report.html"))
+        report = path.with_name(f"{prefix}fastqc_report.html")
         if report.exists():
             try:
                 report_html = report.read_text()
-            except Exception:
-                report_html = ""
+            except (OSError, UnicodeError) as exc:
+                logger.warning("genome_maps: could not read Falco HTML from %s (%s)", report, exc)
         stats["falco"].append({
             "file": basic.get("Filename", Path(path).name),
-            "total_sequences": int(to_float(basic.get("Total Sequences"), 0)) or None,
+            "total_sequences": total_sequences,
             "total_bases": basic.get("Total Bases", ""),
-            "gc": to_float(basic.get("%GC"), None),
+            "gc": gc,
             "length": basic.get("Sequence length", ""),
             "flags": modules,
             "report_html": report_html,
@@ -2433,7 +2490,7 @@ function renderStats(){
     // is actually readable, not a single anonymous colour bar).
     const tag=(m,v)=>{const c=v==='PASS'?'#2E8B57':(v==='WARN'?'#CCB974':'#C44E52');
       return `<span class="pill" style="background:${c};margin:1px" title="${v}">${esc(m)}</span>`;};
-    html+=`<div class="card"><h2>Read QC (falco / FastQC)</h2>`;
+    html+=`<div class="card"><h2>Read QC (falco)</h2>`;
     STATS.falco.forEach((fq,i)=>{
       html+=`<div style="margin-bottom:6px"><b class="mono" style="font-size:12px">${esc(fq.file)}</b> — `+
         `${fq.total_sequences!=null?fq.total_sequences.toLocaleString():'?'} seqs, `+
