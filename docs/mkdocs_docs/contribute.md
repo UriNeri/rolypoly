@@ -147,7 +147,7 @@ Use environment protection rules in GitHub for safer releases (recommended):
 
 ### Triggering releases
 
-- Push to deployment branch `release`: builds + runs help-smoke tests only. No publish. Safe to re-run/re-push.
+- Push to deployment branch `release`: builds + runs help-smoke tests only. 
 - Create/publish a GitHub Release (tag `vX.Y.Z` targeting `release`): the **only** trigger that publishes, running the full build -> TestPyPI -> smoke-install -> PyPI pipeline in one shot.
 - `workflow_dispatch` (manual run): builds/tests, and also publishes to TestPyPI; pass `publish_pypi: true` to additionally publish to PyPI (useful for dry-runs/recovery).
 - Both publish steps pass `skip-existing: true`, so re-running the workflow (e.g. after a transient failure) won't hard-fail if that version was already uploaded.
