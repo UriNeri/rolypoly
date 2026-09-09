@@ -76,6 +76,38 @@ jobs:
       - name: Twine metadata check
         run: pixi run -e dev twine check dist/*
 
+      - name: Verify distributions contain every package module
+        run: |
+          python - <<'PY'
+          import tarfile
+          import zipfile
+          from pathlib import Path
+
+          expected = {
+              str(path.relative_to("src"))
+              for path in Path("src/rolypoly").rglob("*.py")
+          }
+          wheel = next(Path("dist").glob("*.whl"))
+          with zipfile.ZipFile(wheel) as archive:
+              missing = expected - set(archive.namelist())
+              assert not missing, f"Wheel missing modules: {sorted(missing)}"
+          sdist = next(Path("dist").glob("*.tar.gz"))
+          with tarfile.open(sdist) as archive:
+              members = {name.split("/", 1)[1] for name in archive.getnames() if "/" in name}
+              missing = {f"src/{name}" for name in expected} - members
+              assert not missing, f"Sdist missing modules: {sorted(missing)}"
+          PY
+
+      - name: Smoke-test installed wheel outside source checkout
+        run: |
+          smoke_dir=$(mktemp -d)
+          pixi run -e dev python -m venv --system-site-packages "$smoke_dir/venv"
+          "$smoke_dir/venv/bin/python" -m pip install --no-deps --ignore-installed dist/*.whl
+          cp src/tests/test_cli_help_smoke.py "$smoke_dir/test_cli_help_smoke.py"
+          cd "$smoke_dir"
+          "$smoke_dir/venv/bin/python" -I -c 'import sys, rolypoly; from pathlib import Path; assert Path(rolypoly.__file__).is_relative_to(Path(sys.prefix)), rolypoly.__file__'
+          "$smoke_dir/venv/bin/python" -I -m pytest -q --confcutdir="$smoke_dir" test_cli_help_smoke.py
+
       - name: Upload dist artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -162,6 +194,7 @@ jobs:
           python -m pip install --index-url https://pypi.org/simple rich-click polars
           python -c "import rolypoly; print(rolypoly.__version__)"
           rolypoly --help >/dev/null
+          rolypoly get-data --help >/dev/null
 
   publish-pypi:
     name: Publish to PyPI

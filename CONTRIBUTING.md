@@ -86,7 +86,7 @@ Check out our [project roadmap and TODO list](https://docs.google.com/spreadshee
      - `RP_CLI_MATCH=identify pixi run -e dev pytest -q src/tests/test_cli_contracts.py`
    - **Run all tests**: `pixi run -e dev pytest -q src/tests`
    - Temporary validation scripts should normally live outside the repository
-     (for example under `/tmp`) and should not be left as untracked test files.
+     (for example under `./tmp`) and should not be left as untracked test files.
      Promote one to a persistent pytest or CLI scenario only when it protects a
      stable contract under the criteria above.
 2. **Benchmarking**:

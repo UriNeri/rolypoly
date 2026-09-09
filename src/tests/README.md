@@ -8,4 +8,4 @@ Use the lowest-cost test that expresses the stable contract.
 - `regressions/` contains focused Python regression tests for bugs likely to recur. Monkeypatches and small synthetic fixtures are acceptable here when they isolate an external tool or cached pipeline state.
 - Other focused `test_*.py` modules cover stable scientific transformations, backend adapters, report output, and shared command policy. Avoid tests for internal helpers unless the behavior is part of a user-facing or scientific contract.
 
-Keep fixtures synthetic, deterministic, and as small as practical. Put one-off audits and migration checks in `/tmp` and record the command/result in the change instead of committing them.
+Keep fixtures synthetic, deterministic, and as small as practical. Put one-off audits and migration checks in `./tmp` and record the command/result in the change instead of committing them.

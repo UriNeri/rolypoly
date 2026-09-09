@@ -41,6 +41,7 @@ dependencies = [
     "viennarna>=2.7.2,<3",
     "numpy>=2.3.0,<3",
     "polars-bio>=0.35.1,<0.36",
+    "taxopy>=0.1.0,<0.2",
 ]
 
 [project.urls]
@@ -74,8 +75,8 @@ build-backend = "hatchling.build"
 [tool.hatch.version]
 path = "src/rolypoly/__init__.py"
 
-[tool.hatch.build]
-packages = ["src/rolypoly"]
+[tool.hatch.build.targets.sdist]
+include = ["src/rolypoly", "pyproject.toml", "README.md", "LICENSE"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/rolypoly"]
@@ -167,7 +168,6 @@ hhsuite = ">=3.3.0,<4"
 lets-plot = ">=4.11.0, <5"
 itables = ">=2.9.0, <3"
 fastexcel = ">=0.12,<1"
-taxopy = ">=0.1.0, <0.2"
 
 [tool.pixi.feature.docs.pypi-dependencies]
 mkdocs-mermaid2-plugin = ">=1.2.3, <2"
