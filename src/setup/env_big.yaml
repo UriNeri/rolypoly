@@ -4,7 +4,7 @@ channels:
 - bioconda
 - nodefaults
 dependencies:
-- python >=3.10,<3.14
+- python >=3.10
 - seqkit >=2.13.0,<3
 - bwa-mem2 >=2.3,<3
 - falco >=1.3.1,<2
@@ -48,4 +48,5 @@ dependencies:
   - viennarna>=2.7.2, <3
   - numpy>=2.3.0, <3
   - polars-bio>=0.35.1, <0.36
-  - rolypoly-tk >=0.7.20,<1
+  - taxopy>=0.1.0, <0.2
+  - rolypoly-tk >=0.7.21,<1
