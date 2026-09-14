@@ -193,6 +193,7 @@ class MarkerTableSpec:
         "dom_desc", "nvpc_meta_Description",
         "genomad_meta_ANNOTATION_DESCRIPTION",
         "vfam_meta_ConsensusFunctionalDescription",
+        "uniref50_meta_Cluster Name",
     )
 
     q1: str = "q1"
@@ -264,7 +265,7 @@ def infer_marker_spec(df):
         description_cols=(
             "dom_desc", "nvpc_meta_Description",
             "genomad_meta_ANNOTATION_DESCRIPTION",
-            "vfam_meta_ConsensusFunctionalDescription", "stitle", "salltitles",
+            "vfam_meta_ConsensusFunctionalDescription", "uniref50_meta_Cluster Name", "stitle", "salltitles",
         ),
     )
 
@@ -278,7 +279,21 @@ def load_marker_table(data, spec=None, min_score=None, max_evalue=None):
         spec = infer_marker_spec(df)
     df = df.with_row_index("rp_row_uid")
 
-    parsed = pl.DataFrame([spec.query_parser(q) for q in df[spec.query].to_list()])
+    # Sequence-search tables retain only the ORF ID, whereas HMM tables carry
+    # the full Prodigal header. Recover coordinates from the companion FASTA.
+    orf_headers = {}
+    if not isinstance(data, pl.DataFrame):
+        orf_fasta = Path(data).parent / "predicted_orfs.faa"
+        if orf_fasta.is_file():
+            with orf_fasta.open() as handle:
+                for line in handle:
+                    if line.startswith(">"):
+                        header = line[1:].strip()
+                        orf_headers[header.split()[0]] = header
+    queries = df[spec.query].to_list()
+    parsed = pl.DataFrame([
+        spec.query_parser(orf_headers.get(str(q), q)) for q in queries
+    ])
 
     def take(colname, key, dtype):
         if colname and colname in df.columns:
@@ -2157,9 +2172,15 @@ function isBest(h){return h.best&&h.best[crit];}
 function hitVisible(h){if(!active.has(h.source))return false;if(mode==='best'&&!isBest(h))return false;
   if(minScore>0&&(h.score||0)<minScore)return false;if(maxEexp!==0&&h.evalue!==null&&h.evalue>Math.pow(10,maxEexp))return false;return true;}
 function featVisible(f){if(mode==='best'&&f.best&&!f.best[crit])return false;return true;}
-function packLanes(hits){const lanes=[],out=[];hits.forEach(h=>{let p=false;
- for(let l=0;l<lanes.length;l++){if((h.nt_from||h.qstart)>lanes[l]+18){lanes[l]=(h.nt_to||h.qend);out.push({h,lane:l});p=true;break;}}
- if(!p){lanes.push(h.nt_to||h.qend);out.push({h,lane:lanes.length-1});}});return {rows:out,nlanes:Math.max(1,lanes.length)};}
+function packLanes(hits){
+ const spans=hits.map(h=>{const a=h.nt_from??h.qstart,b=h.nt_to??h.qend;
+  return {h,start:Math.min(a,b),end:Math.max(a,b)};}).sort((a,b)=>a.start-b.start||a.end-b.end);
+ const lanes=[],out=[];
+ spans.forEach(({h,start,end})=>{let lane=lanes.findIndex(last=>start>last+18);
+  if(lane<0)lane=lanes.length;
+  lanes[lane]=end;out.push({h,lane});});
+ return {rows:out,nlanes:Math.max(1,lanes.length)};
+}
 function densColor(v){const t=Math.max(0,Math.min(1,v));const r=Math.round(245-165*t),g=Math.round(245-70*t),b=Math.round(245-100*t);return`rgb(${r},${g},${b})`;}
 
 function renderAll(){if(document.getElementById('pane-table').classList.contains('on'))renderTable();
