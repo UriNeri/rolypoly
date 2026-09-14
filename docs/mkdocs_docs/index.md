@@ -11,6 +11,12 @@ RolyPoly is an RNA virus analysis toolkit, meant to be a "swiss-army knife" for 
 RolyPoly is an open, rolling-release, still in progress project. We hope to summarise the main functionality into a manuscript ~late 2026. Pull requests and contributions are welcome and will be considered (see [contribute.md](contribute.md)).
 
 
+## Guides
+
+- [Report](commands/report.md): generating reports, reading genome maps, and interpreting results.
+- [Examples](examples.md): practical workflows and command usage.
+- [Scientific background](background.md): biological context, design choices, and interpretation caveats.
+
 ## Overview - entry points, inputs, output points
 
 !!! warning "🚧 Under Development 🚧"

@@ -89,7 +89,8 @@ nav:
   - Home: index.md
   - Contributing: contribute.md
   - Configuration: configuration.md
-  - Examples and Scientific background: examples.md
+  - Examples: examples.md
+  - Scientific background: background.md
   - Resource Usage: resource_usage.md
   - Commands:
     - "get-data": commands/get_data.md
@@ -118,6 +119,7 @@ nav:
       - "cluster": commands/cluster.md
       - "binit": commands/binit.md
     - Miscellaneous:
+      - "report": commands/report.md
       - "fastx-calc": commands/fastx_calc.md
       - "fastx-stats": commands/fastx_stats.md
       - "fetch-sra": commands/fetch_sra.md

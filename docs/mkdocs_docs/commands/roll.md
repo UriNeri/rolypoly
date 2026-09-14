@@ -9,14 +9,55 @@ End-to-end pipeline for RNA virus discovery from raw sequencing data.
 
 ## Description
 
-This pipeline performs a complete analysis workflow including:
-1. Read filtering and quality control (optionally, subsampling too)
-2. De novo assembly
-3. Contig filtering
-4. Marker gene search (default: RdRps + genomad) and nucleic search (default: known RNA viruses)
-5. Genome annotation (default: NVPC + Pfam for proteins, and Rfam+linerfold for catalytic/structural RNAs)
-6. Optional ICTV taxonomy assignment with mmtax
-7. Virus characteristics prediction - NOT IMPLEMENTED YET
+The pipeline follows these stages, subject to the selected preset and skipped steps:
+
+1. Filter reads and perform quality control, with optional subsampling.
+2. Assemble reads into contigs and dereplicate the assembly unless disabled.
+3. Filter contigs, cluster them, and apply the minimum-length cutoff.
+4. Search for protein markers and nucleotide matches to identify candidate viral contigs.
+5. Combine candidates from either search into `all_matched_contigs.fasta`.
+6. Map the original reads to the selected contigs, unless mapping is disabled.
+7. Annotate proteins and RNAs on the candidate contigs.
+8. Search for RdRp motifs.
+9. Assign ICTV taxonomy with `mmtax`, unless the taxonomy step is skipped.
+10. Generate the interactive `roll_report.html`, unless reporting is disabled.
+
+Virus-characteristic prediction is planned but is not implemented.
+
+## Workflow
+
+```mermaid
+flowchart TD
+    reads["Input reads"] --> filter["Read filtering and QC<br/>Optional subsampling"]
+    filter --> assembly["Assembly and dereplication"]
+    assembly --> contigs["Contig filtering, clustering<br/>and minimum-length selection"]
+    supplied["Existing contigs<br/>Skip read filtering and assembly"] --> contigs
+    contigs --> markers["Protein marker search"]
+    contigs --> nucleic["Nucleotide similarity search"]
+    markers --> candidates["Union of candidate contigs<br/>all_matched_contigs.fasta"]
+    nucleic --> candidates
+    candidates --> mapping["Map original reads<br/>when available and enabled"]
+    candidates --> annotation["Protein and RNA annotation"]
+    candidates --> motifs["RdRp motif search"]
+    annotation --> taxonomy["ICTV taxonomy assignment<br/>mmtax"]
+    mapping --> report["Interactive report<br/>roll_report.html"]
+    annotation --> report
+    motifs --> report
+    taxonomy --> report
+    markers --> report
+    nucleic --> report
+```
+
+Arrows show data flow, not parallel execution. Marker and nucleotide searches
+are executed sequentially. Taxonomy can use annotation proteins when available
+or predict proteins itself. Presets and database options determine which
+searches and tools are used; consult the options below for current defaults.
+
+If neither search identifies candidates, downstream mapping, annotation,
+motif search, taxonomy and reporting are skipped. If both candidate-search
+steps are explicitly skipped, the final assembly is used as the downstream
+input instead. See [Report](report.md) for interpreting the output and its
+[known limitations](report.md#caveats).
 
 ## Usage
 

@@ -66,7 +66,7 @@ For details about specific command groups and their dependencies, see the [pypro
 RolyPoly is a command-line tool with subcommands grouped by analysis stage. It can also be used as a Python library (except for some commands that require external software).  
 Use `rolypoly <command> --help` for most up to date details. Some additional information is in the [docs](https://urineri.github.io/rolypoly/commands/).
 
-For some scientific background and common use-case scenario examples (different library types, preset selection, step-by-step workflow), see the **[Examples page](https://urineri.github.io/rolypoly/examples)**.
+For practical workflows and command usage, see the **[Examples page](https://urineri.github.io/rolypoly/examples/)**. For biological context, design choices, and interpretation caveats, see **[Scientific background](https://urineri.github.io/rolypoly/background/)**.
 
 ## Commands and Project Status
 Legend: 
@@ -110,6 +110,8 @@ Note: The (mostly, hopefully) reproducible source workflows for these data are m
 - 🤔 [`binit`](https://urineri.github.io/rolypoly/commands/binit) — Combines the above commands with sample information and genome attributes (e.g. require a shared termini AND protein complementarity, like CP + RdRp). See [notebooks/Exprimental/partiti_usecase/partiti_segment_workflow_experimental.ipynb](notebooks/Exprimental/partiti_usecase/partiti_segment_workflow_experimental.ipynb) for candidate workflow.
 
 #### Miscellaneous
+
+- [`report`](https://urineri.github.io/rolypoly/commands/report/) — Generate interactive genome maps and explore annotation results.
 - ✅ [`roll`](https://urineri.github.io/rolypoly/commands/roll) — Run an end-to-end pipeline (before v0.7.1, named `end2end`).
 - ✅ [`fetch-sra`](https://urineri.github.io/rolypoly/commands/misc) — Download SRA fastq files (from ENA)
 - ✅ [`fastx-calc`](https://urineri.github.io/rolypoly/commands/misc) — Calculate per-sequence metrics (length, GC content, hash, ...)

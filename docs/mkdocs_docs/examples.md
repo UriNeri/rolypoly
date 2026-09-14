@@ -1,5 +1,8 @@
 # Examples
 Scenario-based examples for the most common RolyPoly workflows/commands.
+
+For biological context and the reasoning behind workflow choices, see [Scientific background](background.md).
+
 Note - command help messages are updated on a more frequent basis, so for full option lists, run `rolypoly <command> --help`.
 
 ---
