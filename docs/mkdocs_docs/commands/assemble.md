@@ -22,6 +22,7 @@ before writing final contigs and run metadata to the output directory.
 rolypoly assemble [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 - `-o`, `--output`: Output path (folder will be created if it doesn't exist) (type: `DIRECTORY`; default: `RP_assembly_output`)
@@ -47,3 +48,4 @@ rolypoly assemble [OPTIONS]
 - `-k`, `--keep-tmp`: Keep temporary files. (type: `BOOLEAN`; default: `False`)
 - `-tmp`, `--temp-dir`: Temporary working directory. (type: `DIRECTORY`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->

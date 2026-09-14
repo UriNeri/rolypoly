@@ -28,9 +28,11 @@ __DESCRIPTION__
 rolypoly __COMMAND__ [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 __OPTIONS_MD__
+<!-- END GENERATED CLI OPTIONS -->
 
 __EPILOG_MD__
 
@@ -454,6 +456,35 @@ def get_command_description(command_name: str) -> str:
     return "Auto-generated command help page."
 
 
+OPTIONS_BEGIN = "<!-- BEGIN GENERATED CLI OPTIONS -->"
+OPTIONS_END = "<!-- END GENERATED CLI OPTIONS -->"
+
+
+def update_cli_options(existing: str, options: str, *, migrate: bool = False) -> str:
+    """Replace the owned options block; preserve all other bytes verbatim."""
+    block = f"{OPTIONS_BEGIN}\n## Options\n\n{options.rstrip()}\n{OPTIONS_END}"
+    begins, ends = existing.count(OPTIONS_BEGIN), existing.count(OPTIONS_END)
+    if begins or ends:
+        if begins != 1 or ends != 1 or existing.index(OPTIONS_BEGIN) > existing.index(OPTIONS_END):
+            raise ValueError("Malformed or duplicate CLI option markers; refusing to overwrite")
+        if migrate:
+            return existing
+        start, end = existing.index(OPTIONS_BEGIN), existing.index(OPTIONS_END) + len(OPTIONS_END)
+        return existing[:start] + block + existing[end:]
+    if not migrate:
+        raise ValueError("Unmarked existing page; use --migrate-markers --overwrite after reviewing its Options section")
+    headings = list(re.finditer(r"^## Options[ \t]*$", existing, re.MULTILINE))
+    if len(headings) != 1:
+        raise ValueError("Migration requires exactly one '## Options' section; add markers manually")
+    start = headings[0].start()
+    following = re.search(r"^#{1,2} ", existing[headings[0].end():], re.MULTILINE)
+    end = headings[0].end() + following.start() if following else len(existing)
+    # Migration marks existing text without regenerating it. Review this block
+    # before the next refresh; any narrative inside it must be moved outside.
+    section = existing[start:end].rstrip("\n")
+    return existing[:start] + OPTIONS_BEGIN + "\n" + section + "\n" + OPTIONS_END + existing[start+len(section):]
+
+
 def ensure_docs_pages(
     docs_commands_dir: Path,
     scaffold_dir: Path,
@@ -462,9 +493,11 @@ def ensure_docs_pages(
     output_paths_by_command: dict[str, Path],
     overwrite: bool,
     dry_run: bool,
+    migrate_markers: bool = False,
 ) -> list[Path]:
     """Create markdown pages for missing commands and return created paths."""
     created: list[Path] = []
+    pending: dict[Path, str] = {}
 
     for command_name in missing_commands:
         output_file = output_paths_by_command.get(
@@ -493,10 +526,20 @@ def ensure_docs_pages(
             pinned_md,
         )
 
-        if not dry_run:
-            output_file.write_text(page_content, encoding="utf-8")
+        if output_file.exists():
+            page_content = update_cli_options(
+                output_file.read_text(encoding="utf-8"), options_md,
+                migrate=migrate_markers,
+            )
+        elif OPTIONS_BEGIN not in page_content or OPTIONS_END not in page_content:
+            raise ValueError("New-page template must include CLI option markers")
+        pending[output_file] = page_content
         created.append(output_file)
 
+    # Validate the whole batch before changing any command page.
+    if not dry_run:
+        for output_file, page_content in pending.items():
+            output_file.write_text(page_content, encoding="utf-8")
     return created
 
 
@@ -567,8 +610,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--overwrite",
         action="store_true",
-        help="Overwrite existing generated output files",
+        help="Refresh only marked CLI options in existing pages; preserve handwritten content",
     )
+    parser.add_argument("--migrate-markers", action="store_true",
+        help="With --overwrite, mark the existing Options section without regenerating its content; review before refreshing")
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -585,6 +630,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """Entry point for docs help exporter."""
     args = parse_args()
+    if args.migrate_markers and not args.overwrite:
+        raise ValueError("--migrate-markers requires --overwrite")
 
     repo_root = Path(__file__).resolve().parents[2]
     docs_commands_dir = repo_root / args.docs_commands_dir
@@ -664,9 +711,6 @@ def main() -> None:
         for command_name in target_commands:
             print(f"  - {command_name}")
 
-    if args.dry_run:
-        print("\nDry-run mode: no files were written.")
-        return
 
     created = ensure_docs_pages(
         docs_commands_dir=docs_commands_dir,
@@ -676,10 +720,13 @@ def main() -> None:
         output_paths_by_command=output_paths_by_command,
         overwrite=args.overwrite,
         dry_run=args.dry_run,
+        migrate_markers=args.migrate_markers,
     )
 
+    if args.dry_run:
+        print("\nDry-run mode: no files were written.")
     if created:
-        print("\nCreated/updated pages:")
+        print("\nPages to update:" if args.dry_run else "\nCreated/updated pages:")
         for path in created:
             print(f"  - {path.relative_to(repo_root)}")
     elif not contributing_sync_changed:

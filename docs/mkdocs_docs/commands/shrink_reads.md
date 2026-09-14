@@ -21,6 +21,7 @@ not as a full read-normalization strategy.
 rolypoly shrink-reads [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 - `-i`, `-in`, `--input`: Input raw reads file(s) or directory containing them. For paired-end reads, you can provide an interleaved file or the R1 and R2 files separated by comma. If a directory is provided, one output per input identified file/pair will be created. (type: `TEXT`; default: `Sentinel.UNSET`)
@@ -29,6 +30,7 @@ rolypoly shrink-reads [OPTIONS]
 - `--bbnorm-min-depth`: Minimum depth threshold for bbnorm normalization (min in bbnorm.sh). (type: `INTEGER`; default: `2`)
 - `-t`, `--threads`: Number of worker threads. (type: `INTEGER RANGE`; default: `1`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->
 
 
 

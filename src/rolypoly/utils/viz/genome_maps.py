@@ -150,7 +150,7 @@ def read_hit_table(path):
         return pl.read_parquet(path)
     separator = "\t" if suffix in (".tsv", ".tab", ".txt") else ","
     return pl.read_csv(path, separator=separator, infer_schema_length=0,
-                       null_values=["", "NA", "nan", "NaN"], quote_char=None)
+                       null_values=["", "NA", "nan", "NaN"], quote_char='"')
 
 
 def nonempty(value):
@@ -240,7 +240,7 @@ def infer_marker_spec(df):
     vs normalised mmseqs2/diamond BLAST tab-6)."""
     cols = set(df.columns)
     if {"query_full_name", "hmm_full_name"}.issubset(cols):
-        return MarkerTableSpec()
+        return MarkerTableSpec(source="source" if "source" in cols else "database_id")
 
     def first(cands, default=None):
         return next((c for c in cands if c in cols), default)
@@ -277,6 +277,14 @@ def load_marker_table(data, spec=None, min_score=None, max_evalue=None):
     if spec is None:
         df = normalize_hit_columns(df)
         spec = infer_marker_spec(df)
+    # Prefer explicit genomic provenance produced by coordinate enrichment.
+    if "translation_id" in df.columns:
+        from dataclasses import replace
+        df = df.with_columns(pl.col("translation_id").alias(spec.query))
+        spec = replace(spec, contig="source_seq_id", contig_len="contig_length",
+                       g_start="translation_nt_start", g_end="translation_nt_end",
+                       strand="strand", nt_from="nt_start", nt_to="nt_end",
+                       env_from="aa_start", env_to="aa_end")
     df = df.with_row_index("rp_row_uid")
 
     # Sequence-search tables retain only the ORF ID, whereas HMM tables carry
@@ -362,8 +370,8 @@ def load_marker_table(data, spec=None, min_score=None, max_evalue=None):
                 .then(pl.col("g_end") - (pl.col("aa_from") - 1) * 3)
                 .otherwise(pl.col("g_start") + (pl.col("aa_from") - 1) * 3))
         nt_b = (pl.when(pl.col("strand") == -1)
-                .then(pl.col("g_end") - (pl.col("aa_to") - 1) * 3)
-                .otherwise(pl.col("g_start") + (pl.col("aa_to") - 1) * 3))
+                .then(pl.col("g_end") - pl.col("aa_to") * 3 + 1)
+                .otherwise(pl.col("g_start") + pl.col("aa_to") * 3 - 1))
         df = df.with_columns([pl.min_horizontal(nt_a, nt_b).alias("nt_from"),
                               pl.max_horizontal(nt_a, nt_b).alias("nt_to")])
 
@@ -548,6 +556,7 @@ def build_contig_models(df, spec=None, criteria=tuple(BEST_CRITERIA)):
                     "nt_from": clean_value(row["nt_from"], "int"),
                     "nt_to": clean_value(row["nt_to"], "int"),
                     "aln": aligned, "desc": desc,
+                    "matched_sequence": row.get("matched_sequence"),
                     "best": {c: bool(row[f"is_best_{c}"]) for c in criteria},
                 })
             hits.sort(key=lambda h: (h["nt_from"] or 0, h["nt_to"] or 0))
@@ -556,8 +565,16 @@ def build_contig_models(df, spec=None, criteria=tuple(BEST_CRITERIA)):
                 "end": clean_value(first["g_end"], "int"),
                 "strand": clean_value(first["strand"], "int") or 1,
                 "qlen": clean_value(first["qlen_n"], "int"), "hits": hits,
+                "translation_method": first.get("translation_method"),
+                "label": orf_id,
+                "original_header": first.get("original_header") or orf_id,
+                "frame": clean_value(first.get("frame_id"), "int"),
             })
 
+        if all(o.get("translation_method") in ("six-frame", "six_frame") for o in orfs):
+            orfs.sort(key=lambda o: (o["frame"] < 0, abs(o["frame"])))
+        else:
+            orfs.sort(key=lambda o: (o["start"], o["end"], o["orf_id"]))
         all_hits = [h for orf in orfs for h in orf["hits"]]
         best_score = max((h["score"] or 0) for h in all_hits)
         sources = sorted({h["source"] for h in all_hits})
@@ -568,6 +585,7 @@ def build_contig_models(df, spec=None, criteria=tuple(BEST_CRITERIA)):
         contigs.append({
             "contig": contig, "short": short, "length": contig_len, "orfs": orfs,
             "n_orfs": len(orfs), "n_hits": len(all_hits), "n_best": n_best,
+            "query_label": "translated frames" if all(o.get("translation_method") in ("six-frame", "six_frame") for o in orfs) else "ORFs",
             "n_source": len(sources), "sources": sources,
             "best_score": round(best_score, 1), "top_profile": top["profile"],
             "rna": None, "nucleic": None, "motifs": None,
@@ -575,6 +593,106 @@ def build_contig_models(df, spec=None, criteria=tuple(BEST_CRITERIA)):
 
     contigs.sort(key=lambda c: -c["best_score"])
     return contigs
+
+
+def attach_marker_evidence(contigs, tables, extra_tabs, contig_lengths=None):
+    """Append marker queries independently of annotation ORFs, without rescoring."""
+    from rolypoly.utils.bio.interval_ops import amino_to_nucleotide
+
+    by_contig = {c["contig"]: c for c in contigs}
+    lengths = dict(contig_lengths or {})
+    lengths.update({c["contig"]: c["length"] for c in contigs})
+    for index, table in enumerate(tables or []):
+        raw = read_hit_table(table)
+        if raw.is_empty():
+            continue
+        # Older six-frame marker tables retain a signed frame and parent ID.
+        # Recover only this unambiguous format; never guess gene coordinates.
+        from rolypoly.utils.bio.translation import translation_records
+        fasta = Path(table).parent / "predicted_orfs.faa"
+        proteins = {header.split()[0]: seq for header, seq in translation_records(fasta)} if fasta.exists() else {}
+        rows, unplaced = [], []
+        for row in raw.iter_rows(named=True):
+            if row.get("nt_start") is None:
+                query = str(row.get("query_full_name", "")).split()[0]
+                match = re.fullmatch(r"(.+)_frame=([+-]?[123])", query)
+                parent = row.get("source_seq_id")
+                length = lengths.get(parent)
+                if not match or match[1] != parent or not length:
+                    unplaced.append(row)
+                    continue
+                frame = int(match[2])
+                lo = abs(frame) if frame > 0 else 1 + (length - abs(frame) + 1) % 3
+                hi = lo + ((length - abs(frame) + 1) // 3) * 3 - 1
+                start, end = amino_to_nucleotide(row["q1"], row["q2"], lo, hi, 1 if frame > 0 else -1)
+                row.update(translation_id=query, contig_length=length,
+                           translation_nt_start=lo, translation_nt_end=hi,
+                           nt_start=start, nt_end=end, aa_start=row["q1"], aa_end=row["q2"],
+                           strand=1 if frame > 0 else -1, translation_method="six-frame", frame_id=frame)
+            query_id = row.get("translation_id") or str(row.get("query_full_name", "")).split()[0]
+            protein = proteins.get(query_id) or row.get("full_qseq")
+            a, b = row.get("aa_start"), row.get("aa_end")
+            row["matched_sequence"] = (protein[a-1:b] if protein and a and b else row.get("aligned_region"))
+            if row["matched_sequence"]:
+                row["matched_sequence"] = row["matched_sequence"].replace("-", "").replace(".", "").upper()
+            rows.append(row)
+        if unplaced:
+            extra_tabs.append(table_to_tab(pl.DataFrame(unplaced),
+                "Marker hits without genomic mapping", f"unplaced_markers_{index}"))
+        if not rows:
+            continue
+        df = load_marker_table(pl.DataFrame(rows, infer_schema_length=None))
+        for model in build_contig_models(df):
+            for orf in model["orfs"]:
+                orf["evidence_stage"] = "marker-search"
+                for hit in orf["hits"]:
+                    hit.update(evidence_stage="marker-search", translation_method=orf["translation_method"],
+                               evidence_file=str(table), strand=orf["strand"], frame=orf["frame"])
+            parent = model["contig"]
+            if parent not in by_contig:
+                by_contig[parent] = model
+                contigs.append(model)
+            else:
+                c = by_contig[parent]
+                c["orfs"].extend(model["orfs"])
+                c["length"] = max(c["length"], model["length"])
+                c["n_orfs"] += model["n_orfs"]
+                c["n_hits"] += model["n_hits"]
+                for criterion, count in model["n_best"].items():
+                    c["n_best"][criterion] += count
+                c["sources"] = sorted(set(c["sources"]) | set(model["sources"]))
+                c["n_source"] = len(c["sources"])
+                if model["best_score"] > c["best_score"]:
+                    c["best_score"], c["top_profile"] = model["best_score"], model["top_profile"]
+            by_contig[parent]["query_label"] = "translated queries"
+    mark_supporting_marker_hits(contigs)
+    return contigs
+
+
+def mark_supporting_marker_hits(contigs):
+    """Group covered marker evidence without merging coordinates or search scores."""
+    for contig in contigs:
+        for orf in contig["orfs"]:
+            for hit in orf["hits"]:
+                hit.pop("marker_support", None)
+                hit.pop("supporting_annotation", None)
+        annotations = [(o, h) for o in contig["orfs"] if not o.get("evidence_stage") for h in o["hits"]]
+        for orf in contig["orfs"]:
+            if orf.get("evidence_stage") != "marker-search":
+                continue
+            for hit in orf["hits"]:
+                for other, reference in annotations:
+                    if (hit["source"].lower(), hit["profile"], orf["strand"]) != (reference["source"].lower(), reference["profile"], other["strand"]):
+                        continue
+                    keys = ("nt_from", "nt_to", "hmm_from", "hmm_to")
+                    if any(hit.get(k) is None or reference.get(k) is None for k in keys):
+                        continue
+                    if ((hit["nt_from"] - reference["nt_from"]) % 3 == 0
+                        and reference["nt_from"] <= hit["nt_from"] <= hit["nt_to"] <= reference["nt_to"]
+                        and reference["hmm_from"] <= hit["hmm_from"] <= hit["hmm_to"] <= reference["hmm_to"]):
+                        hit["supporting_annotation"] = other["orf_id"]
+                        reference.setdefault("marker_support", []).append(orf["orf_id"])
+                        break
 
 
 # RNA (annotate-rna output)
@@ -1623,6 +1741,8 @@ def build_report_file_catalog(
         (path, f"Original RdRp-motif table — {Path(path).stem}", "motif")
         for path in (motif_tables or [])
     )
+    if marker_table is not None:
+        table_specs.append((Path(marker_table).parent / "translation_metadata.tsv", "Translation ID mapping", "protein"))
     seen = set()
     for path, label, kind in table_specs:
         item = entry(path, label, kind)
@@ -1632,7 +1752,7 @@ def build_report_file_catalog(
 
     fasta_candidates = [
         ("all_matched_contigs.fasta", "Matched contigs", "contigs"),
-        ("predicted_orfs.faa", "Predicted ORFs", "orfs"),
+        ("predicted_orfs.faa", "Translated proteins", "orfs"),
         ("marker_search_matched_regions.faa", "Marker-matched amino-acid regions", "regions"),
         ("marker_search_matched_input_seqs.fna", "Marker-matched nucleotide inputs", "contigs"),
         ("marker_search_matched_input_seqs.faa", "Marker-matched protein inputs", "orfs"),
@@ -1641,7 +1761,8 @@ def build_report_file_catalog(
     seen.clear()
     for filename, label, kind in fasta_candidates:
         for path in sorted(output_dir.glob(f"**/{filename}")):
-            item = entry(path, label, kind)
+            file_label = "Original tool proteins" if "tool_outputs" in path.parts else label
+            item = entry(path, file_label, kind)
             if item and item["path"] not in seen:
                 seen.add(item["path"])
                 fastas.append(item)
@@ -1660,9 +1781,11 @@ def render_html(contigs, palette=None, title="RolyPoly — Genome / marker maps"
                 subtitle=None, criteria=tuple(BEST_CRITERIA),
                 initial_mode="all", initial_criterion=None, initial_tab="table",
                 nucleic=None, run_stats=None, extra_tabs=None,
-                command_line=None, log_text=None, source_files=None):
+                command_line=None, log_text=None, source_files=None, predicted_orf_counts=None):
     """Return a full, standalone HTML document string for the given contig models
     and optional nucleic-hits / run-stats / extra-tab payloads."""
+    for contig in contigs:
+        contig["predicted_orf_count"] = (predicted_orf_counts or {}).get(contig["contig"])
     all_sources = sorted({s for c in contigs for s in c.get("sources", [])})
     palette = dict(palette) if palette else build_palette(all_sources)
     for source in all_sources:
@@ -1674,7 +1797,7 @@ def render_html(contigs, palette=None, title="RolyPoly — Genome / marker maps"
     n_motif = sum(1 for c in contigs if c.get("motifs"))
     nucleic_flat = (nucleic or {}).get("__all__", []) if nucleic else []
     if subtitle is None:
-        bits = [f"{n_hits:,} protein hits", f"{n_orfs} ORFs", f"{len(contigs)} contigs",
+        bits = [f"{n_hits:,} protein hits", f"{n_orfs} translated queries", f"{len(contigs)} contigs",
                 f"{len(all_sources)} source(s)"]
         if n_rna:
             bits.append(f"RNA on {n_rna}")
@@ -1715,17 +1838,27 @@ def write_genome_maps(data, output, spec=None, palette=None,
                       initial_mode="all", initial_criterion=None, initial_tab="table",
                       original_ids=None, contig_lengths=None,
                       command_line=None, log_text=None,
-                      source_files=None):
+                      source_files=None, marker_evidence=None, predicted_orf_counts=None):
     """Read a protein table (+ optional annotate-rna, nucleic-search, rdrp-motif
     tables, a run-stats dict, and extra tabs) and write a standalone interactive
     HTML report. Returns Path."""
-    df = load_marker_table(data, spec, min_score=min_score, max_evalue=max_evalue)
-    if spec is None:
-        spec = infer_marker_spec(df)
-    if mark_best:
-        df = tag_best_hits(df, spec, min_overlap_positions=min_overlap_positions,
-                           source_priority=source_priority)
-    contigs = build_contig_models(df, spec)
+    raw = data.clone() if isinstance(data, pl.DataFrame) else read_hit_table(data)
+    extra_tabs = list(extra_tabs or [])
+    if "nt_start" in raw.columns and raw["nt_start"].null_count():
+        unplaced = raw.filter(pl.col("nt_start").is_null())
+        extra_tabs.append(table_to_tab(unplaced, "Protein hits without genomic mapping", "unplaced_proteins"))
+        raw = raw.filter(pl.col("nt_start").is_not_null())
+        data = raw
+    contigs = []
+    if not raw.is_empty():
+        df = load_marker_table(data, spec, min_score=min_score, max_evalue=max_evalue)
+        if spec is None:
+            spec = infer_marker_spec(df)
+        if mark_best:
+            df = tag_best_hits(df, spec, min_overlap_positions=min_overlap_positions,
+                               source_priority=source_priority)
+        contigs = build_contig_models(df, spec)
+    contigs = attach_marker_evidence(contigs, marker_evidence, extra_tabs, contig_lengths)
     if rna is not None:
         contigs = attach_rna(contigs, build_rna_by_contig(rna, rna_spec, nbins=rna_bins))
     nucleic_map = None
@@ -1740,7 +1873,7 @@ def write_genome_maps(data, output, spec=None, palette=None,
                        initial_criterion=initial_criterion, initial_tab=initial_tab,
                        nucleic=nucleic_map, run_stats=run_stats, extra_tabs=extra_tabs,
                        command_line=command_line, log_text=log_text,
-                       source_files=source_files)
+                       source_files=source_files, predicted_orf_counts=predicted_orf_counts)
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(html, encoding="utf-8")
@@ -1794,6 +1927,8 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
         found_marker, found_rna = find_annotation_tables(output_dir)
         marker_table = marker_table or found_marker
         rna_table = rna_table or found_rna
+    marker_evidence = sorted(output_dir.glob("**/marker_search_results.tsv"))
+    marker_evidence = [p for p in marker_evidence if marker_table is None or p.resolve() != Path(marker_table).resolve()]
     if nucleic_tables is None:
         nucleic_tables = find_nucleic_tables(output_dir) or None
     if motif_tables is None:
@@ -1826,13 +1961,28 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
         taxonomy_path=taxonomy_path,
     )
 
+    for path in marker_evidence:
+        import os
+        source_files["tables"].append({"label": "Original marker-search hits", "kind": "protein",
+            "path": os.path.relpath(path.resolve(), output.parent.resolve())})
+
+    predicted_orf_counts = None
+    if marker_table is not None:
+        metadata_path = Path(marker_table).parent / "translation_metadata.tsv"
+        if metadata_path.exists():
+            metadata = read_hit_table(metadata_path)
+            if {"orf_nt_start", "source_seq_id", "translation_id"}.issubset(metadata.columns):
+                predicted_orf_counts = dict.fromkeys(metadata["source_seq_id"].to_list(), 0)
+                for row in metadata.filter(pl.col("orf_nt_start").is_not_null()).unique("translation_id").group_by("source_seq_id").len().iter_rows(named=True):
+                    predicted_orf_counts[row["source_seq_id"]] = row["len"]
+
     if marker_table is None:
-        if rna_table is None and not nucleic_tables and not extra_tabs:
+        if rna_table is None and not nucleic_tables and not extra_tabs and not marker_evidence:
             logger.warning("genome_maps: no annotation tables under %s; skipping report", output_dir)
             return None
-        contigs = []
+        contigs = attach_marker_evidence([], marker_evidence, extra_tabs, contig_lengths)
         if rna_table is not None:
-            contigs = attach_rna([], build_rna_by_contig(rna_table))
+            contigs = attach_rna(contigs, build_rna_by_contig(rna_table))
         nucleic_map = build_nucleic_by_contig(nucleic_tables) if nucleic_tables else None
         if nucleic_map:
             contigs = attach_nucleic(contigs, nucleic_map)
@@ -1844,14 +1994,15 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
                            initial_tab=kwargs.get("initial_tab", "table"),
                            nucleic=nucleic_map, run_stats=run_stats, extra_tabs=extra_tabs,
                            command_line=command_line, log_text=log_text,
-                           source_files=source_files)
+                           source_files=source_files, predicted_orf_counts=predicted_orf_counts)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(html, encoding="utf-8")
         logger.info("genome_maps: wrote %s (no protein table; %d contigs)", output, len(contigs))
         return output
 
     return write_genome_maps(
-        str(marker_table), output, title=title,
+        str(marker_table), output, title=title, marker_evidence=marker_evidence,
+        predicted_orf_counts=predicted_orf_counts,
         rna=str(rna_table) if rna_table else None,
         nucleic=nucleic_tables,
         motifs=list(motif_tables) if motif_tables else None,
@@ -1930,6 +2081,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
  .btn,.exportbar button,.exportbar a{display:inline-block;padding:6px 10px;border:1px solid var(--line);border-radius:7px;background:#fff;color:#334155;text-decoration:none;cursor:pointer;font-size:12px}
  .btn:hover,.exportbar button:hover,.exportbar a:hover{background:#eef2f8}
  #seqtext{max-height:360px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.4 ui-monospace,Consolas,monospace;color:#26324d}
+#tablebox:not(.expanded-columns) > table:first-of-type :is(th,td):is(:nth-child(3),:nth-child(8),:nth-child(9),:nth-child(10),:nth-child(11),:nth-child(12)){display:none}
+summary{cursor:pointer;font-weight:600;margin-bottom:8px}
 </style></head>
 <body>
 <header><h1 id="hdrtitle"></h1><p id="hdrsub"></p></header>
@@ -1942,7 +2095,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <button data-mode="best">Best only</button>
     </div>
   </div>
-  <div class="grp"><span>Best by</span><select id="critSel"></select></div>
+  <div class="grp"><span>Best by</span><select id="critSel" title="Criterion used to select non-overlapping best hits; this is not a confidence threshold"></select></div>
   <label class="chk"><input type="checkbox" id="rnaToggle" checked> RNA track</label>
   <label class="chk"><input type="checkbox" id="nucToggle" checked> Nucleic track</label>
   <label class="chk"><input type="checkbox" id="motifToggle" checked> RdRp motifs</label>
@@ -1975,26 +2128,26 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <select id="picker" style="margin-top:8px" size="1"></select>
         <div class="nav"><button id="prev">&larr; Prev</button><button id="next">Next &rarr;</button></div>
         <div class="fbar">
-          <label>min score<input type="number" id="fscore" value="0" step="1" min="0"></label>
-          <label>max E (10^)<input type="number" id="fevalue" value="0" step="1"></label>
+          <label>min score<input type="number" id="fscore" title="Hide protein hits below this score; 0 disables this filter" value="0" step="1" min="0"></label>
+          <label>max E (10^)<input type="number" id="fevalue" title="E-value exponent: -5 means 10^-5; 0 disables this filter" value="0" step="1"></label>
         </div>
         <button id="exp">⬇ Export current map as SVG</button>
       </div>
-      <div class="card"><h2>Sequence files</h2>
+      <details class="card"><summary>Sequence files</summary>
         <div id="fastaLinks" class="exportbar"></div>
         <button class="btn" id="loadFastas">Load referenced FASTA</button>
         <button class="btn" onclick="if(contigs[idx])showContigSequence(contigs[idx].contig)">Show current contig</button>
         <label class="btn" style="margin-left:4px">Choose FASTA…<input id="fastaPicker" type="file" accept=".fa,.faa,.fna,.fasta" multiple hidden></label>
-        <div class="legend-note" id="fastaStatus">Sequences are not embedded in this report.</div>
-      </div>
+        <div class="legend-note" id="fastaStatus">Load full sequences here; available marker-hit sequences are included directly.</div>
+      </details>
       <div class="card"><h2>Contig details</h2><div id="details"></div></div>
-      <div class="card"><h2>Protein sources</h2><div id="dbtoggles"></div>
-        <div class="legend-note">Click to show / hide a source.</div></div>
+      <details class="card"><summary>Protein sources</summary><div id="dbtoggles"></div>
+        <div class="legend-note">Click to show / hide a source.</div></details>
     </div>
     <div class="main">
       <div class="card"><div id="maptitle"></div><div id="mapsub"></div><div id="mapholder"></div></div>
       <div class="card" id="seqcard" style="display:none"><div class="exportbar"><h2 id="seqtitle" style="margin:0;flex:1"></h2><button id="seqexport">Export FASTA</button><button onclick="document.getElementById('seqcard').style.display='none'">Close</button></div><pre id="seqtext"></pre></div>
-      <div class="card"><h2>Hits in this contig</h2><div id="tablebox"></div></div>
+      <div class="card"><h2>Hits in this contig</h2><label class="chk"><input type="checkbox" onchange="document.getElementById('tablebox').classList.toggle('expanded-columns',this.checked)"> Alignment details</label><div id="tablebox"></div></div>
     </div>
   </div>
 </div>
@@ -2017,6 +2170,30 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   <div class="wrap"><div class="main" style="flex:1 1 100%"><div class="card"><pre id="logtext"></pre></div></div></div>
 </div>
 
+<div id="pane-help" class="pane">
+ <div class="wrap"><div class="main" style="max-width:960px"><div class="card">
+  <h2>Reading the genome map</h2>
+  <p>The horizontal axis shows nucleotide positions on the contig. Rows such as <code>rf+2</code> and <code>rf-2</code> group features by reading frame. Negative frames are measured from the reverse-complement sequence.</p>
+  <p>Grey arrows represent predicted ORFs and point in their translation direction. Coloured blocks are protein/profile hits, coloured by source database. Overlapping hits occupy separate lanes within the same frame. Six-frame hits appear without synthetic gene arrows, including where gene prediction found no ORF.</p>
+  <p>Hover over a hit for its coordinates and search details. ORF/query IDs retain their original case and punctuation so you can copy them into a file search.</p>
+  <p><a href="https://urineri.github.io/rolypoly/commands/report/#reading-the-genome-map" target="_blank" rel="noopener noreferrer">Genome-map documentation ↗</a></p>
+  <h2>Filters and supporting evidence</h2>
+  <p><b>Best only</b> selects hits using the chosen overlap-resolution criterion; it is not a confidence threshold. <b>All hits</b> still groups covered marker evidence. Expand <b>Supporting evidence</b> below the hit table to see those original hits and their sequences. A <b>+ marker</b> label identifies an annotation with marker support.</p>
+  <p>Grouping requires the same source/profile, strand and reading phase, with the marker interval contained in the annotation in both nucleotide and profile coordinates. Hits that add coverage remain visible. Scores and E-values retain their original search meaning; grouping does not recompute or combine them.</p>
+  <p>Use <b>Protein sources</b> to filter databases. The RNA, nucleic and RdRp-motif checkboxes control their map tracks. In the map filters, <b>max E (10^)</b> takes an exponent: −5 means 10⁻⁵; 0 disables that filter.</p>
+  <p><a href="https://urineri.github.io/rolypoly/commands/report/#filters-and-supporting-evidence" target="_blank" rel="noopener noreferrer">Filtering and evidence documentation ↗</a></p>
+  <h2>Tables, sequences and exports</h2>
+  <p><b>Alignment details</b> reveals translation method, coverage, amino-acid span and reference span. A partial reference alignment does not by itself establish an incomplete ORF. Predicted-ORF counts come from prediction metadata; a dash means that count is unavailable.</p>
+  <p><b>Show hit</b> opens the matched amino-acid sequence, with a FASTA export option. Available marker-hit sequences are embedded. Full contig/protein sequences may require loading the referenced FASTA or choosing a local FASTA file if the browser blocks file access.</p>
+  <p><b>Export shown hits TSV</b> exports the currently displayed primary hits. Supporting evidence remains available in its expandable section and the original tables. <b>Original files</b> links to pipeline outputs; keep the report with its output directory to preserve those links.</p>
+  <p>The Contig Table summarizes contigs and protein hits; Nucleic hits lists nucleotide matches. Run stats, taxonomy and other tabs appear when their data is available.</p>
+  <p><a href="https://urineri.github.io/rolypoly/commands/report/#sequences-and-exports" target="_blank" rel="noopener noreferrer">Sequence and export documentation ↗</a> · <a href="https://urineri.github.io/rolypoly/commands/annotate_prot/" target="_blank" rel="noopener noreferrer">Protein annotation documentation ↗</a></p>
+  <h2>Caveats and known bugs</h2>
+  <p>Nucleic hits may end at about 10 kbp because MMseqs2 internally splits long sequences. This is not evidence of a biological boundary; see the <a href="https://urineri.github.io/rolypoly/commands/report/#known-bugs" target="_blank" rel="noopener noreferrer">known display limitation</a>.</p>
+  <p>The taxonomy pie chart counts represented contigs, not absolute or relative abundance. Marker selection is primarily RdRp-focused, and missing genome segments or other undetected contigs are not represented. Taxonomy assignments are similarity-based hypotheses: mmtax does not enforce rank- or taxon-specific demarcation criteria. See <a href="https://urineri.github.io/rolypoly/commands/mmtax/#caveats" target="_blank" rel="noopener noreferrer">taxonomy caveats and defaults</a>.</p>
+  <p class="legend-note">This guide is included in the HTML and works offline. Documentation links open the online manual, which may describe a newer release.</p>
+ </div></div></div>
+</div>
 <div id="extra-panes"></div>
 
 <div class="tip" id="tip"></div>
@@ -2060,10 +2237,11 @@ if(hasNucleic)TABS.push(["nucleic","🧷 Nucleic hits"]);
 if(hasStats)TABS.push(["stats","📊 Run stats"]);
 if(hasLog)TABS.push(["log","▧ Log"]);
 EXTRA.forEach(t=>TABS.push([t.id, t.label]));
+TABS.push(["help", "Help"]);
 const tabsEl=document.getElementById('tabs');
 TABS.forEach(([id,label])=>{const b=document.createElement('button');b.dataset.tab=id;b.textContent=label;
   b.onclick=()=>showTab(id);tabsEl.appendChild(b);});
-const BUILTIN=new Set(["table","maps","nucleic","stats","log"]);
+const BUILTIN=new Set(["table","maps","nucleic","stats","log","help"]);
 function showTab(name){
   document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x.dataset.tab===name));
   document.querySelectorAll('.pane').forEach(p=>p.classList.remove('on'));
@@ -2164,12 +2342,27 @@ async function showSequence(ids,title,kind,range=null){let record=findSequence(i
 function focusSequencePane(cid){const i=contigs.findIndex(c=>c.contig===cid);if(i>=0){idx=i;picker.value=i;}showTab('maps');}
 function showContigSequence(cid){const c=contigs.find(x=>x.contig===cid);focusSequencePane(cid);showSequence([cid,c&&c.raw_id], 'Contig sequence','contigs');}
 function showOrfSequence(orfId){const c=contigs.find(c=>c.orfs.some(o=>o.orf_id===orfId));if(c)focusSequencePane(c.contig);showSequence([orfId], 'ORF amino-acid sequence','orfs');}
+function markerSequenceButton(c,o,h){return h.matched_sequence?`<button class="btn" onclick="showMarkerSequence(${contigs.indexOf(c)},${c.orfs.indexOf(o)},${o.hits.indexOf(h)})">Show hit</button>`:'Sequence unavailable';}
+function showMarkerSequence(ci,oi,hi){const c=contigs[ci],o=c.orfs[oi],h=o.hits[hi];focusSequencePane(c.contig);
+ const id=o.orf_id+'|aa='+h.aa_from+'-'+h.aa_to;
+ displayedSequence={id,header:id,seq:h.matched_sequence};
+ document.getElementById('seqtitle').textContent='Marker-matched amino-acid sequence · '+o.orf_id;
+ document.getElementById('seqtext').textContent='>'+id+'\n'+h.matched_sequence.match(/.{1,80}/g).join('\n');
+ document.getElementById('seqcard').style.display='block';document.getElementById('seqcard').scrollIntoView({behavior:'smooth',block:'start'});}
 function showOrfHit(orfId,start,end){const c=contigs.find(c=>c.orfs.some(o=>o.orf_id===orfId));if(c)focusSequencePane(c.contig);showSequence([orfId], 'Matched amino-acid region','orfs',[start,end]);}
 document.getElementById('seqexport').onclick=()=>{if(displayedSequence)downloadText(safeName(displayedSequence.id)+'.fasta','>'+displayedSequence.header+'\n'+displayedSequence.seq.match(/.{1,80}/g).join('\n')+'\n','text/x-fasta');};
 function fmtE(e){if(e===null||e===undefined||e==='')return'–';const n=+e;if(!isFinite(n))return e;if(n===0)return'0';const ex=Math.floor(Math.log10(n));return (n/Math.pow(10,ex)).toFixed(1)+'e'+ex;}
+function escAttr(s){return esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function referenceSpan(h){return h.hmm_from!=null&&h.hmm_to!=null&&h.hmm_len!=null?`${h.hmm_from}–${h.hmm_to} / ${h.hmm_len}`:'–';}
+function referenceStatus(h){
+ if(h.hmm_from==null||h.hmm_to==null||!h.hmm_len)return 'Reference extent unavailable';
+ const missing=[];if(h.hmm_from>1)missing.push('N-terminal');if(h.hmm_to<h.hmm_len)missing.push('C-terminal');
+ return missing.length?'Unaligned reference ends: '+missing.join(' and ')+'. This does not establish ORF completeness.':'Alignment spans the complete reference.';
+}
 function fmtBytes(n){if(!n)return'–';const u=['B','KB','MB','GB'];let i=0;while(n>=1024&&i<u.length-1){n/=1024;i++;}return n.toFixed(1)+u[i];}
 function isBest(h){return h.best&&h.best[crit];}
-function hitVisible(h){if(!active.has(h.source))return false;if(mode==='best'&&!isBest(h))return false;
+function isSixFrame(o){return ['six-frame','six_frame'].includes(o.translation_method);}
+function hitVisible(h){if(h.supporting_annotation)return false;if(!active.has(h.source))return false;if(mode==='best'&&!isBest(h))return false;
   if(minScore>0&&(h.score||0)<minScore)return false;if(maxEexp!==0&&h.evalue!==null&&h.evalue>Math.pow(10,maxEexp))return false;return true;}
 function featVisible(f){if(mode==='best'&&f.best&&!f.best[crit])return false;return true;}
 function packLanes(hits){
@@ -2202,7 +2395,7 @@ function renderComposition(t){
   const box=document.getElementById('xchart-'+t.id);if(!box||!t.composition||!t.composition.length)return;
   const entries=t.composition,total=entries.reduce((sum,x)=>sum+x.count,0),W=760,H=260,cx=135,cy=125,r=92;
   const palette=['#33507e','#2e8b57','#c65d21','#7b5ea7','#d19a00','#208a9b','#ad3d66','#6b7280'];
-  let angle=-Math.PI/2,svg=`<div class="legend-note" style="margin-bottom:6px">Composition by ${esc(t.composition_label)}</div>`+
+  let angle=-Math.PI/2,svg=`<div class="legend-note" style="margin-bottom:6px">Contig distribution by ${esc(t.composition_label)} — counts, not abundance</div><p class="legend-note">Only contigs represented in the taxonomy table are counted. Marker selection is primarily RdRp-focused; missing segments and other undetected contigs are not included. <a href="https://urineri.github.io/rolypoly/commands/report/#caveats" target="_blank" rel="noopener noreferrer">Interpretation caveats</a></p>`+
     `<svg viewBox="0 0 ${W} ${H}" style="max-width:760px" xmlns="${SVGNS}">`;
   entries.forEach((entry,i)=>{const frac=entry.count/total,next=angle+frac*Math.PI*2,x1=cx+r*Math.cos(angle),y1=cy+r*Math.sin(angle),x2=cx+r*Math.cos(next),y2=cy+r*Math.sin(next),large=frac>.5?1:0,col=palette[i%palette.length];
     if(frac>=.999999)svg+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${col}"/>`;
@@ -2230,19 +2423,20 @@ function renderTable(){
     html+=`</tbody></table>`;
     currentTableExport={columns,rows:exportRows,name:'contigs_shown.tsv'};
   }else{
-    const columns=['contig','raw_contig_id','orf','source','profile','score','evalue','coverage','aa_from','aa_to','best'];
-    html=`<table><thead><tr><th>Contig</th><th>ORF</th><th>Source</th><th>Profile</th><th>Score</th><th>E-value</th><th>Cov</th><th>aa span</th><th>Best</th><th>Sequence</th></tr></thead><tbody>`;
+    const columns=['contig','raw_contig_id','orf','source','profile','score','evalue','coverage','aa_from','aa_to','best','stage','translation_method'];
+    html=`<table><thead><tr><th>Contig</th><th>ORF</th><th>Stage</th><th>Translation</th><th>Source</th><th>Profile</th><th>Score</th><th>E-value</th><th>Cov</th><th>aa span</th><th>Best</th><th>Sequence</th></tr></thead><tbody>`;
     contigs.forEach((c)=>c.orfs.forEach(o=>o.hits.forEach(h=>{
+      if(h.supporting_annotation)return;
       if(mode==='best'&&!isBest(h))return; if(!active.has(h.source))return;
       const hay=(c.contig+' '+h.profile+' '+h.source).toLowerCase(); if(f&&!hay.includes(f))return;
       const displayId=showRawIds&&c.raw_id?c.raw_id:c.short;
-      exportRows.push([c.contig,c.raw_id||'',o.orf_id,h.source,h.profile,h.score,h.evalue,h.cov,h.aa_from,h.aa_to,isBest(h)?'true':'false']);
+      exportRows.push([c.contig,c.raw_id||'',o.orf_id,h.source,h.profile,h.score,h.evalue,h.cov,h.aa_from,h.aa_to,isBest(h)?'true':'false',o.evidence_stage||'annotation',o.translation_method]);
       html+=`<tr><td><span class="cid" onclick="openContig('${c.contig}')">${esc(displayId)}</span></td>`+
-        `<td class="mono" style="font-size:11px">${o.orf_id.split('_').slice(-1)[0]}</td>`+
+        `<td class="mono" style="font-size:11px">${esc(o.label||o.orf_id)}</td><td>${o.evidence_stage||'annotation'}</td><td>${esc(o.translation_method||'unknown')}</td>`+
         `<td><span class="pill" style="background:${colors[h.source]||'#888'}">${h.source}</span></td>`+
-        `<td class="mono">${h.profile}</td><td>${h.score}</td><td class="mono">${fmtE(h.evalue)}</td>`+
-        `<td>${h.cov}</td><td class="mono">${h.aa_from}–${h.aa_to}</td><td>${isBest(h)?'✓':''}</td>`+
-        `<td><button class="btn" onclick="showOrfHit('${o.orf_id}',${h.aa_from},${h.aa_to})">Show hit</button></td></tr>`;})));
+        `<td class="mono">${h.profile}${h.marker_support?.length?' <small title="Also supported by marker-search">+ marker</small>':''}</td><td>${h.score}</td><td class="mono">${fmtE(h.evalue)}</td>`+
+        `<td>${h.cov??'–'}</td><td class="mono">${h.aa_from}–${h.aa_to}</td><td>${isBest(h)?'✓':''}</td>`+
+        (o.evidence_stage?`<td>${markerSequenceButton(c,o,h)}</td></tr>`:`<td><button class="btn" onclick="showOrfHit('${o.orf_id}',${h.aa_from},${h.aa_to})">Show hit</button></td></tr>`);})));
     html+=`</tbody></table>`;
     currentTableExport={columns,rows:exportRows,name:'protein_hits_shown.tsv'};
   }
@@ -2257,18 +2451,17 @@ function render(){
   const cmot=(c.motifs&&c.motifs.motifs)||[], motOn=cmot.length>0&&showMotif;
   document.getElementById('maptitle').textContent=c.contig;
   const nb=(c.n_best&&c.n_best[crit]!=null)?c.n_best[crit]:0;
-  let sub=`${c.length.toLocaleString()} bp · ${c.n_orfs} ORF(s) · ${c.n_hits} hits (best ${nb}) · ${c.n_source} source(s)`;
+  let sub=`${c.length.toLocaleString()} bp · ${c.n_orfs} ${c.query_label||'ORFs'} · ${c.n_hits} hits (best ${nb}) · ${c.n_source} source(s)`;
   if(hasRNA)sub+=` · RNA ✓`; if(cnuc.length)sub+=` · ${cnuc.length} nucleic`;
   if(cmot.length)sub+=` · RdRp ${c.motifs.conformation||cmot.length}`;
   document.getElementById('mapsub').textContent=sub;
 
+  const markerHits=c.orfs.filter(o=>o.evidence_stage==='marker-search').flatMap(o=>o.hits);
+  const topMarker=markerHits.reduce((best,h)=>!best||(h.score??-Infinity)>(best.score??-Infinity)?h:best,null);
   const det=document.getElementById('details');
   let dh=`<div class="row"><span>Length</span><b>${c.length.toLocaleString()} bp</b></div>`+
-   `<div class="row"><span>ORFs</span><b>${c.n_orfs}</b></div>`+
-   `<div class="row"><span>Hits (all / best)</span><b>${c.n_hits} / ${nb}</b></div>`+
-   `<div class="row"><span>Sources</span><b>${c.n_source}</b></div>`+
-   `<div class="row"><span>Top score</span><b>${c.best_score}</b></div>`+
-   `<div class="row"><span>Top profile</span><b>${c.top_profile}</b></div>`;
+   `<div class="row"><span># of predicted ORFs</span><b>${c.predicted_orf_count??'–'}</b></div>`+
+   `<div class="row"><span>Top marker profile</span><b>${esc(topMarker?.profile||'–')}</b></div>`;
   if(hasRNA&&c.rna.structure){const s=c.rna.structure;
    dh+=`<div class="row"><span>RNA MFE</span><b>${s.mfe??'–'}</b></div>`+
        `<div class="row"><span>Paired</span><b>${s.paired_fraction!=null?(s.paired_fraction*100).toFixed(0)+'%':'–'}</b></div>`+
@@ -2285,8 +2478,22 @@ function render(){
   const W=Math.max(900,document.getElementById('mapholder').clientWidth||960);
   const padL=60,padR=30,padT=26,plotW=W-padL-padR,L=c.length;const x=nt=>padL+plotW*(nt/L);
   let y=padT;const bands=[];
-  c.orfs.forEach(o=>{const vis=o.hits.filter(hitVisible);const {rows,nlanes}=packLanes(vis);
-   const arrowH=22,laneH=17;bands.push({o,rows,nlanes,y0:y,arrowH,laneH});y+=arrowH+6+nlanes*laneH+24;});
+  const frames=new Map();
+  c.orfs.forEach(o=>{
+   const hits=o.hits.filter(hitVisible);if(!hits.length)return;
+   const frame=o.frame||((o.strand===-1)?-((L-o.end)%3+1):((o.start-1)%3+1));
+   if(!frames.has(frame))frames.set(frame,{frame,orfs:[],hits:[]});
+   const group=frames.get(frame);
+   if(!isSixFrame(o)&&o.translation_method!=='input_protein'&&!group.orfs.some(g=>g.orf_id===o.orf_id&&g.start===o.start&&g.end===o.end))group.orfs.push(o);
+   group.hits.push(...hits.map(h=>({...h,query_id:o.orf_id,frame})));
+  });
+  [...frames.values()].sort((a,b)=>(a.frame<0)-(b.frame<0)||Math.abs(a.frame)-Math.abs(b.frame)).forEach(group=>{
+   const genes=packLanes(group.orfs.map(o=>({...o,nt_from:o.start,nt_to:o.end})));
+   const domains=packLanes(group.hits);
+   const geneH=group.orfs.length?genes.nlanes*26:0;
+   bands.push({...group,genes,rows:domains.rows,y0:y,geneH,laneH:18});
+   y+=20+geneH+domains.nlanes*18+18;
+  });
   let rnaY=y,rnaH=0;
   if(rnaOn){const hs=!!c.rna.structure,hf=c.rna.features.length>0;rnaH=18+(hs?20:0)+(hf?18:0);y+=rnaH+16;}
   let nucY=y;
@@ -2299,16 +2506,24 @@ function render(){
   for(let i=0;i<=8;i++){const p=Math.round(L*i/8),px=x(p);
    s+=`<line x1="${px}" y1="12" x2="${px}" y2="16" stroke="#9aa2b1"/>`;
    s+=`<text x="${px}" y="9" font-size="9" fill="#8a92a3" text-anchor="middle">${p.toLocaleString()}</text>`;}
-  bands.forEach(b=>{const o=b.o,ay=b.y0,xa=x(o.start),xb=x(o.end),hh=b.arrowH;let path;
-   if(o.strand===-1){const t=Math.min(xb-6,xa+12);path=`M${xb},${ay} L${t},${ay} L${xa},${ay+hh/2} L${t},${ay+hh} L${xb},${ay+hh} Z`;}
-   else{const t=Math.max(xa+6,xb-12);path=`M${xa},${ay} L${t},${ay} L${xb},${ay+hh/2} L${t},${ay+hh} L${xa},${ay+hh} Z`;}
-   s+=`<path d="${path}" fill="#dfe4ec" stroke="#aeb6c4"/>`;
-   s+=`<text x="${(xa+xb)/2}" y="${ay+hh/2+4}" font-size="11" fill="#4a5266" text-anchor="middle" font-weight="600">${o.qlen||'?'} aa (${o.strand===-1?'−':'+'})</text>`;
-   b.rows.forEach(({h,lane})=>{const dy=ay+hh+6+lane*b.laneH,xf=x(h.nt_from),xt=x(h.nt_to),w=Math.max(3,xt-xf),col=colors[h.source]||'#888';
+  bands.forEach(b=>{
+   const label='rf'+(b.frame>0?'+':'')+b.frame;
+   s+=`<line x1="${padL}" y1="${b.y0}" x2="${padL+plotW}" y2="${b.y0}" stroke="#e5e7eb"/>`;
+   s+=`<text x="8" y="${b.y0+14}" font-size="12" font-weight="600" fill="#4a5266"><title>Reading frame</title>${label}</text>`;
+   b.genes.rows.forEach(({h:o,lane})=>{
+    const ay=b.y0+18+lane*26,xa=x(o.start),xb=x(o.end),hh=20;let path;
+    if(o.strand===-1){const t=Math.min(xb,xa+10);path=`M${xb},${ay} L${t},${ay} L${xa},${ay+hh/2} L${t},${ay+hh} L${xb},${ay+hh} Z`;}
+    else{const t=Math.max(xa,xb-10);path=`M${xa},${ay} L${t},${ay} L${xb},${ay+hh/2} L${t},${ay+hh} L${xa},${ay+hh} Z`;}
+    s+=`<path class="gene" d="${path}" fill="#dfe4ec" stroke="#aeb6c4"><title>${esc(o.orf_id)} — ${esc(o.original_header||o.orf_id)}</title></path>`;
+    s+=`<text x="${(xa+xb)/2}" y="${ay+14}" font-size="10" fill="#4a5266" text-anchor="middle">${esc(o.label||o.orf_id)} · ${o.qlen||'?'} aa</text>`;
+   });
+   b.rows.forEach(({h,lane})=>{const dy=b.y0+18+b.geneH+lane*b.laneH,xf=x(h.nt_from),xt=x(h.nt_to),w=Math.max(3,xt-xf),col=colors[h.source]||'#888';
     const meta=JSON.stringify(h).replace(/"/g,'&quot;');const op=(mode==='all'&&!isBest(h))?0.4:0.9;
-    s+=`<rect class="dom" data-m="${meta}" x="${xf}" y="${dy}" width="${w}" height="${b.laneH-4}" rx="2" fill="${col}" fill-opacity="${op}" stroke="${col}" stroke-width="0.8"/>`;
+    s+=`<rect class="dom" data-m="${meta}" x="${xf}" y="${dy}" width="${w}" height="14" rx="2" fill="${col}" fill-opacity="${op}" stroke="${col}"/>`;
     if(w>44){const mx=Math.floor(w/6);const lbl=h.profile.length>mx?h.profile.slice(0,mx)+'…':h.profile;
-     s+=`<text x="${xf+4}" y="${dy+b.laneH-8}" font-size="9.5" fill="#fff" pointer-events="none">${lbl}</text>`;}});});
+     s+=`<text x="${xf+4}" y="${dy+10}" font-size="9.5" fill="#fff" pointer-events="none">${esc(lbl)}</text>`;}
+   });
+  });
   if(rnaOn){let ry=rnaY;
    s+=`<line x1="${padL}" y1="${ry}" x2="${padL+plotW}" y2="${ry}" stroke="#e5e7eb"/>`;
    s+=`<text x="${padL}" y="${ry+13}" font-size="10.5" fill="#6b7280" font-weight="600">RNA</text>`;ry+=18;
@@ -2356,7 +2571,8 @@ function render(){
      (m.best&&m.best[crit]?` <span class="pill" style="background:#2e8b57">best·${CRIT[crit]}</span>`:'')+
      `<br><span class="pill" style="background:${colors[m.source]||'#888'}">${m.source}</span>`+
      `<br><span class="k">E</span> ${fmtE(m.evalue)} · <span class="k">score</span> ${m.score} · <span class="k">len</span> ${m.ali_len??'–'} · <span class="k">cov</span> ${m.cov}`+
-     `<br><span class="k">HMM</span> ${m.hmm_from}–${m.hmm_to}/${m.hmm_len} · <span class="k">aa</span> ${m.aa_from}–${m.aa_to} · <span class="k">nt</span> ${(m.nt_from||0).toLocaleString()}–${(m.nt_to||0).toLocaleString()}`;
+     `<br><span class="k">Reference</span> ${referenceSpan(m)} · <span class="k">aa</span> ${m.aa_from}–${m.aa_to} · <span class="k">nt</span> ${(m.nt_from||0).toLocaleString()}–${(m.nt_to||0).toLocaleString()}`;
+    if(m.query_id)html+=`<br><span class="k">Query</span> ${esc(m.query_id)} · rf${m.frame>0?'+':''}${m.frame}`;
     if(m.desc)html+=`<br><span class="k">${m.desc}</span>`;
     if(m.aln)html+=`<span class="k" style="display:block;margin-top:4px">aligned region:</span><span class="aln">${m.aln}</span>`;
     showTip(html,ev.clientX,ev.clientY);});
@@ -2396,16 +2612,20 @@ function render(){
 
   const allh=[];c.orfs.forEach(o=>o.hits.forEach(h=>{if(hitVisible(h))allh.push({h,o});}));
   allh.sort((a,b)=>(b.h.score||0)-(a.h.score||0));
-  const hitColumns=['contig','orf','source','profile','score','evalue','coverage','alignment_length','aa_from','aa_to','best','description'];
-  currentMapExport={columns:hitColumns,rows:allh.map(({h,o})=>[c.contig,o.orf_id,h.source,h.profile,h.score,h.evalue,h.cov,h.ali_len,h.aa_from,h.aa_to,isBest(h)?'true':'false',h.desc||'']),name:safeName(c.contig)+'_hits_shown.tsv'};
-  let t=`<div class="exportbar"><button onclick="exportMapTable()">Export shown hits TSV</button>${sourceLinks('protein')}${sourceLinks('rna')}${sourceLinks('motif')}</div>`+
-    `<table><thead><tr><th>Source</th><th>Profile</th><th>Score</th><th>E-value</th><th>Cov</th><th>Len</th><th>aa span</th><th>Best</th><th>Description</th><th>Sequence</th></tr></thead><tbody>`;
-  allh.forEach(({h,o})=>{t+=`<tr><td><span class="pill" style="background:${colors[h.source]||'#888'}">${h.source}</span></td>`+
-   `<td class="mono">${h.profile}</td><td>${h.score}</td><td class="mono">${fmtE(h.evalue)}</td><td>${h.cov}</td>`+
-   `<td>${h.ali_len??'–'}</td><td class="mono">${h.aa_from}–${h.aa_to}</td><td>${isBest(h)?'✓':''}</td>`+
+  const hitColumns=['contig','orf','source','profile','score','evalue','coverage','alignment_length','aa_from','aa_to','best','description','reference_start','reference_end','reference_length','stage','translation_method','nt_start','nt_end','strand','frame'];
+  currentMapExport={columns:hitColumns,rows:allh.map(({h,o})=>[c.contig,o.orf_id,h.source,h.profile,h.score,h.evalue,h.cov,h.ali_len,h.aa_from,h.aa_to,isBest(h)?'true':'false',h.desc||'',h.hmm_from,h.hmm_to,h.hmm_len,o.evidence_stage||'annotation',o.translation_method,h.nt_from,h.nt_to,o.strand,o.frame]),name:safeName(c.contig)+'_hits_shown.tsv'};
+  let t=`<div class="exportbar"><button onclick="exportMapTable()">Export shown hits TSV</button><details><summary>Original files</summary>${sourceLinks('protein')}${sourceLinks('rna')}${sourceLinks('motif')}</details></div>`+
+    `<table><thead><tr><th>ORF / frame ID</th><th>Stage</th><th>Translation</th><th>Source</th><th>Profile</th><th>Score</th><th>E-value</th><th>Cov</th><th>Len</th><th>aa span</th><th>Reference span</th><th>Best</th><th>Description</th><th>Sequence</th></tr></thead><tbody>`;
+  allh.forEach(({h,o})=>{t+=`<tr><td class="mono" title="${escAttr(o.orf_id)}">${esc(o.label||o.orf_id)}</td><td>${o.evidence_stage||'annotation'}</td><td>${esc(o.translation_method||'unknown')}</td><td><span class="pill" style="background:${colors[h.source]||'#888'}">${h.source}</span></td>`+
+   `<td class="mono">${h.profile}${h.marker_support?.length?' <small title="Also supported by marker-search">+ marker</small>':''}</td><td>${h.score}</td><td class="mono">${fmtE(h.evalue)}</td><td>${h.cov??'–'}</td>`+
+   `<td>${h.ali_len??'–'}</td><td class="mono">${h.aa_from}–${h.aa_to}</td><td title="${escAttr(referenceStatus(h))}">${referenceSpan(h)}</td><td>${isBest(h)?'✓':''}</td>`+
    `<td style="max-width:300px">${h.desc?h.desc:'<span style="color:#9aa2b1">—</span>'}</td>`+
-   `<td><button class="btn" onclick="showOrfHit('${o.orf_id}',${h.aa_from},${h.aa_to})">Show hit</button></td></tr>`;});
+   (o.evidence_stage?`<td>${markerSequenceButton(c,o,h)}</td></tr>`:`<td><button class="btn" onclick="showOrfHit('${o.orf_id}',${h.aa_from},${h.aa_to})">Show hit</button></td></tr>`);});
   t+=`</tbody></table>`;
+  const supporting=c.orfs.flatMap(o=>o.hits.filter(h=>h.supporting_annotation).map(h=>({o,h})));
+  if(supporting.length){t+=`<details><summary title="Original marker hits covered by an annotation of the same profile and reading phase">Supporting evidence (${supporting.length})</summary><table><thead><tr><th>Query</th><th>Supports</th><th>Source</th><th>Profile</th><th>Score</th><th>E-value</th><th>Sequence</th></tr></thead><tbody>`;
+   supporting.forEach(({o,h})=>{t+=`<tr><td>${esc(o.orf_id)}</td><td>${esc(h.supporting_annotation)}</td><td>${esc(h.source)}</td><td>${esc(h.profile)}</td><td>${h.score}</td><td>${fmtE(h.evalue)}</td><td>${markerSequenceButton(c,o,h)}</td></tr>`;});
+   t+=`</tbody></table></details>`;}
   if(c.rna&&c.rna.features.length){t+=`<h2 style="margin-top:14px">RNA features</h2><table><thead><tr><th>Class</th><th>Source</th><th>nt span</th><th>Score</th><th>Best</th><th>Profile / note</th></tr></thead><tbody>`;
    c.rna.features.forEach(fe=>{t+=`<tr><td><span class="pill" style="background:${rnaColors[fe.klass]||'#7F7F7F'}">${fe.klass}</span></td>`+
      `<td>${fe.source}</td><td class="mono">${(fe.start||0).toLocaleString()}–${(fe.end||0).toLocaleString()}</td>`+

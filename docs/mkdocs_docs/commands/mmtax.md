@@ -122,3 +122,60 @@ by default; use `--skip-steps taxonomy` to omit it.
 
 `rvmt` and `nvpc` are reserved database names. They will remain disabled until
 their profiles have been enriched with compatible ICTV taxids.
+
+## Caveats
+
+### Defaults can produce overly specific assignments
+
+Current defaults in the command implementation are:
+
+| Control | Default | Meaning |
+| --- | --- | --- |
+| `--backend` | `mmseqs` | Protein similarity search backend |
+| `--sensitivity` | `normal` | MMseqs2 sensitivity 4; DIAMOND default preset |
+| `--evalue` | `1e-5` | Maximum hit E-value |
+| `--identity` | `0.1` | Minimum aligned amino-acid identity: 10% |
+| `--min-aln-len` | `30` | Minimum alignment length in amino acids |
+| `--top` | `10` | Retain hits within 10% of the best protein bitscore |
+| `--weight` | `bitscore` | Weight for taxonomic voting |
+| `--majority` | `0.5` | Minimum weighted support used in rank-aware voting |
+
+These permissive search thresholds and voting rules can assign a divergent or
+fragmentary contig too deeply. Support measures agreement among retained,
+rank-informative reference matches; it is not a calibrated probability of
+membership. A high support value, especially with a low `informative_fraction`,
+does not establish that an assignment satisfies the biology of that taxon.
+
+### Similarity assignment is not taxonomic demarcation
+
+Conceptually, mmtax belongs to the similarity-search-to-taxonomy family of
+methods often described as BLAST-to-LCA. Its current implementation is more
+specifically a lineage-consistent, rank-aware weighted vote at protein and
+contig levels, rather than a strict LCA of every retained hit.
+
+It does **not** apply actual rank- and taxon-specific demarcation criteria, nor
+calibrated approximations to them. There is no universal RdRp amino-acid identity
+cutoff for family, genus or species membership. An aligned-region identity is
+also not interchangeable with identity across a complete RdRp, polyprotein or
+genome. The relevant comparison and criteria vary across virus groups and
+ranks; see the [ICTV explanation of taxonomic classification](https://ictv.global/about/taxonomy).
+
+For example, a contig may receive a family label because its best represented
+matches all belong to that family, even when its RdRp similarity falls below
+the range or criterion appropriate for membership. Conserved polymerase
+homology can support a broader evolutionary relationship without establishing
+membership of that family. Genome organization and accessory-protein content
+may provide additional conflicting evidence. Their absence from a partial
+contig, however, is not proof that the complete virus lacks those genes.
+
+Treat assignments as hypotheses to review using the relevant ICTV report,
+alignment extent, phylogenetic placement, genome completeness and gene content.
+Raising generic identity or voting thresholds alone does not implement the
+appropriate demarcation criteria. See also the [scientific background](../background.md#similarity-based-taxonomy-and-demarcation)
+and [report-chart caveats](report.md#caveats).
+
+## Known bugs
+
+The limitations above concern the classifier's interpretation and calibration;
+they are not a claim that it implements formal taxon demarcation incorrectly.
+Visual/search integration issues are tracked under [report known bugs](report.md#known-bugs).

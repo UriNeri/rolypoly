@@ -22,9 +22,10 @@ Use `--skip-steps` and `--override-parameters` to tailor the workflow.
 rolypoly filter-reads [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
-- `-o`, `-out`, `--output`: Output directory. Example: -o output (type: `PATH`; default: `/home/neri/Documents/GitHub/rps/rolypoly`)
+- `-o`, `-out`, `--output`: Output directory. Example: -o output (type: `PATH`; default: `/home/neri/Documents/Github/rolypoly`)
 - `-i`, `-in`, `--input`: Input raw reads file(s) or directory containing them. For paired-end reads, you can provide an interleaved file or the R1 and R2 files separated by comma. Example: -i sample_R1.fastq.gz,sample_R2.fastq.gz If --input is a directory, all fastq files in the directory will be used - paired end files of the same base name would be assumed as from the same sample, otherwise a fastq is assumed interleaved. All interleaved and R1/R2 files would be concatenated into a single file before processing, and certain processing steps would be skipped as they assume a single sequencing library (error_correct_1, error_correct_2). (type: `TEXT`; default: `Sentinel.UNSET`)
 - `-D`, `--known-dna`: Fasta file of known DNA entities. Example: -D known_dna.fasta (type: `PATH`; default: `Sentinel.UNSET`)
 - `-s`, `--speed`: Set bbduk.sh speed value (0-15, where 0 uses all kmers and 15 skips most). Example: -s 5 (type: `INTEGER`; default: `0`)
@@ -47,6 +48,7 @@ rolypoly filter-reads [OPTIONS]
 - `-k`, `--keep-tmp`: Keep temporary files. (type: `BOOLEAN`; default: `False`)
 - `-tmp`, `--temp-dir`: Temporary working directory. (type: `DIRECTORY`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->
 
 
 

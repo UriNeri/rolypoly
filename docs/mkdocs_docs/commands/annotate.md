@@ -22,6 +22,7 @@ to forward JSON overrides to sub-tools.
 rolypoly annotate [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 - `-i`, `--input`: Input nucleotide sequence file (fasta, fna, fa, or faa) (type: `PATH`; required; default: `Sentinel.UNSET`)
@@ -42,6 +43,7 @@ rolypoly annotate [OPTIONS]
 - `-k`, `--keep-tmp`: Keep temporary files. (type: `BOOLEAN`; default: `False`)
 - `-tmp`, `--temp-dir`: Temporary working directory. (type: `DIRECTORY`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->
 
 
 

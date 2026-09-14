@@ -106,11 +106,29 @@ Use pixi docs tasks:
    - create missing pages: `pixi run -e dev python src/setup/export_command_help_to_docs.py`
    - refresh existing auto-generated pages: `pixi run -e dev python src/setup/export_command_help_to_docs.py --overwrite`
 
-For command pages that need rich/static sections (mermaid, tables, links), add a
-per-command scaffold at:
-- `src/setup/help_export_scaffolds/<command_name>.md`
+Command Markdown pages are the source of truth for narrative documentation.
+Edit examples, caveats and explanations directly outside the
+`<!-- BEGIN GENERATED CLI OPTIONS -->` / `<!-- END GENERATED CLI OPTIONS -->`
+block. `--overwrite` refreshes only that block, including its Options heading.
+It preserves the title, summary, description, usage examples and all other text.
+Update those sections manually when command behaviour changes.
 
-The exporter injects scaffold content into generated pages under **Pinned Sections**.
+Existing pages without markers are rejected. To migrate a legacy page:
+
+```bash
+pixi run -e dev python src/setup/export_command_help_to_docs.py --commands report --overwrite --migrate-markers
+```
+
+Migration only wraps the existing `## Options` section; it does not regenerate
+its contents. Review the marked region and move any handwritten notes outside
+it before running `--overwrite`. Migration is idempotent. Handwritten pages
+without an Options section require manual marker placement if automatic option
+refresh is desired. Use `--overwrite --dry-run` to validate a planned refresh.
+
+Per-command scaffolds at `src/setup/help_export_scaffolds/<command_name>.md`
+remain supported when creating a new page. Existing narrative, including any
+previously inserted **Pinned Sections**, is preserved in the Markdown page;
+refreshing options does not re-import scaffold content.
 
 When adding a new command page:
 1. Add the markdown page in `docs/mkdocs_docs/commands/`.

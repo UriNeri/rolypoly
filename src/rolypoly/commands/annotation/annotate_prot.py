@@ -123,6 +123,8 @@ class ProteinAnnotationConfig(BaseConfig):
         include_alignment_strings: bool = True,
         temp_dir: Union[Path, str, None] = None,
         keep_tmp: bool = False,
+        reuse_translations_from: str | None = None,
+        reuse_marker_search_from: str | None = None,
         **kwargs,
     ):
         # Extract BaseConfig parameters
@@ -138,7 +140,9 @@ class ProteinAnnotationConfig(BaseConfig):
         }
         super().__init__(**base_config_params)
 
-        self.skip_steps = skip_steps or []
+        self.reuse_marker_search_from = reuse_marker_search_from
+        self.reuse_translations_from = reuse_translations_from
+        self.skip_steps = list(skip_steps or [])
         self.search_tool = search_tool
         self.domain_db = normalize_domain_db_value(domain_db)
         self.min_orf_length = min_orf_length
@@ -226,6 +230,10 @@ def stage_protein_input_as_orfs(config) -> bool:
     "--output-dir",
     default="./annotate_prot_output",
     help="Output directory path",
+)
+@click.option(
+    "--reuse-translations-from", type=click.Path(exists=True, file_okay=False),
+    default=None, help="Reuse a verified translation bundle from annotation or marker-search output.",
 )
 @click.option(
     "-op",
@@ -366,6 +374,7 @@ def annotate_prot(
     resolve_mode,
     min_overlap_positions,
     alignment_strings,
+    reuse_translations_from=None,
 ):
     """Identify coding sequences (ORFs) from fasta, and predicts their translated seqs putative function via homology search. \n
     Currently supported tools and databases: \n
@@ -405,6 +414,7 @@ def annotate_prot(
         resolve_mode=resolve_mode,
         min_overlap_positions=min_overlap_positions,
         include_alignment_strings=alignment_strings,
+        reuse_translations_from=reuse_translations_from,
     )
 
     # config.logger.info(f"Using {config.search_tool} for domain search")
@@ -424,10 +434,17 @@ def process_protein_annotations(config):
 
     config.logger.info("Starting protein annotation process")
 
-    if stage_protein_input_as_orfs(config):
-        config.logger.info(
-            "Detected amino-acid input; using it directly as predicted ORFs and skipping ORF prediction"
+    config.input_is_protein = guess_fasta_alpha(str(config.input)) == "amino"
+    if getattr(config, "reuse_translations_from", None):
+        from rolypoly.utils.bio.translation import reuse_translation_bundle
+        method, parameters = translation_settings(config)
+        config.translation_metadata = reuse_translation_bundle(
+            config.reuse_translations_from, config.input, config.output_dir, method, parameters
         )
+        config.skip_steps.extend(["predict_orfs", "prepare_translation_metadata"])
+        config.logger.info("Reused verified translations from %s", config.reuse_translations_from)
+    elif stage_protein_input_as_orfs(config):
+        config.logger.info("Using supplied proteins; skipping prediction")
         if "predict_orfs" not in config.skip_steps:
             config.skip_steps.append("predict_orfs")
 
@@ -438,6 +455,7 @@ def process_protein_annotations(config):
 
     steps = [
         predict_orfs,  # i.e. call genes
+        prepare_translation_metadata,
         search_protein_domains,
         resolve_domain_overlaps,  # Resolve overlapping domain hits
         combine_results,
@@ -457,6 +475,30 @@ def process_protein_annotations(config):
     config.logger.info("Protein annotation process completed successfully")
     output_files.write_csv(
         config.output_dir / "output_files.tsv", separator="\t"
+    )
+
+
+def translation_settings(config):
+    """Effective prediction options; threads and search settings do not affect reuse."""
+    method = "input_protein" if config.input_is_protein else config.gene_prediction_tool
+    if method == "input_protein":
+        parameters = {}
+    elif method == "six-frame":
+        parameters = {"minimum_length": 0}  # seqkit call currently uses its default
+    elif method == "pyrodigal":
+        parameters = {"minimum_length": config.step_params[method]["minimum_length"]}
+    else:
+        parameters = {**config.step_params[method], "genetic_code": config.genetic_code}
+    return method, parameters
+
+
+def prepare_translation_metadata(config):
+    """Normalize translated IDs before search, retaining complete native provenance."""
+    from rolypoly.utils.bio.translation import normalize_translation_output
+
+    method, parameters = translation_settings(config)
+    config.translation_metadata = normalize_translation_output(
+        config.input, config.output_dir / "predicted_orfs.faa", config.output_dir, method, parameters
     )
 
 
@@ -740,20 +782,30 @@ def search_protein_domains_hmmsearch(config):
     )
     for db in database_paths.keys():
         config.logger.info(f"Searching with {db}...")
-        search_hmmdb(
-            amino_file=translation_output,
-            db_path=database_paths[db],
-            output=config.output_dir / f"{db}_protein_domains.tsv",
-            output_format="modomtblout",
-            threads=config.threads,
-            logger=config.logger,
-            match_region=False,
-            full_qseq=False,
-            ali_str=config.include_alignment_strings,
-            inc_e=config.step_params["hmmsearch"]["inc_e"],
-            mscore=config.step_params["hmmsearch"]["mscore"],
-            min_ali_len=config.step_params["hmmsearch"]["min_ali_len"]
+        from rolypoly.utils.bio.search_reuse import reuse_hmm_search
+        reused = reuse_hmm_search(
+            getattr(config, "reuse_marker_search_from", None), config.output_dir,
+            database_paths[db], config.output_dir / f"{db}_protein_domains.tsv",
+            {key: config.step_params["hmmsearch"][key]
+             for key in ("inc_e", "mscore", "min_ali_len")},
+            ["alignment_strings"] if config.include_alignment_strings else [],
+            config.logger,
         )
+        if not reused:
+            search_hmmdb(
+                amino_file=translation_output,
+                db_path=database_paths[db],
+                output=config.output_dir / f"{db}_protein_domains.tsv",
+                output_format="modomtblout",
+                threads=config.threads,
+                logger=config.logger,
+                match_region=False,
+                full_qseq=False,
+                ali_str=config.include_alignment_strings,
+                inc_e=config.step_params["hmmsearch"]["inc_e"],
+                mscore=config.step_params["hmmsearch"]["mscore"],
+                min_ali_len=config.step_params["hmmsearch"]["min_ali_len"]
+            )
         output_files = output_files.vstack(
             pl.DataFrame(
                 {
@@ -765,7 +817,9 @@ def search_protein_domains_hmmsearch(config):
                     "tool": ["hmmsearch"],
                     "params": [str(config.step_params["hmmsearch"])],
                     "command": [
-                        f"builtin via pyhmmer bindings: hmmsearch -E {config.step_params['hmmsearch']['inc_e']} -m {config.step_params['hmmsearch']['mscore']} {database_paths[db]} {translation_output}"
+                        (f"reused verified marker search: {config.reuse_marker_search_from}"
+                         if reused else
+                         f"builtin via pyhmmer bindings: hmmsearch -E {config.step_params['hmmsearch']['inc_e']} -m {config.step_params['hmmsearch']['mscore']} {database_paths[db]} {translation_output}")
                     ],
                 }
             )
@@ -1211,7 +1265,9 @@ def combine_results(config):
     all_domain_data = []
     for row in domain_files.iter_rows(named=True):
         try:
-            df = pl.read_csv(row["file"], separator="\t")
+            sequence_search = config.search_tool in ["diamond", "mmseqs2"]
+            has_header = not sequence_search or row["tool"].endswith("_resolved")
+            df = pl.read_csv(row["file"], separator="\t", has_header=has_header)
 
             if config.search_tool in ["diamond", "mmseqs2"]:
                 # Add headers to diamond/mmseqs2 output
@@ -1304,6 +1360,9 @@ def combine_results(config):
     )
 
     combined_data = normalize_column_names(combined_data)
+    from rolypoly.utils.bio.polars_fastx import enrich_protein_coordinates
+
+    combined_data = enrich_protein_coordinates(combined_data, config.translation_metadata)
 
     # Write output in requested format
     if config.output_format == "gff3":
@@ -1473,6 +1532,14 @@ def write_combined_results_to_gff(config, combined_data):
     """Write combined results to GFF3 format."""
     from rolypoly.utils.bio.polars_fastx import write_gff3_dataframe
 
+    if combined_data["nt_start"].null_count():
+        raise ValueError("Cannot export nucleotide GFF without a protein-to-contig coordinate mapping")
+    combined_data = combined_data.with_columns(
+        pl.col("source_seq_id").alias("sequence_id"),
+        pl.col("nt_start").alias("start"), pl.col("nt_end").alias("end"),
+        pl.when(pl.col("strand") == -1).then(pl.lit("-")).otherwise(pl.lit("+")).alias("strand"),
+        pl.lit(".").alias("phase"),
+    )
     output_file = config.output_dir / "combined_annotations.gff3"
     write_gff3_dataframe(
         combined_data,

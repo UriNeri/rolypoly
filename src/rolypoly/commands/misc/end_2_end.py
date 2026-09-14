@@ -1064,6 +1064,7 @@ def roll(
             threads=threads,
             memory=memory,
             domain_db=dba,
+            reuse_marker_search_from=str(marker_output),
             keep_tmp=keep_tmp,
             log_file=str(log_file),
             temp_dir=str(temp_base_dir / "annotation")

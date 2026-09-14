@@ -23,10 +23,11 @@ selected output prefix.
 rolypoly correlate [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 - `-i`, `--input`: Input table (contig IDs x sample IDs) with presence/absence or abundance values (type: `PATH`; required; default: `Sentinel.UNSET`)
-- `-o`, `--output-prefix`: Output file prefix (type: `TEXT`; default: `/home/neri/Documents/GitHub/rps/rolypoly/correlate`)
+- `-o`, `--output-prefix`: Output file prefix (type: `TEXT`; default: `/home/neri/Documents/Github/rolypoly/correlate`)
 - `-m`, `--mode`: Analysis mode (type: `CHOICE`; default: `both`)
 - `--method`: Correlation method used in correlation mode (type: `CHOICE`; default: `spearman`)
 - `--table-type`: Input value type (type: `CHOICE`; default: `auto`)
@@ -37,6 +38,7 @@ rolypoly correlate [OPTIONS]
 - `--separator`: Input delimiter (type: `CHOICE`; default: `auto`)
 - `-t`, `--threads`: Number of worker threads. (type: `INTEGER RANGE`; default: `1`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->
 
 
 

@@ -2,6 +2,8 @@
 
 import multiprocessing.pool
 import re
+
+import polars as pl
 from pathlib import Path
 from typing import Dict, List, Tuple, Union
 
@@ -153,7 +155,7 @@ def predict_orfs_orffinder(
     genetic_code: int,
     start_codon: int = 1,
     strand: str = "both",
-    outfmt: int = 1,
+    outfmt: int = 0,
     ignore_nested: bool = False,
 ) -> None:
     run_command_comp(
@@ -164,11 +166,11 @@ def predict_orfs_orffinder(
             "ml": min_orf_length,  # orfinder automatically replaces values below 30 to 30.
             "s": start_codon,  # ORF start codon to use, 0 is atg only, 1 atg + alt start codons
             "g": genetic_code,
-            "n": "false"
+            "n": "true"
             if ignore_nested
-            else "true",  # do not ignore nested ORFs
+            else "false",
             "strand": strand,  # both is plus and minus.
-            "outfmt": outfmt,  # 1 is fasta, 3 is feature table
+            "outfmt": outfmt,  # 0 is protein FASTA, 1 is nucleotide CDS FASTA
         },
         prefix_style="single",
     )
@@ -545,3 +547,325 @@ def translate(sequence: str, genetic_code: int = 11) -> str:
         translated += aa
 
     return translated
+
+
+TRANSLATION_SCHEMA = {
+    "translation_id": pl.String, "source_seq_id": pl.String,
+    "contig_length": pl.Int64, "translation_length_aa": pl.Int64,
+    "translation_method": pl.String, "translation_nt_start": pl.Int64,
+    "translation_nt_end": pl.Int64, "strand": pl.Int64, "frame_id": pl.Int64,
+    "orf_nt_start": pl.Int64, "orf_nt_end": pl.Int64,
+    "original_translation_id": pl.String, "original_header": pl.String,
+    "original_source_header": pl.String, "prediction_attributes": pl.String,
+    "original_gff_record": pl.String,
+}
+
+
+def build_translation_metadata(input_fasta, protein_fasta, method):
+    """Describe the genomic interval represented by each protein query.
+
+    Full-frame translations are not ORFs. Frame is signed 1..3, measured from
+    the corresponding end of the original contig, and is distinct from GFF phase.
+    Protein input has no inferred nucleotide origin, even if its ID looks like
+    an ORF header. All coordinates are 1-based inclusive.
+    """
+    from rolypoly.utils.bio.interval_ops import normalize_oriented_interval
+    from rolypoly.utils.bio.polars_fastx import scan_protein_gff_records
+
+    def records(path):
+        if Path(path).stat().st_size == 0:
+            return
+        for record in parse_fastx_file(str(path)):
+            header = record.id.decode() if isinstance(record.id, bytes) else str(record.id)
+            sequence = record.seq.decode() if isinstance(record.seq, bytes) else str(record.seq)
+            yield header, sequence
+
+    source_headers = {header.split()[0]: header for header, _ in records(input_fasta)}
+    lengths = {}
+    if method != "input_protein":
+        for header, seq in records(input_fasta):
+            key = header.split()[0]
+            if key in lengths:
+                raise ValueError(f"Duplicate contig ID prevents unambiguous coordinate mapping: {key}")
+            lengths[key] = len(seq)
+    gff = {}
+    gff_path = Path(protein_fasta).with_suffix(".gff")
+    if method in ("pyrodigal", "bbmap") and gff_path.exists():
+        try:
+            gff_records = scan_protein_gff_records(gff_path).collect()
+        except pl.exceptions.NoDataError:
+            gff_records = pl.DataFrame()
+        for row in gff_records.iter_rows(named=True):
+            if row["type"] == "CDS":
+                if row["protein"] in gff:
+                    raise ValueError("Split/duplicate CDS records require a segment-aware mapping")
+                gff[row["protein"]] = row
+    rows, seen = [], set()
+    for header, seq in records(protein_fasta):
+        key = header.split()[0]
+        if key in seen:
+            raise ValueError(f"Duplicate translation ID: {key}")
+        seen.add(key)
+        row = dict.fromkeys(TRANSLATION_SCHEMA)
+        import json
+        attributes = dict(re.findall(r"(?:^|[; ])([A-Za-z_][\w]*)=([^;]+)", header.split(" # ")[-1])) if " # " in header else {}
+        original_gff = gff.get(key)
+        if original_gff:
+            attributes.update(dict(item.split("=", 1) for item in original_gff["attributes"].split(";") if "=" in item))
+        row.update(translation_id=key, translation_length_aa=len(seq), translation_method=method,
+                   original_translation_id=key, original_header=header,
+                   prediction_attributes=json.dumps(attributes, sort_keys=True),
+                   original_gff_record=json.dumps(original_gff, sort_keys=True) if original_gff else None)
+        if method == "input_protein":
+            row["source_seq_id"] = key
+            row["original_source_header"] = source_headers[key]
+            rows.append(row)
+            continue
+        orf = method not in ("six-frame", "six_frame")
+        if not orf:
+            match = re.fullmatch(r"(.+)_frame=([+-]?[123])", key)
+            if not match:
+                raise ValueError(f"Unrecognized six-frame header: {header}")
+            contig, frame = match[1], int(match[2])
+            direction = 1 if frame > 0 else -1
+            length = lengths[contig]
+            lo = abs(frame) if direction == 1 else length - abs(frame) + 2 - len(seq) * 3
+            hi = lo + len(seq) * 3 - 1
+        else:
+            if key in gff:
+                record = gff[key]
+                contig = record["seqid"]
+                lo, hi, direction = normalize_oriented_interval(record["start"], record["end"], record["strand"])
+                if str(record["phase"]) not in ("0", ".", "None"):
+                    raise ValueError("Nonzero CDS phase requires an explicit translation offset")
+            elif method == "ORFfinder":
+                # ORFfinder -outfmt 0 protein IDs carry ZERO-based inclusive
+                # oriented endpoints. -outfmt 1 nucleotide CDS IDs differ.
+                match = re.fullmatch(r"lcl\|ORF[0-9]+_(.+):([0-9]+):([0-9]+)", key)
+                if not match:
+                    raise ValueError(f"Unrecognized ORFfinder protein header: {header}")
+                contig = match[1]
+                lo, hi, direction = normalize_oriented_interval(
+                    int(match[2]) + 1, int(match[3]) + 1, descending_encodes_strand=True)
+            else:
+                match = re.match(r"(.+)_([0-9]+) # ([0-9]+) # ([0-9]+) # (-?1)(?: #|$)", header)
+                if not match:
+                    raise ValueError(f"No coordinate mapping for translation: {header}")
+                contig = match[1]
+                lo, hi, direction = normalize_oriented_interval(match[3], match[4], match[5])
+            length = lengths[contig]
+            frame = ((lo - 1) % 3 + 1) if direction == 1 else -((length - hi) % 3 + 1)
+            row.update(orf_nt_start=lo, orf_nt_end=hi)
+            # An ORF may include a terminal stop omitted from the protein FASTA.
+            if len(seq) * 3 > hi - lo + 1:
+                raise ValueError(f"Translation exceeds its nucleotide bounds: {key}")
+            if direction == 1:
+                hi = lo + len(seq) * 3 - 1
+            else:
+                lo = hi - len(seq) * 3 + 1
+        if not 1 <= lo <= hi <= length:
+            raise ValueError(f"Translation outside contig bounds: {key}")
+        row.update(source_seq_id=contig, original_source_header=source_headers[contig], contig_length=length,
+                   translation_nt_start=lo, translation_nt_end=hi,
+                   strand=direction, frame_id=frame)
+        rows.append(row)
+    return pl.DataFrame(rows, schema=TRANSLATION_SCHEMA)
+
+
+def translation_records(path):
+    """Yield complete headers (including descriptions) and unwrapped sequences."""
+    if Path(path).stat().st_size == 0:
+        return
+    for record in parse_fastx_file(str(path)):
+        header = record.id.decode() if isinstance(record.id, bytes) else str(record.id)
+        sequence = record.seq.decode() if isinstance(record.seq, bytes) else str(record.seq)
+        yield header, sequence
+
+
+def translation_signature(method, parameters):
+    """The prediction implementation and effective parameters, independent of search."""
+    import importlib.metadata
+    import subprocess
+
+    method = method.replace("six_frame", "six-frame")
+    if method == "pyrodigal":
+        versions = {name: importlib.metadata.version(name) for name in ("pyrodigal-rv", "pyrodigal")}
+    elif method in ("six-frame", "ORFfinder"):
+        command = ["seqkit", "version"] if method == "six-frame" else ["ORFfinder", "-version"]
+        result = subprocess.run(command, text=True, capture_output=True, check=True, timeout=15)
+        versions = {command[0]: (result.stdout + result.stderr).strip()}
+    elif method == "input_protein":
+        versions = {}
+    else:
+        # No verified version fingerprint for this backend: do not authorize reuse.
+        versions = None
+    return {"method": method, "parameters": parameters, "versions": versions}
+
+
+def translation_input_fingerprints(input_fasta):
+    import hashlib
+
+    result = {}
+    for header, sequence in translation_records(input_fasta):
+        key = header.split()[0]
+        if key in result:
+            raise ValueError(f"Duplicate input ID: {key}")
+        result[key] = {"header": header, "sha256": hashlib.sha256(sequence.encode()).hexdigest()}
+    return result
+
+
+def write_translation_gff(metadata, output):
+    """Write normalized parent features, with CDS phase distinct from frame."""
+    from urllib.parse import quote
+    from rolypoly.utils.bio.polars_fastx import write_gff3_dataframe
+
+    rows = []
+    for row in metadata.iter_rows(named=True):
+        if row["translation_nt_start"] is None:
+            continue
+        is_orf = row["orf_nt_start"] is not None
+        rows.append({
+            "sequence_id": quote(row["source_seq_id"], safe="_.:-"),
+            "source": row["translation_method"], "type": "CDS" if is_orf else "translated_region",
+            "start": row["orf_nt_start"] if is_orf else row["translation_nt_start"],
+            "end": row["orf_nt_end"] if is_orf else row["translation_nt_end"],
+            "score": ".", "strand": "+" if row["strand"] == 1 else "-",
+            "phase": "0" if is_orf else ".", "ID": row["translation_id"],
+            "original_translation_id": row["original_translation_id"],
+            "frame_id": row["frame_id"],
+        })
+    write_gff3_dataframe(pl.DataFrame(rows), output)
+
+
+def translation_file_digest(path):
+    import hashlib
+    with Path(path).open("rb") as handle:
+        return hashlib.file_digest(handle, "sha256").hexdigest()
+
+
+def write_translation_manifest(input_fasta, output_dir, signature, reused_from=None):
+    import hashlib
+    import json
+
+    output_dir = Path(output_dir)
+    files = [output_dir / name for name in ("predicted_orfs.faa", "predicted_orfs.gff", "translation_metadata.tsv")]
+    files.extend(sorted((output_dir / "tool_outputs").glob("*")))
+    manifest = {
+        "schema_version": 1, "signature": signature,
+        "inputs": translation_input_fingerprints(input_fasta),
+        "files": {str(path.relative_to(output_dir)): translation_file_digest(path)
+                  for path in files if path.is_file()},
+        "reused_from": reused_from,
+    }
+    (output_dir / "translation_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+
+
+def normalize_translation_output(input_fasta, protein_fasta, output_dir, method, parameters):
+    """Preserve native output and produce a canonical FASTA/GFF/mapping bundle.
+
+    Ordinals are local to each parent contig and ordered by genomic position.
+    Frames have explicit signed labels. Original complete headers and GFF records
+    stay in the mapping even when a search backend discards header descriptions.
+    """
+    import shutil
+    from collections import defaultdict
+    from urllib.parse import quote
+
+    method = method.replace("six_frame", "six-frame")
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = output_dir / "translation_manifest.json"
+    if manifest_path.exists() and Path(protein_fasta).resolve() == (output_dir / "predicted_orfs.faa").resolve():
+        import json
+        manifest = json.loads(manifest_path.read_text())
+        if manifest["files"].get("predicted_orfs.faa") == translation_file_digest(protein_fasta):
+            if manifest["signature"] != translation_signature(method, parameters) or manifest["inputs"] != translation_input_fingerprints(input_fasta):
+                raise ValueError("Existing normalized translations do not match input or prediction settings; regenerate them")
+            for name, digest in manifest["files"].items():
+                path = (output_dir / name).resolve()
+                if not path.is_relative_to(output_dir.resolve()) or not path.is_file() or translation_file_digest(path) != digest:
+                    raise ValueError("Existing translation bundle was modified; regenerate it")
+            return pl.read_csv(output_dir / "translation_metadata.tsv", separator="\t", schema_overrides={**TRANSLATION_SCHEMA, "orf_ordinal": pl.Int64})
+    metadata = build_translation_metadata(input_fasta, protein_fasta, method)
+    raw_dir = output_dir / "tool_outputs"
+    raw_dir.mkdir(exist_ok=True)
+    raw_fasta = raw_dir / "predicted_orfs.faa"
+    if Path(protein_fasta).resolve() != raw_fasta.resolve():
+        shutil.copyfile(protein_fasta, raw_fasta)
+    raw_gff = Path(protein_fasta).with_suffix(".gff")
+    if method in ("pyrodigal", "bbmap") and raw_gff.exists() and raw_gff.resolve() != (raw_dir / "predicted_orfs.gff").resolve():
+        shutil.copyfile(raw_gff, raw_dir / "predicted_orfs.gff")
+    elif method not in ("pyrodigal", "bbmap"):
+        (raw_dir / "predicted_orfs.gff").unlink(missing_ok=True)
+    counters = defaultdict(int)
+    ids, labels, ordinals = {}, {}, {}
+    for row in metadata.sort(["source_seq_id", "translation_nt_start", "translation_nt_end", "strand", "translation_id"]).iter_rows(named=True):
+        original = row["translation_id"]
+        parent = quote(row["source_seq_id"], safe="_.-")
+        if method in ("six-frame", "six_frame"):
+            frame = row["frame_id"]
+            suffix = f"frame_{'p' if frame > 0 else 'm'}{abs(frame)}"
+            ordinals[original] = None
+        else:
+            counters[parent] += 1
+            ordinal = counters[parent]
+            kind = "protein" if method == "input_protein" else "orf"
+            suffix = f"{kind}_{ordinal}"
+            ordinals[original] = ordinal
+        ids[original] = f"{parent}_{suffix}"
+        labels[original] = ids[original]
+    if len(set(ids.values())) != len(ids):
+        raise ValueError("Normalized translation IDs are not unique")
+    metadata = metadata.with_columns(
+        pl.col("translation_id").replace_strict(labels, return_dtype=pl.String).alias("translation_label"),
+        pl.col("translation_id").replace_strict(ordinals, return_dtype=pl.Int64).alias("orf_ordinal"),
+        pl.col("translation_id").replace_strict(ids, return_dtype=pl.String),
+    )
+    with (output_dir / "predicted_orfs.faa").open("w") as handle:
+        for header, sequence in translation_records(raw_fasta):
+            handle.write(f">{ids[header.split()[0]]}\n{sequence}\n")
+    metadata.write_csv(output_dir / "translation_metadata.tsv", separator="\t")
+    write_translation_gff(metadata, output_dir / "predicted_orfs.gff")
+    write_translation_manifest(input_fasta, output_dir, translation_signature(method, parameters))
+    return metadata
+
+
+def reuse_translation_bundle(source, input_fasta, output_dir, method, parameters):
+    """Reuse all translations for an exact input or a verified contig subset."""
+    import hashlib
+    import json
+    import shutil
+
+    source, output_dir = Path(source).resolve(), Path(output_dir).resolve()
+    if source == output_dir:
+        raise ValueError("Reuse requires a distinct output directory")
+    if not (source / "translation_manifest.json").is_file():
+        raise ValueError("Translation reuse requires a normalized bundle with translation_manifest.json; rerun the source prediction")
+    manifest = json.loads((source / "translation_manifest.json").read_text())
+    signature = translation_signature(method, parameters)
+    if manifest.get("schema_version") != 1 or signature["versions"] is None or manifest["signature"] != signature:
+        raise ValueError("Translation reuse rejected: method, parameters, version, or schema differ")
+    inputs = translation_input_fingerprints(input_fasta)
+    if any(manifest["inputs"].get(key) != value for key, value in inputs.items()):
+        raise ValueError("Translation reuse rejected: input IDs, headers, or sequences differ")
+    for name, expected in manifest["files"].items():
+        path = (source / name).resolve()
+        if not path.is_relative_to(source) or not path.is_file():
+            raise ValueError("Translation reuse rejected: bundle file missing or outside bundle")
+        with path.open("rb") as handle:
+            if hashlib.file_digest(handle, "sha256").hexdigest() != expected:
+                raise ValueError(f"Translation reuse rejected: modified bundle file {name}")
+    metadata = pl.read_csv(source / "translation_metadata.tsv", separator="\t", schema_overrides={**TRANSLATION_SCHEMA, "orf_ordinal": pl.Int64})
+    metadata = metadata.filter(pl.col("source_seq_id").is_in(list(inputs)))
+    selected = set(metadata["translation_id"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with (output_dir / "predicted_orfs.faa").open("w") as handle:
+        for header, sequence in translation_records(source / "predicted_orfs.faa"):
+            if header in selected:
+                handle.write(f">{header}\n{sequence}\n")
+    if (source / "tool_outputs").exists():
+        shutil.copytree(source / "tool_outputs", output_dir / "tool_outputs", dirs_exist_ok=True)
+    metadata.write_csv(output_dir / "translation_metadata.tsv", separator="\t")
+    write_translation_gff(metadata, output_dir / "predicted_orfs.gff")
+    write_translation_manifest(input_fasta, output_dir, signature, str(source))
+    return metadata

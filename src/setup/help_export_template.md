@@ -17,9 +17,11 @@ __DESCRIPTION__
 rolypoly __COMMAND__ [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 __OPTIONS_MD__
+<!-- END GENERATED CLI OPTIONS -->
 
 __EPILOG_MD__
 

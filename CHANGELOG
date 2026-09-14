@@ -2,7 +2,24 @@
 
 ## Unreleased
 
+### Added
+- `annotate-prot`, `marker-search`: normalize protein query IDs before search and retain complete native headers, source IDs, prediction attributes, original tool files, and translation manifests for provenance.
+- `annotate-prot`: support verified translation-bundle reuse with `--reuse-translations-from`, including compatible contig subsets.
+- `roll`: reuse compatible pre-filtering HMM marker-search results during protein annotation after verifying database contents, tool versions, translation provenance, search settings, and required fields. Searches rerun when equivalence cannot be established; ordinary HMM searches with different protein populations and MMseqs2 searches are not reused.
+- `report`: include marker-search evidence alongside annotation, with direct viewing and FASTA export of available marker-hit sequences. Group fully covered marker hits as supporting evidence without merging their original scores or alignments.
+- `report`: add an offline Help tab, reading-frame hover labels, and links to documentation covering interpretation, filters, and exports.
+
+### Changed
+- `report`: organize protein maps by signed reading frame, combining real ORF arrows and domain hits in shared rows without synthetic full-length six-frame blocks. Preserve supporting hits in an expandable table section.
+- `report`: declutter sequence/source controls and alignment columns; show predicted-ORF counts and the top marker profile in contig details, and label taxonomy charts as contig counts rather than abundance.
+- Documentation: explain MMseqs2's approximately 10-kbp nucleotide-hit boundaries, marker/segmentation biases in taxonomy charts, and the verified `mmtax` defaults and lack of taxon-specific demarcation criteria.
+- Documentation generation: refresh only explicitly marked CLI Options blocks, preserving manually maintained Markdown. Add explicit, non-destructive legacy migration, validation before batch writes, and preservation/idempotence regression tests; migrate existing generated pages and update contributor instructions.
+
 ### Fixed
+- Protein annotation: carry explicit parent-contig nucleotide coordinates, strand, and reading frame through pyrodigal, ORFfinder, and six-frame searches; use full inclusive codon spans in reports and correctly escaped genomic GFF output.
+- ORFfinder: use protein FASTA output by default and correct the nested-ORF flag convention.
+- Annotation/report parsing: retain the first hit in headerless DIAMOND output and correctly read quoted TSV fields containing full headers and metadata.
+- `marker-search`: export matched original inputs through the explicit source mapping, preserving contig descriptions rather than inferring parent IDs from normalized query suffixes.
 - `marker-search`: accept header-only MMseqs2 results so one database with no hits does not abort a multi-database search.
 - `report`: validate assembly-map lengths before aggregation and warn on malformed maps instead of reporting partial totals; preserve valid final-FASTA statistics and group unlabelled raw contigs as unknown.
 - `report`: include single-input Falco outputs, preserve zero sequence counts, and warn on malformed BBDuk counts or Falco files while retaining other valid statistics.

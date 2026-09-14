@@ -27,9 +27,10 @@ path.
 rolypoly nucleic-search [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
-- `-o`, `--output`: output file location - set suffix to .tab, .sam or html (type: `TEXT`; default: `/home/neri/Documents/GitHub/rps/rolypoly_RP_mapping`)
+- `-o`, `--output`: output file location - set suffix to .tab, .sam or html (type: `TEXT`; default: `/home/neri/Documents/Github/rolypoly_RP_mapping`)
 - `--db`, `--database`: Select the database to search against. 'all' retains its historical meaning: the two RNA-virus databases (RVMT and NCBI_Ribovirus). (type: `CHOICE`; default: `all`)
 - `--db-path`: Path to the user-supplied source (required if --db is 'other'). Either a fasta or a path to formatted MMseqs2 virus database (type: `TEXT`; default: ``)
 - `-i`, `--input`: Input FASTA/FASTQ file, comma-separated sequence files, directory of sequence files, or one preformatted MMseqs2 database prefix (type: `TEXT`; required; default: `Sentinel.UNSET`)
@@ -42,3 +43,16 @@ rolypoly nucleic-search [OPTIONS]
 - `-k`, `--keep-tmp`: Keep temporary files. (type: `BOOLEAN`; default: `False`)
 - `-tmp`, `--temp-dir`: Temporary working directory. (type: `DIRECTORY`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->
+
+## Caveats
+
+Nucleic hits may end at about 10 kbp because MMseqs2 internally splits long
+sequences in its nucleotide-search workflow. This is not evidence of a
+biological boundary. See the [report caveat](report.md#nucleic-hits-end-at-10-kbp-length)
+for interpretation and upstream implementation context.
+
+## Known bugs
+
+The report does not reconstruct continuous alignments across internal sequence
+splits. See [report known bugs](report.md#known-bugs).

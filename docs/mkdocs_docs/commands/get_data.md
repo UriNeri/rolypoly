@@ -18,11 +18,13 @@ a public repository. Reproducible builders are maintained in UriNeri/rolypoly-db
 rolypoly get-data [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 - `--info`: Display current RolyPoly version, installation type, and configuration paths (type: `BOOLEAN`; default: `False`)
 - `-rd`, `--rolypoly-data`, `--data-dir`: If you do not want to download the the data to same location as the rolypoly code, specify an alternative path. TODO: remind user to provide such alt path in other scripts? envirometnal variable maybe (type: `TEXT`; default: `Sentinel.UNSET`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->
 
 
 

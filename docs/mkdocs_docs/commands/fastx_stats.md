@@ -20,6 +20,7 @@ For per-sequence annotations instead of aggregates, use `fastx-calc`.
 rolypoly fastx-stats [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 - `-i`, `--input`: Input file (fasta, fa, fna, faa) (type: `PATH`; required; default: `Sentinel.UNSET`)
@@ -28,6 +29,7 @@ rolypoly fastx-stats [OPTIONS]
 - `-f`, `--fields`: Fields to calculate statistics for (type: `CHOICE`; default: `length, gc_content, n_count`)
 - `-c`, `--circular`: Treat sequences as circular (rotate to minimal lexicographical form before analysis) (type: `BOOLEAN`; default: `False`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->
 
 
 

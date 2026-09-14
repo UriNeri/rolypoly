@@ -36,7 +36,7 @@ def test_marker_empty_database_preserves_numeric_hits(
         # Ten profiles on a long query exercise adaptive polyprotein detection.
         rows = [
             dict(
-                query_full_name="query1",
+                query_full_name="query1_protein_1",
                 hmm_full_name=f"profile{i}",
                 profile_accession="",
                 hmm_len=300,

@@ -29,11 +29,13 @@ rolypoly fetch-sra -i run_ids.txt -o output_dir --report
 rolypoly fetch-sra [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 - `-i`, `--input`: SRA run ID or file containing run IDs (one per line) (type: `TEXT`; required; default: `Sentinel.UNSET`)
 - `-o`, `--output-dir`: Directory to save downloaded files (type: `DIRECTORY`; default: `./`)
 - `--report`: Download XML report for each run (type: `BOOLEAN`; default: `False`)
+<!-- END GENERATED CLI OPTIONS -->
 
 
 

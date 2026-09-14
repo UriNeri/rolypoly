@@ -727,7 +727,8 @@ def write_matched_regions_fasta(
                 query_id,
                 re.IGNORECASE,
             )
-            frame_suffix = (
+            frame = row.get("frame_id")
+            frame_suffix = f"|frame={frame}" if frame is not None else (
                 f"|frame={frame_match.group(1)}" if frame_match else ""
             )
             query_token = query_id.split()[0].replace(" ", "_")
@@ -764,19 +765,9 @@ def write_matched_input_seqs_fasta(
 ) -> None:
     """Write full original input sequences that had marker hits to FASTA.
 
-    For protein input the query IDs match the input FASTA headers directly.
-    For nucleotide input the query IDs come from the translated ORF/frame file
-    and are mapped back to the original contig IDs.  The exact suffix that must
-    be stripped depends on the translation tool:
-
-    - six_frame (seqkit --append-frame): appends a frame suffix (e.g. ``_frame:+1``)
-      to each sequence ID; strip it to recover the contig name.
-    - pyrodigal / bbmap: append a numeric ORF ordinal (e.g. ``_1``, ``_2``);
-      strip the trailing ``_<digits>`` to recover the contig name.
-
-    Note:
-        The exact suffix formats should be confirmed experimentally; see inline
-        TODO comments.
+    Prefer the explicit source mapping recorded before search. Legacy tables
+    fall back to translation-specific suffix parsing. Resolve source IDs to
+    complete input headers before exact FASTA matching, preserving descriptions.
     """
     import re as _re
 
@@ -790,31 +781,42 @@ def write_matched_input_seqs_fasta(
         output_path.touch()
         return
 
-    raw_ids = (
-        hit_df["query_full_name"]
-        .str.extract(r"^([^|\s]+)")
-        .drop_nulls()
-        .unique()
-        .to_list()
-    )
-    if not raw_ids:
-        output_path.touch()
-        return
-
-    if input_alpha == "aa":
-        matched_ids = raw_ids
-    elif aa_method in ("pyrodigal", "bbmap"):
-        # pyrodigal: <contig>_<orf_ordinal>
-        # TODO: confirm bbmap callgenes.sh follows the same <contig>_<N> convention.
-        matched_ids = list({_re.sub(r"_\d+$", "", sid) for sid in raw_ids})
-    else:  # six_frame (seqkit)
-        # seqkit --append-frame: <contig>_frame=<N>
-        matched_ids = list(
-            {_re.sub(r"_frame=[+-]?\d+$", "", sid) for sid in raw_ids}
+    if "source_seq_id" in hit_df.columns:
+        matched_ids = hit_df["source_seq_id"].drop_nulls().unique().to_list()
+    else:
+        raw_ids = (
+            hit_df["query_full_name"]
+            .str.extract(r"^([^|\s]+)")
+            .drop_nulls()
+            .unique()
+            .to_list()
         )
+        if not raw_ids:
+            output_path.touch()
+            return
 
+        if input_alpha == "aa":
+            matched_ids = raw_ids
+        elif aa_method in ("pyrodigal", "bbmap"):
+            # pyrodigal: <contig>_<orf_ordinal>
+            # TODO: confirm bbmap callgenes.sh follows the same <contig>_<N> convention.
+            matched_ids = list({_re.sub(r"_\d+$", "", sid) for sid in raw_ids})
+        else:  # six_frame (seqkit)
+            # seqkit --append-frame: <contig>_frame=<N>
+            matched_ids = list(
+                {_re.sub(r"_frame=[+-]?\d+$", "", sid) for sid in raw_ids}
+            )
+
+    from rolypoly.utils.bio.translation import translation_records
+
+    wanted_ids = set(matched_ids)
+    matched_headers = [
+        header
+        for header, _ in translation_records(input_file)
+        if header.split()[0] in wanted_ids
+    ]
     filter_fasta_by_headers(
-        fasta_file=input_file, headers=matched_ids, output_file=str(output_path)
+        fasta_file=input_file, headers=matched_headers, output_file=str(output_path)
     )
 
 
@@ -1243,6 +1245,12 @@ def marker_search(
         )
         return
 
+    from rolypoly.utils.bio.translation import normalize_translation_output
+    method = config.aa_method if input_alpha == "nucl" else "input_protein"
+    parameters = {"minimum_length": 30} if method == "pyrodigal" else ({"minimum_length": 0} if method == "six_frame" else {})
+    translation_metadata = normalize_translation_output(input, amino_file, Path(output), method, parameters)
+    amino_file = str(Path(output) / "predicted_orfs.faa")
+
     all_outputs = []
     config.logger.info(f"Searching with {amino_file}")
     for db_name, db_path in database_paths.items():
@@ -1285,6 +1293,19 @@ def marker_search(
                 full_qseq=config.write_matched_regions,
                 match_region=config.include_aligned_region,
                 include_alignment_path=retain_feature_path,
+            )
+        if config.search_tool == "hmmsearch":
+            from rolypoly.utils.bio.search_reuse import save_hmm_search
+            fields = [name for name, enabled in {
+                "alignment_strings": config.include_alignment_string,
+                "aligned_region": config.include_aligned_region,
+                "full_query": config.write_matched_regions,
+                "alignment_path": retain_feature_path,
+            }.items() if enabled]
+            save_hmm_search(
+                output, db_path, tmp_output,
+                {"inc_e": config.inc_evalue, "mscore": config.score,
+                 "min_ali_len": config.min_ali_len}, fields,
             )
         config.logger.debug(f"temp output: {tmp_output}")
         all_outputs.append((db_name, tmp_output))
@@ -1533,6 +1554,9 @@ def marker_search(
     if not rt_evidence_df.is_empty():
         testdf = pl.concat([testdf, rt_evidence_df], how="diagonal_relaxed")
 
+    from rolypoly.utils.bio.polars_fastx import enrich_protein_coordinates
+    testdf = enrich_protein_coordinates(testdf, translation_metadata)
+
     # Write optional matched regions from the retained marker hits.
     if config.write_matched_regions:
         matched_region_output = (
@@ -1575,44 +1599,6 @@ def marker_search(
     if "full_qseq" in testdf.columns and config.write_matched_regions:
         # Keep result tables compact while preserving full sequences in region FASTA output.
         testdf = testdf.drop("full_qseq")
-
-    # Add explicit trace columns for downstream joins/provenance.
-    # Naming conventions:
-    #   six_frame (seqkit --append-frame): <contig>_frame=<N>
-    #   pyrodigal:                         <contig>_<orf_ordinal>  (e.g. _1, _2)
-    #   bbmap callgenes.sh:                assumed same as pyrodigal (TODO: confirm)
-    #   aa input:                          query ID = original protein FASTA header
-    # Note: query_full_name = "<hit_name> <hit_description>" (joined them),
-    # so the ID token is only the part before the first space.
-    if "query_full_name" in testdf.columns:
-        if input_alpha == "nucl":
-            if aa_method in ("pyrodigal", "bbmap"):
-                testdf = testdf.with_columns(
-                    pl.col("query_full_name")
-                    .str.extract(r"^([^\s]+)", group_index=1)
-                    .str.replace(r"_\d+$", "")
-                    .alias("source_seq_id"),
-                    pl.col("query_full_name")
-                    .str.extract(r"^([^\s]+)", group_index=1)
-                    .str.extract(r"_(\d+)$", group_index=1)
-                    .alias("orf_id"),
-                )
-            else:  # six_frame (seqkit)
-                testdf = testdf.with_columns(
-                    pl.col("query_full_name")
-                    .str.extract(r"^([^\s]+)", group_index=1)
-                    .str.replace(r"_frame=[+-]?\d+$", "")
-                    .alias("source_seq_id"),
-                    pl.col("query_full_name")
-                    .str.extract(r"_frame=([+-]?\d+)", group_index=1)
-                    .alias("frame_id"),
-                )
-        else:  # aa input
-            testdf = testdf.with_columns(
-                pl.col("query_full_name")
-                .str.extract(r"^([^\s]+)", group_index=1)
-                .alias("source_seq_id")
-            )
 
     # Write to a file in the output directory instead of the directory itself
     testdf.write_csv(results_file, separator="\t")

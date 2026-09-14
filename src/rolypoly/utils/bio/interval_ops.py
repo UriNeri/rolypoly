@@ -18,6 +18,52 @@ logger = get_logger()
 # TODO: make this more robust and less dependent on external libraries. Candidate destination library is polars-bio.
 
 
+def normalize_oriented_interval(start, end, strand=None, *, descending_encodes_strand=False):
+    """Normalize positive 1-based inclusive bounds with an explicit orientation.
+
+    Ascending bounds alone do not imply the forward strand. Only adapters for
+    formats with oriented endpoints should enable descending_encodes_strand.
+    """
+    start, end = int(start), int(end)
+    if min(start, end) < 1:
+        raise ValueError("Coordinates must be positive and 1-based")
+    aliases = {"+": 1, "-": -1, "1": 1, "-1": -1}
+    orientation = aliases.get(str(strand))
+    if strand not in (None, ".", "?") and orientation is None:
+        raise ValueError(f"Invalid strand: {strand}")
+    if descending_encodes_strand and start != end:
+        inferred = 1 if start < end else -1
+        if orientation is not None and orientation != inferred:
+            raise ValueError("Explicit strand conflicts with oriented endpoints")
+        orientation = inferred
+    return min(start, end), max(start, end), orientation
+
+
+def amino_to_nucleotide(start, end, translation_start, translation_end, strand):
+    """Project a 1-based inclusive protein interval, including both full codons."""
+    start, end = int(start), int(end)
+    lo, hi, direction = normalize_oriented_interval(translation_start, translation_end, strand)
+    if direction is None or start < 1 or end < start:
+        raise ValueError("Protein spans must ascend and translation strand must be known")
+    if end * 3 > hi - lo + 1:
+        raise ValueError("Protein span exceeds its translated nucleotide interval")
+    if direction == 1:
+        return lo + (start - 1) * 3, lo + end * 3 - 1
+    return hi - end * 3 + 1, hi - (start - 1) * 3
+
+
+def nucleotide_to_amino(start, end, translation_start, translation_end, strand):
+    """Invert a codon-aligned inclusive nucleotide interval; reject partial codons."""
+    lo, hi, direction = normalize_oriented_interval(translation_start, translation_end, strand)
+    start, end = int(start), int(end)
+    if direction is None or not lo <= start <= end <= hi:
+        raise ValueError("Nucleotide interval lies outside its translation or strand is unknown")
+    left, right = (start - lo, end - lo + 1) if direction == 1 else (hi - end, hi - start + 1)
+    if left % 3 or right % 3:
+        raise ValueError("Nucleotide interval must contain complete codons")
+    return left // 3 + 1, right // 3
+
+
 def filter_repeated_profile_regions(
     hit_df: pl.DataFrame,
     *,

@@ -160,3 +160,5 @@ scripts/*
 testing_folder/inputs/reads/interleaved.fastq.gz
 /misc/
 /codebase-audits/
+test_roll/
+.serena/project.yml

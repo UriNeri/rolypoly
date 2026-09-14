@@ -27,6 +27,7 @@ another file with contigs/reads-derived contigs from sample B.
 rolypoly extend [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 - `-i`, `--input`: Input contig FASTA/FASTQ file (pass multiple times to merge inputs) (type: `FILE`; required; default: `Sentinel.UNSET`)
@@ -53,6 +54,7 @@ rolypoly extend [OPTIONS]
 - `--output-format`: Tabular output format for the cluster membership table (type: `CHOICE`; default: `tsv`)
 - `-t`, `--threads`: Number of worker threads. (type: `INTEGER RANGE`; default: `1`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->
 
 
 

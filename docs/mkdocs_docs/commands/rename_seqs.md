@@ -19,6 +19,7 @@ Optionally includes sequence statistics (length, GC content).
 rolypoly rename-seqs [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 - `-i`, `--input`: Input FASTA file (type: `TEXT`; required; default: `Sentinel.UNSET`)
@@ -28,6 +29,7 @@ rolypoly rename-seqs [OPTIONS]
 - `--hash`, `--no-hash`: Use hash instead of a padded running number for IDs (type: `BOOLEAN`; default: `False`)
 - `--stats`, `--no-stats`: Include sequence statistics in mapping file (length, GC content) (type: `BOOLEAN`; default: `True`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->
 
 
 

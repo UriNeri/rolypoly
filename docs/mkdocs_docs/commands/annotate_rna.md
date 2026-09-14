@@ -22,6 +22,7 @@ tool-specific tuning values for individual stages.
 rolypoly annotate-rna [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 - `-i`, `--input`: Input nucleotide sequence file (fasta, fna, fa, or faa) (type: `PATH`; required; default: `Sentinel.UNSET`)
@@ -56,3 +57,4 @@ rolypoly annotate-rna [OPTIONS]
 - `-t`, `--threads`: Number of worker threads. (type: `INTEGER RANGE`; default: `1`)
 - `-M`, `--memory`: Memory limit, for example 8g. (type: `MEMORY`; default: `8g`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->

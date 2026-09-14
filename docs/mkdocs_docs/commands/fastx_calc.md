@@ -22,6 +22,7 @@ Note:
 rolypoly fastx-calc [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 - `-i`, `--input`: Input file (fasta, fa, fna, faa) (type: `PATH`; required; default: `Sentinel.UNSET`)
@@ -30,3 +31,4 @@ rolypoly fastx-calc [OPTIONS]
 - `-f`, `--fields`: Fields to annotate for each sequence. Available: length - sequence length gc_content - percentage of GC nucleotides n_count - total number of Ns hash - md5 hash of the sequence (type: `CHOICE`; default: `length, gc_content, n_count`)
 - `-c`, `--circular`: Treat sequences as circular (rotate to minimal lexicographical form before hashing) (type: `BOOLEAN`; default: `False`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->

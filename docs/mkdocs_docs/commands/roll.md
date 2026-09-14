@@ -24,10 +24,11 @@ This pipeline performs a complete analysis workflow including:
 rolypoly roll [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 - `-i`, `--input`: Input path to raw RNA-seq data (fastq/gz file or directory with fastq/gz files) (type: `TEXT`; required; default: `Sentinel.UNSET`)
-- `-o`, `--output-dir`: Output directory (type: `TEXT`; default: `/home/neri/Documents/GitHub/rps/rolypoly_rp_e2e`)
+- `-o`, `--output-dir`: Output directory (type: `TEXT`; default: `/home/neri/Documents/Github/rolypoly_rp_e2e`)
 - `-D`, `--host`: Path to the user-supplied host/contamination fasta /// Fasta file of known DNA entities expected in the sample. If not provided some steps will be skippted. (type: `TEXT`)
 - `--preset`: Preset that selects both a filter-reads and an assemble preset suited to the library type. 'rna_virus': RNA virus metatranscriptome (default): rRNA removal (mincovfraction=0.6), host + identified-DNA filtering, no polyA trim; rnaviralSPAdes+MEGAHIT assembly 'ribodepleted': Total-RNA ribo-depleted: stricter rRNA removal (mincovfraction=0.65), host + identified-DNA filtering, no polyA trim; rnaviralSPAdes+MEGAHIT assembly 'poly_a': Poly-A selected mRNA: polyA tail trimming (trimpolya=18), stricter quality trim (trimq=12); rnaSPAdes+MEGAHIT assembly 'all_virus_metat': All-virus metatranscriptome / RNA virome: relaxed rRNA removal (mincovfraction=0.5), skips identified-DNA filter; rnaviralSPAdes+MEGAHIT assembly 'DNA_virus': DNA virome / metagenomics: skips rRNA and identified-DNA filtering entirely; metaSPAdes only 'complete': Expansive: rna_virus_metat read filtering + all three assemblers (metaSPAdes+rnaviralSPAdes+MEGAHIT) 'fast': Quick preview / mini mode: subsamples reads, skips error correction and identified-DNA filter; MEGAHIT only with narrow k-mer range; narrowed marker/nucleic/annotation databases (type: `CHOICE`; default: `rna_virus`)
 - `--filter-preset`: Override the read-filtering preset chosen by --preset. (type: `CHOICE`)
@@ -69,6 +70,7 @@ rolypoly roll [OPTIONS]
 - `-k`, `--keep-tmp`: Keep temporary files. (type: `BOOLEAN`; default: `False`)
 - `-tmp`, `--temp-dir`: Temporary working directory. (type: `DIRECTORY`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->
 
 
 

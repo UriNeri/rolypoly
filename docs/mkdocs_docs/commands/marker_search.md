@@ -45,10 +45,11 @@ Please cite accordingly based on the DBs you select.
 rolypoly marker-search [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 - `-i`, `--input`: Input fasta file. Preferably nucleotide contigs, but you can provide amino acid input too (the script would skip 6 frame translation) (type: `TEXT`; required; default: `Sentinel.UNSET`)
-- `-o`, `--output`: Path to output directory. Note - if multiple DBs are used and the resolve-mode is `none`, multiple outputs are made (DB name appended as suffix). (type: `TEXT`; default: `/home/neri/Documents/GitHub/rps/rolypoly/marker_search_out`)
+- `-o`, `--output`: Path to output directory. Note - if multiple DBs are used and the resolve-mode is `none`, multiple outputs are made (DB name appended as suffix). (type: `TEXT`; default: `/home/neri/Documents/Github/rolypoly/marker_search_out`)
 - `-rm`, `--resolve-mode`: How to deal with regions in your query that match multiple profiles? (type: `CHOICE`; default: `simple`)
 
     - merge: all overlapping hits are merged into one range
@@ -85,3 +86,4 @@ rolypoly marker-search [OPTIONS]
 - `-k`, `--keep-tmp`: Keep temporary files. (type: `BOOLEAN`; default: `False`)
 - `-td`, `-tempdir`, `-tmp`, `--temp-dir`: Temporary working directory. (type: `DIRECTORY`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->

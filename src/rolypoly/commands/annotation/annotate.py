@@ -173,6 +173,7 @@ def annotate(
     temp_dir=None,
     keep_tmp=False,
     html=True,
+    reuse_marker_search_from=None,
 ):
     """Run combined RNA + protein annotation on nucleotide viral sequences.
 
@@ -238,6 +239,7 @@ def annotate(
         gene_prediction_tool=gene_prediction_tool,
         search_tool=search_tool,
         domain_db=domain_db,
+        reuse_marker_search_from=reuse_marker_search_from,
         custom_domain_db=custom_domain_db,
         min_orf_length=min_orf_length,
         genetic_code=11,  # Default genetic code

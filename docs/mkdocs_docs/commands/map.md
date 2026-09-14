@@ -25,6 +25,7 @@ different contigs; --concordant and --proper will exclude such evidence.
 rolypoly map [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 - `-i`, `--input`: Input FASTQ file, comma-separated FASTQ files, or directory to auto-detect libraries from (type: `TEXT`)
@@ -47,3 +48,4 @@ rolypoly map [OPTIONS]
 - `-k`, `--keep-tmp`: Keep temporary files. (type: `BOOLEAN`; default: `False`)
 - `-tmp`, `--temp-dir`: Temporary working directory. (type: `DIRECTORY`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->

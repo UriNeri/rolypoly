@@ -18,9 +18,11 @@ in scripted workflows that call `rolypoly version` explicitly.
 rolypoly version [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 No documented CLI options found.
+<!-- END GENERATED CLI OPTIONS -->
 
 
 

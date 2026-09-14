@@ -65,6 +65,7 @@ Examples:
 rolypoly cluster [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 - `--preset`: Apply a named preset that configures multiple options at once. Explicit CLI flags always override the preset. See the epilog below for details on each preset. (type: `CHOICE`)
@@ -96,6 +97,7 @@ rolypoly cluster [OPTIONS]
 - `-t`, `--threads`: Number of worker threads. (type: `INTEGER RANGE`; default: `1`)
 - `-tmp`, `--temp-dir`: Temporary working directory. (type: `DIRECTORY`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->
 
 ## Additional Notes
 

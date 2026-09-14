@@ -21,6 +21,7 @@ evidence from abundance/correlation and termini/motif consistency.
 rolypoly binit [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 - `--rdrp-fasta`: Input FASTA containing RdRp candidate contigs (type: `FILE`; required; default: `Sentinel.UNSET`)
@@ -37,6 +38,7 @@ rolypoly binit [OPTIONS]
 - `--write-single-rdrp-strict`, `--no-write-single-rdrp-strict`: Write strict candidate pairs that pass the complementarity check (type: `BOOLEAN`; default: `False`)
 - `-t`, `--threads`: Number of worker threads. (type: `INTEGER RANGE`; default: `1`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->
 
 
 

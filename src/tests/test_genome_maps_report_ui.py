@@ -59,7 +59,7 @@ def test_report_ui_scopes_controls_and_embeds_provenance(tmp_path):
     assert "Export shown TSV" in html
     assert "Load referenced FASTA" in html
     assert "Choose FASTA" in html
-    assert "Sequences are not embedded in this report" in html
+    assert "available marker-hit sequences are included directly" in html
 
 
 def test_original_id_mapping_omits_inert_cid_to_same_cid_entries(tmp_path):
@@ -111,3 +111,12 @@ def test_report_file_catalog_uses_relative_external_paths(tmp_path):
     ]
     assert {item["kind"] for item in catalog["fastas"]} == {"contigs", "orfs"}
     assert all(not item["path"].startswith("/") for item in catalog["fastas"])
+
+
+def test_track_and_hit_table_expose_translation_identity():
+    from rolypoly.utils.viz.genome_maps import HTML_TEMPLATE
+    assert "${esc(o.label||o.orf_id)} · ${o.qlen||'?'} aa" in HTML_TEMPLATE
+    assert '<th>ORF / frame ID</th>' in HTML_TEMPLATE
+    assert 'title="${escAttr(o.orf_id)}"' in HTML_TEMPLATE
+    assert '<th>Reference span</th>' in HTML_TEMPLATE
+    assert 'This does not establish ORF completeness.' in HTML_TEMPLATE

@@ -21,6 +21,7 @@ scores, and conformations found.
 rolypoly rdrp-motif-search [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 - `-i`, `--input`: Input FASTA file with nucleotide or amino acid sequences (type: `TEXT`; required; default: `Sentinel.UNSET`)
@@ -28,7 +29,7 @@ rolypoly rdrp-motif-search [OPTIONS]
 - `-e`, `--evalue`: E-value threshold for motif searches (type: `FLOAT`; default: `0.01`)
 - `--min-score`: Minimum score threshold for motif matches (type: `FLOAT`)
 - `--max-distance`: Maximum distance between motifs in amino acids (type: `INTEGER`; default: `250`)
-- `--search-tool`: Search tool to use (currently only hmmsearch supported) (type: `CHOICE`; default: `hmmsearch`)
+- `--search-tool`: No description provided. (type: `CHOICE`; default: `hmmsearch`)
 - `--aa-method`: Method for amino acid translation from nucleotides (type: `CHOICE`; default: `six_frame`)
 - `--min-orf-length`: Minimum ORF length for gene prediction (type: `INTEGER`; default: `30`)
 - `--motif-filter`: Filter results by specific motif type (type: `CHOICE`)
@@ -43,6 +44,7 @@ rolypoly rdrp-motif-search [OPTIONS]
 - `-k`, `--keep-tmp`: Keep temporary files. (type: `BOOLEAN`; default: `False`)
 - `-td`, `-tmp`, `--temp-dir`: Temporary working directory. (type: `DIRECTORY`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->
 
 ## Additional Notes
 

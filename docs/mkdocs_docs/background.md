@@ -521,3 +521,20 @@ Practical guidance:
 - Kugelman JR, Wiley MR, Nagle ER, et al. Error baseline rates of five sample preparation methods used to characterize RNA virus populations. PLoS One. 2017;12(2):e0171333. doi:10.1371/journal.pone.0171333. PMID: 28182717.
 - Adiconis X, Borges-Rivera D, Satija R, et al. Comparative analysis of RNA sequencing methods for degraded or low-input samples. Nat Methods. 2013;10(7):623-629. doi:10.1038/nmeth.2483. PMID: 23685885.
 - He S, Wurtzel O, Singh K, et al. Validation of two ribosomal RNA removal methods for microbial metatranscriptomics. Nat Methods. 2010;7(10):807-812. doi:10.1038/nmeth.1507. PMID: 20852648.
+
+## Similarity-based taxonomy and demarcation
+
+A conserved RdRp match establishes evidence of homology; membership of a named
+virus taxon requires the appropriate rank- and lineage-specific criteria.
+Reference-database composition, incomplete assemblies and marker selection
+all affect similarity-based assignments. Neither weighted support nor a single
+aligned-region identity is a universal demarcation threshold. Genome
+organization, other proteins and phylogenetic relationships may also matter.
+The [ICTV classification overview](https://ictv.global/about/taxonomy) explains
+how criteria are established for taxonomic groups.
+
+RolyPoly's [mmtax caveats](commands/mmtax.md#caveats) document its actual defaults
+and its use of rank-aware weighted similarity votes rather than formal
+biological demarcation. The [report caveats](commands/report.md#caveats) explain
+why a chart of selected contigs, often detected through RdRp markers, is not an
+abundance profile or a census of all segments of the viruses in a sample.

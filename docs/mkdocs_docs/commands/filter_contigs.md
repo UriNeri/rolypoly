@@ -21,11 +21,12 @@ Host references can be masked first (default) unless `--dont-mask` is set.
 rolypoly filter-contigs [OPTIONS]
 ```
 
+<!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
 - `-i`, `--input`: Input path to fasta file (type: `PATH`; required; default: `Sentinel.UNSET`)
 - `-d`, `--known-dna`, `--host`: Path to the user-supplied host/contamination fasta (type: `PATH`; required; default: `Sentinel.UNSET`)
-- `-o`, `--output`: Output file location. (type: `TEXT`; default: `/home/neri/Documents/GitHub/rps/rolypoly/filtered_contigs.fasta`)
+- `-o`, `--output`: Output file location. (type: `TEXT`; default: `/home/neri/Documents/Github/rolypoly/filtered_contigs.fasta`)
 - `-m`, `--mode`: Filtering mode: nucleotide, amino acid, or both (nuc / aa / both) (type: `CHOICE`; default: `both`)
 - `-Fm1`, `--filter1_nuc`: First set of rules for nucleic filtering by aligned stats (type: `TEXT`; default: `alnlen >= 120 & pident>=75`)
 - `-Fm2`, `--filter2_nuc`: Second set of rules for nucleic match filtering (type: `TEXT`; default: `qcov >= 0.95 & pident>=95`)
@@ -40,6 +41,7 @@ rolypoly filter-contigs [OPTIONS]
 - `-k`, `--keep-tmp`: Keep temporary files. (type: `BOOLEAN`; default: `False`)
 - `-tmp`, `--temp-dir`: Temporary working directory. (type: `DIRECTORY`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
+<!-- END GENERATED CLI OPTIONS -->
 
 
 

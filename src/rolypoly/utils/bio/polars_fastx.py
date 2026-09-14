@@ -406,7 +406,8 @@ def convert_record_to_gff3_record(
                 and str(value) != "."
                 and str(value) != ""
             ):
-                attrs.append(f"{key}={value}")
+                from urllib.parse import quote
+                attrs.append(f"{quote(str(key), safe='_.:-')}={quote(str(value), safe='_.:-|')}")
 
     gff3_fields = [
         str(row[sequence_id_col]),
@@ -1019,6 +1020,57 @@ def frame_to_fastx(
 
 ####################################################################################
 #### Schema utilities for annotation data (mostly gff).
+def enrich_protein_coordinates(hits, metadata, *, allow_original_ids=False):
+    """Join translation provenance and project protein search hits onto contigs.
+
+    Supports HMMER query alignment coordinates and normalized BLAST tabular
+    coordinates (DIAMOND blastp / MMseqs protein searches). Subject coordinates
+    are never used to infer the nucleotide query's strand. Original fields stay
+    unchanged. Protein-only inputs carry null genomic coordinates.
+    """
+    from rolypoly.utils.bio.interval_ops import amino_to_nucleotide
+
+    query = next(c for c in ("query_full_name", "qseqid", "sequence_id", "query") if c in hits.columns)
+    if {"q1", "q2"}.issubset(hits.columns):
+        a, b = "q1", "q2"
+    elif {"qstart", "qend"}.issubset(hits.columns):
+        a, b = "qstart", "qend"
+    else:
+        a, b = "start", "end"
+    additions = list(metadata.columns) + ["aa_start", "aa_end", "nt_start", "nt_end", "coordinate_system"]
+    # MMseqs2 parses NCBI local IDs and omits their lcl| prefix. Retain
+    # the search label while joining through an unambiguous canonical ID.
+    aliases = {key: key for key in metadata["translation_id"]}
+    for row in metadata.iter_rows(named=True):
+        key = row["translation_id"]
+        original = row.get("original_translation_id") or key
+        candidates = [original] if allow_original_ids or "translation_label" not in metadata.columns else []
+        if candidates and row["translation_method"] == "ORFfinder" and original.startswith("lcl|"):
+            candidates.append(original[4:])
+        for alias in candidates:
+            if alias in aliases and aliases[alias] != key:
+                raise ValueError(f"Ambiguous original protein ID: {alias}")
+            aliases[alias] = key
+    work = hits.drop([c for c in additions if c in hits.columns]).with_columns(
+        pl.col(query).str.split(" ").list.first().alias("search_query_id")
+    ).with_columns(
+        pl.col("search_query_id").replace_strict(aliases, default=pl.col("search_query_id")).alias("translation_id")
+    ).join(metadata, on="translation_id", how="left", validate="m:1")
+    rows = []
+    for row in work.iter_rows(named=True):
+        if row["translation_method"] is None:
+            raise ValueError(f"Missing translation metadata for {row['translation_id']}")
+        aa_start, aa_end = int(row[a]), int(row[b])
+        if not 1 <= aa_start <= aa_end <= row["translation_length_aa"]:
+            raise ValueError(f"Invalid protein query interval for {row['translation_id']}: {aa_start}..{aa_end}")
+        nt_start = nt_end = None
+        if row["translation_nt_start"] is not None:
+            nt_start, nt_end = amino_to_nucleotide(aa_start, aa_end, row["translation_nt_start"], row["translation_nt_end"], row["strand"])
+        rows.append((aa_start, aa_end, nt_start, nt_end))
+    spans = pl.DataFrame(rows, schema={"aa_start": pl.Int64, "aa_end": pl.Int64, "nt_start": pl.Int64, "nt_end": pl.Int64}, orient="row")
+    return work.hstack(spans).with_columns(pl.lit("1-based-inclusive").alias("coordinate_system"))
+
+
 def normalize_column_names(df):
     """Normalize common column name variations to standard names.
 
