@@ -1,9 +1,15 @@
 import os
 import shutil
+import subprocess
+
+import polars as pl
 from pathlib import Path
 
 import rich_click as click
 
+from rolypoly.utils.bio.interval_ops import inclusive_union_length, normalize_oriented_interval
+from rolypoly.utils.bio.sequences import retain_contigs
+from rolypoly.utils.bio.translation import translation_records
 from rolypoly.utils.cli_options import shared_command_context
 from rolypoly.utils.logging.config import BaseConfig
 
@@ -42,7 +48,13 @@ class FilterContigsConfig(BaseConfig):
         self.output_dir = output_path.parent
 
         # initialize the rest of the parameters (i.e. the ones that are not in the BaseConfig class)
-        self.host = Path(kwargs.get("host", "")).absolute().resolve()
+        self.host = Path(kwargs["host"]).resolve() if kwargs.get("host") else None
+        self.flag_only = kwargs.get("flag_only", False)
+        self.rrna = kwargs.get("rrna", False)
+        self.rrna_db = kwargs.get("rrna_db") or Path(os.environ.get("ROLYPOLY_DATA", "")) / "rrna/rrna.cm"
+        self.rrna_min_fraction = kwargs.get("rrna_min_fraction", 0.8)
+        self.filter_evidence = []
+        self.evidence_output = output_path
         self.mode = kwargs.get("mode", "both")
         self.dont_mask = kwargs.get("dont_mask", False)
         self.filter1_nuc = kwargs.get(
@@ -71,7 +83,7 @@ class FilterContigsConfig(BaseConfig):
     "-d",
     "--known-dna",
     "--host",
-    required=True,
+    required=False,
     type=click.Path(exists=True),
     help="Path to the user-supplied host/contamination fasta",
 )
@@ -127,6 +139,14 @@ class FilterContigsConfig(BaseConfig):
     default="--id 50 --min-orf 50",
     help="Additional arguments for Diamond",
 )
+@click.option("--flag-only", is_flag=True, default=False,
+              help="Retain matching contigs and record warning intervals instead of discarding them.")
+@click.option("--rrna", is_flag=True, default=False,
+              help="Opt in to an rRNA-only cmscan after host filtering (also works without --host).")
+@click.option("--rrna-db", type=click.Path(exists=True, dir_okay=False), default=None,
+              help="Override the bundled rrna/rrna.cm database; requires --rrna.")
+@click.option("--rrna-min-fraction", type=click.FloatRange(min=0, max=1, min_open=True), default=0.8, show_default=True,
+              help="Minimum contig fraction covered by accepted rRNA hits for removal; local hits are flagged. Ignored for removal with --flag-only.")
 @click.option(
     "-ow",
     "--overwrite",
@@ -153,6 +173,10 @@ def filter_contigs(
     overwrite,
     log_level,
     temp_dir,
+    flag_only=False,
+    rrna=False,
+    rrna_db=None,
+    rrna_min_fraction=0.8,
 ):
     """
     Filter contigs against user-supplied host/contamination references.
@@ -162,19 +186,27 @@ def filter_contigs(
     `filter2_*`) to retain likely non-host contigs.
 
     Host references can be masked first (default) unless `--dont-mask` is set.
+    Use `--rrna` for optional rRNA screening after host filtering, or without a
+    host reference. `--flag-only` retains matches from all enabled filters and
+    records warning intervals for reports; it is disabled by default.
     """
     from rolypoly.utils.logging.citation_reminder import remind_citations
     from rolypoly.utils.logging.loggit import log_start_info
 
     output = Path(output).absolute().resolve()
-    host = Path(known_dna).absolute().resolve()
+    host = Path(known_dna).resolve() if known_dna else None
+    if not host and not rrna:
+        raise click.UsageError("Supply --known-dna/--host or enable --rrna")
+    if rrna_db and not rrna:
+        raise click.UsageError("--rrna-db requires --rrna")
+    if output == Path(input).resolve():
+        raise click.UsageError("Input and output FASTA must differ")
     if not output.parent.exists():
-        print("asdasdasdasds")
         output.parent.mkdir(parents=True, exist_ok=True)
-    print(output)
     config = FilterContigsConfig(
         input=Path(input).absolute().resolve(),
-        host=Path(host).absolute().resolve(),
+        host=host,
+        flag_only=flag_only, rrna=rrna, rrna_db=rrna_db, rrna_min_fraction=rrna_min_fraction,
         output=Path(output).absolute().resolve(),
         threads=threads,
         log_file=Path(log_file)
@@ -199,29 +231,42 @@ def filter_contigs(
 
     config.logger.info(f"Starting contig filtering in {mode} mode")
 
-    if config.mode == "nuc":
+    original_input = config.input
+    final_output = config.output
+    host_output = config.temp_dir / "host_filtered.fasta" if config.rrna else final_output
+    config.output = host_output
+    if config.host is None:
+        retain_contigs(original_input, host_output)
+    elif config.mode == "nuc":
         filter_contigs_nuc(config)
         tools.append("mmseqs")
-        tools.append("pyfastx")
-        tools.append("bbmap")
-
     elif config.mode == "aa":
         filter_contigs_aa(config)
         tools.append("diamond")
-        tools.append("pyfastx")
-        tools.append("bbmap")
-
-    elif config.mode == "both":
-        og_output = config.output
+    else:
         config.output = config.temp_dir / "filtered_contigs_nuc.fasta"
         filter_contigs_nuc(config)
-        config.input = config.temp_dir / "filtered_contigs_nuc.fasta"
-        config.output = og_output
-        filter_contigs_aa(config)
-        tools.append("diamond")
-        tools.append("mmseqs")
-        tools.append("pyfastx")
-        tools.append("bbmap")
+        config.input = config.output
+        config.output = host_output
+        if config.input.stat().st_size:
+            filter_contigs_aa(config)
+        else:
+            config.output.write_text("")
+        tools.extend(["mmseqs", "diamond"])
+    if config.rrna:
+        rrna_filter(config, host_output, final_output)
+        tools.append("Infernal")
+    config.output = final_output
+    if not config.rrna:
+        Path(str(final_output)+".rrna.tblout").unlink(missing_ok=True)
+    write_filter_evidence(config.filter_evidence, final_output)
+    import json
+    Path(str(final_output)+'.filter_run.json').write_text(json.dumps({
+        'rrna': config.rrna, 'flag_only': config.flag_only,
+        'rrna_min_fraction': config.rrna_min_fraction,
+        'rrna_db': str(config.rrna_db) if config.rrna else None,
+        'host': str(config.host) if config.host else None,
+    }, indent=2)+'\n')
 
     if not config.keep_tmp:
         shutil.rmtree(config.temp_dir, ignore_errors=True)
@@ -257,7 +302,7 @@ def filter_contigs_nuc(config: FilterContigsConfig):
 
     # Convert input to MMseqs2 DB if it's a fasta file
     input_db = config.input
-    if config.input.suffix.endswith((".faa", ".fasta", ".fas", ".fna")):  # type: ignore - an initalized config.input is a path
+    if config.input.suffix.endswith((".faa", ".fasta", ".fas", ".fna", ".fa")):  # type: ignore - an initalized config.input is a path
         input_db = config.temp_dir / "contig_db" / "cmmdb"
         input_db.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(
@@ -369,22 +414,17 @@ def filter_contigs_nuc(config: FilterContigsConfig):
     filtered1 = apply_filter(y, config.filter1_nuc)
     config.logger.info(f"Filter 2: {config.filter2_nuc}")
     filtered2 = apply_filter(y, config.filter2_nuc)
-    y_set = set(filtered1["qheader"]).union(set(filtered2["qheader"]))
-
-    # Write filtered sequences
+    y_set = host_filter_evidence(config, filtered1, filtered2, "host_nucleotide")
+    retain_contigs(config.input, config.output, () if config.flag_only else y_set)
     fa = pyfastx.Fasta(str(config.input))
-    with open(config.output, "w") as out_file:
-        for seq in fa:
-            if seq.name not in y_set:
-                out_file.write(f">{seq.name}\n{seq.seq}\n")
 
     # Print filtering statistics
     total_sequences = len(fa)
-    filtered_sequences = total_sequences - len(y_set)
+    filtered_sequences = total_sequences if config.flag_only else total_sequences - len(y_set)
     percentage_filtered = (len(y_set) / total_sequences) * 100
-    config.logger.info(f"Filtered {len(y_set)} sequences.")
+    config.logger.info("%s %d matched sequences.", "Flagged" if config.flag_only else "Filtered", len(y_set))
     config.logger.info(
-        f"Kept {filtered_sequences} sequences ({percentage_filtered:.2f}% filtered)."
+        f"Kept {filtered_sequences} sequences ({percentage_filtered:.2f}% matched)."
     )
     config.logger.info(
         f"Nucleotide filtering completed. Output saved to {config.output}"
@@ -538,22 +578,17 @@ def filter_contigs_aa(config: FilterContigsConfig):
     filtered1 = apply_filter(y, config.filter1_aa)
     config.logger.info(f"Filter 2: {config.filter2_aa}")
     filtered2 = apply_filter(y, config.filter2_aa)
-    y_set = set(filtered1["qtitle"]).union(set(filtered2["qtitle"]))
-
-    # Write filtered sequences
+    y_set = host_filter_evidence(config, filtered1, filtered2, "host_protein")
+    retain_contigs(config.input, config.output, () if config.flag_only else y_set)
     fa = pyfastx.Fasta(str(config.input))
-    with open(config.output, "w") as out_file:
-        for seq in fa:
-            if seq.name not in y_set:
-                out_file.write(f">{seq.name}\n{seq.seq}\n")
 
     # Print filtering statistics
     total_sequences = len(fa)
-    filtered_sequences = total_sequences - len(y_set)
+    filtered_sequences = total_sequences if config.flag_only else total_sequences - len(y_set)
     percentage_filtered = (len(y_set) / total_sequences) * 100
-    config.logger.info(f"Filtered {len(y_set)} sequences.")
+    config.logger.info("%s %d matched sequences.", "Flagged" if config.flag_only else "Filtered", len(y_set))
     config.logger.info(
-        f"Kept {filtered_sequences} sequences ({percentage_filtered:.2f}% filtered)."
+        f"Kept {filtered_sequences} sequences ({percentage_filtered:.2f}% matched)."
     )
     config.logger.info(
         f"Amino acid filtering completed. Output saved to {config.output}"
@@ -561,5 +596,103 @@ def filter_contigs_aa(config: FilterContigsConfig):
 
     # Clean up
     if not config.keep_tmp:
-        shutil.rmtree(config.temp_dir, ignore_errors=True)
+        shutil.rmtree(tmpdir, ignore_errors=True)
         res_tab.unlink(missing_ok=True)
+
+
+QC_SCHEMA = {
+    'contig_id': pl.String, 'contig_length': pl.Int64, 'start': pl.Int64,
+    'end': pl.Int64, 'strand': pl.String, 'kind': pl.String,
+    'profile': pl.String, 'accession': pl.String, 'source': pl.String,
+    'score': pl.Float64, 'evalue': pl.Float64, 'rule': pl.String,
+    'action': pl.String, 'description': pl.String,
+}
+
+
+def write_filter_evidence(rows, output):
+    pl.DataFrame(rows, schema=QC_SCHEMA).write_csv(str(output)+'.filter_hits.tsv', separator='\t')
+
+
+def host_filter_evidence(config, first, second, kind):
+    """Persist only alignments satisfying an existing rejection rule."""
+    rows = []
+    query_col = 'qheader' if kind == 'host_nucleotide' else 'qtitle'
+    for table, rule in ((first, getattr(config, 'filter1_nuc' if kind == 'host_nucleotide' else 'filter1_aa')),
+                        (second, getattr(config, 'filter2_nuc' if kind == 'host_nucleotide' else 'filter2_aa'))):
+        for hit in table.iter_rows(named=True):
+            lo, hi, direction = normalize_oriented_interval(hit['qstart'], hit['qend'],
+                hit.get('qstrand'), descending_encodes_strand=True)
+            rows.append(dict(contig_id=hit[query_col].split()[0], contig_length=int(hit['qlen']),
+                start=lo, end=hi, strand='+' if direction == 1 else '-', kind=kind,
+                profile=hit.get('theader', hit.get('sseqid', '')), accession='',
+                source='MMseqs2' if kind == 'host_nucleotide' else 'DIAMOND blastx',
+                score=float(hit.get('bits', hit.get('bitscore', 0))), evalue=float(hit['evalue']),
+                rule=rule, action='flagged' if config.flag_only else 'removed',
+                description='Host/contamination reference match; not proof of a chimera'))
+    config.filter_evidence.extend(rows)
+    return {r['contig_id'] for r in rows}
+
+
+def rrna_filter(config, input_fasta, output):
+    """Scan the rRNA-only CM set; remove only predominantly rRNA contigs by default."""
+    from rolypoly.utils.various import read_cmscan_tblout
+
+    records = list(translation_records(input_fasta))
+    lengths = {header.split()[0]: len(seq) for header, seq in records}
+    if len(lengths) != len(records):
+        raise ValueError('Duplicate contig IDs in rRNA input')
+    if not lengths:
+        retain_contigs(input_fasta, output)
+        return
+    database = Path(config.rrna_db)
+    if not database.is_file():
+        raise FileNotFoundError(f'rRNA covariance models not found: {database}')
+    if not all(Path(str(database)+suffix).exists() for suffix in ('.i1f','.i1i','.i1m','.i1p')):
+        local = config.temp_dir/'rrna.cm'
+        shutil.copyfile(database, local)
+        subprocess.run(['cmpress', str(local)], check=True)
+        database = local
+    raw = Path(str(config.evidence_output)+'.rrna.tblout')
+    subprocess.run(['cmscan', '--cpu', str(config.threads), '--cut_ga',
+                    '--tblout', str(raw), '-o', str(config.temp_dir/'rrna.log'),
+                    str(database), str(input_fasta)], check=True)
+    # Infernal writes comments only for a valid scan with no accepted hits.
+    # The shared parser cannot infer an empty CSV; distinguish this from failure.
+    with raw.open() as handle:
+        has_hits = any(line.strip() and not line.startswith("#") for line in handle)
+    if not has_hits:
+        retain_contigs(input_fasta, output)
+        return
+    hits = read_cmscan_tblout(raw)
+    rows = []
+    for hit in hits.iter_rows(named=True):
+        if hit['inc'] != '!':
+            continue
+        parent = hit['query_name']
+        lo, hi, direction = normalize_oriented_interval(hit['seq_from'], hit['seq_to'], hit['strand'], descending_encodes_strand=True)
+        if parent not in lengths or not 1 <= lo <= hi <= lengths[parent]:
+            raise ValueError(f'Invalid rRNA coordinates: {parent}:{lo}-{hi}')
+        rows.append(dict(contig_id=parent, contig_length=lengths[parent], start=lo, end=hi,
+            strand='+' if direction == 1 else '-', kind='rRNA', profile=hit['target_name'],
+            accession=hit['target_accession'], source='cmscan rrna.cm', score=hit['score'],
+            evalue=hit['e_value'], rule='Rfam model gathering threshold (--cut_ga)',
+            action='flagged', description=hit['description']))
+    removed = rrna_removal_candidates(rows, config.rrna_min_fraction)
+    for row in rows:
+        if row['contig_id'] in removed and not config.flag_only:
+            row['action'] = 'removed'
+    config.filter_evidence.extend(rows)
+    retain_contigs(input_fasta, output, () if config.flag_only else removed)
+
+
+def rrna_removal_candidates(rows, min_fraction):
+    """Union coverage across models and strands, avoiding double-counted overlaps."""
+    spans = {}
+    for row in rows:
+        spans.setdefault(row['contig_id'], []).append(row)
+    removed = set()
+    for parent, hits in spans.items():
+        covered = inclusive_union_length((hit['start'], hit['end']) for hit in hits)
+        if covered / hits[0]['contig_length'] >= min_fraction:
+            removed.add(parent)
+    return removed

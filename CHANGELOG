@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Added
+- `filter-contigs`: opt-in rRNA cmscan screening with configurable union-coverage removal, and `--flag-only` to retain accepted host/rRNA matches as coordinate-bearing evidence. Persist screening settings and raw rRNA results.
+- `roll`: expose `--filter-rrna` and `--filter-flag-only`; report existing annotate-rna and early-filter evidence as red RNA/QC warnings with source provenance and overlapping-feature lanes.
 - `annotate-prot`, `marker-search`: normalize protein query IDs before search and retain complete native headers, source IDs, prediction attributes, original tool files, and translation manifests for provenance.
 - `annotate-prot`: support verified translation-bundle reuse with `--reuse-translations-from`, including compatible contig subsets.
 - `roll`: reuse compatible pre-filtering HMM marker-search results during protein annotation after verifying database contents, tool versions, translation provenance, search settings, and required fields. Searches rerun when equivalence cannot be established; ordinary HMM searches with different protein populations and MMseqs2 searches are not reused.
@@ -16,6 +18,7 @@
 - Documentation generation: refresh only explicitly marked CLI Options blocks, preserving manually maintained Markdown. Add explicit, non-destructive legacy migration, validation before batch writes, and preservation/idempotence regression tests; migrate existing generated pages and update contributor instructions.
 
 ### Fixed
+- CLI contract tests: resolve annotation database prerequisites through `ROLYPOLY_DATA` instead of a hardcoded relative directory, preventing false skips when databases are installed.
 - Protein annotation: carry explicit parent-contig nucleotide coordinates, strand, and reading frame through pyrodigal, ORFfinder, and six-frame searches; use full inclusive codon spans in reports and correctly escaped genomic GFF output.
 - ORFfinder: use protein FASTA output by default and correct the nested-ORF flag convention.
 - Annotation/report parsing: retain the first hit in headerless DIAMOND output and correctly read quoted TSV fields containing full headers and metadata.

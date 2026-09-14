@@ -182,7 +182,7 @@
     "id": "annotate_wrapper_protein_rvmt",
     "description": "Annotate wrapper DNA input running protein annotation (RNA skipped)",
     "required_paths": [
-      "data/profiles/hmmdbs/rvmt.hmm",
+      "{data}/profiles/hmmdbs/rvmt.hmm",
       "testing_folder/inputs/contigs/test_contigs.fasta"
     ],
     "args": [
@@ -248,7 +248,7 @@
     "id": "annotate_prot_hmm_dna_nvpc",
     "description": "Annotate-prot DNA input with hmmsearch and NVPC",
     "required_paths": [
-      "data/profiles/hmmdbs/nvpc.hmm"
+      "{data}/profiles/hmmdbs/nvpc.hmm"
     ],
     "args": [
       "annotate-prot",
@@ -303,7 +303,7 @@
     "id": "annotate_prot_hmm_aa_nvpc",
     "description": "Annotate-prot amino input with hmmsearch and NVPC",
     "required_paths": [
-      "data/profiles/hmmdbs/nvpc.hmm",
+      "{data}/profiles/hmmdbs/nvpc.hmm",
       "testing_folder/inputs/proteins/test_proteins.faa"
     ],
     "args": [
@@ -352,7 +352,7 @@
       ]
     ],
     "required_paths": [
-      "data/profiles/mmseqs_dbs/genomad/rna_viral_markers"
+      "{data}/profiles/mmseqs_dbs/genomad/rna_viral_markers"
     ],
     "args": [
       "annotate-prot",
@@ -402,7 +402,7 @@
       ]
     ],
     "required_paths": [
-      "data/profiles/mmseqs_dbs/nvpc/nvpc"
+      "{data}/profiles/mmseqs_dbs/nvpc/nvpc"
     ],
     "args": [
       "annotate-prot",
@@ -441,7 +441,7 @@
       "diamond"
     ],
     "required_paths": [
-      "data/reference_seqs/RVMT/RVMT_cleaned_orfs.faa.gz"
+      "{data}/reference_seqs/RVMT/RVMT_cleaned_orfs.faa.gz"
     ],
     "args": [
       "annotate-prot",

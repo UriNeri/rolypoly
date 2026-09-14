@@ -25,7 +25,10 @@ def repo_root() -> Path:
 
 
 def render(value: str, tmp_path: Path) -> str:
-    return value.replace("{tmp}", str(tmp_path))
+    return (
+        value.replace("{tmp}", str(tmp_path))
+        .replace("{data}", os.environ["ROLYPOLY_DATA"])
+    )
 
 
 def render_values(values: list[str], tmp_path: Path) -> list[str]:

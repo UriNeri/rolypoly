@@ -138,3 +138,17 @@ splits. The resulting approximately 10-kbp endpoints can misleadingly resemble
 biological boundaries. This remains an unresolved search/report integration
 limitation; the chart itself does not establish that the remaining sequence
 lacks a match. See the [10-kbp caveat](#nucleic-hits-end-at-10-kbp-length).
+
+## RNA and contig-QC warnings
+
+rRNA features from annotate-rna and retained matches from optional early
+[filter-contigs screening](filter_contigs.md#evidence-and-reports) appear in red
+in the RNA/QC track and RNA-feature table. Red means review the region; it does
+not establish a chimera. Hover for the source, score, E-value, coordinates and
+filtering rule. Warnings remain visible in best-only mode while the RNA track
+is enabled. Overlapping RNA/QC features occupy separate lanes.
+
+The report reads saved evidence only; it does not run a second cmscan. Covered
+rRNA hits from the same model and strand share a feature with retained source
+provenance. Additional intervals remain visible. Host-derived matches are
+labelled **Host match** so they are not mistaken for rRNA.

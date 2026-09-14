@@ -13,7 +13,7 @@ The pipeline follows these stages, subject to the selected preset and skipped st
 
 1. Filter reads and perform quality control, with optional subsampling.
 2. Assemble reads into contigs and dereplicate the assembly unless disabled.
-3. Filter contigs, cluster them, and apply the minimum-length cutoff.
+3. Filter contigs against a supplied host reference, optionally screen rRNA, then cluster contigs and apply the minimum-length cutoff.
 4. Search for protein markers and nucleotide matches to identify candidate viral contigs.
 5. Combine candidates from either search into `all_matched_contigs.fasta`.
 6. Map the original reads to the selected contigs, unless mapping is disabled.
@@ -106,6 +106,8 @@ rolypoly roll [OPTIONS]
 - `-txs`, `--taxonomy-sensitivity`: Shared mmtax sensitivity preset or level 1-8. (type: `TEXT`; default: `normal`)
 - `--report`, `--no-report`: Write an interactive HTML roll report (roll_report.html) from the annotation results (marker/protein hits + RNA track) at the end of the run. (type: `BOOLEAN`; default: `True`)
 - `--report-best-by`: Initial 'best hit per range' criterion shown in the report (toggleable in the viewer). (type: `CHOICE`; default: `score`)
+- `--filter-flag-only`: Retain host/rRNA matches in filter-contigs and record warning intervals. (type: `BOOLEAN`; default: `False`)
+- `--filter-rrna`: Opt in to early rRNA screening in filter-contigs; otherwise use annotate-rna evidence. (type: `BOOLEAN`; default: `False`)
 - `-t`, `--threads`: Number of worker threads. (type: `INTEGER RANGE`; default: `1`)
 - `-M`, `--memory`: Memory limit, for example 8g. (type: `MEMORY`; default: `8g`)
 - `-k`, `--keep-tmp`: Keep temporary files. (type: `BOOLEAN`; default: `False`)
@@ -116,3 +118,17 @@ rolypoly roll [OPTIONS]
 
 
 
+
+## Contig QC and flag-only mode
+
+`roll` normally removes host-matched contigs when `--host` is supplied.
+`--filter-flag-only` retains those matches and passes their warning intervals
+to the report. `--filter-rrna` optionally enables early rRNA screening, even
+without `--host`; it is off by default. When enabled, predominantly rRNA contigs
+are removed unless flag-only is selected. Localized rRNA hits are retained and
+flagged. See [filter-contigs](filter_contigs.md#optional-early-rrna-screening).
+
+Without early screening, the report uses rRNA hits from annotate-rna's Rfam
+search; it does not launch another rRNA search. If both evidence sources exist,
+covered matching rRNA features share a red warning feature. Host nucleotide
+and protein warnings also appear in the RNA/QC track and feature table.

@@ -76,7 +76,7 @@ DEFAULT_PALETTE: dict[str, str] = {
     "genomad": "#55A868", "vfam": "#8172B3",
 }
 RNA_TYPE_COLORS: dict[str, str] = {
-    "rRNA": "#2E8B57", "tRNA": "#1F77B4", "IRES": "#9467BD",
+    "rRNA": "#C44E52", "Host match": "#C44E52", "tRNA": "#1F77B4", "IRES": "#9467BD",
     "ribozyme": "#D62728", "riboswitch": "#E377C2", "frameshift": "#BCBD22",
     "UTR": "#17BECF", "CRE": "#FF7F0E", "motif": "#8C564B",
     "structure": "#9aa2b1", "other": "#7F7F7F",
@@ -930,6 +930,65 @@ def attach_rna(contigs, rna_by_contig, criteria=tuple(BEST_CRITERIA)):
             "n_source": 0, "sources": [], "best_score": 0.0,
             "top_profile": "(RNA only)", "rna": rna, "nucleic": None, "motifs": None,
         })
+    return contigs
+
+
+def attach_filter_warnings(contigs, tables):
+    """Add retained filter evidence without resurrecting removed contigs.
+
+    Matching rRNA model/strand intervals share one display feature while the
+    original coordinates, scores and sources remain in its evidence list.
+    """
+    lookup = {c["contig"]: c for c in contigs}
+    standalone = not contigs
+    for table in tables or []:
+        if standalone:
+            from rolypoly.utils.bio.translation import translation_records
+            output_fasta = Path(str(table).removesuffix(".filter_hits.tsv"))
+            kept = {h.split()[0]: len(seq) for h, seq in translation_records(output_fasta)} if output_fasta.exists() else {}
+            for row in read_hit_table(table).iter_rows(named=True):
+                parent = row["contig_id"]
+                if row["action"] != "removed" and parent in kept and parent not in lookup:
+                    contig = dict(contig=parent, short=parent, length=kept[parent], orfs=[],
+                        n_orfs=0, n_hits=0, n_best={key:0 for key in BEST_CRITERIA},
+                        n_source=0, sources=[], best_score=0, top_profile="(QC warning)",
+                        rna=None, nucleic=None, motifs=None)
+                    contigs.append(contig)
+                    lookup[parent] = contig
+        for row in read_hit_table(table).iter_rows(named=True):
+            if row["action"] == "removed" or row["contig_id"] not in lookup:
+                continue
+            contig = lookup[row["contig_id"]]
+            if contig.get("rna") is None:
+                contig["rna"] = {"structure": None, "features": []}
+            features = contig["rna"]["features"]
+            kind = "rRNA" if row["kind"] == "rRNA" else "Host match"
+            matches = [f for f in features if f["klass"] == kind
+                       and f["profile"] in (row["profile"], row["accession"])
+                       and str(f["strand"]) == row["strand"]
+                       and f["start"] <= int(row["start"]) and int(row["end"]) <= f["end"]]
+            note = f"filter-contigs: {row['source']}; {row['rule']}; {row['action']}"
+            if matches:
+                feature = matches[0]
+                feature.setdefault("filter_evidence", []).append(row)
+                if note not in feature["note"]:
+                    feature["note"] += " · " + note
+            else:
+                features.append(dict(type=kind, klass=kind, start=int(row["start"]), end=int(row["end"]),
+                    strand=row["strand"], profile=row["profile"], source=row["source"],
+                    score=clean_value(row["score"], "float"), evalue=row["evalue"],
+                    note=note+" · "+(row["description"] or ""), dbn="", seq="",
+                    filter_evidence=[row], best={key: True for key in BEST_CRITERIA}))
+    for contig in contigs:
+        rrna = [f for f in (contig.get("rna") or {}).get("features", []) if f["klass"] == "rRNA"]
+        marker_hits = [h for o in contig["orfs"] if o.get("evidence_stage") == "marker-search" for h in o["hits"]]
+        for feature in rrna:
+            if marker_hits:
+                overlaps = any(h["nt_from"] <= feature["end"] and feature["start"] <= h["nt_to"] for h in marker_hits)
+                message = ("Viral-marker evidence overlaps this rRNA region" if overlaps else
+                           "Viral-marker evidence occurs elsewhere on this contig; possible chimera, review required")
+                if message not in feature["note"]:
+                    feature["note"] += " · " + message
     return contigs
 
 
@@ -1838,7 +1897,7 @@ def write_genome_maps(data, output, spec=None, palette=None,
                       initial_mode="all", initial_criterion=None, initial_tab="table",
                       original_ids=None, contig_lengths=None,
                       command_line=None, log_text=None,
-                      source_files=None, marker_evidence=None, predicted_orf_counts=None):
+                      source_files=None, marker_evidence=None, predicted_orf_counts=None, filter_warning_tables=None):
     """Read a protein table (+ optional annotate-rna, nucleic-search, rdrp-motif
     tables, a run-stats dict, and extra tabs) and write a standalone interactive
     HTML report. Returns Path."""
@@ -1867,6 +1926,7 @@ def write_genome_maps(data, output, spec=None, palette=None,
         contigs = attach_nucleic(contigs, nucleic_map)
     if motifs is not None:
         contigs = attach_motifs(contigs, build_motifs_by_contig(motifs, motif_spec))
+    contigs = attach_filter_warnings(contigs, filter_warning_tables)
     apply_contig_metadata(contigs, original_ids, contig_lengths)
     contigs.sort(key=lambda c: -c["best_score"])
     html = render_html(contigs, palette, title=title, initial_mode=initial_mode,
@@ -1927,6 +1987,7 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
         found_marker, found_rna = find_annotation_tables(output_dir)
         marker_table = marker_table or found_marker
         rna_table = rna_table or found_rna
+    filter_warning_tables = sorted(output_dir.glob("**/*.filter_hits.tsv"))
     marker_evidence = sorted(output_dir.glob("**/marker_search_results.tsv"))
     marker_evidence = [p for p in marker_evidence if marker_table is None or p.resolve() != Path(marker_table).resolve()]
     if nucleic_tables is None:
@@ -1961,9 +2022,9 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
         taxonomy_path=taxonomy_path,
     )
 
-    for path in marker_evidence:
+    for path in [*marker_evidence, *filter_warning_tables]:
         import os
-        source_files["tables"].append({"label": "Original marker-search hits", "kind": "protein",
+        source_files["tables"].append({"label": "Contig filter evidence" if path in filter_warning_tables else "Original marker-search hits", "kind": "rna" if path in filter_warning_tables else "protein",
             "path": os.path.relpath(path.resolve(), output.parent.resolve())})
 
     predicted_orf_counts = None
@@ -1977,7 +2038,7 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
                     predicted_orf_counts[row["source_seq_id"]] = row["len"]
 
     if marker_table is None:
-        if rna_table is None and not nucleic_tables and not extra_tabs and not marker_evidence:
+        if rna_table is None and not nucleic_tables and not extra_tabs and not marker_evidence and not filter_warning_tables:
             logger.warning("genome_maps: no annotation tables under %s; skipping report", output_dir)
             return None
         contigs = attach_marker_evidence([], marker_evidence, extra_tabs, contig_lengths)
@@ -1988,6 +2049,7 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
             contigs = attach_nucleic(contigs, nucleic_map)
         if motif_tables:
             contigs = attach_motifs(contigs, build_motifs_by_contig(list(motif_tables)))
+        contigs = attach_filter_warnings(contigs, filter_warning_tables)
         apply_contig_metadata(contigs, original_ids, contig_lengths)
         contigs.sort(key=lambda c: -c["length"])
         html = render_html(contigs, kwargs.get("palette"), title=title,
@@ -2002,7 +2064,7 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
 
     return write_genome_maps(
         str(marker_table), output, title=title, marker_evidence=marker_evidence,
-        predicted_orf_counts=predicted_orf_counts,
+        predicted_orf_counts=predicted_orf_counts, filter_warning_tables=filter_warning_tables,
         rna=str(rna_table) if rna_table else None,
         nucleic=nucleic_tables,
         motifs=list(motif_tables) if motif_tables else None,
@@ -2188,6 +2250,9 @@ summary{cursor:pointer;font-weight:600;margin-bottom:8px}
   <p><b>Export shown hits TSV</b> exports the currently displayed primary hits. Supporting evidence remains available in its expandable section and the original tables. <b>Original files</b> links to pipeline outputs; keep the report with its output directory to preserve those links.</p>
   <p>The Contig Table summarizes contigs and protein hits; Nucleic hits lists nucleotide matches. Run stats, taxonomy and other tabs appear when their data is available.</p>
   <p><a href="https://urineri.github.io/rolypoly/commands/report/#sequences-and-exports" target="_blank" rel="noopener noreferrer">Sequence and export documentation ↗</a> · <a href="https://urineri.github.io/rolypoly/commands/annotate_prot/" target="_blank" rel="noopener noreferrer">Protein annotation documentation ↗</a></p>
+  <h2>Red RNA/QC warnings</h2>
+  <p>Red rRNA features come from annotate-rna or optional early <code>filter-contigs --rrna</code> screening. Red <b>Host match</b> features record host nucleotide/protein matches retained with <code>--flag-only</code>. They identify regions for review, not confirmed chimeras. Covered rRNA features retain evidence from both stages; hits adding coverage remain separate. Hover for the original source, score, coordinates and filtering rule. These warnings remain visible in best-only mode while the RNA track is enabled.</p>
+  <p><a href="https://urineri.github.io/rolypoly/commands/filter_contigs/#evidence-and-reports" target="_blank" rel="noopener noreferrer">Contig-QC evidence documentation ↗</a></p>
   <h2>Caveats and known bugs</h2>
   <p>Nucleic hits may end at about 10 kbp because MMseqs2 internally splits long sequences. This is not evidence of a biological boundary; see the <a href="https://urineri.github.io/rolypoly/commands/report/#known-bugs" target="_blank" rel="noopener noreferrer">known display limitation</a>.</p>
   <p>The taxonomy pie chart counts represented contigs, not absolute or relative abundance. Marker selection is primarily RdRp-focused, and missing genome segments or other undetected contigs are not represented. Taxonomy assignments are similarity-based hypotheses: mmtax does not enforce rank- or taxon-specific demarcation criteria. See <a href="https://urineri.github.io/rolypoly/commands/mmtax/#caveats" target="_blank" rel="noopener noreferrer">taxonomy caveats and defaults</a>.</p>
@@ -2364,7 +2429,7 @@ function isBest(h){return h.best&&h.best[crit];}
 function isSixFrame(o){return ['six-frame','six_frame'].includes(o.translation_method);}
 function hitVisible(h){if(h.supporting_annotation)return false;if(!active.has(h.source))return false;if(mode==='best'&&!isBest(h))return false;
   if(minScore>0&&(h.score||0)<minScore)return false;if(maxEexp!==0&&h.evalue!==null&&h.evalue>Math.pow(10,maxEexp))return false;return true;}
-function featVisible(f){if(mode==='best'&&f.best&&!f.best[crit])return false;return true;}
+function featVisible(f){if(f.klass==='rRNA'||f.klass==='Host match')return true;if(mode==='best'&&f.best&&!f.best[crit])return false;return true;}
 function packLanes(hits){
  const spans=hits.map(h=>{const a=h.nt_from??h.qstart,b=h.nt_to??h.qend;
   return {h,start:Math.min(a,b),end:Math.max(a,b)};}).sort((a,b)=>a.start-b.start||a.end-b.end);
@@ -2495,7 +2560,7 @@ function render(){
    y+=20+geneH+domains.nlanes*18+18;
   });
   let rnaY=y,rnaH=0;
-  if(rnaOn){const hs=!!c.rna.structure,hf=c.rna.features.length>0;rnaH=18+(hs?20:0)+(hf?18:0);y+=rnaH+16;}
+  if(rnaOn){const hs=!!c.rna.structure,hf=c.rna.features.length>0;rnaH=18+(hs?20:0)+(hf?packLanes(c.rna.features.filter(featVisible).map(f=>({...f,nt_from:f.start,nt_to:f.end}))).nlanes*18:0);y+=rnaH+16;}
   let nucY=y;
   if(nucOn){const {nlanes}=packLanes(cnuc);y+=18+nlanes*16+16;}
   let motY=y;
@@ -2526,7 +2591,7 @@ function render(){
   });
   if(rnaOn){let ry=rnaY;
    s+=`<line x1="${padL}" y1="${ry}" x2="${padL+plotW}" y2="${ry}" stroke="#e5e7eb"/>`;
-   s+=`<text x="${padL}" y="${ry+13}" font-size="10.5" fill="#6b7280" font-weight="600">RNA</text>`;ry+=18;
+   s+=`<text x="${padL}" y="${ry+13}" font-size="10.5" fill="#6b7280" font-weight="600">RNA / QC warnings</text>`;ry+=18;
    const R=c.rna;
    if(R.structure){const st=R.structure,bins=st.density;const spanFrom=x(st.start||1),spanTo=x(st.end||L),spanW=Math.max(1,spanTo-spanFrom),cw=spanW/bins.length;
     for(let i=0;i<bins.length;i++){const meta=JSON.stringify({kind:'dens',v:bins[i],
@@ -2535,12 +2600,12 @@ function render(){
      s+=`<rect class="dens" data-m="${meta}" x="${spanFrom+i*cw}" y="${ry}" width="${Math.ceil(cw)}" height="14" fill="${densColor(bins[i])}"/>`;}
     s+=`<rect x="${spanFrom}" y="${ry}" width="${spanW}" height="14" fill="none" stroke="#cfd6e0"/>`;
     s+=`<text x="${Math.min(spanTo+4,W-70)}" y="${ry+11}" font-size="9" fill="#8a92a3">pairing density</text>`;ry+=20;}
-   if(R.features.length){R.features.filter(featVisible).forEach(fe=>{if(fe.start==null||fe.end==null)return;
+   if(R.features.length){packLanes(R.features.filter(featVisible).map(fe=>({...fe,nt_from:fe.start,nt_to:fe.end}))).rows.forEach(({h:fe,lane})=>{if(fe.start==null||fe.end==null)return;const fy=ry+lane*18;
      const xf=x(fe.start),xt=x(fe.end),w=Math.max(4,xt-xf),col=rnaColors[fe.klass]||rnaColors.other||'#7F7F7F';
      const meta=JSON.stringify(Object.assign({kind:'feat'},fe)).replace(/"/g,'&quot;');
      const op=(mode==='all'&&fe.best&&!fe.best[crit])?0.4:0.9;
-     s+=`<rect class="rnafeat" data-m="${meta}" x="${xf}" y="${ry}" width="${w}" height="13" rx="3" fill="${col}" fill-opacity="${op}" stroke="${col}"/>`;
-     if(w>40)s+=`<text x="${xf+3}" y="${ry+10}" font-size="9" fill="#fff" pointer-events="none">${fe.klass}</text>`;});}
+     s+=`<rect class="rnafeat" data-m="${meta}" x="${xf}" y="${fy}" width="${w}" height="13" rx="3" fill="${col}" fill-opacity="${op}" stroke="${col}"/>`;
+     if(w>40)s+=`<text x="${xf+3}" y="${fy+10}" font-size="9" fill="#fff" pointer-events="none">${fe.klass}</text>`;});}
   }
   if(nucOn){let ny=nucY;
    s+=`<line x1="${padL}" y1="${ny}" x2="${padL+plotW}" y2="${ny}" stroke="#e5e7eb"/>`;
@@ -2590,7 +2655,7 @@ function render(){
      (m.best&&m.best[crit]?` <span class="pill" style="background:#2e8b57">best·${CRIT[crit]}</span>`:'')+
      `<br><span class="k">source</span> ${m.source} · <span class="k">strand</span> ${m.strand||'?'}`+
      `<br><span class="k">nt</span> ${(m.start||0).toLocaleString()}–${(m.end||0).toLocaleString()} · <span class="k">score</span> ${m.score??'–'} · <span class="k">E</span> ${fmtE(m.evalue)}`;
-    if(m.note)html+=`<br><span class="k">${m.note}</span>`;if(m.dbn)html+=`<span class="aln">${m.dbn}</span>`;
+    if(m.note)html+=`<br><span class="k">${esc(m.note)}</span>`;if(m.dbn)html+=`<span class="aln">${m.dbn}</span>`;
     showTip(html,ev.clientX,ev.clientY);});
    el.addEventListener('mouseleave',hideTip);});
   document.querySelectorAll('rect.nuc').forEach(el=>{el.style.cursor='pointer';
@@ -2629,7 +2694,7 @@ function render(){
   if(c.rna&&c.rna.features.length){t+=`<h2 style="margin-top:14px">RNA features</h2><table><thead><tr><th>Class</th><th>Source</th><th>nt span</th><th>Score</th><th>Best</th><th>Profile / note</th></tr></thead><tbody>`;
    c.rna.features.forEach(fe=>{t+=`<tr><td><span class="pill" style="background:${rnaColors[fe.klass]||'#7F7F7F'}">${fe.klass}</span></td>`+
      `<td>${fe.source}</td><td class="mono">${(fe.start||0).toLocaleString()}–${(fe.end||0).toLocaleString()}</td>`+
-     `<td>${fe.score??'–'}</td><td>${fe.best&&fe.best[crit]?'✓':''}</td><td>${[fe.profile,fe.note].filter(Boolean).join(' · ')}</td></tr>`;});
+     `<td>${fe.score??'–'}</td><td>${fe.best&&fe.best[crit]?'✓':''}</td><td>${esc([fe.profile,fe.note].filter(Boolean).join(' · '))}</td></tr>`;});
    t+=`</tbody></table>`;}
   if(cnuc.length){t+=`<h2 style="margin-top:14px">Nucleic hits</h2><table><thead><tr><th>Source</th><th>Target</th><th>%id</th><th>Score</th><th>E</th><th>contig span</th><th>strand</th></tr></thead><tbody>`;
    cnuc.forEach(h=>{t+=`<tr><td><span class="pill" style="background:${nucColors[h.source]||'#6b7280'}">${h.source}</span></td>`+

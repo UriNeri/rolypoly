@@ -305,6 +305,10 @@ ROLL_PRESET_MAP: dict[str, tuple[str, str, str]] = {
     help="Initial 'best hit per range' criterion shown in the report "
     "(toggleable in the viewer).",
 )
+@click.option("--filter-flag-only", is_flag=True, default=False,
+              help="Retain host/rRNA matches in filter-contigs and record warning intervals.")
+@click.option("--filter-rrna", is_flag=True, default=False,
+              help="Opt in to early rRNA screening in filter-contigs; otherwise use annotate-rna evidence.")
 def roll(
     input,
     output_dir,
@@ -351,6 +355,8 @@ def roll(
     skip_existing=False,
     overwrite=False,
     log_level="INFO",
+    filter_flag_only=False,
+    filter_rrna=False,
 ):
     """End-to-end pipeline for RNA virus discovery from raw sequencing data.
 
@@ -683,29 +689,45 @@ def roll(
     step += 1
     logger.info("Step %d: Filtering assembly (`filter-contigs`)    ", step)
     filtered_assembly = assembly_output / "filtered_assembly.fasta"
-    if skip_existing and filtered_assembly.exists():
+    filter_settings_match = not (filter_rrna or filter_flag_only)
+    filter_manifest = Path(str(filtered_assembly)+".filter_run.json")
+    if filter_manifest.exists():
+        import json
+        try:
+            previous_filter = json.loads(filter_manifest.read_text())
+            filter_settings_match = (previous_filter.get("rrna") == filter_rrna
+                                     and previous_filter.get("flag_only") == filter_flag_only)
+        except (ValueError, OSError):
+            filter_settings_match = False
+    if skip_existing and filtered_assembly.exists() and filter_settings_match:
         logger.info(
             "Filtered assembly %s already exists, skipping step",
             filtered_assembly,
         )
         final_assembly_file = filtered_assembly
     else:
-        if host is None:
+        if host is None and not filter_rrna:
             logger.info(
                 "No host fasta provided, skipping assembly filtering step. "
                 "Filtered assembly will be the same as final assembly."
             )
+            for suffix in (".filter_hits.tsv", ".filter_run.json", ".rrna.tblout"):
+                Path(str(filtered_assembly)+suffix).unlink(missing_ok=True)
             symlink_path = assembly_output / "filtered_assembly.fasta"
             if symlink_path.exists() or symlink_path.is_symlink():
                 symlink_path.unlink()
             symlink_path.symlink_to(final_assembly_file.resolve())
             final_assembly_file = symlink_path
         else:
+            if filtered_assembly.is_symlink():
+                filtered_assembly.unlink()
             ctx = shared_command_context(filter_contigs)
             ctx.invoke(
                 filter_contigs,
                 input=str(final_assembly_file),
                 known_dna=host,
+                flag_only=filter_flag_only,
+                rrna=filter_rrna,
                 output=str(filtered_assembly),
                 mode="both",
                 threads=threads,

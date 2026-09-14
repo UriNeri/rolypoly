@@ -915,3 +915,16 @@ def ensure_faidx(
     except Exception as e:
         logger.error(f"Error creating FASTA index for {input_file}: {e}")
         raise
+
+
+def retain_contigs(input_path, output, removed=()):
+    """Keep complete original FASTA headers; compare only unambiguous first-token IDs."""
+    from rolypoly.utils.bio.translation import translation_records
+
+    removed = set(removed)
+    if Path(input_path).resolve() == Path(output).resolve():
+        raise ValueError('Input and output FASTA must differ')
+    with Path(output).open('w') as handle:
+        for header, sequence in translation_records(input_path):
+            if header.split()[0] not in removed:
+                handle.write(f'>{header}\n{sequence}\n')

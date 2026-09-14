@@ -18,6 +18,23 @@ logger = get_logger()
 # TODO: make this more robust and less dependent on external libraries. Candidate destination library is polars-bio.
 
 
+def inclusive_union_length(intervals) -> int:
+    """Count covered positions in normalized, inclusive intervals without double counting."""
+    intervals = list(intervals)
+    if not intervals:
+        return 0
+    sorted_intervals = sorted(intervals)
+    current_start, current_end = sorted_intervals[0]
+    merged_length = 0
+    for start, end in sorted_intervals[1:]:
+        if start <= current_end + 1:
+            current_end = max(current_end, end)
+        else:
+            merged_length += current_end - current_start + 1
+            current_start, current_end = start, end
+    return merged_length + current_end - current_start + 1
+
+
 def normalize_oriented_interval(start, end, strand=None, *, descending_encodes_strand=False):
     """Normalize positive 1-based inclusive bounds with an explicit orientation.
 
@@ -124,20 +141,6 @@ def filter_repeated_profile_regions(
         shorter = min(left[1] - left[0] + 1, right[1] - right[0] + 1)
         return bool(shorter and overlap / shorter >= 0.80)
 
-    def union_length(intervals: list[tuple[int, int]]) -> int:
-        if not intervals:
-            return 0
-        sorted_intervals = sorted(intervals)
-        current_start, current_end = sorted_intervals[0]
-        merged_length = 0
-        for start, end in sorted_intervals[1:]:
-            if start <= current_end + 1:
-                current_end = max(current_end, end)
-            else:
-                merged_length += current_end - current_start + 1
-                current_start, current_end = start, end
-        return merged_length + current_end - current_start + 1
-
     for group in work.partition_by(
         [schema["query"], schema["profile"]], maintain_order=True
     ):
@@ -191,7 +194,7 @@ def filter_repeated_profile_regions(
             query_length = max(
                 int(records[index][schema["query_length"]]) for index in indexes
             )
-            coverage = union_length(distinct_occurrences) / query_length if query_length else 0.0
+            coverage = inclusive_union_length(distinct_occurrences) / query_length if query_length else 0.0
             reason = (
                 "repeated_profile_region_query_coverage"
                 if coverage > query_coverage_threshold
