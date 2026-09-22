@@ -110,12 +110,12 @@ class RNAAnnotationConfig(BaseConfig):
     "--override_parameters",
     "--override-parameters",
     default="{}",
-    help='JSON-like string of parameters to override. Example: --override-parameters \'{"RNAfold": {"temperature": 37}, "cmscan": {"E": 1e-5}}\'',
+    help='JSON-like string of parameters to override. Example: --override-parameters \'{"RNAfold": {"temperature": 37}, "cmsearch": {"cut_ga": false, "E": 1e-5}}\'',
 )
 @click.option(
     "--skip-steps",
     default="",
-    help="Comma-separated list of steps to skip. Example: --skip-steps RNAfold,cmsearch",
+    help="Comma-separated steps to skip: predict_secondary_structure, search_ribozymes, predict_trnas, resolve_rna_element_overlaps. Example: --skip-steps predict_secondary_structure,search_ribozymes",
 )
 @click.option(
     "--secondary-structure-tool",
@@ -127,7 +127,7 @@ class RNAAnnotationConfig(BaseConfig):
     "--ires-tool",
     default="IRESfinder",
     type=click.Choice(["IRESfinder", "IRESpy"], case_sensitive=False),
-    help="Tool for IRES identification",
+    help="Reserved IRES tool setting; IRES detection is not currently enabled",
 )
 @click.option(
     "--trna-tool",
@@ -139,7 +139,7 @@ class RNAAnnotationConfig(BaseConfig):
     "--rnamotif-tool",
     default="lightmotif",
     type=click.Choice(["lightmotif", "pymeme"], case_sensitive=False),
-    help="Tool for RNAmotif identification (PSSM search). Not fully supported yet.",
+    help="Reserved RNA motif tool setting; RNA motif searches are not currently enabled.",
 )
 @click.option(
     "--cm-db",
@@ -217,8 +217,8 @@ def annotate_RNA(
     """Annotate RNA structural features and motifs on viral nucleotide inputs.
 
     The default pipeline runs secondary-structure prediction, ribozyme/CM
-    search, and tRNA detection, while optional modules can add IRES and motif
-    analyses depending on selected tools and skip settings.
+    search, and tRNA detection. IRES detection, RNA motif searches, and
+    RNAsselem searches are not currently enabled.
 
     Use `--skip-steps` to disable modules and `--override-parameters` to pass
     tool-specific tuning values for individual stages.

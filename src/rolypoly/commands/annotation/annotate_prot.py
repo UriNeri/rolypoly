@@ -246,7 +246,7 @@ def stage_protein_input_as_orfs(config) -> bool:
     "-ss",
     "--skip-steps",
     default="",
-    help="Comma-separated list of steps to skip. Example: --skip-steps ORFfinder,hmmsearch",
+    help="Comma-separated steps to skip: predict_orfs, prepare_translation_metadata, search_protein_domains, resolve_domain_overlaps, combine_results. Example: --skip-steps resolve_domain_overlaps",
 )
 @click.option(
     "-gp",

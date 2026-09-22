@@ -36,7 +36,7 @@ rolypoly annotate-prot [OPTIONS]
 - `-o`, `--output-dir`: Output directory path (type: `TEXT`; default: `./annotate_prot_output`)
 - `--reuse-translations-from`: Reuse a verified translation bundle from annotation or marker-search output. (type: `DIRECTORY`)
 - `-op`, `--override-parameters`, `--override-params`: JSON-like string of parameters to override. Example: --override-parameters '{"ORFfinder": {"minimum_length": 150}, "hmmsearch": {"E": 1e-3}}' (type: `TEXT`; default: `{}`)
-- `-ss`, `--skip-steps`: Comma-separated list of steps to skip. Example: --skip-steps ORFfinder,hmmsearch (type: `TEXT`; default: ``)
+- `-ss`, `--skip-steps`: Comma-separated steps to skip: predict_orfs, prepare_translation_metadata, search_protein_domains, resolve_domain_overlaps, combine_results. Example: --skip-steps resolve_domain_overlaps (type: `TEXT`; default: ``)
 - `-gp`, `--gene-prediction-tool`: Tool for gene prediction. (type: `CHOICE`; default: `pyrodigal`)
 
     - pyrodigal-rv: might work well for some viruses, but it's not as well tested for RNA viruses. Includes internal genetic code assignment.

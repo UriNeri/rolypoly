@@ -180,6 +180,27 @@ and in some cases adding haplotyping/strain-resolution analyses after the fact.
 
 ### Library preparation and viral recovery
 
+In RolyPoly, `ribodepleted` describes **experimental rRNA depletion during
+library preparation**. The corresponding read-filtering preset is
+`total_rna_ribodepleted`. This input label does not imply stronger computational
+rRNA removal: its current coverage threshold is `0.6`, the same as
+`rna_virus_metat`. Filtering of residual rRNA is a separate computational step.
+Here `mincovfraction` measures the fraction of read bases covered by matching
+reference k-mers, not sequencing depth or alignment identity. Lower values
+remove more reads; higher values require more matching coverage and retain
+more reads. The `all_virus_metat` preset currently uses `0.5`, so its rRNA
+removal is more aggressive than the base `0.6` setting.
+
+The completed control benchmark retained every simulated viral control read
+at thresholds `0.5`, `0.6`, `0.7` and `0.8`. In the concluding spike-in comparison,
+all thresholds produced the same control-supporting contig sequences as the
+unfiltered baseline at each tested depth. This does not establish equal
+rRNA-removal effectiveness or general viral safety: the empirical background
+lacked independent rRNA labels and the concluding comparison used only two
+simulated phage controls. Current defaults remain unchanged. See the
+[examples](examples.md#2-rrna-decontamination-decontaminate_rrna) for preset values
+and explicit overrides.
+
 Many RNA viruses, including phages and most negative-sense, ambisense, and segmented RNA viruses, are not
 polyadenylated, so enrichment strategy can strongly affect what gets recovered.
 In a direct comparison, poly(A)-selected libraries yielded viral reads but were insufficient for complete
@@ -378,8 +399,8 @@ Removed by: sequence identity     Removed by: sequence identity
 
 Both can inflate abundance estimates and mislead assembly coverage. In metatranscriptomes, though,
 highly expressed transcripts are expected, so aggressive duplicate removal can also discard real
-biology. In RolyPoly, deduplication is done as exact-sequence removal (`seqkit rmdup`) rather than
-coordinate-based deduplication.
+biology. RolyPoly uses BBTools for read deduplication and `polars_fastx` for exact-sequence
+contig deduplication after assembly. These steps do not use instrument cluster coordinates.
 
 #### Index hopping and sample cross-talk
 

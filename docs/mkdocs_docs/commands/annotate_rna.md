@@ -10,8 +10,8 @@ Annotate RNA structural features and motifs on viral nucleotide inputs.
 ## Description
 
 The default pipeline runs secondary-structure prediction, ribozyme/CM
-search, and tRNA detection, while optional modules can add IRES and motif
-analyses depending on selected tools and skip settings.
+search, and tRNA detection. IRES detection, RNA motif searches, and
+RNAsselem searches are not currently enabled.
 
 Use `--skip-steps` to disable modules and `--override-parameters` to pass
 tool-specific tuning values for individual stages.
@@ -27,12 +27,12 @@ rolypoly annotate-rna [OPTIONS]
 
 - `-i`, `--input`: Input nucleotide sequence file (fasta, fna, fa, or faa) (type: `PATH`; required; default: `Sentinel.UNSET`)
 - `-o`, `--output-dir`: Output directory path (type: `TEXT`; default: `./annotate_RNA_output`)
-- `-op`, `--override_parameters`, `--override-parameters`: JSON-like string of parameters to override. Example: --override-parameters '{"RNAfold": {"temperature": 37}, "cmscan": {"E": 1e-5}}' (type: `TEXT`; default: `{}`)
-- `--skip-steps`: Comma-separated list of steps to skip. Example: --skip-steps RNAfold,cmsearch (type: `TEXT`; default: ``)
+- `-op`, `--override_parameters`, `--override-parameters`: JSON-like string of parameters to override. Example: --override-parameters '{"RNAfold": {"temperature": 37}, "cmsearch": {"cut_ga": false, "E": 1e-5}}' (type: `TEXT`; default: `{}`)
+- `--skip-steps`: Comma-separated steps to skip: predict_secondary_structure, search_ribozymes, predict_trnas, resolve_rna_element_overlaps. Example: --skip-steps predict_secondary_structure,search_ribozymes (type: `TEXT`; default: ``)
 - `--secondary-structure-tool`: Tool for secondary structure prediction. LinearFold is faster but less configurable. (type: `CHOICE`; default: `LinearFold`)
-- `--ires-tool`: Tool for IRES identification (type: `CHOICE`; default: `IRESfinder`)
+- `--ires-tool`: Reserved IRES tool setting; IRES detection is not currently enabled (type: `CHOICE`; default: `IRESfinder`)
 - `--trna-tool`: Tool for tRNA identification (type: `CHOICE`; default: `tRNAscan-SE`)
-- `--rnamotif-tool`: Tool for RNAmotif identification (PSSM search). Not fully supported yet. (type: `CHOICE`; default: `lightmotif`)
+- `--rnamotif-tool`: Reserved RNA motif tool setting; RNA motif searches are not currently enabled. (type: `CHOICE`; default: `lightmotif`)
 - `--cm-db`: Database for cmscan (type: `CHOICE`; default: `Rfam`)
 - `--custom-cm-db`: Path to a custom cm database in nhmmer/cm format (mandatory to use with --cm-db custom) (type: `TEXT`; default: ``)
 - `--output-format`: Output format for the combined results (type: `CHOICE`; default: `tsv`)

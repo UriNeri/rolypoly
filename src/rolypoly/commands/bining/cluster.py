@@ -520,6 +520,7 @@ def write_output(
     help=(
         "Backend for computing pairwise ANI when --input-type is fasta. "
         "'pyskani' is fast and suitable for most use cases. "
+        "'pyfastani' implements the FastANI algorithm (requires pyfastani). "
         "'blastn' uses NCBI BLAST (requires blastn on PATH). "
         "'mmseqs' uses MMseqs2 easy-search (requires mmseqs on PATH). "
         "'linclust' runs MMseqs2 easy-linclust directly and returns clustered representatives. "
@@ -797,7 +798,7 @@ def cluster(
 
       # Use presets to mimic other tools
       rolypoly cluster -i contigs.fasta --preset checkv -o clusters.tsv
-      rolypoly cluster -i contigs.fasta --preset fast-ani -o clusters.tsv
+      rolypoly cluster -i contigs.fasta --preset pyfastani -o clusters.tsv
       rolypoly cluster -i contigs.fasta --preset kmer-fast -o clusters.tsv
 
       # Override a single preset option (e.g. lower identity threshold)

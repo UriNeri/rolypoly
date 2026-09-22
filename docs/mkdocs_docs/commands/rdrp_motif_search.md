@@ -51,11 +51,11 @@ rolypoly rdrp-motif-search [OPTIONS]
 ```text
 EXAMPLES:
 
-  # Basic search with default flat TSV output and alignment
+  # Basic search with default nested TSV output and alignment
   rolypoly rdrp-motif-search -i sequences.fasta -o results_dir
 
-  # Nested structure for programmatic analysis
-  rolypoly rdrp-motif-search -i sequences.fasta -o results_dir --output-structure nested
+  # Flat structure with separate motif columns
+  rolypoly rdrp-motif-search -i sequences.fasta -o results_dir --output-structure flat
 
   # Parquet output with structured data for analysis
   rolypoly rdrp-motif-search -i sequences.fasta -o results_dir --output-format parquet
@@ -68,10 +68,8 @@ EXAMPLES:
 
 OUTPUT FORMATS:
 
-  flat + tsv: separate columns (motif_a_start, motif_b_start, etc.) - DEFAULT
-  nested + tsv: motif_details column as JSON string
+  flat + tsv: separate columns (motif_a_start, motif_b_start, etc.)
+  nested + tsv: motif_details column as JSON string - DEFAULT
   flat + parquet: separate columns with native data types
   nested + parquet: motif_details as structured data types
 ```
-
-

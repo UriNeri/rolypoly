@@ -30,7 +30,7 @@ ROLL_PRESET_MAP: dict[str, tuple[str, str, str]] = {
     "ribodepleted": (
         "total_rna_ribodepleted",
         "rna_virus",
-        "Total-RNA ribo-depleted: stricter rRNA removal (mincovfraction=0.65), host + identified-DNA filtering, no polyA trim; rnaviralSPAdes+MEGAHIT assembly",
+        "Total-RNA that went through ribo-depletion: residual rRNA filtering (mincovfraction=0.6, same as rna_virus), host + identified-DNA filtering, no polyA trim; rnaviralSPAdes+MEGAHIT assembly",
     ),
     "poly_a": (
         "poly_a_selected",
@@ -40,7 +40,7 @@ ROLL_PRESET_MAP: dict[str, tuple[str, str, str]] = {
     "all_virus_metat": (
         "all_virus_metat",
         "rna_virus",
-        "All-virus metatranscriptome / RNA virome: relaxed rRNA removal (mincovfraction=0.5), skips identified-DNA filter; rnaviralSPAdes+MEGAHIT assembly",
+        "All-virus metatranscriptome / RNA virome: more aggressive rRNA removal (mincovfraction=0.5, versus default 0.6), skips identified-DNA filter; rnaviralSPAdes+MEGAHIT assembly",
     ),
     "DNA_virus": (
         "all_virus_metag",

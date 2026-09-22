@@ -29,6 +29,18 @@ Use --similarity-measure to select which one --min-identity applies to.
 Default thresholds (95% identity, 85% target coverage) follow the
 MIUViG species-level vOTU standards.
 
+!!! note "Dependencies"
+
+    `pip install rolypoly-tk` installs `pyskani`, `pyfastani`, `igraph`, and
+    `leidenalg` from PyPI. Pixi also obtains these through the project's Python
+    dependencies. BLAST and MMseqs2 remain external tools in the Pixi `cluster`
+    feature.
+
+    For a conda recipe, the corresponding packages are `bioconda::pyskani`,
+    `bioconda::pyfastani`, `conda-forge::python-igraph`, and
+    `conda-forge::leidenalg`. There is no Bioconda recipe in this repository;
+    its release recipe must declare these runtime dependencies.
+
 
 Examples:
   # Cluster a FASTA file with default pyskani + centroid
@@ -53,7 +65,7 @@ Examples:
 
   # Use presets to mimic other tools
   rolypoly cluster -i contigs.fasta --preset checkv -o clusters.tsv
-  rolypoly cluster -i contigs.fasta --preset fast-ani -o clusters.tsv
+  rolypoly cluster -i contigs.fasta --preset pyfastani -o clusters.tsv
   rolypoly cluster -i contigs.fasta --preset kmer-fast -o clusters.tsv
 
   # Override a single preset option (e.g. lower identity threshold)
@@ -71,7 +83,7 @@ rolypoly cluster [OPTIONS]
 - `--preset`: Apply a named preset that configures multiple options at once. Explicit CLI flags always override the preset. See the epilog below for details on each preset. (type: `CHOICE`)
 - `-i`, `--input`: Input file: FASTA/FASTQ for on-the-fly ANI computation, or a pre-computed pairwise table (BLAST outfmt 6, CheckV ANI table, MMseqs2 easy-search output) (type: `FILE`; required; default: `Sentinel.UNSET`)
 - `--input-type`: Type of input file. 'fasta' triggers on-the-fly ANI computation using the --ani-backend. The table formats expect pre-computed pairwise results. (type: `CHOICE`; default: `fasta`)
-- `--ani-backend`: Backend for computing pairwise ANI when --input-type is fasta. 'pyskani' is fast and suitable for most use cases. 'blastn' uses NCBI BLAST (requires blastn on PATH). 'mmseqs' uses MMseqs2 easy-search (requires mmseqs on PATH). 'linclust' runs MMseqs2 easy-linclust directly and returns clustered representatives. 'kmer' uses k-mer overlap coefficient (fast, approximate). (type: `CHOICE`; default: `pyskani`)
+- `--ani-backend`: Backend for computing pairwise ANI when --input-type is fasta. 'pyskani' is fast and suitable for most use cases. 'pyfastani' implements the FastANI algorithm (requires pyfastani). 'blastn' uses NCBI BLAST (requires blastn on PATH). 'mmseqs' uses MMseqs2 easy-search (requires mmseqs on PATH). 'linclust' runs MMseqs2 easy-linclust directly and returns clustered representatives. 'kmer' uses k-mer overlap coefficient (fast, approximate). (type: `CHOICE`; default: `pyskani`)
 - `--clustering-method`: Clustering algorithm. 'centroid': greedy length-sorted (CD-HIT/CheckV style). 'connected-components': union-find transitive closure. 'leiden': Leiden community detection (requires igraph+leidenalg). (type: `CHOICE`; default: `centroid`)
 - `--min-identity`: Minimum pairwise identity threshold (0-100 scale) (type: `FLOAT RANGE`; default: `95.0`)
 - `--min-target-coverage`: Minimum target (shorter sequence) coverage threshold (0-100) (type: `FLOAT RANGE`; default: `85.0`)

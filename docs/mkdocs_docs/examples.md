@@ -39,23 +39,26 @@ flowchart TD
     M -->|yes| N[trim_polya_tails]
     M -->|no| O[skip trim_polya_tails]
 
-    N --> P[remove_synthetic_artifacts]
+    N --> P{Artifacts FASTA or remove-synthetic-artifacts enabled?}
     O --> P
-    P --> Q[entropy_filter]
+    P -->|yes| Q[remove_synthetic_artifacts]
+    P -->|no| R[skip remove_synthetic_artifacts]
+    Q --> S[entropy_filter]
+    R --> S
 
-    Q --> R{Short inserts / overlap expected?}
-    R -->|yes| S[error_correct_1]
-    S --> T[error_correct_2]
-    T --> U[merge_reads]
-    R -->|no| V[skip overlap-heavy steps]
+    S --> T{Short inserts / overlap expected?}
+    T -->|yes| U[error_correct_1]
+    U --> V[error_correct_2]
+    V --> W[merge_reads]
+    T -->|no| X[skip overlap-heavy steps]
 
-    U --> W[quality_trim_unmerged]
-    V --> W
-    W --> X[final dedupe + outputs]
+    W --> Y[quality_trim_unmerged]
+    X --> Y
+    Y --> Z[final dedupe + outputs]
 
-    X --> Y{Single branch or multiple branches?}
-    Y -->|single| Z[One downstream path]
-    Y -->|multiple| AA[Branch e.g. quantification vs assembly]
+    Z --> AA{Single branch or multiple branches?}
+    AA -->|single| AB[One downstream path]
+    AA -->|multiple| AC[Branch e.g. quantification vs assembly]
 ```
 
 #### 1) Known DNA filtering: `filter_known_dna`
@@ -81,6 +84,29 @@ rolypoly filter-reads -i reads/ -o filtered/ -D host.fasta \
 
 Uses packaged rRNA references (SILVA + NCBI masked sets).
 
+`mincovfraction` is the minimum fraction of a read covered by matching reference
+k-mers for removal. It is not sequencing depth or alignment identity. Holding
+other settings fixed, **lower values remove more reads; higher values retain
+more reads**. With paired reads, a matching mate can also cause removal of its
+partner.
+
+Current rRNA settings (before explicit overrides):
+
+| `filter-reads` preset | rRNA `mincovfraction` |
+|---|---:|
+| No preset (base default) | 0.6 |
+| `rna_virus_metat`, `total_rna_ribodepleted` | 0.6 |
+| `poly_a_selected`, `fast`, `strict` | 0.6 |
+| `all_virus_metat` | 0.5 (more aggressive removal) |
+| `all_virus_metag` | rRNA filtering skipped |
+
+The `strict` preset strengthens quality trimming and deduplication; it retains
+the base rRNA threshold. `roll` selects the corresponding filtering preset as
+shown in the preset table below. The 0.7 and 0.8 values in override examples
+are user-selected alternatives, not defaults. These read-filter thresholds are
+separate from `filter-contigs --rrna-min-fraction` (default 0.8), which measures
+contig coverage by accepted alignments.
+
 ```bash
 # Default run (with rRNA filtering)
 rolypoly filter-reads -i reads/ -o filtered/
@@ -93,7 +119,7 @@ rolypoly filter-reads -i reads/ -o filtered/ \
 rolypoly filter-reads -i reads/ -o filtered/ \
   --preset all_virus_metag
 
-# Make rRNA filtering stricter/looser
+# Retain more reads by raising the match-coverage threshold above default 0.6
 rolypoly filter-reads -i reads/ -o filtered/ \
   --override-parameters '{"decontaminate_rrna": {"mincovfraction": 0.7, "k": 31}}'
 ```
@@ -133,7 +159,7 @@ rolypoly filter-reads -i reads/ -o filtered/ \
 rolypoly filter-reads -i reads/ -o filtered/ \
   --override-parameters '{"dedupe": {"passes": 1, "s": 0}}'
 
-# strict preset increases dedupe aggressiveness
+# strict preset tightens quality trimming; dedupe settings stay the same
 rolypoly filter-reads -i reads/ -o filtered/ --preset strict
 ```
 
@@ -279,9 +305,9 @@ After the main chain above, `filter-reads` runs a final dedupe pass on merged/in
 | `roll` preset | Library preparation | Filter preset | Assembly preset |
 |---|---|---|---|
 | `rna_virus` (default) | RNA virus metatranscriptome: rRNA removal, host + identified-DNA filter | `rna_virus_metat` | `rna_virus` |
-| `ribodepleted` | Total RNA ribo-depleted: stricter rRNA removal (mincovfraction=0.7) | `total_rna_ribodepleted` | `rna_virus` |
+| `ribodepleted` | Experimentally ribo-depleted total RNA; residual rRNA filtering (mincovfraction=0.6) | `total_rna_ribodepleted` | `rna_virus` |
 | `poly_a` | Poly-A selected mRNA: polyA tail trim, stricter quality trim | `poly_a_selected` | `metatranscriptome` |
-| `all_virus_metat` | All-virus metatranscriptome / RNA virome: relaxed rRNA filter, skips identified-DNA filter | `all_virus_metat` | `rna_virus` |
+| `all_virus_metat` | All-virus metatranscriptome / RNA virome: more aggressive rRNA removal (mincovfraction=0.5), skips identified-DNA filter | `all_virus_metat` | `rna_virus` |
 | `DNA_virus` | DNA virome / metagenomics: skips rRNA and identified-DNA filtering | `all_virus_metag` | `metag` (metaSPAdes only) |
 | `complete` | Any — maximum sensitivity; runs all three assembler modes | `rna_virus_metat` | `complete` |
 | `fast` | Any — quick preview; skips error correction and identified-DNA filter | `fast` | `fast` |
@@ -326,7 +352,10 @@ rolypoly roll \
 
 ### Total RNA, ribo-depleted library
 
-Use `ribodepleted` for stricter rRNA removal (mincovfraction=0.7).
+`ribodepleted` is for total-RNA libraries whose rRNA was experimentally depleted
+during library preparation. It does not mean stronger computational removal.
+RolyPoly still filters residual rRNA, using the same current `mincovfraction=0.6`
+as the `rna_virus` preset. The completed control benchmark did not justify changing these defaults.
 
 ```bash
 rolypoly roll \
@@ -443,13 +472,13 @@ rolypoly filter-reads \
 # RNA virus metatranscriptome (lenient quality trim, rRNA removal at mincovfraction=0.6)
 rolypoly filter-reads -i reads/ -o filtered/ --preset rna_virus_metat
 
-# Total RNA ribo-depleted (stricter rRNA removal mincovfraction=0.7)
+# Experimentally ribo-depleted total RNA (residual rRNA filtering, mincovfraction=0.6)
 rolypoly filter-reads -i reads/ -o filtered/ --preset total_rna_ribodepleted
 
 # Poly-A selected library (enables polyA trimming, stricter quality trim)
 rolypoly filter-reads -i reads/ -o filtered/ --preset poly_a_selected
 
-# All-virus metatranscriptome (relaxed rRNA filter, skips identified-DNA filter)
+# All-virus metatranscriptome (more aggressive rRNA removal (mincovfraction=0.5), skips identified-DNA filter)
 rolypoly filter-reads -i reads/ -o filtered/ --preset all_virus_metat
 
 # All-virus metagenomics (skip rRNA + identified-DNA filters entirely)
@@ -472,7 +501,7 @@ rolypoly filter-reads \
 ### Override a specific step parameter
 
 ```bash
-# Raise rRNA coverage threshold and use a stricter quality trim
+# Retain more reads during rRNA filtering (0.8 versus default 0.6), but trim quality more strictly
 rolypoly filter-reads \
   -i reads/ -o filtered/ \
   --preset rna_virus_metat \
@@ -483,9 +512,10 @@ rolypoly filter-reads \
 
 ```bash
 # Run everything except error correction
+# (filter-reads --skip-steps takes one comma-separated value, not repeated flags)
 rolypoly filter-reads \
   -i reads/ -o filtered/ \
-  --skip-steps error_correct_1 --skip-steps error_correct_2
+  --skip-steps error_correct_1,error_correct_2
 ```
 
 ---
@@ -556,10 +586,13 @@ rolypoly assemble \
 ### Skip post-processing deduplication
 
 ```bash
+# assemble --skip-steps accepts dereplicate and rename (repeat the flag to
+# skip multiple steps; comma-separated values are NOT accepted here).
+# --skip-steps dereplicate is equivalent to --no-rmdup.
 rolypoly assemble \
   -id filtered_reads/ -o assembly_out/ \
   --preset rna_virus \
-  --skip-steps post_processing
+  --skip-steps dereplicate
 ```
 
 ---
@@ -617,7 +650,7 @@ rolypoly marker-search \
 
 # Search only the RdRp database
 rolypoly marker-search \
-  -i contigs.fasta -o marker_out/ --database rdrp -t 8
+  -i contigs.fasta -o marker_out/ --database RdRp-scan -t 8
 ```
 
 ## Virus nucleotide search (`nucleic-search`)

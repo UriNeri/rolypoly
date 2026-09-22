@@ -69,7 +69,7 @@ class AnnotationConfig(BaseConfig):
 @click.option(
     "--skip-steps",
     default="",
-    help="Comma-separated list of steps to skip. Example: --skip-steps RNA_annotation,protein_annotation or --skip-steps IRESfinder,RNAMotif or --skip-steps ORFfinder,hmmsearch",
+    help="Comma-separated stage or step names to skip. Stages: RNA_annotation, protein_annotation. Protein steps: predict_orfs, prepare_translation_metadata, search_protein_domains, resolve_domain_overlaps, combine_results. RNA steps: predict_secondary_structure, search_ribozymes, predict_trnas, resolve_rna_element_overlaps. Example: --skip-steps search_ribozymes,search_protein_domains",
 )
 @click.option(
     "--secondary-structure-tool",
@@ -83,7 +83,7 @@ class AnnotationConfig(BaseConfig):
     "--ires-tool",
     default="IRESfinder",
     type=click.Choice(["IRESfinder", "IRESpy"]),
-    help="Tool for IRES identification",
+    help="Reserved IRES tool setting; IRES detection is not currently enabled",
 )
 @click.option(
     "--trna-tool",
@@ -96,7 +96,7 @@ class AnnotationConfig(BaseConfig):
     hidden=True,
     default="lightmotif",
     type=click.Choice(["lightmotif", "pymeme"], case_sensitive=False),
-    help="Tool for RNA sequence motif identification (PSSM search). Not fully supported yet.",
+    help="Reserved RNA motif tool setting; RNA motif searches are not currently enabled.",
 )
 @click.option(
     "--gene-prediction-tool",
