@@ -507,7 +507,34 @@
   },
   {
     "id": "filter_contigs_runtime_nuc",
-    "description": "Runtime smoke test filter-contigs nucleotide mode with local fixtures",
+    "description": "Runtime smoke test filter-contigs nucleotide host filtering using only local fixtures",
+    "required_any_commands": [
+      [
+        "mmseqs",
+        "mmseqs2"
+      ]
+    ],
+    "args": [
+      "filter-contigs",
+      "-i",
+      "testing_folder/inputs/contigs/test_contigs.fasta",
+      "-d",
+      "testing_folder/inputs/contigs/test_fasta_for_masking.fasta",
+      "-o",
+      "{tmp}/filter_contigs_out.fasta",
+      "-m",
+      "nuc",
+      "-t",
+      "1",
+      "--dont-mask"
+    ],
+    "expected_files": [
+      "{tmp}/filter_contigs_out.fasta"
+    ]
+  },
+  {
+    "id": "filter_contigs_runtime_nuc_masked",
+    "description": "Runtime smoke test filter-contigs with host masking and the installed masking database",
     "required_any_commands": [
       [
         "mmseqs",
@@ -529,6 +556,9 @@
     ],
     "expected_files": [
       "{tmp}/filter_contigs_out.fasta"
+    ],
+    "required_paths": [
+      "{data}/contam/masking/combined_entropy_masked.fasta.gz"
     ]
   },
   {
@@ -595,10 +625,16 @@
     ],
     "expected_files": [
       "{tmp}/marker_search_out/marker_search_results.tsv"
+    ],
+    "required_commands": [
+      "seqkit"
+    ],
+    "required_paths": [
+      "{data}/profiles/hmmdbs/genomad_rna_viral_markers.hmm"
     ]
   },
   {
-    "id": "shrink_reads_top_reads_runtime",
+    "id": "shrink_reads_first_n_runtime",
     "description": "Runtime smoke test shrink-reads with local FASTQ fixture",
     "args": [
       "shrink-reads",
@@ -607,7 +643,7 @@
       "-out",
       "{tmp}",
       "-st",
-      "top_reads",
+      "first_n",
       "-sz",
       "10"
     ],
