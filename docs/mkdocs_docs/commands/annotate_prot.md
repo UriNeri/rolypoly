@@ -43,7 +43,7 @@ rolypoly annotate-prot [OPTIONS]
 
     - ORFfinder: The default ORFfinder settings may have some false positives, but it's fast and easy to use.
 
-    - six-frame: includes all 6 reading frames, so all possible ORFs are predicted - prediction is quick but will include many false positives, and the input for the domain search will be larger.
+    - six-frame: includes all 6 reading frames, so all possible ORFs are predicted - prediction is quick but will include many false positives, and the input for the domain search will be larger. Translation uses the native NumPy backend, resolves an IUPAC codon when all represented codons encode the same amino acid, converts stops to `X`, and emits canonical signed `<contig>_frame_p1` / `<contig>_frame_m1` identifiers directly.
 
 - `-st`, `--search-tool`: Tool/command for protein domain detection. Only one tool can be used at a time. (type: `CHOICE`; default: `hmmsearch`)
 - `-d`, `--domain-db`: comma-separated list of database(s) for domain detection. (type: `TEXT`; default: `Pfam,NVPC`)

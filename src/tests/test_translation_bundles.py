@@ -135,3 +135,16 @@ def test_matched_input_export_uses_mapping_not_normalized_id_suffixes(tmp_path):
     write_matched_input_seqs_fasta(hits, str(dna), output, 'nucl', 'pyrodigal')
     assert len(list(translation.translation_records(output))) == 1
     assert next(translation.translation_records(output))[0] == 'CID_4 original contig description'
+
+
+def test_legacy_matched_input_export_accepts_canonical_frame_suffix(tmp_path):
+    from rolypoly.commands.identify_virus.marker_search import write_matched_input_seqs_fasta
+
+    dna = tmp_path / 'input.fa'
+    output = tmp_path / 'matched.fna'
+    dna.write_text('>contig:1 original description\nACGTACGT\n')
+    hits = pl.DataFrame({'query_full_name': ['contig%3A1_frame_m2']})
+
+    write_matched_input_seqs_fasta(hits, str(dna), output, 'nucl', 'six_frame')
+
+    assert next(translation.translation_records(output))[0] == 'contig:1 original description'

@@ -2,7 +2,12 @@
 
 import multiprocessing.pool
 import re
+from contextlib import nullcontext
+from functools import lru_cache
+from itertools import product
+from string import Formatter
 
+import numpy as np
 import polars as pl
 from pathlib import Path
 from typing import Dict, List, Tuple, Union
@@ -195,7 +200,7 @@ GENETIC_CODES_AA = {
     "3": "FFLLSSSSYY**CCWWTTTTPPPPHHQQRRRRIIMMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
     "4": "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
     "5": "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIMMTTTTNNKKSSSSVVVVAAAADDEEGGGG",
-    "6": "FFLLSSSSYYQQCC*WLLLLPPPPHHQQRRRRIIIMTTTTNKKSSRRVVVVAAAADDEEGGGG",
+    "6": "FFLLSSSSYYQQCC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
     "9": "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNNKSSSSVVVVAAAADDEEGGGG",
     "10": "FFLLSSSSYY**CCCWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
     "11": "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
@@ -305,6 +310,30 @@ GENETIC_CODE_NAMES = {
 
 NT_NAME = "TCAG"
 NT_COMP = "AGTC"
+SIX_FRAME_TRANSLATION_VERSION = "numpy-iupac-v2"
+SIX_FRAMES = (1, 2, 3, -1, -2, -3)
+SEQKIT_SIX_FRAME_DEFLINE = "{id}_frame={frame} {description}"
+CANONICAL_SIX_FRAME_DEFLINE = "{canonical_id}_frame_{frame_token}"
+IUPAC_BASES = {
+    "A": "A",
+    "C": "C",
+    "G": "G",
+    "T": "T",
+    "R": "AG",
+    "Y": "CT",
+    "S": "CG",
+    "W": "AT",
+    "K": "GT",
+    "M": "AC",
+    "B": "CGT",
+    "D": "AGT",
+    "H": "ACT",
+    "V": "ACG",
+    "N": "ACGT",
+}
+IUPAC_COMPLEMENT = str.maketrans("ACGTRYSWKMBDHVN.-", "TGCAYRSWMKVHDBN.-")
+_NUMPY_CODON_RADIX = 17
+_NUMPY_INVALID_BASE = 16
 
 
 def make_translation_table(
@@ -339,6 +368,275 @@ def make_translation_table(
 
     tranaa["---"] = "-"
     return tranaa, transt
+
+
+@lru_cache(maxsize=None)
+def numpy_translation_tables(
+    genetic_code: int = 1, clean: bool = True
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Build cached byte and codon lookup arrays with exhaustive IUPAC support.
+
+    An ambiguous codon is translated when every concrete codon it represents
+    has the same amino acid. Otherwise it becomes ``X``. This deliberately
+    avoids SeqKit's order-dependent ambiguity-table expansion.
+    """
+    canonical, _ = make_translation_table(genetic_code)
+    symbols = tuple(IUPAC_BASES)
+    base_codes = np.full(256, _NUMPY_INVALID_BASE, dtype=np.uint16)
+    for code, base in enumerate(symbols):
+        base_codes[ord(base)] = code
+    gap_code = len(symbols)
+    base_codes[ord("-")] = gap_code
+    base_codes[ord(".")] = gap_code
+
+    lookup = np.full(_NUMPY_CODON_RADIX**3, ord("X"), dtype=np.uint8)
+    for ambiguous_codon in product(symbols, repeat=3):
+        amino_acids = {
+            canonical["".join(codon)]
+            for codon in product(
+                *(IUPAC_BASES[base] for base in ambiguous_codon)
+            )
+        }
+        amino_acid = next(iter(amino_acids)) if len(amino_acids) == 1 else "X"
+        if clean and amino_acid == "*":
+            amino_acid = "X"
+        first, second, third = (
+            int(base_codes[ord(base)]) for base in ambiguous_codon
+        )
+        index = first * _NUMPY_CODON_RADIX**2 + second * _NUMPY_CODON_RADIX + third
+        lookup[index] = ord(amino_acid)
+
+    gap_index = (
+        gap_code * _NUMPY_CODON_RADIX**2
+        + gap_code * _NUMPY_CODON_RADIX
+        + gap_code
+    )
+    lookup[gap_index] = ord("-")
+    return base_codes, lookup
+
+
+def normalize_nucleotide_sequence(sequence: str) -> str:
+    """Normalize case and RNA uracil before translation."""
+    return sequence.replace(" ", "").replace("\t", "").upper().replace("U", "T")
+
+
+def reverse_complement_iupac(sequence: str) -> str:
+    """Return a reverse complement that preserves all IUPAC ambiguity codes."""
+    return normalize_nucleotide_sequence(sequence).translate(IUPAC_COMPLEMENT)[
+        ::-1
+    ]
+
+
+def translate_sequence_numpy(
+    sequence: str, frame: int = 1, genetic_code: int = 1, clean: bool = True
+) -> str:
+    """Translate one signed reading frame with a vectorized NumPy lookup."""
+    if frame not in SIX_FRAMES:
+        raise ValueError(f"frame must be one of {SIX_FRAMES}, got {frame}")
+    sequence = normalize_nucleotide_sequence(sequence)
+    if frame < 0:
+        sequence = sequence.translate(IUPAC_COMPLEMENT)[::-1]
+    sequence = sequence[abs(frame) - 1 :]
+    try:
+        encoded = np.frombuffer(sequence.encode("ascii"), dtype=np.uint8)
+    except UnicodeEncodeError as error:
+        raise ValueError(
+            "Nucleotide sequences must contain ASCII characters"
+        ) from error
+    length = len(encoded) // 3 * 3
+    if length == 0:
+        return ""
+    base_codes, lookup = numpy_translation_tables(genetic_code, clean)
+    codes = base_codes[encoded[:length]]
+    indices = (
+        codes[::3] * _NUMPY_CODON_RADIX**2
+        + codes[1::3] * _NUMPY_CODON_RADIX
+        + codes[2::3]
+    )
+    return lookup[indices].tobytes().decode("ascii")
+
+
+def translate_six_frames_numpy(
+    sequence: str, genetic_code: int = 1, clean: bool = True
+) -> List[Tuple[int, str]]:
+    """Translate a nucleotide sequence in signed frame order 1,2,3,-1,-2,-3."""
+    sequence = normalize_nucleotide_sequence(sequence)
+    reverse = sequence.translate(IUPAC_COMPLEMENT)[::-1]
+    base_codes, lookup = numpy_translation_tables(genetic_code, clean)
+    translations = []
+    for frame in SIX_FRAMES:
+        frame_sequence = (sequence if frame > 0 else reverse)[abs(frame) - 1 :]
+        encoded = np.frombuffer(frame_sequence.encode("ascii"), dtype=np.uint8)
+        length = len(encoded) // 3 * 3
+        if length:
+            codes = base_codes[encoded[:length]]
+            indices = (
+                codes[::3] * _NUMPY_CODON_RADIX**2
+                + codes[1::3] * _NUMPY_CODON_RADIX
+                + codes[2::3]
+            )
+            amino_acids = lookup[indices].tobytes().decode("ascii")
+        else:
+            amino_acids = ""
+        translations.append((frame, amino_acids))
+    return translations
+
+
+def validate_six_frame_defline(
+    defline_template: str, require_unique_ids: bool = True
+) -> None:
+    """Validate supported fields and optionally require unique FASTA IDs."""
+    allowed = {
+        "id",
+        "canonical_id",
+        "description",
+        "frame",
+        "frame_abs",
+        "strand",
+        "frame_token",
+    }
+    fields = {
+        name
+        for _, name, _, _ in Formatter().parse(defline_template)
+        if name is not None
+    }
+    unknown = fields - allowed
+    if unknown:
+        raise ValueError(
+            f"Unknown six-frame defline fields: {sorted(unknown)}"
+        )
+    rendered = [
+        format_six_frame_header(
+            f"parent_{parent} description", frame, defline_template
+        )
+        for parent in (1, 2)
+        for frame in SIX_FRAMES
+    ]
+    if any(not defline.split() for defline in rendered):
+        raise ValueError("Six-frame deflines must not be empty")
+    if not require_unique_ids:
+        return
+    identifiers = {defline.split()[0] for defline in rendered}
+    if len(identifiers) != 12:
+        raise ValueError(
+            "The first whitespace-delimited defline token must uniquely "
+            "identify every parent and frame"
+        )
+
+
+def format_six_frame_header(
+    header: str,
+    frame: int,
+    defline_template: str = SEQKIT_SIX_FRAME_DEFLINE,
+) -> str:
+    """Format one translated-frame defline from a source FASTA header."""
+    from urllib.parse import quote
+
+    sequence_id, separator, description = header.partition(" ")
+    if not separator:
+        sequence_id, separator, description = header.partition("\t")
+    return defline_template.format(
+        id=sequence_id,
+        canonical_id=quote(sequence_id, safe="_.-"),
+        description=description,
+        frame=frame,
+        frame_abs=abs(frame),
+        strand="+" if frame > 0 else "-",
+        frame_token=f"{'p' if frame > 0 else 'm'}{abs(frame)}",
+    )
+
+
+def six_frame_header(header: str, frame: int) -> str:
+    """Append a signed frame to a FASTA ID using SeqKit-compatible naming."""
+    return format_six_frame_header(header, frame)
+
+
+def translate_6frx_numpy(
+    input_file: Union[str, Path],
+    output_file: Union[str, Path],
+    threads: int = 1,
+    min_orf_length: int = 0,
+    genetic_code: int = 1,
+    stops_as_x: bool = True,
+    defline_template: str = SEQKIT_SIX_FRAME_DEFLINE,
+    require_unique_ids: bool = True,
+) -> None:
+    """Stream FASTA through the NumPy six-frame translator.
+
+    Long-contig batches can use record-level threads because NumPy releases the
+    GIL for its array operations. Short-contig batches remain sequential because
+    thread scheduling costs more than their translations.
+    ``min_orf_length`` filters complete translated frames, because this function
+    does not split translations into stop-delimited ORFs.
+    ``stops_as_x`` selects ``X`` rather than ``*`` for resolved stop codons.
+    ``defline_template`` may use id, canonical_id, description, frame,
+    frame_abs, strand, and frame_token fields.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    validate_six_frame_defline(defline_template, require_unique_ids)
+    if Path(input_file).stat().st_size == 0:
+        Path(output_file).write_text("")
+        return
+    threads = max(1, int(threads))
+    batch_size = max(1, threads * 2)
+
+    def input_records():
+        for record in parse_fastx_file(str(input_file)):
+            yield (
+                record.id.decode()
+                if isinstance(record.id, bytes)
+                else str(record.id),
+                record.seq.decode()
+                if isinstance(record.seq, bytes)
+                else str(record.seq),
+            )
+
+    def write_batch(output, batch, executor):
+        sequences = [sequence for _, sequence in batch]
+        # Threads helped for long records but substantially hurt short records.
+        use_threads = (
+            executor is not None
+            and len(batch) > 1
+            and sum(map(len, sequences)) >= len(batch) * 32_768
+        )
+        if use_threads:
+            translated = executor.map(
+                translate_six_frames_numpy,
+                sequences,
+                [genetic_code] * len(batch),
+                [stops_as_x] * len(batch),
+            )
+        else:
+            translated = (
+                translate_six_frames_numpy(
+                    sequence, genetic_code, stops_as_x
+                )
+                for sequence in sequences
+            )
+        for (header, _), frames in zip(batch, translated):
+            for frame, amino_acids in frames:
+                if len(amino_acids) < min_orf_length:
+                    continue
+                output.write(
+                    f">{format_six_frame_header(header, frame, defline_template)}\n"
+                    f"{amino_acids}\n"
+                )
+
+    with (
+        Path(output_file).open("w") as output,
+        ThreadPoolExecutor(max_workers=threads)
+        if threads > 1
+        else nullcontext() as executor,
+    ):
+        batch = []
+        for record in input_records():
+            batch.append(record)
+            if len(batch) == batch_size:
+                write_batch(output, batch, executor)
+                batch.clear()
+        if batch:
+            write_batch(output, batch, executor)
 
 
 def translate_sequence(seq: str, frame: int, genetic_code: int = 11) -> str:
@@ -624,9 +922,18 @@ def build_translation_metadata(input_fasta, protein_fasta, method):
         orf = method not in ("six-frame", "six_frame")
         if not orf:
             match = re.fullmatch(r"(.+)_frame=([+-]?[123])", key)
-            if not match:
-                raise ValueError(f"Unrecognized six-frame header: {header}")
-            contig, frame = match[1], int(match[2])
+            if match:
+                contig, frame = match[1], int(match[2])
+            else:
+                from urllib.parse import unquote
+
+                match = re.fullmatch(r"(.+)_frame_([pm])([123])", key)
+                if not match:
+                    raise ValueError(
+                        f"Unrecognized six-frame header: {header}"
+                    )
+                contig = unquote(match[1])
+                frame = int(match[3]) * (1 if match[2] == "p" else -1)
             direction = 1 if frame > 0 else -1
             length = lengths[contig]
             lo = abs(frame) if direction == 1 else length - abs(frame) + 2 - len(seq) * 3
@@ -690,8 +997,13 @@ def translation_signature(method, parameters):
     method = method.replace("six_frame", "six-frame")
     if method == "pyrodigal":
         versions = {name: importlib.metadata.version(name) for name in ("pyrodigal-rv", "pyrodigal")}
-    elif method in ("six-frame", "ORFfinder"):
-        command = ["seqkit", "version"] if method == "six-frame" else ["ORFfinder", "-version"]
+    elif method == "six-frame":
+        versions = {
+            "implementation": SIX_FRAME_TRANSLATION_VERSION,
+            "numpy": np.__version__,
+        }
+    elif method == "ORFfinder":
+        command = ["ORFfinder", "-version"]
         result = subprocess.run(command, text=True, capture_output=True, check=True, timeout=15)
         versions = {command[0]: (result.stdout + result.stderr).strip()}
     elif method == "input_protein":
@@ -821,9 +1133,16 @@ def normalize_translation_output(input_fasta, protein_fasta, output_dir, method,
         pl.col("translation_id").replace_strict(ordinals, return_dtype=pl.Int64).alias("orf_ordinal"),
         pl.col("translation_id").replace_strict(ids, return_dtype=pl.String),
     )
-    with (output_dir / "predicted_orfs.faa").open("w") as handle:
-        for header, sequence in translation_records(raw_fasta):
-            handle.write(f">{ids[header.split()[0]]}\n{sequence}\n")
+    canonical_fasta = output_dir / "predicted_orfs.faa"
+    if all(original == normalized for original, normalized in ids.items()):
+        # Native translation can emit final IDs, avoiding another FASTA parse and
+        # rewrite. A temporary source still needs copying into the bundle.
+        if Path(protein_fasta).resolve() != canonical_fasta.resolve():
+            shutil.copyfile(raw_fasta, canonical_fasta)
+    else:
+        with canonical_fasta.open("w") as handle:
+            for header, sequence in translation_records(raw_fasta):
+                handle.write(f">{ids[header.split()[0]]}\n{sequence}\n")
     metadata.write_csv(output_dir / "translation_metadata.tsv", separator="\t")
     write_translation_gff(metadata, output_dir / "predicted_orfs.gff")
     write_translation_manifest(input_fasta, output_dir, translation_signature(method, parameters))

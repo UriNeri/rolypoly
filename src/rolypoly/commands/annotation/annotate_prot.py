@@ -484,7 +484,15 @@ def translation_settings(config):
     if method == "input_protein":
         parameters = {}
     elif method == "six-frame":
-        parameters = {"minimum_length": 0}  # seqkit call currently uses its default
+        from rolypoly.utils.bio.translation import (
+            CANONICAL_SIX_FRAME_DEFLINE,
+        )
+
+        parameters = {
+            "minimum_length": 0,
+            "stops_as_x": True,
+            "defline_template": CANONICAL_SIX_FRAME_DEFLINE,
+        }
     elif method == "pyrodigal":
         parameters = {"minimum_length": config.step_params[method]["minimum_length"]}
     else:
@@ -547,11 +555,19 @@ def predict_orfs_with_pyrodigal(config):
 
 
 def predict_orfs_with_six_frame(config):
-    """Translate 6-frame reading frames of a DNA sequence using seqkit."""
-    from rolypoly.utils.bio.translation import translate_6frx_seqkit
+    """Translate six reading frames with the native NumPy implementation."""
+    from rolypoly.utils.bio.translation import (
+        CANONICAL_SIX_FRAME_DEFLINE,
+        translate_6frx_numpy,
+    )
 
     output_file = str(config.output_dir / "predicted_orfs.faa")
-    translate_6frx_seqkit(str(config.input), output_file, config.threads)
+    translate_6frx_numpy(
+        str(config.input),
+        output_file,
+        config.threads,
+        defline_template=CANONICAL_SIX_FRAME_DEFLINE,
+    )
     global output_files
     output_files = output_files.vstack(
         pl.DataFrame(
@@ -562,7 +578,7 @@ def predict_orfs_with_six_frame(config):
                 "tool": ["six-frame"],
                 "params": [str(config.step_params["six-frame"])],
                 "command": [
-                    f"ext. call seqkit: seqkit -w0 translate -j {config.threads} {config.input} > {output_file}"
+                    f"native NumPy six-frame translation: {config.input} -> {output_file}"
                 ],
             }
         )

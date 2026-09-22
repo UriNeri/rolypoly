@@ -15,7 +15,7 @@ def bundle(tmp_path, monkeypatch):
     })
     source, target = tmp_path / 'source', tmp_path / 'target'
     source.mkdir(); target.mkdir()
-    manifest = {'signature': {'method': 'six-frame', 'versions': {'seqkit': 'test'},
+    manifest = {'signature': {'method': 'six-frame', 'versions': {'implementation': 'test'},
                               'parameters': {}},
                 'inputs': {'CID': {'header': 'CID original description', 'sha256': 'dna'}}}
     for directory in (source, target):
@@ -55,7 +55,7 @@ def test_mismatch_runs_fresh_search(bundle, change):
         path = target / 'translation_manifest.json'
         data = json.loads(path.read_text())
         if change == 'header': data['inputs']['CID']['header'] = 'CID changed description'
-        else: data['signature']['versions']['seqkit'] = 'changed'
+        else: data['signature']['versions']['implementation'] = 'changed'
         path.write_text(json.dumps(data))
     if change == 'result': next((source / 'search_cache').glob('*/hits.tsv')).write_text('tampered')
     assert not attempt(bundle, parameters, fields)

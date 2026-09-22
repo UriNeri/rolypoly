@@ -770,6 +770,7 @@ def write_matched_input_seqs_fasta(
     complete input headers before exact FASTA matching, preserving descriptions.
     """
     import re as _re
+    from urllib.parse import unquote as _unquote
 
     from rolypoly.utils.bio.sequences import filter_fasta_by_headers
 
@@ -801,10 +802,15 @@ def write_matched_input_seqs_fasta(
             # pyrodigal: <contig>_<orf_ordinal>
             # TODO: confirm bbmap callgenes.sh follows the same <contig>_<N> convention.
             matched_ids = list({_re.sub(r"_\d+$", "", sid) for sid in raw_ids})
-        else:  # six_frame (seqkit)
-            # seqkit --append-frame: <contig>_frame=<N>
+        else:  # six_frame
+            # Accept native canonical IDs and legacy SeqKit-compatible IDs.
             matched_ids = list(
-                {_re.sub(r"_frame=[+-]?\d+$", "", sid) for sid in raw_ids}
+                {
+                    _unquote(_re.sub(r"_frame_(?:p|m)[123]$", "", sid))
+                    if _re.search(r"_frame_(?:p|m)[123]$", sid)
+                    else _re.sub(r"_frame=[+-]?[123]$", "", sid)
+                    for sid in raw_ids
+                }
             )
 
     from rolypoly.utils.bio.translation import translation_records
@@ -899,7 +905,7 @@ console = Console(width=150)
     "--aa-method",
     default="six_frame",
     type=Choice(["six_frame", "pyrodigal", "bbmap"]),
-    help="Method to translate nucleotide sequences into amino acids. Options: six frame translation using seqkit, pyrodigal-rv uses pyrodigal-meta with additional genetic codes, bbmap callgenes.sh (quick but less accurate for metagenomic data)",
+    help="Method to translate nucleotide sequences into amino acids. Options: native IUPAC-aware six frame translation, pyrodigal-rv uses pyrodigal-meta with additional genetic codes, bbmap callgenes.sh (quick but less accurate for metagenomic data)",
 )
 @option(
     "-db",
@@ -1031,8 +1037,9 @@ def marker_search(
     from rolypoly.utils.bio.interval_ops import consolidate_hits
     from rolypoly.utils.bio.sequences import guess_fasta_alpha
     from rolypoly.utils.bio.translation import (
+        CANONICAL_SIX_FRAME_DEFLINE,
         pyro_predict_orfs,
-        translate_6frx_seqkit,
+        translate_6frx_numpy,
         translate_with_bbmap,
     )
     from rolypoly.utils.logging.citation_reminder import remind_citations
@@ -1230,10 +1237,14 @@ def marker_search(
             translate_with_bbmap(input, amino_file, threads)
             tools.append("bbmap")
         else:
-            config.logger.info("Using seqkit for 6 frames translation")
+            config.logger.info("Using native NumPy six-frame translation")
             amino_file = amino_file + "_6frx.faa"
-            translate_6frx_seqkit(input, amino_file, threads)
-            tools.append("seqkit")
+            translate_6frx_numpy(
+                input,
+                amino_file,
+                threads,
+                defline_template=CANONICAL_SIX_FRAME_DEFLINE,
+            )
     elif input_alpha == "aa":
         config.logger.info(
             "Using supplied amino acid fasta file, skipping translation"
@@ -1247,7 +1258,19 @@ def marker_search(
 
     from rolypoly.utils.bio.translation import normalize_translation_output
     method = config.aa_method if input_alpha == "nucl" else "input_protein"
-    parameters = {"minimum_length": 30} if method == "pyrodigal" else ({"minimum_length": 0} if method == "six_frame" else {})
+    parameters = (
+        {"minimum_length": 30}
+        if method == "pyrodigal"
+        else (
+            {
+                "minimum_length": 0,
+                "stops_as_x": True,
+                "defline_template": CANONICAL_SIX_FRAME_DEFLINE,
+            }
+            if method == "six_frame"
+            else {}
+        )
+    )
     translation_metadata = normalize_translation_output(input, amino_file, Path(output), method, parameters)
     amino_file = str(Path(output) / "predicted_orfs.faa")
 

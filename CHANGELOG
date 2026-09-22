@@ -12,6 +12,7 @@
 - `report`: add an offline Help tab, reading-frame hover labels, and links to documentation covering interpretation, filters, and exports.
 
 ### Changed
+- Six-frame translation: replace the SeqKit subprocess in annotation and virus-marker workflows with a streaming NumPy backend. Resolve unambiguous IUPAC codons exhaustively, normalize RNA bases, and reverse-complement ambiguity codes correctly. Add configurable stop handling and defline templates to the direct and optional Polars FASTX/NumPy paths. Annotation and marker search now emit their final signed frame IDs directly, avoiding a later FASTA header rewrite.
 - `report`: organize protein maps by signed reading frame, combining real ORF arrows and domain hits in shared rows without synthetic full-length six-frame blocks. Preserve supporting hits in an expandable table section.
 - `report`: declutter sequence/source controls and alignment columns; show predicted-ORF counts and the top marker profile in contig details, and label taxonomy charts as contig counts rather than abundance.
 - Documentation: explain MMseqs2's approximately 10-kbp nucleotide-hit boundaries, marker/segmentation biases in taxonomy charts, and the verified `mmtax` defaults and lack of taxon-specific demarcation criteria.

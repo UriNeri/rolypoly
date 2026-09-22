@@ -71,7 +71,7 @@ rolypoly marker-search [OPTIONS]
 - `-ie`, `--inc-evalue`: Maximal e-value for including a domain match in the results (type: `FLOAT`; default: `0.001`)
 - `-s`, `--score`: Minimal score for including a domain match in the results (type: `INTEGER`; default: `20`)
 - `-mla`, `--min-ali-len`: Minimal alignment length for including a domain match in the results (type: `INTEGER`; default: `15`)
-- `-am`, `--aa-method`: Method to translate nucleotide sequences into amino acids. Options: six frame translation using seqkit, pyrodigal-rv uses pyrodigal-meta with additional genetic codes, bbmap callgenes.sh (quick but less accurate for metagenomic data) (type: `CHOICE`; default: `six_frame`)
+- `-am`, `--aa-method`: Method to translate nucleotide sequences into amino acids. Options: native IUPAC-aware six frame translation, pyrodigal-rv uses pyrodigal-meta with additional genetic codes, bbmap callgenes.sh (quick but less accurate for metagenomic data) (type: `CHOICE`; default: `six_frame`)
 - `-db`, `--database`: comma separated list of databases to search against (or `all`), or path to a custom database. options: NeoRdRp_v2.1, RdRp-scan, RVMT, Pfam_RTs_RdRp, genomad, all. Availability depends on the selected backend. With hmmsearch, a custom path may be an HMM, an MSA, or a directory of either. With mmseqs2, provide an MMseqs database prefix. (type: `TEXT`; default: `RVMT,genomad`)
 - `-st`, `--search-tool`: Profile-search backend. MMseqs2 uses the corresponding prebuilt MMseqs profile databases. (type: `CHOICE`; default: `hmmsearch`)
 - `-ow`, `--overwrite`: Do not overwrite the output directory if it already exists (type: `BOOLEAN`; default: `False`)

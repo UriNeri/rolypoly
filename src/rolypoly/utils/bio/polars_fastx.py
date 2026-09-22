@@ -1018,6 +1018,64 @@ def frame_to_fastx(
         )
 
 
+def translate_6frx_numpy_polars(
+    input_file: Union[str, Path],
+    output_file: Union[str, Path],
+    threads: int = 1,
+    min_orf_length: int = 0,
+    genetic_code: int = 1,
+    streaming_chunk_size: int = 64,
+    stops_as_x: bool = True,
+    defline_template: str = "{id}_frame={frame} {description}",
+    require_unique_ids: bool = True,
+) -> None:
+    """Translate six frames through lazy FASTX I/O and NumPy map batches.
+
+    This is an alternative to the lower-overhead direct streaming function in
+    ``translation.py``. It is useful when translation belongs in a larger lazy
+    Polars pipeline, while sharing the same IUPAC-aware translation kernel.
+    Stop and defline options match the direct translator.
+    """
+    from rolypoly.utils.bio.translation import (
+        format_six_frame_header,
+        translate_six_frames_numpy,
+        validate_six_frame_defline,
+    )
+
+    del threads
+    validate_six_frame_defline(defline_template, require_unique_ids)
+    if Path(input_file).stat().st_size == 0:
+        Path(output_file).write_text("")
+        return
+    schema = {"header": pl.String, "sequence": pl.String}
+
+    def translate_batch(batch: pl.DataFrame) -> pl.DataFrame:
+        rows = []
+        for header, sequence in batch.select("header", "sequence").iter_rows():
+            for frame, amino_acids in translate_six_frames_numpy(
+                sequence,
+                genetic_code=genetic_code,
+                clean=stops_as_x,
+            ):
+                if len(amino_acids) < min_orf_length:
+                    continue
+                rows.append(
+                    (
+                        format_six_frame_header(
+                            header, frame, defline_template
+                        ),
+                        amino_acids,
+                    )
+                )
+        return pl.DataFrame(rows, schema=schema, orient="row")
+
+    translated = pl.LazyFrame.from_fastx(input_file).map_batches(
+        translate_batch, schema=schema, streamable=True
+    )
+    with pl.Config(streaming_chunk_size=streaming_chunk_size):
+        frame_to_fastx(translated, output_file)
+
+
 ####################################################################################
 #### Schema utilities for annotation data (mostly gff).
 def enrich_protein_coordinates(hits, metadata, *, allow_original_ids=False):

@@ -13,7 +13,7 @@ from rolypoly.utils.bio.alignments import mmseqs_easy_search, search_hmmdb
 from rolypoly.utils.bio.sequences import guess_fasta_alpha
 from rolypoly.utils.bio.translation import (
     pyro_predict_orfs,
-    translate_6frx_seqkit,
+    translate_6frx_numpy,
 )
 from rolypoly.utils.logging.citation_reminder import remind_citations
 from rolypoly.utils.logging.config import BaseConfig
@@ -352,7 +352,7 @@ def prepare_protein_sequences(config: RdRpMotifSearchConfig) -> str:
 
     if config.aa_method == "six_frame":
         # Use six-frame translation
-        translate_6frx_seqkit(
+        translate_6frx_numpy(
             input_file=config.input,
             output_file=output_file,
             threads=config.threads,
