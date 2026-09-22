@@ -262,7 +262,7 @@ class AssemblyConfig(BaseConfig):
                 "min-contig-len": 150,
                 "num-iterations": "aa:1,nucl:12",
             },
-            "seqkit": {},
+            # "seqkit": {}, # no longer used - built-in python solution(s) are used instead
             "mmseqs": {
                 "min-seq-id": 0.99,
                 "cov-mode": 1,
