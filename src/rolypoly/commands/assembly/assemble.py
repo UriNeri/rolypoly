@@ -100,7 +100,7 @@ def detect_average_read_length(libraries: dict, logger) -> float:
     lengths: list[float] = []
     seen_paths: set[str] = set()
     for lib in libraries.values():
-        for key in ("interleaved", "merged"):
+        for key in ("r1", "r2", "interleaved", "merged", "single"):
             file_path = lib.get(key)
             if not file_path:
                 continue
@@ -148,19 +148,75 @@ def apply_assembly_preset(
         config.assembler = list(preset["assembler"])
     if "dereplicate" in preset and "dereplicate" not in explicit:
         config.dereplicate = bool(preset["dereplicate"])
-    if "spades_mode" in preset and "spades_mode" not in explicit:
+    if (
+        "spades_mode" in preset
+        and "spades_mode" not in explicit
+        and "mode" not in config.override_parameters.get("spades", {})
+    ):
         config.step_params["spades"]["mode"] = preset["spades_mode"]
     for step_name, step_overrides in preset.get("step_params", {}).items():
         if step_name not in config.step_params:
             config.step_params[step_name] = {}
         if isinstance(step_overrides, dict):
-            config.step_params[step_name].update(step_overrides)
+            for name, value in step_overrides.items():
+                if name not in config.override_parameters.get(step_name, {}):
+                    config.step_params[step_name][name] = value
 
     config.logger.info(
         "Applied assembly preset '%s' (%s)",
         preset_name,
         preset.get("description", "no description"),
     )
+
+
+def tune_assembly_kmers(config: "AssemblyConfig", observed_read_length: float) -> None:
+    """Adapt default/preset k-mers to read length, preserving explicit overrides."""
+    max_k = int(observed_read_length) - 1 if observed_read_length > 1 else None
+    spades_kmers: list[int] = []
+    seen_spades_kmers: set[int] = set()
+    for kmer in to_odd(
+        [
+            int(k.strip())
+            for k in str(config.step_params["spades"]["k"]).split(",")
+            if str(k).strip()
+        ]
+    ):
+        if kmer < 1 or kmer in seen_spades_kmers:
+            continue
+        seen_spades_kmers.add(kmer)
+        if max_k is None or kmer < max_k:
+            spades_kmers.append(kmer)
+    if not spades_kmers and seen_spades_kmers:
+        spades_kmers = [min(seen_spades_kmers)]
+    if "k" not in config.override_parameters.get("spades", {}):
+        config.step_params["spades"]["k"] = ",".join(
+            str(kmer) for kmer in spades_kmers
+        )
+    if observed_read_length > 1:
+        megahit_k_min = to_odd([int(config.step_params["megahit"]["k-min"])])[0]
+        megahit_k_max = min(
+            int(config.step_params["megahit"]["k-max"]), max_k - 1
+        )
+        megahit_k_max = max(to_odd([megahit_k_max])[0], megahit_k_min)
+        megahit_k_step = int(config.step_params["megahit"]["k-step"])
+        if megahit_k_step % 2 == 1:
+            megahit_k_step = max(2, megahit_k_step - 1)
+        for name, value in (
+            ("k-min", megahit_k_min),
+            ("k-max", megahit_k_max),
+            ("k-step", megahit_k_step),
+        ):
+            if name not in config.override_parameters.get("megahit", {}):
+                config.step_params["megahit"][name] = value
+        config.logger.info(
+            "Tuned non-overridden k-mer settings to read length %.2f (max_k=%s): spades_k=%s megahit_kmin=%s megahit_kmax=%s megahit_kstep=%s",
+            observed_read_length,
+            max_k,
+            config.step_params["spades"]["k"],
+            config.step_params["megahit"]["k-min"],
+            config.step_params["megahit"]["k-max"],
+            config.step_params["megahit"]["k-step"],
+        )
 
 
 class AssemblyConfig(BaseConfig):
@@ -189,6 +245,7 @@ class AssemblyConfig(BaseConfig):
         self.dereplicate = kwargs.get("dereplicate", True)
         self.preset = kwargs.get("preset")
         self.raw_fasta = kwargs.get("raw_fasta", [])
+        self.long_read_type = kwargs.get("long_read_type", "nanopore")
 
         self.step_params = {
             "spades": {
@@ -213,18 +270,15 @@ class AssemblyConfig(BaseConfig):
                 "kmer-per-seq-scale": 0.4,
             },
         }
-        self.skip_steps = (
-            kwargs.get("skip_steps", [])
-            if isinstance(kwargs.get("skip_steps", []), list)
-            else kwargs.get("skip_steps", "").split(",")
-            if isinstance(kwargs.get("skip_steps", ""), str)
-            else []
+        skip_steps = kwargs.get("skip_steps") or []
+        if isinstance(skip_steps, str):
+            skip_steps = skip_steps.split(",")
+        self.skip_steps = [step.strip() for step in skip_steps if step.strip()]
+        raw_overrides = kwargs.get("override_parameters") or {}
+        self.override_parameters = (
+            json.loads(raw_overrides) if isinstance(raw_overrides, str) else raw_overrides
         )
-        override_parameters = (
-            json.loads(kwargs.get("override_parameters", "{}"))
-            if kwargs.get("override_parameters", "{}")
-            else {}
-        )
+        override_parameters = self.override_parameters
         if override_parameters:
             self.logger.info(f"override_parameters: {override_parameters}")
             for step, params in override_parameters.items():
@@ -277,22 +331,27 @@ class LibraryInfo:
         # Add rolypoly data first
         libraries.update(self.rolypoly_data)
 
-        # Add other data types
-        for lib_num, (r1, r2) in self.paired_end.items():
-            lib_name = f"lib_{lib_num}_paired"
-            libraries[lib_name] = {"interleaved": None, "merged": None}
-            # Convert to interleaved format
-            libraries[lib_name]["interleaved"] = (
-                r1  # Will need to be interleaved during processing
-            )
+        # The same explicit library number associates pairs, merged reads,
+        # and orphan reads without rewriting any FASTQ files.
+        for lib_num in sorted(
+            self.paired_end.keys() | self.merged.keys() | self.single_end.keys()
+        ):
+            lib = {
+                "interleaved": None,
+                "merged": self.merged.get(lib_num),
+                "single": self.single_end.get(lib_num),
+            }
+            if lib_num in self.paired_end:
+                lib["r1"], lib["r2"] = self.paired_end[lib_num]
+            libraries[f"lib_{lib_num}"] = lib
 
-        for lib_num, path in self.merged.items():
-            lib_name = f"lib_{lib_num}_merged"
-            libraries[lib_name] = {"interleaved": None, "merged": path}
-
-        for lib_num, path in self.single_end.items():
-            lib_name = f"lib_{lib_num}_single"
-            libraries[lib_name] = {"interleaved": None, "merged": path}
+        for lib_num, path in self.long_read.items():
+            lib_name = f"lib_{lib_num}_long_read"
+            libraries[lib_name] = {
+                "interleaved": None,
+                "merged": None,
+                "long_read": path,
+            }
 
         return libraries
 
@@ -340,7 +399,17 @@ def handle_input_files(
 
     # Process R1/R2 pairs
     for i, (r1_path, r2_path) in enumerate(file_info["R1_R2_pairs"], 1):
-        lib_num = len(library_info.paired_end) + 1
+        lib_num = (
+            max(
+                [
+                    0,
+                    *library_info.paired_end,
+                    *library_info.merged,
+                    *library_info.single_end,
+                ]
+            )
+            + 1
+        )
         library_info.add_paired(lib_num, str(r1_path), str(r2_path))
         logger.debug(
             f"Added paired library {lib_num}: {r1_path.name} <-> {r2_path.name}"
@@ -348,19 +417,40 @@ def handle_input_files(
 
     # Process interleaved files
     for file_path in file_info["interleaved_files"]:
-        # Treat interleaved files as merged for assembly purposes
-        lib_num = len(library_info.merged) + 1
-        library_info.add_merged(lib_num, str(file_path))
+        lib_num = len(library_info.rolypoly_data) + 1
+        library_info.add_rolypoly_data(
+            f"detected_interleaved_{lib_num}", interleaved=str(file_path)
+        )
         logger.debug(f"Added interleaved library {lib_num}: {file_path.name}")
 
     # Process single-end files
     for file_path in file_info["single_end"]:
         if any(x in file_path.name.lower() for x in ["merged", "single"]):
-            lib_num = len(library_info.merged) + 1
+            lib_num = (
+                max(
+                    [
+                        0,
+                        *library_info.paired_end,
+                        *library_info.merged,
+                        *library_info.single_end,
+                    ]
+                )
+                + 1
+            )
             library_info.add_merged(lib_num, str(file_path))
             logger.debug(f"Added merged library {lib_num}: {file_path.name}")
         else:
-            lib_num = len(library_info.single_end) + 1
+            lib_num = (
+                max(
+                    [
+                        0,
+                        *library_info.paired_end,
+                        *library_info.merged,
+                        *library_info.single_end,
+                    ]
+                )
+                + 1
+            )
             library_info.add_single(lib_num, str(file_path))
             logger.debug(
                 f"Added single-end library {lib_num}: {file_path.name}"
@@ -393,57 +483,111 @@ def run_spades(
     spades_mode = mode or config.step_params["spades"]["mode"]
     output_name = output_label or spades_mode
     spades_output = config.output_dir / f"spades_{output_name}_output"
-    spades_cmd = f"spades.py --{spades_mode} -o {spades_output} --threads {config.threads} --only-assembler -k {config.step_params['spades']['k']} --phred-offset 33 -m {ensure_memory(config.memory)['bytes'][:-1]}"
-
-    if len(libraries) > 9:
-        config.logger.info("Running SPAdes on concatenated reads")
-        with open(f"{config.output_dir}/all_merged.fq.gz", "wb") as outfile:
-            for lib in libraries.values():
-                if lib["merged"]:
-                    with open(lib["merged"], "rb") as infile:
-                        outfile.write(infile.read())
-        with open(
-            f"{config.output_dir}/all_interleaved.fq.gz", "wb"
-        ) as outfile:
-            for lib in libraries.values():
-                if lib["interleaved"]:
-                    with open(lib["interleaved"], "rb") as infile:
-                        outfile.write(infile.read())
-        spades_cmd += f" --pe-12 1 {config.output_dir}/all_interleaved.fq.gz --s 1 {config.output_dir}/all_merged.fq.gz"
-    else:
-        for i, (lib_name, lib) in enumerate(libraries.items(), 1):
-            if lib["interleaved"]:
-                spades_cmd += f" --pe-12 {i} {lib['interleaved']}"
-            if lib["merged"]:
-                if spades_mode == "meta":
-                    # metaSPAdes only works with paired-end data, so switch to regular mode
-                    # spades_cmd = spades_cmd.replace("--meta", "")
-                    spades_cmd += f" --pe-m {i + 1} {lib['merged']}"
-                else:
-                    spades_cmd += f" --s {i} {lib['merged']}"
-
-    # add raw fasta if provided
-    if config.raw_fasta:
-        # concat if multiple fasta files
-        if len(config.raw_fasta) > 1:
-            with open(config.output_dir / "all_raw_fasta.fa", "wb") as outfile:
-                for fasta in config.raw_fasta:
-                    with open(fasta, "rb") as infile:
-                        outfile.write(infile.read())
-            config.logger.info(
-                f"Concatenated {len(config.raw_fasta)} raw fasta files into {config.output_dir / 'all_raw_fasta.fa'}"
+    # JSON flow syntax is valid YAML and avoids adding a YAML dependency.
+    # A dataset preserves library associations and supports any number of files.
+    dataset = []
+    for lib in libraries.values():
+        paired = bool(lib.get("interleaved") or lib.get("r1"))
+        entry = {"type": "paired-end" if paired else "single"}
+        if paired:
+            # SPAdes requires an explicit orientation in dataset input.
+            entry["orientation"] = "fr"
+        for key, field in (
+            ("r1", "left reads"),
+            ("r2", "right reads"),
+            ("interleaved", "interlaced reads"),
+            ("single", "single reads"),
+            ("merged", "merged reads" if paired else "single reads"),
+        ):
+            if lib.get(key):
+                entry.setdefault(field, []).append(
+                    str(Path(lib[key]).resolve())
+                )
+        if any(key.endswith(" reads") for key in entry):
+            dataset.append(entry)
+    # Add long reads and raw FASTA if provided; raw FASTA supplies trusted contigs.
+    for read_type, paths in (
+        (
+            config.long_read_type,
+            [
+                lib["long_read"]
+                for lib in libraries.values()
+                if lib.get("long_read")
+            ],
+        ),
+        ("trusted-contigs", config.raw_fasta),
+    ):
+        if paths:
+            dataset.append(
+                {
+                    "type": read_type,
+                    "single reads": [
+                        str(Path(path).resolve()) for path in paths
+                    ],
+                }
             )
-            config.raw_fasta = str(config.output_dir / "all_raw_fasta.fa")
-        else:
-            config.raw_fasta = str(config.raw_fasta[0])
-        spades_cmd += f" --trusted-contigs {config.raw_fasta}"
-
-    config.logger.info(f"Running SPAdes with command: {spades_cmd}")
-
-    subprocess.run(spades_cmd, shell=True, check=True)
+    if spades_mode == "meta":
+        paired_entries = [entry for entry in dataset if entry["type"] == "paired-end"]
+        if not paired_entries or any(entry["type"] == "single" for entry in dataset):
+            raise click.ClickException(
+                "metaSPAdes requires paired-end input. Associate orphan/merged reads "
+                "using the same library number, or select a suitable --spades-mode "
+                "or --assembler megahit for independent single-read libraries."
+            )
+        if len(paired_entries) > 1:
+            # metaSPAdes accepts one logical short-read library. YAML fields
+            # accept lists of files, so pool corresponding categories without
+            # copying reads. Left/right lists retain the same library order;
+            # interlaced reads, orphans and merged reads keep their own fields.
+            pooled = {"type": "paired-end", "orientation": "fr"}
+            for entry in paired_entries:
+                for field, paths in entry.items():
+                    if field.endswith(" reads"):
+                        pooled.setdefault(field, []).extend(paths)
+            dataset = [pooled] + [
+                entry for entry in dataset if entry["type"] != "paired-end"
+            ]
+            config.logger.warning(
+                "metaSPAdes supports one paired-end library: pooling %d input "
+                "libraries into one logical library using dataset file lists. "
+                "Mate pairing is preserved, but separate library identities and "
+                "insert-size distributions will not be modeled independently. "
+                "No concatenated FASTQ files are written.",
+                len(paired_entries),
+            )
+    if any(
+        lib.get("long_read") for lib in libraries.values()
+    ) and spades_mode in ("meta", "rnaviral"):
+        config.logger.warning(
+            "Long-read input is experimental in metaSPAdes and undocumented in rnaviralSPAdes; selected mode: %s",
+            spades_mode,
+        )
+    dataset_path = config.output_dir / f"spades_{output_name}_dataset.yaml"
+    dataset_path.write_text(json.dumps(dataset, indent=2) + "\n")
+    memory_bytes = int(ensure_memory(config.memory)["bytes"][:-1])
+    spades_cmd = [
+        "spades.py",
+        f"--{spades_mode}",
+        "-o",
+        str(spades_output),
+        "--threads",
+        str(config.threads),
+        "--only-assembler",
+        "-k",
+        str(config.step_params["spades"]["k"]),
+        "--phred-offset",
+        "33",
+        "-m",
+        str(max(1, memory_bytes // 1024**3)),
+        "--dataset",
+        str(dataset_path),
+    ]
+    config.logger.info("Running SPAdes with command: %s", spades_cmd)
+    subprocess.run(spades_cmd, check=True)
     config.logger.info("Finished SPAdes assembly")
-
-    return spades_output / "scaffolds.fasta"
+    return spades_output / (
+        "transcripts.fasta" if spades_mode == "rna" else "scaffolds.fasta"
+    )
 
 
 def run_megahit(config, libraries):
@@ -456,36 +600,54 @@ def run_megahit(config, libraries):
     config.logger.info("Started Megahit assembly")
     megahit_output = config.output_dir / "megahit_custom_out"
 
-    interleaved = ",".join(
-        str(lib["interleaved"])
+    long_reads = [
+        str(lib["long_read"])
         for lib in libraries.values()
-        if lib["interleaved"]
-    )
-    merged = ",".join(
-        str(lib["merged"]) for lib in libraries.values() if lib["merged"]
-    )
-
-    megahit_cmd = [
-        "megahit",
-        f"--k-min {config.step_params['megahit']['k-min']}",
-        f"--k-max {config.step_params['megahit']['k-max']}",
-        f"--k-step {config.step_params['megahit']['k-step']}",
-        f"--min-contig-len {config.step_params['megahit']['min-contig-len']}",
+        if lib.get("long_read")
     ]
-    if len(interleaved) > 0:
-        megahit_cmd.extend([f"--12 {interleaved}"])
-    if len(merged) > 0:
-        megahit_cmd.extend([f"--read {merged}"])
+    if long_reads:
+        config.logger.warning(
+            "MEGAHIT does not support long reads; %d long-read file(s) will be "
+            "skipped for the MEGAHIT run. Use the SPAdes assembler for "
+            "short+long hybrid assembly.",
+            len(long_reads),
+        )
+
+    megahit_cmd = ["megahit"]
+    for parameter in ("k-min", "k-max", "k-step", "min-contig-len"):
+        megahit_cmd.extend(
+            [f"--{parameter}", str(config.step_params["megahit"][parameter])]
+        )
+    for flag, keys in (
+        ("-1", ("r1",)),
+        ("-2", ("r2",)),
+        ("--12", ("interleaved",)),
+        ("-r", ("merged", "single")),
+    ):
+        paths = [
+            str(lib[key])
+            for lib in libraries.values()
+            for key in keys
+            if lib.get(key)
+        ]
+        if paths:
+            if any("," in path for path in paths):
+                raise click.ClickException(
+                    "MEGAHIT input filenames must not contain commas."
+                )
+            megahit_cmd.extend([flag, ",".join(paths)])
     megahit_cmd.extend(
         [
-            f"--out-dir {megahit_output}",
-            f"--num-cpu-threads {config.threads} --memory {ensure_memory(config.memory)['bytes'][:-1]}",
+            "--out-dir",
+            str(megahit_output),
+            "--num-cpu-threads",
+            str(config.threads),
+            "--memory",
+            ensure_memory(config.memory)["bytes"][:-1],
         ]
     )
-    config.logger.info(
-        f"Running Megahit assembly with command: {' '.join(megahit_cmd)}"
-    )
-    subprocess.run(" ".join(megahit_cmd), shell=True, check=True)
+    config.logger.info("Running Megahit assembly with command: %s", megahit_cmd)
+    subprocess.run(megahit_cmd, check=True)
 
     final_k = max(
         int(os.path.basename(file).split("k")[1].split(".")[0])
@@ -494,14 +656,61 @@ def run_megahit(config, libraries):
         )
     )
 
-    subprocess.run(
-        f"megahit_toolkit contig2fastg {final_k} {megahit_output}/final.contigs.fa > "
-        f"{megahit_output}/final_megahit_assembly_k{final_k}.fastg",
-        shell=True,
-        check=True,
-    )
+    with open(
+        megahit_output / f"final_megahit_assembly_k{final_k}.fastg", "w"
+    ) as graph:
+        subprocess.run(
+            [
+                "megahit_toolkit",
+                "contig2fastg",
+                str(final_k),
+                str(megahit_output / "final.contigs.fa"),
+            ],
+            stdout=graph,
+            check=True,
+        )
 
     return megahit_output / "final.contigs.fa"
+
+
+def run_with_read_stream(command, paths):
+    """Feed plain/gzip reads to a single-pass consumer without a disk copy."""
+    import gzip
+    import subprocess
+    from contextlib import suppress
+    from rolypoly.utils.various import is_gzipped
+
+    process = subprocess.Popen(command, stdin=subprocess.PIPE)
+    try:
+        for path in paths:
+            opener = gzip.open if is_gzipped(path) else open
+            with opener(path, "rb") as source:
+                # Keep record boundaries valid even if a file has no final newline.
+                last_chunk = b""
+                while chunk := source.read(1024 * 1024):
+                    process.stdin.write(chunk)
+                    last_chunk = chunk
+                if last_chunk and not last_chunk.endswith(b"\n"):
+                    process.stdin.write(b"\n")
+        process.stdin.close()
+    except BrokenPipeError:
+        with suppress(BrokenPipeError):
+            process.stdin.close()
+        returncode = process.wait()
+        if returncode:
+            raise subprocess.CalledProcessError(returncode, command) from None
+        raise RuntimeError("PenguiN closed its input before all reads were sent") from None
+    except BaseException:
+        # Input errors must not leave an assembler running on partial reads.
+        if process.poll() is None:
+            process.terminate()
+        with suppress(BrokenPipeError):
+            process.stdin.close()
+        process.wait()
+        raise
+    returncode = process.wait()
+    if returncode:
+        raise subprocess.CalledProcessError(returncode, command)
 
 
 def run_penguin(config, libraries):
@@ -512,23 +721,78 @@ def run_penguin(config, libraries):
     penguin_output = (
         config.output_dir / "penguin_Fguided_1_nuclassemble_c0.fasta"
     )
-    interleaved = " ".join(
-        str(lib["interleaved"])
+    long_reads = [
+        str(lib["long_read"])
         for lib in libraries.values()
-        if lib["interleaved"]
+        if lib.get("long_read")
+    ]
+    if long_reads:
+        config.logger.warning(
+            "Penguin does not support long reads; %d long-read file(s) will be "
+            "skipped for the Penguin run (no ONT/PacBio mode; exact k-mer "
+            "matching is error-sensitive; reads over 200 kbp would be "
+            "truncated by maxSeqLen=200000). Use the SPAdes assembler for "
+            "short+long hybrid assembly.",
+            len(long_reads),
+        )
+
+    # PenguiN pairs adjacent FILES globally. Native R1/R2 inputs can go
+    # directly to mergereads; mixed layouts need a single independent stream.
+    short_reads = [
+        str(lib[key])
+        for lib in libraries.values()
+        for key in ("r1", "r2", "interleaved", "merged", "single")
+        if lib.get(key)
+    ]
+    # Add raw FASTA if provided: PenguiN treats these as ordinary sequences,
+    # not trusted contigs. Multiple file arguments would incorrectly pair them.
+    raw_fasta = [str(path) for path in config.raw_fasta]
+    inputs = short_reads + raw_fasta
+    if raw_fasta:
+        config.logger.info(
+            "PenguiN will include %d raw FASTA file(s) as ordinary unpaired "
+            "sequences, not trusted contigs.", len(raw_fasta),
+        )
+    if not inputs:
+        raise click.ClickException(
+            "No short-read or raw FASTA inputs found for the Penguin run."
+        )
+    import shlex
+
+    native_pairs = bool(short_reads) and not raw_fasta and all(
+        lib.get("r1")
+        and lib.get("r2")
+        and not any(lib.get(key) for key in ("interleaved", "merged", "single"))
+        for lib in libraries.values()
+        if not lib.get("long_read")
     )
-    merged = " ".join(
-        str(lib["merged"]) for lib in libraries.values() if lib["merged"]
-    )
+    if native_pairs:
+        penguin_input = shlex.join(inputs)
+    elif len(inputs) == 1:
+        penguin_input = shlex.quote(inputs[0])
+    else:
+        penguin_input = "stdin"
+        config.logger.info(
+            "Streaming %d read/FASTA files to PenguiN in single-end mode; "
+            "mixed layouts cannot use its file-paired mode. No concatenated "
+            "input file is written; pairing is not used in this mode.",
+            len(inputs),
+        )
+
+    penguin_tmp = config.temp_dir / "tmp_penguin"
+    penguin_tmp.mkdir(parents=True, exist_ok=True)
 
     penguin_cmd = (
-        f"penguin guided_nuclassemble {interleaved} {merged} "
-        f"{penguin_output} ./tmp/ --min-contig-len {config.step_params['penguin']['min-contig-len']} "
+        f"penguin guided_nuclassemble {penguin_input} "
+        f"{shlex.quote(str(penguin_output))} {shlex.quote(str(penguin_tmp))} --min-contig-len {config.step_params['penguin']['min-contig-len']} "
         f"--contig-output-mode 0 --num-iterations {config.step_params['penguin']['num-iterations']} "
         f"--min-seq-id nucl:0.9,aa:0.99 --min-aln-len nucl:31,aa:150 "
         f"--clust-min-seq-id 0.99 --clust-min-cov 0.99 --threads {config.threads}"
     )
-    subprocess.run(penguin_cmd, shell=True, check=True)
+    if not native_pairs and len(inputs) > 1:
+        run_with_read_stream(shlex.split(penguin_cmd), inputs)
+    else:
+        subprocess.run(penguin_cmd, shell=True, check=True)
     return penguin_output
 
 
@@ -574,20 +838,26 @@ def run_penguin(config, libraries):
     nargs=1,
     default=(),
     help="""path to long read FASTQ: <fastq>\n
-    Note: long read files are not currently supported by all assemblers/configurations:\n
-    SPAdes: supported in hybrid assembly mode (--nanopore or --pacbio). PacBio input needs to be prefiltered (i.e. the circular consensus sequences), see spades manual for more details. \n
-    MEGAHIT: not supported\n
-    Penguin: TODO: check if supported. I think it should be as the inputs can include a long list of fasta""",
+    Note: long read files are not supported by all assemblers/configurations:\n
+    SPAdes (standard/meta/rna modes): supported in hybrid assembly via --long-read-type (nanopore default; also pacbio or sanger). metaSPAdes hybrid assembly is experimental per the SPAdes manual, and meta mode pools multiple paired-end libraries into one logical library with a warning (no temporary FASTQ copies). \n
+    rnaviralSPAdes: long reads are undocumented; a warning is logged and the reads are passed through - remove --long-read if SPAdes errors. \n
+    MEGAHIT: not supported - long reads are skipped with a warning for the MEGAHIT run. \n
+    Penguin: not supported - long reads are skipped with a warning for the Penguin run (no ONT/PacBio mode; exact k-mer matching is error-sensitive; reads over 200 kbp would be truncated). \n
+    Also note: PenguiN pairs FILES as R1/R2 (an interleaved file is read as single-end), separate R1/R2 pairs are passed directly; mixed interleaved/single inputs are streamed through stdin as single-end reads without a concatenated temporary file (pairing is not used in this mode). \n
+    """,
+)
+@click.option(
+    "--long-read-type",
+    default="nanopore",
+    type=click.Choice(["nanopore", "pacbio", "sanger"]),
+    help="Long read type passed to SPAdes in hybrid assembly (--nanopore, --pacbio, or --sanger). Only used when --long-read is provided. PacBio CLR input should be prefiltered (e.g. circular consensus sequences); PacBio HiFi/CCS reads go through -s/--single-end instead.",
 )
 @click.option(
     "--raw-fasta",
     multiple=True,
     default=(),
     type=click.Path(exists=True, file_okay=True, dir_okay=False),
-    help="""Raw FASTA file(s) to include, note that not all assemblers support this:\n
-    SPAdes: supported via the --trusted-contigs flag (see spades manual for more details) \n
-    MEGAHIT: not supported\n
-    Penguin: TODO: check if supported. I think it should be as the inputs can include a long list of fasta""",
+    help="Raw FASTA file(s) to include. SPAdes: trusted contigs. PenguiN: ordinary unpaired sequences (not trusted contigs); mixing with reads uses single-end streaming and loses pairing information. MEGAHIT: not supported.",
 )
 @click.option(
     "-A",
@@ -598,9 +868,9 @@ def run_penguin(config, libraries):
     help="""Assembler choice. For multiple, use multiple -A flags or give a comma-separated list. \n
     SPAdes: iterative de bruijn graph assembler - relatively slow and memory heavy, but potentially more accurate. \n
     MEGAHIT: multiple kmer based de bruijn graph assembler - Fast and memory light, but potentially less accurate. \n
-    Penguin: mmseqs2 based, more similar to an overlap-layout-consensus method - while it claims to identify many more sequences, many of them are likely false positives.  \n
-    Note1 : Penguin offers a amino-acid (translation) guided assembly mode, but RolyPoly bypasses it.    \n
-    Note2 : SPAdes is the default assembler for RolyPoly.
+    Penguin: protein-guided nucleotide assembly using guided_nuclassemble.  \n
+    Note1 : RolyPoly uses PenguiN's amino-acid-guided nucleotide assembly mode.    \n
+    Note2 : Without a preset, the default assemblers are SPAdes and MEGAHIT.
     """,
 )
 @click.option(
@@ -634,14 +904,16 @@ def run_penguin(config, libraries):
     default=[],
     type=click.Choice(["dereplicate", "rename"]),  # , "stats"
     multiple=True,
-    help="Comma-separated list of steps to skip. Example: --skip-steps dereplicate,rename_seqs",
+    help="""Steps to skip. Repeat the flag to skip multiple steps (comma-separated values are NOT accepted here). Example: --skip-steps dereplicate --skip-steps rename
+    - dereplicate: skip assembler-output dereplication (same as --no-rmdup)
+    - rename: skip renaming the concatenated contigs to CID_ ids""",
 )
 @click.option(
     "-ow",
     "--overwrite",
     is_flag=True,
     default=False,
-    help="Do not overwrite the output directory if it already exists",
+    help="Overwrite the output directory if it already exists (deletes the existing output directory first). Without this flag, an existing output directory raises an error.",
 )
 @click.option(
     "--dereplicate/--no-rmdup",
@@ -656,6 +928,7 @@ def assembly(
     single_end,
     merged,
     long_read,
+    long_read_type,
     raw_fasta,
     assembler,
     spades_mode,
@@ -693,7 +966,6 @@ def assembly(
     )
     from rolypoly.utils.logging.citation_reminder import remind_citations
     from rolypoly.utils.logging.loggit import log_start_info
-    from rolypoly.utils.various import run_command_comp
 
     if not overwrite:
         if Path(output).exists():
@@ -734,6 +1006,7 @@ def assembly(
         log_level=log_level,
         dereplicate=dereplicate,
         overwrite=overwrite,
+        long_read_type=long_read_type,
     )
 
     config.logger.info("Starting assembly process")
@@ -765,8 +1038,8 @@ def assembly(
         for lib_num, path in merged:
             library_info.add_merged(int(lib_num), path)
     if long_read:
-        for lib_num, path in long_read:
-            library_info.add_long_read(int(lib_num), path)
+        for lib_num, path in enumerate(long_read, 1):
+            library_info.add_long_read(lib_num, path)
     if raw_fasta:
         for path in raw_fasta:
             library_info.add_raw_fasta(path)
@@ -780,50 +1053,20 @@ def assembly(
         libraries = library_info.to_assembly_dict()
         n_libraries = len(libraries)
 
+    config.raw_fasta = list(library_info.raw_fasta)
     config.logger.info(f"Found {n_libraries} libraries")
+    has_long_reads = any(lib.get("long_read") for lib in libraries.values())
+    if has_long_reads and not any(
+        assembler_id.startswith("spades") for assembler_id in config.assembler
+    ):
+        config.logger.warning(
+            "Long reads were provided but no SPAdes assembler is selected; "
+            "MEGAHIT/PenguiN do not support long reads, so the long-read "
+            "input(s) will not be used."
+        )
     config.logger.info(f"Libraries: {libraries}")
     observed_read_length = detect_average_read_length(libraries, config.logger)
-    max_k = int(observed_read_length) - 1 if observed_read_length > 1 else None
-    spades_kmers: list[int] = []
-    seen_spades_kmers: set[int] = set()
-    for kmer in to_odd(
-        [
-            int(k.strip())
-            for k in str(config.step_params["spades"]["k"]).split(",")
-            if str(k).strip()
-        ]
-    ):
-        if kmer < 1 or kmer in seen_spades_kmers:
-            continue
-        seen_spades_kmers.add(kmer)
-        if max_k is None or kmer < max_k:
-            spades_kmers.append(kmer)
-    if not spades_kmers and seen_spades_kmers:
-        spades_kmers = [min(seen_spades_kmers)]
-    config.step_params["spades"]["k"] = ",".join(
-        str(kmer) for kmer in spades_kmers
-    )
-    if observed_read_length > 1:
-        megahit_k_min = to_odd([int(config.step_params["megahit"]["k-min"])])[0]
-        megahit_k_max = min(
-            int(config.step_params["megahit"]["k-max"]), max_k - 1
-        )
-        megahit_k_max = max(to_odd([megahit_k_max])[0], megahit_k_min)
-        megahit_k_step = int(config.step_params["megahit"]["k-step"])
-        if megahit_k_step % 2 == 1:
-            megahit_k_step = max(2, megahit_k_step - 1)
-        config.step_params["megahit"]["k-min"] = megahit_k_min
-        config.step_params["megahit"]["k-max"] = megahit_k_max
-        config.step_params["megahit"]["k-step"] = megahit_k_step
-        config.logger.info(
-            "Capped k-mer settings to read length %.2f (max_k=%s): spades_k=%s megahit_kmin=%s megahit_kmax=%s megahit_kstep=%s",
-            observed_read_length,
-            max_k,
-            config.step_params["spades"]["k"],
-            config.step_params["megahit"]["k-min"],
-            config.step_params["megahit"]["k-max"],
-            config.step_params["megahit"]["k-step"],
-        )
+    tune_assembly_kmers(config, observed_read_length)
     contigs4eval = []  # list[Path | str]  – one entry per assembler run
     contigs_asm_labels = []  # list[str]          – parallel assembler name
 
@@ -956,7 +1199,10 @@ def assembly(
                     "Error during sequence renaming: %s", str(e)
                 )
                 config.logger.warning("Continuing with original contig files")
-                # contigs4eval remains a list of paths – no change needed
+                contigs4eval = [concat_file]
+        else:
+            # Both downstream paths must include every assembler's contigs.
+            contigs4eval = [concat_file]
 
     # Dereplication step (identical sequences only).
     # Single low-memory streaming pass via polars_fastx.dereplicate_fasta: it
@@ -966,7 +1212,10 @@ def assembly(
     # disposable (removed below unless --keep-tmp). The per-contig stats are
     # merged back into contigs_id_map.tsv (adds seq_hash + redundancy).
     dereplicated_output = None
-    if len(contigs4eval) > 0 and config.dereplicate:
+    run_dereplication = (
+        config.dereplicate and "dereplicate" not in config.skip_steps
+    )
+    if len(contigs4eval) > 0 and run_dereplication:
         config.logger.info(
             "Starting single-pass sequence dereplication (polars_fastx)"
         )
@@ -1015,7 +1264,7 @@ def assembly(
                 f"Dereplication failed: {dereplicated_output} not found or empty"
             )
             return
-    elif len(contigs4eval) > 0 and not config.dereplicate:
+    elif len(contigs4eval) > 0:
         config.logger.info("Skipping dereplication as requested")
         dereplicated_output = str(contigs4eval[0])  # Use original contigs
     else:
@@ -1032,15 +1281,16 @@ def assembly(
             config.output_dir / "all_interleaved.fq.gz",
             config.output_dir / "all_merged.fq.gz",
             config.output_dir / "megahit_custom_out" / "intermediate_contigs",
-            # Raw concatenated contigs: only ever an intermediate for renaming,
-            # reconstructable from dereplicated_contigs.fasta + contigs_id_map.tsv.
+            # Raw concatenated contigs are an intermediate for renaming and
+            # dereplication, reconstructable from the ID map and representatives.
+            # Removed only if it is not the final output (when both steps skip).
             config.output_dir / "all_contigs.fasta",
         ]
 
         # The pre-dereplication renamed file is redundant with
         # dereplicated_contigs.fasta ONLY when dereplication actually ran (else it
         # is the final assembly and must be kept).
-        if config.dereplicate and os.path.exists(
+        if run_dereplication and os.path.exists(
             str(config.output_dir / "dereplicated_contigs.fasta")
         ):
             cleanup_paths.append(
@@ -1050,6 +1300,11 @@ def assembly(
         # Clean up all paths
         for path in cleanup_paths:
             path = Path(path)
+            if (
+                dereplicated_output
+                and path.resolve() == Path(dereplicated_output).resolve()
+            ):
+                continue
             if path.exists():
                 if path.is_dir():
                     config.logger.debug(f"Removing temporary directory: {path}")
@@ -1085,10 +1340,8 @@ def assembly(
                 except OSError:
                     pass  # not empty (kept a graph/log), leave it
 
-        # Only prune when the final assembly lives directly under output_dir (the
-        # normal renamed / dereplicated case). If rename and dereplication were
-        # both skipped the endpoint can still point into an assembler folder, in
-        # which case we leave those folders untouched.
+        # Only prune when the final assembly lives directly under output_dir,
+        # so an endpoint inside an assembler folder can never be deleted.
         endpoint = Path(dereplicated_output) if dereplicated_output else None
         endpoint_in_output = (
             endpoint is not None
@@ -1098,7 +1351,8 @@ def assembly(
             for spades_dir in config.output_dir.glob("spades_*output"):
                 prune_assembler_dir(spades_dir, {"spades.log", "params.txt"})
             prune_assembler_dir(
-                config.output_dir / "megahit_custom_out", {"log", "options.json"}
+                config.output_dir / "megahit_custom_out",
+                {"log", "options.json"},
             )
 
     config.logger.info("Assembly process completed successfully.")

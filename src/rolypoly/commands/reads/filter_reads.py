@@ -49,7 +49,7 @@ FILTER_READS_PRESETS: dict[str, dict[str, Any]] = {
         },
         "skip_steps": [],
         "flags": {"trim_polya": False},
-        "description": "Total RNA ribo-depleted: stricter rRNA removal (mincovfraction=0.6), known-DNA + identified-DNA filtering, adapter trim, lenient quality trim (trimq=5 minlen=20); no polyA trimming",
+        "description": "Total-RNA that went through ribo-depletion: residual rRNA filtering (mincovfraction=0.6, same as rna_virus_metat), known-DNA + identified-DNA filtering, adapter trim, lenient quality trim (trimq=5 minlen=20); no polyA trimming",
     },
     "poly_a_selected": {
         "step_params": {
@@ -83,7 +83,7 @@ FILTER_READS_PRESETS: dict[str, dict[str, Any]] = {
         },
         "skip_steps": ["filter_identified_dna"],
         "flags": {"trim_polya": False},
-        "description": "All-virus metatranscriptome: relaxed rRNA removal (mincovfraction=0.5), skips identified-DNA filter, moderate quality trim (trimq=10 minlen=20); known-DNA filtering still applied",
+        "description": "All-virus metatranscriptome: more aggressive rRNA removal (mincovfraction=0.5, versus default 0.6), skips identified-DNA filter, moderate quality trim (trimq=10 minlen=20); known-DNA filtering still applied",
     },
     "all_virus_metag": {
         "step_params": {"quality_trim_unmerged": {"trimq": 10, "minlen": 20}},
@@ -157,6 +157,7 @@ def apply_filter_reads_preset(
             config.skip_steps.append(step_name)
             applied_skips.append(step_name)
 
+    explicit_step_params = collect_protected_step_params(config.override_parameters)
     protected_from_preset: set[tuple[str, str]] = set()
     applied_step_params: list[str] = []
     for step_name, overrides in preset.get("step_params", {}).items():
@@ -164,6 +165,8 @@ def apply_filter_reads_preset(
             config.step_params[step_name] = {}
         if isinstance(overrides, dict):
             for param_name, value in overrides.items():
+                if (step_name, str(param_name)) in explicit_step_params:
+                    continue
                 config.step_params[step_name][param_name] = value
                 protected_from_preset.add((step_name, str(param_name)))
             applied_step_params.append(step_name)
@@ -471,7 +474,7 @@ class ReadFilterConfig(BaseConfig):
             self.logger.info(
                 f"override_parameters: {kwargs.get('override_parameters')}"
             )
-            for step, params in kwargs.get("override_parameters", {}).items():
+            for step, params in self.override_parameters.items():
                 if step in self.step_params:
                     self.step_params[step].update(params)
                 else:
@@ -961,7 +964,7 @@ def probe_inputs(config: ReadFilterConfig) -> dict[str, Any]:
         input_path=config.input,
         output_dir=probe_dir,
         sample_size=100000,
-        subset_type="top_reads",
+        subset_type="first_n",
         include_single_end=False,
         logger=config.logger,
     )
