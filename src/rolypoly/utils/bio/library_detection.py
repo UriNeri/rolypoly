@@ -309,10 +309,13 @@ def create_sample_file(
 
                 r1_path, r2_path = str(file_path).split(",")
                 out1, out2 = output_file.split(",")
-                # BBTools 39.91's BBNorm pairs independently buffered FASTQ
+                # BBTools 39.91 and the tested stock 40.02 BBNorm pair independently buffered FASTQ
                 # chunks, which can differ in size even for valid mate files.
                 # It also rereads its input and explicitly rejects stdin, so a
                 # temporary interleaved file is required instead of a pipe.
+                # Await a release containing the upstream PairStreamer fix; remove
+                # this workaround only after that bundle is in bbmapy and paired
+                # inputs pass both normalization passes. Stock 40.02 is not enough.
                 logger.info(
                     "Preparing temporary interleaved input for BBNorm's "
                     "repeated reads; this avoids the BBTools separate-mate "
