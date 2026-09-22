@@ -7,6 +7,7 @@ support for paired-end, interleaved, and single-end libraries.
 import gzip
 import logging
 import re
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
@@ -28,12 +29,7 @@ FASTA_FILE_PATTERNS = [
     "*.faa.gz",
     "*.fas.gz",
 ]
-FASTQ_FILE_PATTERNS = [
-    "*.fastq",
-    "*.fq",
-    "*.fastq.gz",
-    "*.fq.gz",
-]
+FASTQ_FILE_PATTERNS = ["*.fastq", "*.fq", "*.fastq.gz", "*.fq.gz"]
 SEQUENCE_FILE_PATTERNS = FASTA_FILE_PATTERNS + FASTQ_FILE_PATTERNS
 FASTA_FILE_SUFFIXES = tuple(
     pattern.lstrip("*") for pattern in FASTA_FILE_PATTERNS
@@ -42,18 +38,29 @@ SEQUENCE_FILE_SUFFIXES = tuple(
     pattern.lstrip("*") for pattern in SEQUENCE_FILE_PATTERNS
 )
 
+# CASAVA / Illumina headers (the FASTQ reader removes the leading '@'):
+# A00178:83:HJ73JDSXX:1:1101:10285:2394 1:N:0:AGGCTTCT+AGAAGCCT
+# instrument:run:flowcell:lane:tile:x:y read:filtered:control:index
+# The read number after the space identifies mate 1 or 2; N/Y is the
+# filtering flag, not a pairing indicator. The coordinate part identifies
+# the template and should match between mates. Metadata may be absent.
 CASAVA_HEADER_RE = re.compile(
     r"^(?P<instrument>[^:\s]+):(?P<run_id>[^:\s]+):(?P<flowcell_id>[^:\s]+):"
     r"(?P<lane>\d+):(?P<tile>\d+):(?P<x_coord>\d+):(?P<y_coord>\d+)"
     r"(?:\s+(?P<read_num>[12]):(?P<is_filtered>[YN]):(?P<control>\d+):(?P<barcode>[^\s]+))?$"
 )
+# Slash-mate form: A00178:83:HJ73JDSXX:1:1101:10285:2394/1 (or /2).
+# Some archive headers also prepend an accession followed by whitespace.
 SLASH_PAIR_HEADER_RE = re.compile(
     r"^(?:(?P<accession>[^:\s]+)\s+)?"
     r"(?P<instrument>[^:\s]+):(?P<run_id>[^:\s]+):(?P<flowcell_id>[^:\s]+):"
     r"(?P<lane>\d+):(?P<tile>\d+):(?P<x_coord>\d+):(?P<y_coord>\d+)"
     r"/(?P<read_num>[12])$"
 )
+# Generic older mate labels: template/1, template/2, template 1, template 2.
+# These identify mates without requiring Illumina instrument coordinates.
 LEGACY_PAIR_RE = re.compile(r"^(?P<base>.+?)(?:\s|/)(?P<mate>[12])$")
+# Filename hints (e.g. sample_R1 / sample_R2) are separate from read headers.
 MATE_SUFFIX_RE = re.compile(r"([_\.-])(R?[12])$")
 READ_EXT_SUFFIX_RE = re.compile(
     r"\.(?:f(?:ast)?q|fq|fa|fasta|fna)(?:_[A-Za-z0-9]+)?$", re.IGNORECASE
@@ -227,7 +234,7 @@ def analyze_fastq_header_metadata(headers: list[str]) -> Dict[str, Any]:
 
 def create_sample_file(
     file_path: Union[str, Path],
-    subset_type: str = "top_reads",
+    subset_type: str = "first_n",
     sample_size: Union[int, float] = 1000,
     output_file: str = "sample.fastq.gz",
     threads: int = 1,
@@ -239,8 +246,8 @@ def create_sample_file(
 
     Args:
         file_path: Path to the input FASTQ file. If it is 2 paired end files (r1 r2) use , to separate them.
-        subset_type: Type of subsert - "top_reads" or "random".
-        sample_size: if top_reads than how many reads (from the top) to sample, if random than fracton of reads to sample randomly (0.0-1.0)
+        subset_type: Type of subsert - "first_n" or "random".
+        sample_size: if first_n than how many reads (from the top) to sample, if random than fracton of reads to sample randomly (0.0-1.0)
         # keep_pairs: Keep paired-end reads - if true input file is assumed to be paired end AND interleaved. all R1 reads in the output will have matching R2. (EDIT- I'm just going to sneakily take half the sample size, get that many random items, then take 2 consecutive reads at a time lol)
         output_file: path to output file - if ending in .gz then will be compressed. If input is 2 paired end files, will assume output also has 2 files in it (R1 and R2) separated by comma.
         threads: Threads for bbnorm mode.
@@ -253,7 +260,7 @@ def create_sample_file(
     Note:
         - If sample type is random, the total number of reads in the file will have to be computed and that coudl be slow.
         - Generally adivsory to use gzipped output file
-        - ..,, to provide an even number for sample_size, if subset_type is top_reads. Otherwise if your input file is interleaved, the last read will lose its pair.
+        - ..,, to provide an even number for sample_size, if subset_type is first_n. Otherwise if your input file is interleaved, the last read will lose its pair.
         -
     """
     logger = get_logger(logger)
@@ -284,7 +291,7 @@ def create_sample_file(
     if subset_type == "random":
         need_total_reads = True
     elif (
-        subset_type == "top_reads"
+        subset_type == "first_n"
         and isinstance(sample_size, float)
         and sample_size < 1.0
     ):
@@ -298,20 +305,51 @@ def create_sample_file(
         logger.debug(f"Normalizing with bbnorm target={target} for {file_path}")
         try:
             if is_paired_files:
+                from bbmapy import reformat
+
                 r1_path, r2_path = str(file_path).split(",")
                 out1, out2 = output_file.split(",")
-                bb_stdout, bb_stderr = bbnorm(
-                    **{
-                        "in1": str(Path(r1_path)),
-                        "in2": str(Path(r2_path)),
-                        "out1": str(Path(out1)),
-                        "out2": str(Path(out2)),
-                        "target": target,
-                        "min": bbnorm_min_depth,
-                        "threads": threads,
-                        "capture_output": True,
-                    }
+                # BBTools 39.91's BBNorm pairs independently buffered FASTQ
+                # chunks, which can differ in size even for valid mate files.
+                # It also rereads its input and explicitly rejects stdin, so a
+                # temporary interleaved file is required instead of a pipe.
+                logger.info(
+                    "Preparing temporary interleaved input for BBNorm's "
+                    "repeated reads; this avoids the BBTools separate-mate "
+                    "reader failure. Paired output files are preserved."
                 )
+                with tempfile.TemporaryDirectory(
+                    prefix=".bbnorm-input-", dir=Path(out1).parent
+                ) as temporary_dir:
+                    paired_input = Path(temporary_dir) / "paired.fq.gz"
+                    reformat(
+                        in1=str(Path(r1_path)),
+                        in2=str(Path(r2_path)),
+                        out=str(paired_input),
+                        threads=threads,
+                        verifypaired="t",
+                        capture_output=True,
+                    )
+                    bb_stdout, bb_stderr = bbnorm(
+                        in1=str(paired_input),
+                        interleaved="t",
+                        # out2 would make BBNorm's intermediate passes use
+                        # separate mate files and trigger the same defect.
+                        out=str(Path(temporary_dir) / "normalized.fq.gz"),
+                        tmpdir=str(temporary_dir),
+                        target=target,
+                        min=bbnorm_min_depth,
+                        threads=threads,
+                        capture_output=True,
+                    )
+                    reformat(
+                        in1=str(Path(temporary_dir) / "normalized.fq.gz"),
+                        interleaved="t",
+                        out1=str(Path(out1)),
+                        out2=str(Path(out2)),
+                        threads=threads,
+                        capture_output=True,
+                    )
             else:
                 bbnorm_kwargs: Dict[str, Any] = {
                     "in": str(file_path),
@@ -354,7 +392,7 @@ def create_sample_file(
                 sample_size = int(sample_size * total_reads)
         logger.debug(f"Sampling {subset_type} of {sample_size} of {file_path}")
         try:
-            if subset_type == "top_reads":
+            if subset_type == "first_n":
                 sample_size_int = int(sample_size)
                 sample_size_int = sample_size_int - (
                     sample_size_int % 2
@@ -472,7 +510,7 @@ def create_sample_file(
                 total_reads = get_total_reads(r1_path, is_gz)
                 if isinstance(sample_size, float):
                     sample_size = int(sample_size * total_reads)
-            if subset_type == "top_reads":
+            if subset_type == "first_n":
                 sample_size_int = int(sample_size)
                 sample_size_int = sample_size_int - (sample_size_int % 2)
                 n_lines = sample_size_int * 4
@@ -616,7 +654,7 @@ def probe_fastq_inputs(
     input_path: Union[str, Path],
     output_dir: Union[str, Path],
     sample_size: int = 100000,
-    subset_type: str = "top_reads",
+    subset_type: str = "first_n",
     include_single_end: bool = True,
     logger: Optional[logging.Logger] = None,
 ) -> Dict[str, Any]:
@@ -724,50 +762,35 @@ def determine_fastq_type(
         results["header_analysis"] = header_analysis
 
         fastq_df = read_fastx(file_path).head(sample_size).collect()
-        header_count = fastq_df.select(
-            pl.col("header").str.tail(2).value_counts()
-        ).unnest("header")
-        logger.debug(
-            f"example read headers: {fastq_df.select(pl.col('header')).head(5).to_series().to_list()}"
+        headers = fastq_df["header"].to_list()
+
+        # Count the records actually sampled, and require adjacent matching
+        # template IDs: equal mate counts alone do not imply interleaving.
+        def mate_id(header):
+            # Accept CASAVA's "template 1:N:0:index" / "template 2:N:0:index",
+            # slash suffixes "template/1" / "template/2", and plain space
+            # suffixes "template 1" / "template 2". The template may be an
+            # Illumina coordinate string or a renamed read ID. Unlabelled
+            # headers cannot establish pairing from their text alone.
+            match = re.match(r"^(.*?)(?:/|\s)([12])(?::.*)?$", header)
+            if match:
+                return match.group(1), int(match.group(2))
+            return header, None
+
+        mates = [mate_id(header) for header in headers]
+        pair_1_count = sum(mate == 1 for _, mate in mates)
+        pair_2_count = sum(mate == 2 for _, mate in mates)
+        # Interleaved means a/1, a/2, b/1, b/2 in this sampled prefix.
+        # a/1, b/1, a/2, b/2 has the same mates but is NOT interleaved.
+        # This is layout detection from a sample, not whole-file validation.
+        interleaved = (
+            bool(mates)
+            and len(mates) % 2 == 0
+            and all(
+                left[0] == right[0] and left[1] == 1 and right[1] == 2
+                for left, right in zip(mates[::2], mates[1::2])
+            )
         )
-        # Check suffix patterns for paired-end indicators
-        # logger.debug(f"header_count: {header_count}")
-        pair_1_count = header_count.filter(
-            pl.col("header").is_in([" 1", "/1"])
-        )["count"].sum()
-        pair_2_count = header_count.filter(
-            pl.col("header").is_in([" 2", "/2"])
-        )["count"].sum()
-        # Check if header looks like old Casava format,e.g. @A00178:83:HJ73JDSXX:1:1101:10285:2394 1:N:0:AGGCTTCT+AGAAGCCT (the "n:" part after the space is the important bit, and we will want to look for the leading string to it to exist in both the 1 and 2 forms)
-        if pair_1_count == 0 and pair_2_count == 0:
-            # Check for Casava format: space followed by 1: or 2:
-            # Extract base header (before space) for reads with " 1:" and " 2:"
-            headers_with_1 = fastq_df.filter(
-                pl.col("header").str.contains(r" 1:")
-            ).select(
-                pl.col("header").str.split(" ").list.get(0).alias("base_header")
-            )
-
-            headers_with_2 = fastq_df.filter(
-                pl.col("header").str.contains(r" 2:")
-            ).select(
-                pl.col("header").str.split(" ").list.get(0).alias("base_header")
-            )
-
-            # Check if there are overlapping base headers (indicating paired reads)
-            if headers_with_1.height > 0 and headers_with_2.height > 0:
-                set_1 = set(headers_with_1["base_header"].to_list())
-                set_2 = set(headers_with_2["base_header"].to_list())
-                overlap = set_1.intersection(set_2)
-
-                if len(overlap) == len(set_1) and len(overlap) == len(set_2):
-                    # Found matching pairs in Casava format
-                    pair_1_count = headers_with_1.height
-                    pair_2_count = headers_with_2.height
-                    logger.warning(
-                        "Detected Casava paired-end format in headers - treating as interleaved paired-end reads... this could be wrong..."
-                    )
-
         average_read_length = fastq_df.select(
             pl.col("sequence").seq.length().mean().alias("average_read_length")
         ).item()
@@ -787,11 +810,18 @@ def determine_fastq_type(
         results["average_read_quality"] = average_read_quality
         results["pair_1_count"] = pair_1_count
         results["pair_2_count"] = pair_2_count
-        if pair_1_count == sample_size / 2 and pair_2_count == pair_1_count:
+        if interleaved:
             results["file_type"] = "interleaved"
-        elif pair_1_count == sample_size and pair_2_count == 0:
+            if any(re.search(r"\s[12]:[YN]:\d+:\S+", header) for header in headers):
+                logger.warning(
+                    "Detected Casava paired-end format in headers - treating as "
+                    "interleaved paired-end reads based on adjacent matching "
+                    "mates in the sample. This could be wrong elsewhere in the "
+                    "file; the full input has not been checked."
+                )
+        elif mates and pair_1_count == len(mates):
             results["file_type"] = "paired_R1"
-        elif pair_1_count == 0 and pair_2_count == sample_size:
+        elif mates and pair_2_count == len(mates):
             results["file_type"] = "paired_R2"
         elif pair_1_count == 0 and pair_2_count == 0:
             results["file_type"] = "single"  # this is a guess
@@ -892,52 +922,39 @@ def identify_fastq_files(
     }
 
     if input_path.is_dir():
-        # First look for rolypoly output files if requested - these are expected to be named like "lib_name_final_interleaved.fq.gz" and "lib_name_final_merged.fq.gz"
-        if return_rolypoly:
-            rolypoly_files = list(input_path.glob("*_final_*.f*q*"))
-            if rolypoly_files:
-                logger.info(
-                    f"Found {len(rolypoly_files)} rolypoly output files"
-                )
-                for file in rolypoly_files:
-                    lib_name = file.stem.split("_final_")[0]
-                    if lib_name not in file_info["rolypoly_data"]:
-                        file_info["rolypoly_data"][lib_name] = {
-                            "interleaved": None,
-                            "merged": None,
-                        }
-                    if "interleaved" in file.name:
-                        file_info["rolypoly_data"][lib_name]["interleaved"] = (
-                            file
-                        )
-                        logger.debug(
-                            f"Added rolypoly interleaved: {lib_name} -> {file}"
-                        )
-                    elif "merged" in file.name:
-                        file_info["rolypoly_data"][lib_name]["merged"] = file
-                        logger.debug(
-                            f"Added rolypoly merged: {lib_name} -> {file}"
-                        )
-
-                # Analyze rolypoly files - is this neccessary? shouldn't some other part of my code be writting this and thus I can trust myself to expect... correct formatting?
-                for lib_name, data in file_info["rolypoly_data"].items():
-                    for file_type, file_path in data.items():
-                        if file_path:
-                            analysis = determine_fastq_type(
-                                file_path, logger=logger
-                            )
-                            file_info["file_details"][str(file_path)] = analysis
-
-                return file_info
-
-        # Process all FASTQ files
         all_fastq = find_files_by_extension(
-            input_path,
-            FASTQ_FILE_PATTERNS,
-            "FASTQ files",
-            logger,
+            input_path, FASTQ_FILE_PATTERNS, "FASTQ files", logger
         )
         processed_files = set()
+        if return_rolypoly:
+            for file in all_fastq:
+                # Current filter-reads names and the historical public layout.
+                match = re.match(
+                    r"^dedupe_final_(interleaved|merged)_(.+?)\.(?:fastq|fq)(?:\.gz)?$",
+                    file.name,
+                )
+                if match:
+                    kind, lib_name = match.groups()
+                else:
+                    match = re.match(
+                        r"^(.+)_final_(interleaved|merged)\.(?:fastq|fq)(?:\.gz)?$",
+                        file.name,
+                    )
+                    if not match:
+                        continue
+                    lib_name, kind = match.groups()
+                lib = file_info["rolypoly_data"].setdefault(
+                    lib_name, {"interleaved": None, "merged": None}
+                )
+                if lib[kind] is not None:
+                    raise ValueError(
+                        f"Multiple {kind} files for library {lib_name}"
+                    )
+                lib[kind] = file
+                processed_files.add(file)
+                file_info["file_details"][str(file)] = determine_fastq_type(
+                    file, logger=logger
+                )
 
         logger.info(f"Processing {len(all_fastq)} FASTQ files")
 

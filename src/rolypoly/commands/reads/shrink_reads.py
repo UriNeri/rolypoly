@@ -30,8 +30,8 @@ from rolypoly.utils.logging.loggit import log_start_info, setup_logging
 @click.option(
     "-st",
     "--subset-type",
-    default="top_reads",
-    type=click.Choice(["top_reads", "random", "bbnorm"]),
+    default="first_n",
+    type=click.Choice(["first_n", "random", "bbnorm"]),
     help="how to sample reads from input.",
 )
 @click.option(
@@ -39,7 +39,7 @@ from rolypoly.utils.logging.loggit import log_start_info, setup_logging
     "--sample-size",
     default=1000,
     type=click.FLOAT,
-    help="For top_reads/random, at most this many reads (or proportion if <1). For bbnorm, this is the target k-mer depth.",
+    help="For first_n/random, at most this many reads (or proportion if <1). For bbnorm, this is the target k-mer depth.",
 )
 @click.option(
     "--bbnorm-min-depth",
