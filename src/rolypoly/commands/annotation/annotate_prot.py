@@ -258,7 +258,7 @@ def stage_protein_input_as_orfs(config) -> bool:
     ),
     help="""Tool for gene prediction. \n
     * pyrodigal-rv: might work well for some viruses, but it's not as well tested for RNA viruses. Includes internal genetic code assignment. \n
-    * ORFfinder: The default ORFfinder settings may have some false positives, but it's fast and easy to use. \n
+    * ORFfinder: Uses NCBI's executable. If missing, downloads the Linux x86-64 binary into a writable Pixi/conda environment or executable temporary directory, logging its source and location. Other platforms require a compatible executable on PATH. The default ORFfinder settings may have some false positives, but it's fast and easy to use. \n
     * six-frame: includes all 6 reading frames, so all possible ORFs are predicted - prediction is quick but will include many false positives, and the input for the domain search will be larger. \n
     """,
 )
@@ -845,36 +845,18 @@ def search_protein_domains_hmmsearch(config):
 
 def predict_orfs_with_orffinder(config):
     """Predict ORFs using ORFfinder."""
-    from shutil import which
-
     from rolypoly.utils.bio.translation import predict_orfs_orffinder
+    from rolypoly.utils.various import ensure_orffinder
 
-    if not which("ORFfinder"):
-        config.logger.error(
-            "ORFfinder not found. Please install ORFfinder and add it to your PATH (it isn't a conda/mamba installable package, but you can do the following:  wget ftp://ftp.ncbi.nlm.nih.gov/genomes/TOOLS/ORFfinder/linux-i64/ORFfinder.gz; gunzip ORFfinder.gz; chmod a+x ORFfinder; mv ORFfinder $CONDA_PREFIX/bin)."
-        )
-        # lazy = input(
-        #     "Do you want to install ORFfinder for you (i.e. ran the above commands)? [yes/no]  "
-        # )
-        lazy = "yes"  # most people don't care
-        if lazy.lower() == "yes":
-            import subprocess as sp
-            sp.run(
-                "wget ftp://ftp.ncbi.nlm.nih.gov/genomes/TOOLS/ORFfinder/linux-i64/ORFfinder.gz; gunzip ORFfinder.gz; chmod a+x ORFfinder; mv ORFfinder $CONDA_PREFIX/bin",
-                shell=True,
-                check=True,
-            )
-            config.logger.info("ORFfinder installed successfully")
-        else:
-            config.logger.error(
-                "ORFfinder not found, you don't want me to install it, and you don't want to use another tool         seriously. Exiting    "
-            )
-            exit(1)
+    # NCBI distributes a standalone executable; resolve/install it explicitly
+    # instead of using a shell pipeline or assuming CONDA_PREFIX is set.
+    executable = ensure_orffinder(config.logger, temp_dir=config.temp_dir)
 
     config.logger.info("Predicting ORFs")
     output_file = config.output_dir / "predicted_orfs.faa"
     predict_orfs_orffinder(
         input_fasta=config.input,
+        executable=executable,
         output_file=config.output_dir / "predicted_orfs.faa",
         genetic_code=config.genetic_code,
         min_orf_length=config.step_params["ORFfinder"]["minimum_length"],

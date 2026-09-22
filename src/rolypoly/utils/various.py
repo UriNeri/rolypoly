@@ -14,6 +14,110 @@ from rolypoly.utils.logging.loggit import (
 logger = get_logger()
 
 
+
+# Cache temporary installations for prediction and provenance within this process.
+_ORFFINDER_PATH = None
+_ORFFINDER_URL = "https://ftp.ncbi.nlm.nih.gov/genomes/TOOLS/ORFfinder/linux-i64/ORFfinder.gz"
+
+
+def ensure_orffinder(logger=None, *, allow_download=True, temp_dir=None) -> Path:
+    """Locate NCBI ORFfinder or download its supported native binary.
+
+    Search PATH, active Pixi/conda prefixes and the current conda interpreter.
+    Install atomically in an environment bin directory when writable, otherwise
+    in a private executable temporary directory. Never substitute another ORF
+    predictor: its results may differ from NCBI ORFfinder.
+    """
+    import atexit
+    import gzip
+    import platform
+    import subprocess
+    import sys
+    import tempfile
+    import urllib.request
+
+    global _ORFFINDER_PATH
+    log = get_logger(logger)
+    prefixes = []
+    for value in (os.environ.get("PIXI_ENVIRONMENT_PREFIX"),
+                  os.environ.get("CONDA_PREFIX"),
+                  sys.prefix if (Path(sys.prefix) / "conda-meta").is_dir() else None):
+        if value and Path(value) not in prefixes:
+            prefixes.append(Path(value))
+    candidates = [shutil.which("ORFfinder")]
+    candidates.extend(prefix / "bin" / "ORFfinder" for prefix in prefixes)
+    candidates.append(_ORFFINDER_PATH)
+
+    def verify(path):
+        result = subprocess.run([str(path), "-version"], capture_output=True,
+                                text=True, check=True, timeout=15)
+        if "orffinder" not in (result.stdout + result.stderr).lower():
+            raise RuntimeError(f"{path} did not identify itself as NCBI ORFfinder")
+
+    for candidate in candidates:
+        if candidate and Path(candidate).is_file() and os.access(candidate, os.X_OK):
+            try:
+                verify(candidate)
+            except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
+                log.warning("Cannot run ORFfinder at %s: %s", candidate, exc)
+            else:
+                _ORFFINDER_PATH = Path(candidate).absolute()
+                log.info("Using NCBI ORFfinder at %s", _ORFFINDER_PATH)
+                return _ORFFINDER_PATH
+    if not allow_download:
+        raise RuntimeError("NCBI ORFfinder is unavailable; install its executable on PATH.")
+    system, machine = platform.system(), platform.machine().lower()
+    # NCBI's distribution directory currently only supplies linux-i64.
+    if system != "Linux" or machine not in {"x86_64", "amd64"}:
+        raise RuntimeError(
+            f"No supported NCBI ORFfinder download for {system}/{machine}. "
+            "Provide a compatible ORFfinder on PATH or explicitly choose "
+            "--gene-prediction-tool pyrodigal or six-frame (different predictors)."
+        )
+
+    errors = []
+    destinations = [(prefix / "bin", False) for prefix in prefixes]
+    # Executing the actual binary detects noexec mounts; writable alone is not enough.
+    temp_roots = [temp_dir, tempfile.gettempdir(), "/var/tmp"]
+    for root in dict.fromkeys(str(root) for root in temp_roots if root):
+        destinations.append((Path(root), True))
+    for directory, temporary in destinations:
+        staging = None
+        private = None
+        try:
+            if temporary:
+                private = Path(tempfile.mkdtemp(prefix="rolypoly-orffinder-", dir=directory)).resolve()
+                directory = private
+            else:
+                directory.mkdir(parents=True, exist_ok=True)
+            # NCBI derives its version label from argv[0]; a leading dot
+            # makes that label empty, so stage under a non-hidden basename.
+            fd, staging_name = tempfile.mkstemp(prefix="ORFfinder-download-", dir=directory)
+            staging = Path(staging_name)
+            os.close(fd)
+            destination = directory / "ORFfinder"
+            log.info("Downloading NCBI ORFfinder from %s to %s", _ORFFINDER_URL, destination)
+            with urllib.request.urlopen(_ORFFINDER_URL, timeout=60) as response:
+                with gzip.GzipFile(fileobj=response) as compressed, staging.open("wb") as output:
+                    shutil.copyfileobj(compressed, output)
+            staging.chmod(0o755)
+            verify(staging)
+            os.replace(staging, destination)
+            if private:
+                atexit.register(shutil.rmtree, private, ignore_errors=True)
+            _ORFFINDER_PATH = destination.absolute()
+            return _ORFFINDER_PATH
+        except (OSError, EOFError, subprocess.SubprocessError, RuntimeError) as exc:
+            errors.append(f"{directory}: {exc}")
+            log.warning("ORFfinder installation failed at %s: %s", directory, exc)
+        finally:
+            if staging:
+                staging.unlink(missing_ok=True)
+            if private and _ORFFINDER_PATH != private / "ORFfinder":
+                shutil.rmtree(private, ignore_errors=True)
+    raise RuntimeError("Unable to install executable NCBI ORFfinder. " + "; ".join(errors))
+
+
 def extract(
     archive_path: Union[str, Path],
     extract_to: Optional[Union[str, Path]] = None,

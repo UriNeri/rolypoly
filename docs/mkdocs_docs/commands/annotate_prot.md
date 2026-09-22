@@ -41,7 +41,7 @@ rolypoly annotate-prot [OPTIONS]
 
     - pyrodigal-rv: might work well for some viruses, but it's not as well tested for RNA viruses. Includes internal genetic code assignment.
 
-    - ORFfinder: The default ORFfinder settings may have some false positives, but it's fast and easy to use.
+    - ORFfinder: Uses NCBI's executable. If missing, downloads the Linux x86-64 binary into a writable Pixi/conda environment or executable temporary directory, logging its source and location. Other platforms require a compatible executable on PATH. The default ORFfinder settings may have some false positives, but it's fast and easy to use.
 
     - six-frame: includes all 6 reading frames, so all possible ORFs are predicted - prediction is quick but will include many false positives, and the input for the domain search will be larger. Translation uses the native NumPy backend, resolves an IUPAC codon when all represented codons encode the same amino acid, converts stops to `X`, and emits canonical signed `<contig>_frame_p1` / `<contig>_frame_m1` identifiers directly.
 
@@ -235,3 +235,24 @@ Genome maps group ORFs and protein hits by signed reading frame (`rf+1` through
 `rf-3`). Only real ORFs receive gene arrows; six-frame translations contribute
 hit intervals without synthetic gene blocks. Overlapping features receive
 separate lanes within their frame. There are no marker/frame visibility toggles.
+
+## NCBI ORFfinder executable
+
+Choosing `--gene-prediction-tool ORFfinder` uses NCBI's standalone executable,
+not a Python reimplementation. RolyPoly first checks PATH, active Pixi/conda
+environments, and the current conda interpreter's environment. It verifies that
+the binary runs before using it.
+
+If missing, Linux x86-64 runs automatically download the official
+[NCBI binary](https://ftp.ncbi.nlm.nih.gov/genomes/TOOLS/ORFfinder/linux-i64/ORFfinder.gz)
+over HTTPS. The source and destination are logged. RolyPoly installs it in a
+writable environment's `bin` directory; otherwise it tries a private directory
+under the configured temporary directory, the system temporary directory, and
+`/var/tmp`. It verifies execution (including detecting `noexec` mounts) before
+using the download. Temporary installations are removed on normal process exit.
+
+For offline runs, preinstall the executable on PATH or in the active environment.
+NCBI currently lists only Linux x86-64; other platforms must provide a compatible
+executable or explicitly select `pyrodigal` or `six-frame`. These are different
+predictors, not parity-equivalent replacements. Downloading requires network
+access and a writable executable location; failure is reported explicitly.

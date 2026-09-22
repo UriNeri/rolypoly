@@ -10,7 +10,7 @@ from string import Formatter
 import numpy as np
 import polars as pl
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from needletail import parse_fastx_file
 
@@ -162,23 +162,29 @@ def predict_orfs_orffinder(
     strand: str = "both",
     outfmt: int = 0,
     ignore_nested: bool = False,
+    executable: Optional[Union[str, Path]] = None,
 ) -> None:
-    run_command_comp(
-        "ORFfinder",
-        params={
-            "in": str(input_fasta),
-            "out": str(output_file),
-            "ml": min_orf_length,  # orfinder automatically replaces values below 30 to 30.
-            "s": start_codon,  # ORF start codon to use, 0 is atg only, 1 atg + alt start codons
-            "g": genetic_code,
-            "n": "true"
-            if ignore_nested
-            else "false",
-            "strand": strand,  # both is plus and minus.
-            "outfmt": outfmt,  # 0 is protein FASTA, 1 is nucleotide CDS FASTA
-        },
-        prefix_style="single",
-    )
+    import subprocess
+    from rolypoly.utils.various import ensure_orffinder
+
+    executable = executable or ensure_orffinder()
+    params = {
+        "in": str(input_fasta),
+        "out": str(output_file),
+        "ml": min_orf_length,  # orfinder automatically replaces values below 30 to 30.
+        "s": start_codon,  # ORF start codon to use, 0 is atg only, 1 atg + alt start codons
+        "g": genetic_code,
+        "n": "true"
+        if ignore_nested
+        else "false",
+        "strand": strand,  # both is plus and minus.
+        "outfmt": outfmt,  # 0 is protein FASTA, 1 is nucleotide CDS FASTA
+    }
+    # Argument lists preserve paths containing spaces and avoid shell expansion.
+    command = [str(executable)]
+    for name, value in params.items():
+        command.extend([f"-{name}", str(value)])
+    subprocess.run(command, check=True)
 
 
 # Genetic codes / variables sourced from Seals2 by Yuri Wolf (https://github.com/YuriWolf-ncbi/seals-2/blob/master/bin/misc/orf)
@@ -992,7 +998,6 @@ def translation_records(path):
 def translation_signature(method, parameters):
     """The prediction implementation and effective parameters, independent of search."""
     import importlib.metadata
-    import subprocess
 
     method = method.replace("six_frame", "six-frame")
     if method == "pyrodigal":
@@ -1003,9 +1008,12 @@ def translation_signature(method, parameters):
             "numpy": np.__version__,
         }
     elif method == "ORFfinder":
-        command = ["ORFfinder", "-version"]
+        import subprocess
+
+        from rolypoly.utils.various import ensure_orffinder
+        command = [str(ensure_orffinder(allow_download=False)), "-version"]
         result = subprocess.run(command, text=True, capture_output=True, check=True, timeout=15)
-        versions = {command[0]: (result.stdout + result.stderr).strip()}
+        versions = {"ORFfinder": (result.stdout + result.stderr).strip()}
     elif method == "input_protein":
         versions = {}
     else:
