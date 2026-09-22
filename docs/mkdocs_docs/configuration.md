@@ -13,8 +13,14 @@ Example configuration:
     "ROLYPOLY_REMIND_CITATIONS": "False"
     }
 ```
-Environment variables should work. Note: I recommend using the `get-data` command to set
-up the initial configuration and download necessary resources. there's a fallback, if that path is missing, it checks a path relative to the `rolypoly` code directory. 
+The database path supports a leading environment variable, such as
+`${RP_DATA_ROOT}`, with an optional path suffix. See the
+[path and storage caveats](caveats.md#environment-variables-and-path-expansion)
+for expansion limits, fast-storage recommendations and temporary execution
+permissions. Use `get-data` to set up the initial configuration and download
+resources. For an unset leading variable, the resolver may use a path relative
+to the RolyPoly code directory; this is not a general fallback for a missing
+absolute database path.
 
 Recommended setup command:
 
@@ -92,4 +98,3 @@ rolypoly filter-reads \
     -o filtered/ \
     --override-parameters '{"dedupe": {"passes": 2}, "trim_adapters": {"minlen": 55}}'
 ```
-

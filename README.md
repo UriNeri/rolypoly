@@ -3,6 +3,7 @@
 # RolyPoly
 
 [![PyPI version](https://img.shields.io/pypi/v/rolypoly-tk.svg?cacheSeconds=300)](https://pypi.org/project/rolypoly-tk/) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/rolypoly-tk?period=monthly&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=Downloads+%28month%29)](https://pepy.tech/projects/rolypoly-tk) [![License](https://img.shields.io/github/license/UriNeri/rolypoly.svg)](LICENSE) [![Docs](https://img.shields.io/badge/docs-urineri.github.io%2Frolypoly-blue)](https://urineri.github.io/rolypoly/) [![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat)](http://bioconda.github.io/recipes/rolypoly-tk/README.html)
+[![Install with Pixi](https://img.shields.io/badge/install-Pixi-yellow)](#developer-install-modularcommand-specific-pixi-environments) [![Standalone mamba](https://img.shields.io/badge/install-standalone_mamba-blue)](#standalone-mamba-installation-while-bioconda-updates-are-pending)
 
 RolyPoly is an RNA virus analysis toolkit, meant to be a "swiss-army knife" for RNA virus discovery and characterization by including a variety of commands, wrappers, parsers, automations, and some "quality of life" features for any many of a virus investigation process (from raw read processing to genome annotation).  
 While it includes an "end-2-end" command that employs an entire pipeline, the main goals of rolypoly are:

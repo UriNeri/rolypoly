@@ -13,6 +13,8 @@ This document provides the biological and computational context for the choices 
 How your RNA was prepared for sequencing is usually the main thing that determines which preset to use. Three factors tend to matter most: 1. whether your library was **poly-A selected**, 2. whether you want to filter potential **host cDNA/mRNA** and other contaminants, and 3. whether your sample came from enriched/purified virions (**"virome"**), where you can often skip rRNA removal and sometimes use lighter quality filtering.
 
 - If your library is poly-A selected: RolyPoly includes a poly-A trimming step in `filter-reads`.
+  Trimming can also remove genuine viral termini; retain pre-trimming reads and
+  see the [poly(A) trimming caveat](caveats.md#polya-trimming-and-genome-termini).
 - If you want host filtering: provide a host reference genome to `filter-reads` and `assemble` (RolyPoly will try to mask likely viral regions in that reference before using it for filtering).
 - If your sample is virome-enriched: you can often skip rRNA and host removal, use lighter quality filtering, and sometimes enable deduplication steps (depending on your goals).
 

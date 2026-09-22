@@ -91,6 +91,7 @@ nav:
   - Configuration: configuration.md
   - Examples: examples.md
   - Scientific background: background.md
+  - Caveats: caveats.md
   - Resource Usage: resource_usage.md
   - Commands:
     - "get-data": commands/get_data.md
