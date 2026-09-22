@@ -1317,15 +1317,10 @@ def seq_hash_xxh3(seq: str, ignore_case: bool = True) -> str:
 
     Falls back to blake2b if xxhash is unavailable (both already used by
     sequences.remove_duplicates)."""
-    field = (seq.upper() if ignore_case else seq).encode()
-    try:
-        import xxhash
+    from rolypoly.utils.bio.sequences import hash_bytes
 
-        return format(xxhash.xxh3_64(field).intdigest(), "016x")
-    except Exception:
-        import hashlib
-
-        return hashlib.blake2b(field, digest_size=8).hexdigest()
+    field = (seq.upper() if ignore_case else seq).encode("utf-8")
+    return format(hash_bytes(field), "016x")
 
 
 def dereplicate_fasta(
