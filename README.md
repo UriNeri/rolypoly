@@ -38,6 +38,27 @@ micromamba activate rolypoly-tk
 rolypoly --help 
 ```
 
+### Standalone mamba installation while Bioconda updates are pending
+
+This environment installs external tools from conda-forge/Bioconda and RolyPoly
+plus its Python dependencies from PyPI. It does not install the Bioconda
+`rolypoly-tk` package. Use the YAML from the same **published release tag**:
+
+```bash
+RP_VERSION=0.7.21  # Replace with the published release you want to install.
+curl -fL "https://raw.githubusercontent.com/UriNeri/rolypoly/v${RP_VERSION}/src/setup/env_big.yaml" -o env_big.yaml
+mamba env create -n rolypoly-standalone -f env_big.yaml
+mamba run -n rolypoly-standalone rolypoly --version
+mamba run -n rolypoly-standalone rolypoly get-data --rolypoly-data "$HOME/rolypoly-data"
+```
+
+With micromamba, use `micromamba create -n rolypoly-standalone -f env_big.yaml`
+and replace `mamba run` with `micromamba run`. From a checkout, pass
+`-f src/setup/env_big.yaml` instead of downloading it, after its pinned RolyPoly
+version has been published to PyPI. The restored YAML pins RolyPoly exactly;
+other dependencies use version ranges, so this is not a fully locked environment.
+Historical tags retain their original YAML and dependency constraints.
+
 ### Developer install: Modular/Command-Specific Pixi Environments
 **Mostly for software developers** looking to try or make use of specific rolypoly features with minimal risk of dependency conflicts, by using [Pixi](https://pixi.sh/) to create isolated environments for each command group:
 

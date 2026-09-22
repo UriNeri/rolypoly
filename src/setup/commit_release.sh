@@ -94,7 +94,7 @@ if [[ -z "${NEW_VERSION}" || ! "${NEW_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; 
   echo "Could not parse a release version from ${VERSION_FILE}." >&2
   exit 1
 fi
-if ! grep -Fq "rolypoly-tk >=${NEW_VERSION},<1" "${ENV_FILE}"; then
+if ! grep -Fq "rolypoly-tk ==${NEW_VERSION}" "${ENV_FILE}"; then
   echo "${ENV_FILE} does not contain the expected rolypoly-tk ${NEW_VERSION} constraint." >&2
   exit 1
 fi

@@ -6,7 +6,7 @@ Contributions welcome! Whether it's bug fixes, new features, documentation impro
 Check out our [project roadmap and TODO list](https://docs.google.com/spreadsheets/d/1udNbxtK1QMfOhVgxHyhrgw7U1hHFeIazlcLM6VIcbJo/edit?gid=0#gid=0) to see what features and improvements are planned.
 
 ## Contribution guidelines
-- **Primary Language**: Python >=3.10
+- **Primary Language**: Python 3.11–3.14 (`>=3.11,<3.15`); full environment availability depends on dependency builds. Python 3.14 currently lacks a compatible conda `pyfastani` build.
 - **Secondary Languages**: Some system calls to shell/Bash are allowed (via run_command_comp, or at at least logged before execution).
 - **Dependency Management**: via pixi (development)
   - Prefer using existing dependencies over adding new ones.
@@ -219,14 +219,19 @@ Internally, the command:
 2. Prepares a replacement `__version__ = "X.Y.Z"` line in a temporary file.
    `pyproject.toml` is not edited because Hatch reads its dynamic version from
    this Python file.
-3. Runs `pixi workspace export conda-environment -e complete -n rolypoly-tk`.
-4. Normalizes the export for micromamba compatibility: it separates conda and
-   pip dependencies, de-duplicates them, preserves the stronger top-level
-   constraints, ensures `pip` is present, and removes the editable `-e .` entry.
-5. Appends `rolypoly-tk >=X.Y.Z,<1` to the exported pip dependencies and replaces
-   `src/setup/env_big.yaml`.
-6. Replaces both release files only after the version calculation and environment
-   export succeed.
+3. Exports the Pixi `complete` environment into `src/setup/env_big.yaml`,
+   separating conda and pip dependencies and removing the editable local package.
+4. Pins the pip-installed `rolypoly-tk` to exactly the new release version.
+5. Replaces the version file and environment YAML only after export succeeds.
+
+Development environments are maintained in `pyproject.toml` and `pixi.lock`.
+Standalone mamba installations can use `src/setup/env_big.yaml`, which installs
+RolyPoly from PyPI while a Bioconda update is pending (see README installation).
+The environment pins the RolyPoly release; dependency ranges are not a complete
+platform lockfile. Published conda installations use the [Bioconda recipe](https://github.com/bioconda/bioconda-recipes/tree/master/recipes/rolypoly-tk).
+After creating a source release, update that recipe's version, source checksum,
+and dependencies. Local recipe proposals are review artifacts; they do not
+update the published Bioconda recipe until merged upstream.
 
 #### What `commit-release` does
 

@@ -16,7 +16,7 @@ authors = [
 
 description = "RNA virus analysis toolkit"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11,<3.15"
 license = { file = "LICENSE" }
 dependencies = [
     # "lightmotif>=0.10.0,<0.11", # not yet on conda-forge, will be added later. Our use case (rnamotif_tool) is not yet mature.
@@ -31,7 +31,7 @@ dependencies = [
     "intervaltree>=3.2.1,<4",
     "polars>=1.43.0,<2",
     "bbmapy>=0.0.57,<0.0.58",
-    "xxhash>=3.8.1,<4",
+    "xxhash>=3.7.0",
     "pyrodigal-rv>=0.1.0,<0.2",
     "parasail>=1.3.4,<2",
     "pyopal>=0.7.3,<0.8",
@@ -42,6 +42,10 @@ dependencies = [
     "numpy>=2.3.0,<3",
     "polars-bio>=0.35.1,<0.36",
     "taxopy>=0.1.0,<0.2",
+    "pyskani>=0.2.0,<0.3",
+    "pyfastani>=0.6.1,<0.7",
+    "igraph>=1.0.0,<2",
+    "leidenalg>=0.12.0,<0.13",
 ]
 
 [project.urls]
@@ -133,13 +137,6 @@ diamond = ">=2.2.4,<3"
 blast = ">=2.17.0,<3"
 mmseqs2 = ">=18.8cc5c,<19"
 
-[tool.pixi.feature.cluster.pypi-dependencies]
-# Python ANI/clustering backends
-pyskani = ">=0.2.0, <0.3"
-pyfastani = ">=0.6.1, <0.7"
-igraph = ">=1.0.0, <2"
-leidenalg = ">=0.12.0, <0.13"
-
 [tool.pixi.feature.misc.dependencies]
 # For miscellaneous commands (fetch-sra, etc.)
 aria2 = ">=1.37.0,<2"
@@ -176,7 +173,7 @@ mkdocstrings-python = ">=2.0.5, <3"
 zensical = ">=0.0.51, <0.0.52"
 
 [tool.pixi.feature.py3.dependencies]
-python = ">=3.10,<3.15"
+python = ">=3.11,<3.15"
 
 [tool.pixi.environments]
 # Minimal environment with just core Python dependencies

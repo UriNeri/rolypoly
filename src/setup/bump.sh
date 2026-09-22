@@ -183,7 +183,6 @@ awk '
     for (i = 1; i <= n; i++) print dep_map[order[i]]
     if (pip_version == "") pip_version = "pip >=25.1.1,<26"
     print pip_version
-    print "pip"
   }
 ' "${TMP_TOP}" > "${TMP_TOP_OUT}"
 
@@ -211,7 +210,7 @@ awk '
   while IFS= read -r dep; do
     [[ -n "${dep}" ]] && echo "  - ${dep}"
   done < "${TMP_PIP_OUT}"
-  echo "  - rolypoly-tk >=${NEW_VERSION},<1"
+  echo "  - rolypoly-tk ==${NEW_VERSION}"
 } > "${TMP_ENV}"
 
 mv "${TMP_VERSION}" "${VERSION_FILE}"
