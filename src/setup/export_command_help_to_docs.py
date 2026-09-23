@@ -37,6 +37,10 @@ __OPTIONS_MD__
 __EPILOG_MD__
 
 __PINNED_MD__
+
+## Caveats
+
+<!-- Handwritten: preserved when CLI options are refreshed. Add caveats here; empty sections are omitted from the caveats index. -->
 """
 
 SKIP_COMMANDS = {"help"}

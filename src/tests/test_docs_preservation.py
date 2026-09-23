@@ -33,6 +33,9 @@ def test_custom_template_has_markers():
     template = (Path(__file__).parents[1] / 'setup/help_export_template.md').read_text()
     for content in (template, export.DEFAULT_TEMPLATE):
         assert content.count(export.OPTIONS_BEGIN) == content.count(export.OPTIONS_END) == 1
+        assert content.count('## Caveats') == 1
+        rendered = export.update_cli_options(content, 'Updated options')
+        assert rendered.split(export.OPTIONS_END)[1] == content.split(export.OPTIONS_END)[1]
 
 
 def test_batch_validation_prevents_partial_writes(tmp_path, monkeypatch):

@@ -1,12 +1,5 @@
 # RolyPoly Documentation
 
-[![PyPI version](https://img.shields.io/pypi/v/rolypoly-tk.svg?cacheSeconds=300)](https://pypi.org/project/rolypoly-tk/) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/rolypoly-tk?period=monthly&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=Downloads+%28month%29)](https://pepy.tech/projects/rolypoly-tk) [![License](https://img.shields.io/github/license/UriNeri/rolypoly.svg)](LICENSE) [![Docs](https://img.shields.io/badge/docs-urineri.github.io%2Frolypoly-blue)](https://urineri.github.io/rolypoly/) [![place-holder-for-bioconda-badge](https://img.shields.io/badge/bioconda-PLACEHOLDER-lightgrey)](https://bioconda.github.io/)
-
-RolyPoly is an RNA virus analysis toolkit, meant to be a "swiss-army knife" for RNA virus discovery and characterization by including a variety of commands, wrappers, parsers, automations, and some "quality of life" features for any many of a virus investigation process (from raw read processing to genome annotation). While it includes an "end-2-end" command that employs an entire pipeline, the main goals of rolypoly are:
-
-- Help non-computational researchers take a deep dive into their data without compromising on using tools that are non-techie friendly.  
-- Help (software) developers of virus analysis pipeline "plug" holes missing from their framework, by using specific RolyPoly commands to add features to their existing code base.
-
 ## Note - Rolypoly is still under development (contributions welcome!)
 RolyPoly is an open, rolling-release, still in progress project. We hope to summarise the main functionality into a manuscript ~late 2026. Pull requests and contributions are welcome and will be considered (see [contribute.md](contribute.md)).
 

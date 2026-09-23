@@ -45,6 +45,9 @@ jobs:
       - name: Install Zensical
         run: uv tool install zensical --with mkdocstrings-python
 
+      - name: Collect contextual caveats
+        run: python src/setup/collect_caveats.py
+
       # Execute Zensical with the correct config file path
       - name: Build Zensical site
         run: zensical build -f docs/mkdocs_zensical.yml --clean

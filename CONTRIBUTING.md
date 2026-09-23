@@ -113,6 +113,22 @@ block. `--overwrite` refreshes only that block, including its Options heading.
 It preserves the title, summary, description, usage examples and all other text.
 Update those sections manually when command behaviour changes.
 
+Keep quirks and limitations in one `## Caveats` section per page, outside the
+CLI-options block. Both command templates include this protected, handwritten
+section. Use `###` headings for individual topics. The section can also be added
+to any other documentation page, such as Configuration. Empty sections and
+comment-only placeholders are omitted from the index.
+
+`docs-build`, `docs-serve` (on startup), and the deployment workflow run
+`src/setup/collect_caveats.py`. It discovers nonempty Caveats sections throughout
+`docs/mkdocs_docs/` and refreshes only the marked index in `caveats.md`, preserving
+that page's introduction and the contextual source pages. Topic headings appear
+beside each section link; keep explanations and any detailed summaries in their
+original contexts. To refresh the index after adding a caveat during a live
+preview, run `pixi run -e dev docs-caveats`. Run the same task before committing
+changed caveats so the checked-in index stays current. Direct `zensical` commands
+require running the collector first.
+
 Existing pages without markers are rejected. To migrate a legacy page:
 
 ```bash

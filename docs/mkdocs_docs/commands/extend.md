@@ -56,6 +56,6 @@ rolypoly extend [OPTIONS]
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
 <!-- END GENERATED CLI OPTIONS -->
 
-
-
-
+For the effects of read trimming on genome ends, see
+[poly(A) trimming and genome termini](filter_reads.md#polya-trimming-and-genome-termini).
+These commands do not currently restore trimmed tails.

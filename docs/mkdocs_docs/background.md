@@ -14,7 +14,7 @@ How your RNA was prepared for sequencing is usually the main thing that determin
 
 - If your library is poly-A selected: RolyPoly includes a poly-A trimming step in `filter-reads`.
   Trimming can also remove genuine viral termini; retain pre-trimming reads and
-  see the [poly(A) trimming caveat](caveats.md#polya-trimming-and-genome-termini).
+  see the [poly(A) trimming caveat](commands/filter_reads.md#polya-trimming-and-genome-termini).
 - If you want host filtering: provide a host reference genome to `filter-reads` and `assemble` (RolyPoly will try to mask likely viral regions in that reference before using it for filtering).
 - If your sample is virome-enriched: you can often skip rRNA and host removal, use lighter quality filtering, and sometimes enable deduplication steps (depending on your goals).
 

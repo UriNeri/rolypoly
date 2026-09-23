@@ -50,6 +50,13 @@ rolypoly filter-reads [OPTIONS]
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
 <!-- END GENERATED CLI OPTIONS -->
 
+## Caveats
 
+### Poly(A) trimming and genome termini
 
+Terminal poly(A)/poly(T) trimming can remove genuine viral terminal sequence,
+leaving an assembled genome with shortened or missing 5'/3' untranslated regions (UTRs). polyA trimming can be valuble for removing unwanted polyA sequences (e.g., from host transcripts), and reduce potential time spent on attempted assembly of reads with long homopolymer tails.  A practical approach is to keep the reads from before poly(A) trimming, and "post-hoc" mapping those reads back to contigs - this may help investigate missing termini, but homopolymer
+length and ambiguous alignments may require careful interpretation. Mapping can also
+help assess termini when no poly(A) trimming was performed. 
 
+I'm still not implementing automatic mapping-based termini rescue, though a likely candidate would be to use the `extend` (or `termini`) commands to use the post-hoc mapped reads in the pile-up approach for reconstructing missing terminal sequences. This requires testing, leaving as a TODO.

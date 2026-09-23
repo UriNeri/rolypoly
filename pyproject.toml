@@ -246,8 +246,9 @@ commit-release = "bash src/setup/commit_release.sh"
 publish-release = "bash src/setup/publish_release.sh"
 
 [tool.pixi.feature.docs.tasks]
-docs-serve = "zensical serve -f docs/mkdocs_zensical.yml"
-docs-build = "zensical build -f docs/mkdocs_zensical.yml"
+docs-caveats = "python src/setup/collect_caveats.py"
+docs-serve = { cmd = "zensical serve -f docs/mkdocs_zensical.yml", depends-on = ["docs-caveats"] }
+docs-build = { cmd = "zensical build -f docs/mkdocs_zensical.yml", depends-on = ["docs-caveats"] }
 
 [tool.ruff]
 exclude = [

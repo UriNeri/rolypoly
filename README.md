@@ -2,7 +2,7 @@
 
 # RolyPoly
 
-[![PyPI version](https://img.shields.io/pypi/v/rolypoly-tk.svg?cacheSeconds=300)](https://pypi.org/project/rolypoly-tk/) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/rolypoly-tk?period=monthly&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=Downloads+%28month%29)](https://pepy.tech/projects/rolypoly-tk) [![License](https://img.shields.io/github/license/UriNeri/rolypoly.svg)](LICENSE) [![Docs](https://img.shields.io/badge/docs-urineri.github.io%2Frolypoly-blue)](https://urineri.github.io/rolypoly/) [![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat)](http://bioconda.github.io/recipes/rolypoly-tk/README.html)
+[![PyPI version](https://img.shields.io/pypi/v/rolypoly-tk.svg?cacheSeconds=300)](https://pypi.org/project/rolypoly-tk/) [![PyPI Downloads](https://static.pepy.tech/personalized-badge/rolypoly-tk?period=monthly&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=Downloads+%28month%29)](https://pepy.tech/projects/rolypoly-tk) [![License](https://img.shields.io/github/license/UriNeri/rolypoly.svg)](LICENSE) [![Docs](https://img.shields.io/badge/docs-urineri.github.io%2Frolypoly-blue)](https://urineri.github.io/rolypoly/) [![install from bioconda](https://img.shields.io/badge/install%20from-bioconda-brightgreen.svg?style=flat)](http://bioconda.github.io/recipes/rolypoly-tk/README.html)
 [![Install with Pixi](https://img.shields.io/badge/install-Pixi-yellow)](#developer-install-modularcommand-specific-pixi-environments) [![Standalone mamba](https://img.shields.io/badge/install-standalone_mamba-blue)](#standalone-mamba-installation-while-bioconda-updates-are-pending)
 
 RolyPoly is an RNA virus analysis toolkit, meant to be a "swiss-army knife" for RNA virus discovery and characterization by including a variety of commands, wrappers, parsers, automations, and some "quality of life" features for any many of a virus investigation process (from raw read processing to genome annotation).  
@@ -18,7 +18,7 @@ Please report bugs you find in the [Issues](https://github.com/UriNeri/rolypoly/
 
 ## Installation
 
-### Mamba/Conda
+### From Bioconda
 **Recommended for most users** if you want a "just works" solution and intend to use rolypoly as a CLI tool in an independent environment.  
 First, install conda or [mamba](https://github.com/mamba-org/mamba), if you don't have it already:
 ```bash
@@ -28,7 +28,7 @@ Then install rolypoly-tk from bioconda into a new environment:
 ```bash
 micromamba create -n rolypoly-tk -c bioconda -c conda-forge rolypoly-tk
 ```  
-Then, activate the environment and fetch rolypoly's database (may take a few minutes)
+Then, activate the environment and fetch rolypoly's database (*may take a few minutes*)
 ```bash
 micromamba run -n rolypoly-tk rolypoly get-data --rolypoly-data /home/neri/test_rp_data
 ```
@@ -39,28 +39,22 @@ micromamba activate rolypoly-tk
 rolypoly --help 
 ```
 
-### Standalone mamba installation while Bioconda updates are pending
-
-This environment installs external tools from conda-forge/Bioconda and RolyPoly
-plus its Python dependencies from PyPI. It does not install the Bioconda
-`rolypoly-tk` package. Use the YAML from the same **published release tag**:
+### "Standalone" mamba installation
+The Bioconda version can lag behind the pypi and pixi versions (bioconda recipe changes may require someone from bioconda to review the change).  
+A self contained conda/mamba recipe is available and you can use it instead.
 
 ```bash
-RP_VERSION=0.7.21  # Replace with the published release you want to install.
+RP_VERSION=0.7.22  # Replace if you want a previous version.
 curl -fL "https://raw.githubusercontent.com/UriNeri/rolypoly/v${RP_VERSION}/src/setup/env_big.yaml" -o env_big.yaml
-mamba env create -n rolypoly-standalone -f env_big.yaml
-mamba run -n rolypoly-standalone rolypoly --version
-mamba run -n rolypoly-standalone rolypoly get-data --rolypoly-data "$HOME/rolypoly-data"
+mamba env create -n rolypoly-tk -f env_big.yaml
+mamba run -n rolypoly-tk rolypoly --version
+mamba run -n rolypoly-tk rolypoly get-data --rolypoly-data "$HOME/rolypoly-data"
 ```
 
-With micromamba, use `micromamba create -n rolypoly-standalone -f env_big.yaml`
-and replace `mamba run` with `micromamba run`. From a checkout, pass
-`-f src/setup/env_big.yaml` instead of downloading it, after its pinned RolyPoly
-version has been published to PyPI. The restored YAML pins RolyPoly exactly;
-other dependencies use version ranges, so this is not a fully locked environment.
-Historical tags retain their original YAML and dependency constraints.
+With micromamba, use `micromamba create -n rolypoly-tk -f env_big.yaml`
+and replace `mamba run` with `micromamba run`.
 
-### Developer install: Modular/Command-Specific Pixi Environments
+### Developer install: Modular / Pixi Environments
 **Mostly for software developers** looking to try or make use of specific rolypoly features with minimal risk of dependency conflicts, by using [Pixi](https://pixi.sh/) to create isolated environments for each command group:
 
 ```bash

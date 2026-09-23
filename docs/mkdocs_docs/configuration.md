@@ -15,10 +15,11 @@ Example configuration:
 ```
 The database path supports a leading environment variable, such as
 `${RP_DATA_ROOT}`, with an optional path suffix. See the
-[path and storage caveats](caveats.md#environment-variables-and-path-expansion)
-for expansion limits, fast-storage recommendations and temporary execution
-permissions. Use `get-data` to set up the initial configuration and download
-resources. For an unset leading variable, the resolver may use a path relative
+[path expansion caveats](#environment-variables-and-path-expansion)
+for expansion limits and [storage caveats](commands/get_data.md#caveats)
+for fast-storage recommendations and temporary execution permissions. Use
+`get-data` to set up the initial configuration and download resources. For an
+unset leading variable, the resolver may use a path relative
 to the RolyPoly code directory; this is not a general fallback for a missing
 absolute database path.
 
@@ -98,3 +99,41 @@ rolypoly filter-reads \
     -o filtered/ \
     --override-parameters '{"dedupe": {"passes": 2}, "trim_adapters": {"minlen": 55}}'
 ```
+
+## Caveats
+
+### Environment variables and path expansion
+
+The configuration file is named **`rpconfig.json`**. You can export one or two
+shell variables for convenient storage roots and reuse them in commands:
+
+```bash
+export RP_DATA_ROOT=/fast/storage/rolypoly_data
+export RP_WORK_ROOT=/fast/scratch/rolypoly
+```
+
+In `rpconfig.json`, set the database field to reference the exported variable
+(keep the other settings):
+
+```json
+"ROLYPOLY_DATA": "${RP_DATA_ROOT}"
+```
+
+The current database resolver supports a leading `$VAR` or `${VAR}`, optionally
+followed by a path suffix, and expands a leading `~`. Export variables in the
+shell launching RolyPoly, or in its job script; a shell startup-file setting is
+not necessarily inherited by a batch job. Setting a variable alone does not
+replace an unrelated absolute database path already stored in the configuration.
+
+For command-line paths, let the shell expand variables explicitly, for example
+`--temp-dir "$RP_WORK_ROOT/tmp"` and `--output "$RP_WORK_ROOT/results"`, on
+commands exposing those options. Create the required parent directories first.
+JSON is not shell code: general variable substitution, nested variables and
+expansion in every configuration field or command option are not guaranteed.
+Literal `~` or `$HOME` paths may therefore remain unexpanded outside the database
+resolver; prefer absolute paths or shell-expanded `"$HOME/..."` arguments.
+
+Relative paths can work, but usually depend on the directory from which the
+command is launched. Absolute paths are more reliable across scripts, batch jobs
+and resumed runs.  
+Honestly just use absolute paths. 
