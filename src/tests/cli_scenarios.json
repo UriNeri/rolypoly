@@ -141,6 +141,37 @@
     }
   },
   {
+    "id": "translate_six_frame_outputs",
+    "description": "Validate native six-frame FAA, coding-orientation FNA, and GFF3 output",
+    "args": [
+      "translate",
+      "-i",
+      "testing_folder/inputs/contigs/test_contigs.fasta",
+      "-o",
+      "{tmp}/translated.faa",
+      "--header-format",
+      "canonical",
+      "--fna-output",
+      "{tmp}/translated.fna",
+      "--gff-output",
+      "{tmp}/translated.gff3"
+    ],
+    "expected_files": [
+      "{tmp}/translated.faa",
+      "{tmp}/translated.fna",
+      "{tmp}/translated.gff3"
+    ],
+    "expected_contains": {
+      "{tmp}/translated.faa": [
+        "_frame_p1"
+      ],
+      "{tmp}/translated.gff3": [
+        "##gff-version 3",
+        "translated_region"
+      ]
+    }
+  },
+  {
     "id": "annotate_rna_dna_skipsteps",
     "description": "Smoke test annotate-rna DNA input with explicit step skipping",
     "args": [

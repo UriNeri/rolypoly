@@ -125,3 +125,4 @@ nav:
       - "fastx-stats": commands/fastx_stats.md
       - "fetch-sra": commands/fetch_sra.md
       - "rename-seqs": commands/rename_seqs.md
+      - "translate": commands/translate.md

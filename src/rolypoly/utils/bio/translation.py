@@ -488,6 +488,140 @@ def translate_six_frames_numpy(
     return translations
 
 
+@lru_cache(maxsize=None)
+def numpy_start_lookup(
+    genetic_code: int = 1, alternative_starts: bool = True
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Return byte and codon lookup arrays for unambiguous start codons."""
+    _, starts = make_translation_table(genetic_code)
+    symbols = tuple(IUPAC_BASES)
+    base_codes = np.full(256, _NUMPY_INVALID_BASE, dtype=np.uint16)
+    for code, base in enumerate(symbols):
+        base_codes[ord(base)] = code
+    lookup = np.zeros(_NUMPY_CODON_RADIX**3, dtype=np.bool_)
+    for ambiguous_codon in product(symbols, repeat=3):
+        concrete = [
+            "".join(codon)
+            for codon in product(
+                *(IUPAC_BASES[base] for base in ambiguous_codon)
+            )
+        ]
+        is_start = all(
+            starts[codon] if alternative_starts else codon == "ATG"
+            for codon in concrete
+        )
+        first, second, third = (
+            int(base_codes[ord(base)]) for base in ambiguous_codon
+        )
+        index = (
+            first * _NUMPY_CODON_RADIX**2
+            + second * _NUMPY_CODON_RADIX
+            + third
+        )
+        lookup[index] = is_start
+    return base_codes, lookup
+
+
+def find_six_frame_orfs_numpy(
+    sequence: str,
+    genetic_code: int = 1,
+    min_orf_length: int = 0,
+    alternative_starts: bool = True,
+    include_partial: bool = True,
+    all_starts: bool = False,
+    stops_as_x: bool = True,
+) -> List[Dict[str, object]]:
+    """Find start/stop-delimited ORFs in all six translated frames.
+
+    By default, each stop-delimited region contributes its longest start-led
+    ORF. An initial region without a start contributes an edge-to-stop partial
+    when partial ORFs are enabled. Trailing start-to-edge ORFs are also partial.
+    Edge-to-edge regions without either boundary are not reported.
+    """
+    sequence = normalize_nucleotide_sequence(sequence)
+    reverse = sequence.translate(IUPAC_COMPLEMENT)[::-1]
+    translations = dict(
+        translate_six_frames_numpy(sequence, genetic_code, clean=False)
+    )
+    start_codes, start_lookup = numpy_start_lookup(
+        genetic_code, alternative_starts
+    )
+    results = []
+    for frame in SIX_FRAMES:
+        frame_offset = abs(frame) - 1
+        oriented = sequence if frame > 0 else reverse
+        frame_sequence = oriented[frame_offset:]
+        complete_length = len(frame_sequence) // 3 * 3
+        coding_sequence = frame_sequence[:complete_length]
+        amino_acids = translations[frame]
+        encoded = np.frombuffer(coding_sequence.encode("ascii"), dtype=np.uint8)
+        codes = start_codes[encoded]
+        indices = (
+            codes[::3] * _NUMPY_CODON_RADIX**2
+            + codes[1::3] * _NUMPY_CODON_RADIX
+            + codes[2::3]
+        )
+        start_flags = start_lookup[indices]
+
+        segment_start = 0
+        segments = []
+        for amino_index, amino_acid in enumerate(amino_acids):
+            if amino_acid == "*":
+                segments.append((segment_start, amino_index + 1, True))
+                segment_start = amino_index + 1
+        if segment_start < len(amino_acids):
+            segments.append((segment_start, len(amino_acids), False))
+
+        for segment_start, segment_end, has_stop in segments:
+            starts = np.flatnonzero(start_flags[segment_start:segment_end])
+            starts = [segment_start + int(index) for index in starts]
+            if starts:
+                selected_starts = starts if all_starts else starts[:1]
+                starts_at_edge = False
+            elif include_partial and segment_start == 0 and has_stop:
+                selected_starts = [segment_start]
+                starts_at_edge = True
+            else:
+                continue
+
+            for orf_start in selected_starts:
+                partial_5prime = starts_at_edge
+                partial_3prime = not has_stop
+                if (partial_5prime or partial_3prime) and not include_partial:
+                    continue
+                protein_length = segment_end - orf_start - int(has_stop)
+                if protein_length == 0 or protein_length < min_orf_length:
+                    continue
+                protein = amino_acids[orf_start:segment_end]
+                if not partial_5prime and protein:
+                    protein = "M" + protein[1:]
+                if stops_as_x:
+                    protein = protein.replace("*", "X")
+                oriented_start = frame_offset + orf_start * 3
+                oriented_end = frame_offset + segment_end * 3
+                nucleotide = oriented[oriented_start:oriented_end]
+                if frame > 0:
+                    nt_start = oriented_start + 1
+                    nt_end = oriented_end
+                else:
+                    nt_start = len(sequence) - oriented_end + 1
+                    nt_end = len(sequence) - oriented_start
+                results.append(
+                    {
+                        "frame": frame,
+                        "strand": "+" if frame > 0 else "-",
+                        "start": nt_start,
+                        "end": nt_end,
+                        "protein": protein,
+                        "nucleotide": nucleotide,
+                        "protein_length": protein_length,
+                        "partial_5prime": partial_5prime,
+                        "partial_3prime": partial_3prime,
+                    }
+                )
+    return results
+
+
 def validate_six_frame_defline(
     defline_template: str, require_unique_ids: bool = True
 ) -> None:

@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Added
+- `translate`: expose the native IUPAC-aware NumPy six-frame translator as a miscellaneous CLI command. Support configurable genetic codes, stop and defline policies, optional start/stop-delimited ORF extraction, coding-orientation FNA output, and GFF3 with an optional embedded reference FASTA.
+
+### Added
 - `filter-contigs`: opt-in rRNA cmscan screening with configurable union-coverage removal, and `--flag-only` to retain accepted host/rRNA matches as coordinate-bearing evidence. Persist screening settings and raw rRNA results.
 - `roll`: expose `--filter-rrna` and `--filter-flag-only`; report existing annotate-rna and early-filter evidence as red RNA/QC warnings with source provenance and overlapping-feature lanes.
 - `annotate-prot`, `marker-search`: normalize protein query IDs before search and retain complete native headers, source IDs, prediction attributes, original tool files, and translation manifests for provenance.

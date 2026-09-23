@@ -140,6 +140,7 @@ CONTEXT_SETTINGS = dict(
                 "fastx-stats": "rolypoly.commands.misc.fastx_stats.fastx_stats",
                 "fastx-calc": "rolypoly.commands.misc.fastx_calc.fastx_calc",
                 "rename-seqs": "rolypoly.commands.misc.rename_seqs.rename_seqs",
+                "translate": "rolypoly.commands.misc.translate.translate",
                 "help": "rolypoly.rolypoly.rolypoly",
             },
         },
