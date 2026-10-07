@@ -730,6 +730,8 @@ def determine_fastq_type(
     sample_size: int = 1000,  # Increased from whenever. should be consisent as long as the number is even..
     header_sample_size: int = 100,
     logger: Optional[logging.Logger] = None,
+    *,
+    strict: bool = False,
 ) -> Dict:
     """Analyze FASTQ headers to determine file characteristics.
 
@@ -738,6 +740,8 @@ def determine_fastq_type(
         sample_size: Number of reads (from the top of file) to use for read stats
         header_sample_size: Number of reads to use for header metadata analysis
         logger: Logger instance
+        strict: Raise on unreadable, empty, or non-FASTQ inputs instead of
+            returning the historical fallback result.
 
     Returns:
         Dictionary containing header analysis results
@@ -765,6 +769,8 @@ def determine_fastq_type(
         results["header_analysis"] = header_analysis
 
         fastq_df = read_fastx(file_path).head(sample_size).collect()
+        if strict and (fastq_df.is_empty() or "quality" not in fastq_df.columns):
+            raise ValueError(f"No FASTQ records found in {file_path}")
         headers = fastq_df["header"].to_list()
 
         # Count the records actually sampled, and require adjacent matching
@@ -851,6 +857,10 @@ def determine_fastq_type(
 
     except Exception as e:
         logger.error(f"Error analyzing  {file_path}: {e}")
+        if strict:
+            raise ValueError(
+                f"Could not analyze FASTQ file {file_path}: {e}"
+            ) from e
     return results
 
 
@@ -895,6 +905,8 @@ def identify_fastq_files(
     input_path: Union[str, Path],
     return_rolypoly: bool = True,
     logger: Optional[logging.Logger] = None,
+    *,
+    strict: bool = False,
 ) -> Dict:
     """Identify and categorize FASTQ files from input path.
 
@@ -902,6 +914,7 @@ def identify_fastq_files(
         input_path: Path to input directory or file
         return_rolypoly: Whether to look for and return rolypoly-formatted files first
         logger: Logger instance
+        strict: Propagate FASTQ analysis failures.
 
     Returns:
         Dictionary containing categorized file information:
@@ -956,7 +969,7 @@ def identify_fastq_files(
                 lib[kind] = file
                 processed_files.add(file)
                 file_info["file_details"][str(file)] = determine_fastq_type(
-                    file, logger=logger
+                    file, logger=logger, strict=strict
                 )
 
         logger.info(f"Processing {len(all_fastq)} FASTQ files")
@@ -971,8 +984,12 @@ def identify_fastq_files(
                 pair_path = file.parent / pair_file
                 if pair_path.exists() and pair_path in all_fastq:
                     # Analyze both files
-                    r1_analysis = determine_fastq_type(file, logger=logger)
-                    r2_analysis = determine_fastq_type(pair_path, logger=logger)
+                    r1_analysis = determine_fastq_type(
+                        file, logger=logger, strict=strict
+                    )
+                    r2_analysis = determine_fastq_type(
+                        pair_path, logger=logger, strict=strict
+                    )
 
                     file_info["file_details"][str(file)] = r1_analysis
                     file_info["file_details"][str(pair_path)] = r2_analysis
@@ -992,7 +1009,7 @@ def identify_fastq_files(
                 continue
 
             logger.debug(f"Analyzing remaining file: {file}")
-            analysis = determine_fastq_type(file, logger=logger)
+            analysis = determine_fastq_type(file, logger=logger, strict=strict)
             file_info["file_details"][str(file)] = analysis
 
             # Categorize based on analysis
@@ -1015,7 +1032,7 @@ def identify_fastq_files(
     else:
         # Single file input
         logger.info(f"Analyzing single file: {input_path}")
-        analysis = determine_fastq_type(input_path, logger=logger)
+        analysis = determine_fastq_type(input_path, logger=logger, strict=strict)
         file_info["file_details"][str(input_path)] = analysis
 
         if analysis["file_type"] == "interleaved":
@@ -1067,7 +1084,10 @@ def identify_fasta_files(
 
 
 def handle_input_fastq(
-    input_path: Union[str, Path], logger: Optional[logging.Logger] = None
+    input_path: Union[str, Path],
+    logger: Optional[logging.Logger] = None,
+    *,
+    strict: bool = False,
 ) -> Dict:
     """Handle input FASTQ files and prepare file information for processing.
 
@@ -1078,6 +1098,7 @@ def handle_input_fastq(
     Args:
         input_path: Path to input directory or file(s)
         logger: Logger instance
+        strict: Propagate FASTQ analysis failures.
 
     Returns:
         Dictionary containing:
@@ -1124,8 +1145,12 @@ def handle_input_fastq(
 
             logger.info(f"Detected paired files: {r1_path} and {r2_path}")
             file_details = {
-                str(r1_path): determine_fastq_type(r1_path, logger=logger),
-                str(r2_path): determine_fastq_type(r2_path, logger=logger),
+                str(r1_path): determine_fastq_type(
+                    r1_path, logger=logger, strict=strict
+                ),
+                str(r2_path): determine_fastq_type(
+                    r2_path, logger=logger, strict=strict
+                ),
             }
             average_read_length, average_read_quality = aggregate_read_stats(
                 file_details
@@ -1148,7 +1173,7 @@ def handle_input_fastq(
             # Use first file for naming
             file_name = derive_file_name(file_paths[0])
             file_details = {
-                str(path): determine_fastq_type(path, logger=logger)
+                str(path): determine_fastq_type(path, logger=logger, strict=strict)
                 for path in file_paths
             }
             average_read_length, average_read_quality = aggregate_read_stats(
@@ -1168,7 +1193,7 @@ def handle_input_fastq(
 
     # Use consolidated file detection for directory or single file
     file_info = identify_fastq_files(
-        input_path, return_rolypoly=False, logger=logger
+        input_path, return_rolypoly=False, logger=logger, strict=strict
     )
 
     # Generate appropriate file name

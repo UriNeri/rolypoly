@@ -1,5 +1,34 @@
 [
   {
+    "id": "detect_seq_layout_directory_json",
+    "description": "Detect paired, interleaved, and single FASTQs in a tiny directory",
+    "args": [
+      "detect-seq-layout", "-i", "testing_folder/inputs/reads/layout",
+      "-o", "{tmp}/layout.json"
+    ],
+    "expected_files": ["{tmp}/layout.json"],
+    "expected_contains": {
+      "{tmp}/layout.json": [
+        "\"schema_version\": 1", "\"paired_R1\"", "\"paired_R2\"",
+        "\"interleaved\"", "\"single\"", "\"header_analysis\""
+      ]
+    }
+  },
+  {
+    "id": "detect_seq_layout_fasta_toml",
+    "description": "Discover a FASTA through the shorter alias and write TOML",
+    "args": [
+      "detect-layout", "-i", "testing_folder/inputs/contigs/test_contigs.fasta",
+      "--fmt", "toml", "-o", "{tmp}/nested/layout.toml"
+    ],
+    "expected_files": ["{tmp}/nested/layout.toml"],
+    "expected_contains": {
+      "{tmp}/nested/layout.toml": [
+        "schema_version = 1", "test_contigs.fasta", "fasta_files = [", "fastq = {"
+      ]
+    }
+  },
+  {
     "id": "termini_demo",
     "description": "Smoke test termini on bundled segmented demo FASTA",
     "args": [
