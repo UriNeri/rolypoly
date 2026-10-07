@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- `detect-seq-layout` (short alias `detect-layout`): expose shared FASTA discovery and FASTQ library/layout detection, including sampled read statistics and header metadata, as JSON or TOML on stdout or in a new output file.
 - `translate`: expose the native IUPAC-aware NumPy six-frame translator as a miscellaneous CLI command. Support configurable genetic codes, stop and defline policies, optional start/stop-delimited ORF extraction, coding-orientation FNA output, and GFF3 with an optional embedded reference FASTA.
 
 ## v0.7.22

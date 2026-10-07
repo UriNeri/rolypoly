@@ -120,6 +120,7 @@ nav:
       - "cluster": commands/cluster.md
       - "binit": commands/binit.md
     - Miscellaneous:
+      - "detect-seq-layout": commands/detect_seq_layout.md
       - "report": commands/report.md
       - "fastx-calc": commands/fastx_calc.md
       - "fastx-stats": commands/fastx_stats.md

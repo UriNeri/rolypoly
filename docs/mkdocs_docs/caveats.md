@@ -5,6 +5,7 @@ Some quirks and practical limitations to keep in mind if you use rolypoly.
 <!-- BEGIN GENERATED CAVEATS INDEX -->
 
 - [Assemble](commands/assemble.md#caveats) — Effects of digital read depth normalization; Mate-Pair Scaffolding alone is not implicitly reliable.
+- [Detect sequence layout](commands/detect_seq_layout.md#caveats) — Sampled inference, not full validation.
 - [Filter Reads](commands/filter_reads.md#caveats) — Poly(A) trimming and genome termini.
 - [Get Data](commands/get_data.md#caveats) — Storage paths and temporary execution.
 - [MMTAX](commands/mmtax.md#caveats) — Defaults can produce overly specific assignments; Similarity assignment is not taxonomic demarcation.

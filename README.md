@@ -127,6 +127,7 @@ Note: The (mostly, hopefully) reproducible source workflows for these data are m
 
 #### Miscellaneous
 
+- [`detect-seq-layout`](https://urineri.github.io/rolypoly/commands/detect_seq_layout/) (alias `detect-layout`) — Discover FASTA inputs and infer FASTQ libraries, layout, sampled read statistics, and header metadata; print or save JSON/TOML.
 - [`report`](https://urineri.github.io/rolypoly/commands/report/) — Generate interactive genome maps and explore annotation results.
 - ✅ [`roll`](https://urineri.github.io/rolypoly/commands/roll) — Run an end-to-end pipeline (before v0.7.1, named `end2end`).
 - ✅ [`fetch-sra`](https://urineri.github.io/rolypoly/commands/misc) — Download SRA fastq files (from ENA)
