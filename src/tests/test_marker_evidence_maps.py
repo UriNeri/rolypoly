@@ -71,3 +71,14 @@ def test_marker_matched_sequence_is_embedded_without_alignment_gaps(tmp_path):
     path=marker_table(tmp_path, aligned_region='Ma-k.K')
     models=attach_marker_evidence([], [path], [], {'CID':101})
     assert models[0]['orfs'][0]['hits'][0]['matched_sequence']=='MAKK'
+
+
+def test_explicit_marker_coordinates_are_parsed_before_sequence_slice(tmp_path):
+    path=marker_table(tmp_path, query_full_name='CID_orf_1', translation_id='CID_orf_1',
+        translation_method='pyrodigal', translation_nt_start=1, translation_nt_end=30,
+        nt_start=4, nt_end=15, aa_start='2', aa_end='5', strand=1, contig_length=30)
+    (tmp_path/'predicted_orfs.faa').write_text('>CID_orf_1\nMAKLMNQ\n')
+
+    models=attach_marker_evidence([], [path], [], {'CID':30})
+
+    assert models[0]['orfs'][0]['hits'][0]['matched_sequence']=='AKLM'

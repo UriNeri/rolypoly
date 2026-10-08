@@ -632,7 +632,17 @@ def attach_marker_evidence(contigs, tables, extra_tabs, contig_lengths=None):
             query_id = row.get("translation_id") or str(row.get("query_full_name", "")).split()[0]
             protein = proteins.get(query_id) or row.get("full_qseq")
             a, b = row.get("aa_start"), row.get("aa_end")
-            row["matched_sequence"] = (protein[a-1:b] if protein and a and b else row.get("aligned_region"))
+            try:
+                aa_start = int(float(a)) if a not in (None, "") else None
+                aa_end = int(float(b)) if b not in (None, "") else None
+            except (TypeError, ValueError, OverflowError):
+                aa_start = aa_end = None
+            row["matched_sequence"] = (
+                protein[aa_start - 1:aa_end]
+                if protein and aa_start is not None and aa_end is not None
+                and 1 <= aa_start <= aa_end
+                else row.get("aligned_region")
+            )
             if row["matched_sequence"]:
                 row["matched_sequence"] = row["matched_sequence"].replace("-", "").replace(".", "").upper()
             rows.append(row)
