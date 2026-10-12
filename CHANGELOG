@@ -3,8 +3,23 @@
 ## Unreleased
 
 ### Added
+- `filter-reads`, `roll`: add `-mlp` / `--multi-lib-pol` / `--multilibrarypolicy` with `keep-separate` (default), `single-output`, and `pre-concatenate` policies, per-input library manifests, and effective preprocessing configurations.
+- `dereplicate-seqs`: expose existing streaming cross-input sequence/ID/header deduplication, reverse-complement and case policies, discarded-record output, and the legacy duplicate list.
+- `extract-seqs`: expose existing streaming full-header/substring selection and inversion. Both commands support FASTA on stdout or in new plain/gzip files without changing shared sequence utilities.
 - `detect-seq-layout` (short alias `detect-layout`): expose shared FASTA discovery and FASTQ library/layout detection, including sampled read statistics and header metadata, as JSON or TOML on stdout or in a new output file.
 - `translate`: expose the native IUPAC-aware NumPy six-frame translator as a miscellaneous CLI command. Support configurable genetic codes, stop and defline policies, optional start/stop-delimited ORF extraction, coding-orientation FNA output, and GFF3 with an optional embedded reference FASTA.
+
+### Changed
+- `filter-reads`: preprocess and first-deduplicate libraries independently by default. `single-output` pools streams before final sequence deduplication; `pre-concatenate` pools before preprocessing and disables library-specific adapter discovery, error correction, and optical deduplication.
+- Fast filtering presets and fast/mini `roll` modes select `pre-concatenate`, logging policy overrides. Assemblers discover and consume all published library streams without a separate policy option.
+- `filter-reads`: reuse complete outputs only with matching input paths, library policy, manifest, and output files; legacy outputs require explicit overwrite or a new directory. Partial intermediate-step resumption is no longer supported.
+
+### Fixed
+- `filter-reads`: retain the first read pair and every subsequent input during concatenation, publish all library outputs, and preserve paired/unpaired stream handling and tracker metadata.
+- `roll`, `assemble`: preserve explicit assembler and dereplication choices through nested preset invocation and normalize assembler selections to validated lists.
+- Mini `roll`: include every sampled library, map the `first` sampling option correctly, and propagate sampling threads.
+- `filter-reads`: isolate fetched host references by library, include library metadata in archived reports, and fail explicitly on preprocessing timeouts.
+- `assemble`: remove cleanup of the working-directory-relative `tmp` folder, preserving unrelated files and outputs nested beneath it.
 
 ## v0.7.22
 
