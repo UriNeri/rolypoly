@@ -24,6 +24,33 @@ The pipeline follows these stages, subject to the selected preset and skipped st
 
 Virus-characteristic prediction is planned but is not implemented.
 
+### Library policy and explicit overrides
+
+`-mlp` / `--multi-lib-pol` / `--multilibrarypolicy` is passed to `filter-reads`:
+`keep-separate` (default), `single-output`, or `pre-concatenate`.
+See [Filter Reads](filter_reads.md#multiple-libraries) for processing differences,
+output names, and the input-to-output library manifest. `assemble` discovers
+the resulting libraries by their filenames and uses backend-native file lists
+or datasets; `roll` does not force output collapse just because an assembler
+models one logical library.
+
+Mini mode and fast roll, filter, or assembly presets select `pre-concatenate`
+even when a different policy was requested, and log that choice. Mini mode
+passes **all** sampled libraries into filtering, not just the first pair.
+Subsampling still operates per input library before their concatenation.
+
+Explicit `--assembler` takes precedence over the assembly preset, including
+the default `rna_virus` preset and mini mode's `fast` preset. Explicit
+`--no-rmdup` also survives preset application. For example:
+
+```bash
+rolypoly roll -i raw_reads/sample_1 -o results/sample_1 \
+  --assembler megahit --multi-lib-pol keep-separate
+```
+
+This requests MEGAHIT only, with independently preprocessed libraries.
+Preset-specific per-tool parameters still apply to the selected assembler.
+
 ## Workflow
 
 ```mermaid
@@ -69,18 +96,19 @@ rolypoly roll [OPTIONS]
 ## Options
 
 - `-i`, `--input`: Input path to raw RNA-seq data (fastq/gz file or directory with fastq/gz files) (type: `TEXT`; required; default: `Sentinel.UNSET`)
-- `-o`, `--output-dir`: Output directory (type: `TEXT`; default: `/home/neri/Documents/Github/rolypoly_rp_e2e`)
+- `-o`, `--output-dir`: Output directory (type: `TEXT`; default: `/home/neri/Documents/GitHub/rps/rolypoly_rp_e2e`)
 - `-D`, `--host`: Path to the user-supplied host/contamination fasta /// Fasta file of known DNA entities expected in the sample. If not provided some steps will be skippted. (type: `TEXT`)
-- `--preset`: Preset that selects both a filter-reads and an assemble preset suited to the library type. 'rna_virus': RNA virus metatranscriptome (default): rRNA removal (mincovfraction=0.6), host + identified-DNA filtering, no polyA trim; rnaviralSPAdes+MEGAHIT assembly 'ribodepleted': Experimentally ribo-depleted total RNA: residual rRNA filtering (mincovfraction=0.6, same as rna_virus), host + identified-DNA filtering, no polyA trim; rnaviralSPAdes+MEGAHIT assembly 'poly_a': Poly-A selected mRNA: polyA tail trimming (trimpolya=18), stricter quality trim (trimq=12); rnaSPAdes+MEGAHIT assembly 'all_virus_metat': All-virus metatranscriptome / RNA virome: more aggressive rRNA removal (mincovfraction=0.5, versus default 0.6), skips identified-DNA filter; rnaviralSPAdes+MEGAHIT assembly 'DNA_virus': DNA virome / metagenomics: skips rRNA and identified-DNA filtering entirely; metaSPAdes only 'complete': Expansive: rna_virus_metat read filtering + all three assemblers (metaSPAdes+rnaviralSPAdes+MEGAHIT) 'fast': Quick preview / mini mode: subsamples reads, skips error correction and identified-DNA filter; MEGAHIT only with narrow k-mer range; narrowed marker/nucleic/annotation databases (type: `CHOICE`; default: `rna_virus`)
+- `--preset`: Preset that selects both a filter-reads and an assemble preset suited to the library type. 'rna_virus': RNA virus metatranscriptome (default): rRNA removal (mincovfraction=0.6), host + identified-DNA filtering, no polyA trim; rnaviralSPAdes+MEGAHIT assembly 'ribodepleted': Total-RNA that went through ribo-depletion: residual rRNA filtering (mincovfraction=0.6, same as rna_virus), host + identified-DNA filtering, no polyA trim; rnaviralSPAdes+MEGAHIT assembly 'poly_a': Poly-A selected mRNA: polyA tail trimming (trimpolya=18), stricter quality trim (trimq=12); rnaSPAdes+MEGAHIT assembly 'all_virus_metat': All-virus metatranscriptome / RNA virome: more aggressive rRNA removal (mincovfraction=0.5, versus default 0.6), skips identified-DNA filter; rnaviralSPAdes+MEGAHIT assembly 'DNA_virus': DNA virome / metagenomics: skips rRNA and identified-DNA filtering entirely; metaSPAdes only 'complete': Expansive: rna_virus_metat read filtering + all three assemblers (metaSPAdes+rnaviralSPAdes+MEGAHIT) 'fast': Quick preview / mini mode: subsamples reads, skips error correction and identified-DNA filter; MEGAHIT only with narrow k-mer range; narrowed marker/nucleic/annotation databases (type: `CHOICE`; default: `rna_virus`)
 - `--filter-preset`: Override the read-filtering preset chosen by --preset. (type: `CHOICE`)
 - `--assembly-preset`: Override the assembly preset chosen by --preset. (type: `CHOICE`)
+- `-mlp`, `--multi-lib-pol`, `--multilibrarypolicy`: Read-library policy passed to filter-reads: pre-concatenate, keep-separate, or single-output. Fast presets and mini mode select pre-concatenate. (type: `CHOICE`; default: `keep-separate`)
 - `--mini`: Enable mini mode for quick testing. This will subsample the input reads and use a faster assembly preset. (type: `BOOLEAN`; default: `False`)
 - `-sz`, `--sample-size`: Total reads (>1) OR proportion (0-1) of total reads to be used by --mini subsampling. NOTE: this is ignored if --mini-subset-type is set to bbnorm (type: `INTEGER`; default: `50000`)
 - `-ml`, `--min-len`, `--minimum-length`: Contigs shorter than this will not be used during virus identification (i.e. in marker search OR nucleic search) (type: `INTEGER`; default: `200`)
 - `-mst`, `--mini-subset-type`: Subset type used if --mini is set. note: first is quicker than random which is quicker than bbnorm, but bbnorm is the only one that might be useful in a non 'quick and dirty' attempt. 'first' assumes your input isn't sorted by anything. (type: `CHOICE`; default: `random`)
 - `--skip-existing`: Skip commands if output files already exist (type: `BOOLEAN`; default: `False`)
 - `-ow`, `--overwrite`: Overwrite roll output directory if it already exists (type: `BOOLEAN`; default: `False`)
-- `-A`, `--assembler`: Assembler choice (spades,megahit,penguin). For multiple, give a comma-separated list (type: `TEXT`; default: `spades,megahit`)
+- `-A`, `--assembler`: Assembler choice (spades,spades_rnaviral,megahit,penguin). For multiple, give a comma-separated list. An explicit choice overrides the assembly preset. (type: `TEXT`; default: `spades,megahit`)
 - `--no-rmdup`: Disable default assembly dereplication before downstream analysis. (type: `BOOLEAN`; default: `False`)
 - `-m`, `--mapper`: Mapper backend(s) for standalone read mapping. Use multiple -m flags for multiple mappers. select 'none' to skip mapping. (type: `CHOICE`; default: `bbmap`)
 - `--cluster-backend`: ANI backend for contig clustering. Use 'none' to skip clustering entirely. (type: `CHOICE`; default: `linclust`)

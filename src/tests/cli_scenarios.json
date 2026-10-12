@@ -1,5 +1,29 @@
 [
   {
+    "id": "dereplicate_seqs_revcomp",
+    "description": "Collapse case-insensitive reverse complements and export the existing duplicate list",
+    "args": [
+      "dereplicate-seqs", "-i", "testing_folder/inputs/sequences/utilities.fasta",
+      "--revcomp-as-same", "-o", "{tmp}/unique.fasta",
+      "--save-dup-list", "{tmp}/groups.tsv"
+    ],
+    "expected_files": ["{tmp}/unique.fasta", "{tmp}/groups.tsv"],
+    "expected_contains": {
+      "{tmp}/unique.fasta": [">first description", ">ambiguous", ">palindrome"],
+      "{tmp}/groups.tsv": ["duplicate", "reverse", "lower", "ambiguous_rc"]
+    }
+  },
+  {
+    "id": "extract_seqs_headers",
+    "description": "Extract sequences using the existing complete-header selection contract",
+    "args": [
+      "extract-seqs", "-i", "testing_folder/inputs/sequences/utilities.fasta",
+      "-H", "testing_folder/inputs/sequences/headers.txt", "-o", "{tmp}/selected.fasta"
+    ],
+    "expected_files": ["{tmp}/selected.fasta"],
+    "expected_contains": {"{tmp}/selected.fasta": [">first description", "AaCG", ">unique", "TTAA"]}
+  },
+  {
     "id": "detect_seq_layout_directory_json",
     "description": "Detect paired, interleaved, and single FASTQs in a tiny directory",
     "args": [

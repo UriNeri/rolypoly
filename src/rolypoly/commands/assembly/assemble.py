@@ -14,6 +14,7 @@ from rolypoly.utils.logging.config import BaseConfig
 
 global tools
 tools = []
+ASSEMBLER_NAMES = ("spades", "spades_rnaviral", "megahit", "penguin")
 
 # Keys: preset name → dict with keys:
 #   assembler       – list of assembler IDs to run
@@ -137,7 +138,9 @@ def apply_assembly_preset(
             param_hint="--preset",
         )
 
-    explicit: set[str] = set()
+    explicit: set[str] = set(
+        ctx.meta.get("rolypoly_explicit_assembly_options", ())
+    )
     if ctx.params:
         for param in ctx.command.params:
             source = ctx.get_parameter_source(param.name)
@@ -241,7 +244,17 @@ class AssemblyConfig(BaseConfig):
             log_level=kwargs.get("log_level", "info"),
         )
         # initialize the command specific stuff parameters
-        self.assembler = kwargs.get("assembler", ["spades", "megahit"])
+        assembler = kwargs.get("assembler", ["spades", "megahit"])
+        if isinstance(assembler, str):
+            assembler = assembler.split(",")
+        self.assembler: list[str] = [name.strip() for name in assembler]
+        if not self.assembler or any(
+            name not in ASSEMBLER_NAMES for name in self.assembler
+        ):
+            raise click.BadParameter(
+                f"Choose assembler(s) from: {', '.join(ASSEMBLER_NAMES)}",
+                param_hint="--assembler",
+            )
         self.dereplicate = kwargs.get("dereplicate", True)
         self.preset = kwargs.get("preset")
         self.raw_fasta = kwargs.get("raw_fasta", [])
@@ -864,7 +877,7 @@ def run_penguin(config, libraries):
     "--assembler",
     default=["spades", "megahit"],
     multiple=True,
-    type=click.Choice(["spades", "spades_rnaviral", "megahit", "penguin"]),
+    type=click.Choice(ASSEMBLER_NAMES),
     help="""Assembler choice. For multiple, use multiple -A flags or give a comma-separated list. \n
     SPAdes: iterative de bruijn graph assembler - relatively slow and memory heavy, but potentially more accurate. \n
     MEGAHIT: multiple kmer based de bruijn graph assembler - Fast and memory light, but potentially less accurate. \n
@@ -1277,7 +1290,6 @@ def assembly(
     if not config.keep_tmp:
         # Clean up temporary files and directories
         cleanup_paths = [
-            "tmp",  # Generic tmp directory
             config.output_dir / "all_interleaved.fq.gz",
             config.output_dir / "all_merged.fq.gz",
             config.output_dir / "megahit_custom_out" / "intermediate_contigs",

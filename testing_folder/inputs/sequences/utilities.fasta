@@ -1,0 +1,20 @@
+>first description
+AaCG
+>duplicate
+AACG
+>reverse
+CGTT
+>lower
+aacg
+>ambiguous
+AARYKM
+>ambiguous_rc
+KMRYTT
+>palindrome
+ACGT
+>palindrome_copy
+ACGT
+>unique
+TTAA
+>first other description
+GGGG

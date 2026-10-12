@@ -152,6 +152,22 @@ def test_spades_many_libraries_no_concatenation(tmp_path):
     assert len(list(tmp_path.iterdir())) == 1
 
 
+@pytest.mark.parametrize("mode", ["meta", "rna", "rnaviral"])
+def test_spades_filtered_multi_library_categories(tmp_path, mode):
+    libraries = {
+        name: {"interleaved": f"{name}_paired.fq.gz", "merged": f"{name}_merged.fq.gz"}
+        for name in ("first", "second")
+    }
+    with patch("subprocess.run"):
+        run_spades(config(tmp_path), libraries, mode=mode)
+    dataset = json.loads((tmp_path / f"spades_{mode}_dataset.yaml").read_text())
+    assert len(dataset) == (1 if mode == "meta" else 2)
+    for field, suffix in (("interlaced reads", "paired"), ("merged reads", "merged")):
+        paths = [path for entry in dataset for path in entry[field]]
+        assert paths == [str(Path(f"{name}_{suffix}.fq.gz").resolve())
+                         for name in ("first", "second")]
+
+
 def test_meta_pools_paired_libraries_without_copying_reads(tmp_path, caplog):
     cfg = config(tmp_path)
     cfg.raw_fasta = ["trusted.fa"]

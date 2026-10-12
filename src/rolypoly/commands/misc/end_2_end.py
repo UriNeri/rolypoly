@@ -7,7 +7,10 @@ import rich_click as click
 
 from rolypoly.commands.assembly.assemble import ASSEMBLY_PRESETS
 from rolypoly.commands.identify_virus.search_viruses import nucleic_search
-from rolypoly.commands.reads.filter_reads import FILTER_READS_PRESETS
+from rolypoly.commands.reads.filter_reads import (
+    FILTER_READS_PRESETS,
+    MULTI_LIBRARY_POLICIES,
+)
 from rolypoly.utils.cli_options import shared_command_context
 
 ### TODOs:
@@ -104,6 +107,12 @@ ROLL_PRESET_MAP: dict[str, tuple[str, str, str]] = {
     type=click.Choice(ASSEMBLY_PRESET_NAMES),
     help="Override the assembly preset chosen by --preset.",
 )
+@click.option(
+    "-mlp", "--multi-lib-pol", "--multilibrarypolicy", "multi_library_policy",
+    type=click.Choice(MULTI_LIBRARY_POLICIES), default="keep-separate",
+    show_default=True,
+    help="Read-library policy passed to filter-reads: pre-concatenate, keep-separate, or single-output. Fast presets and mini mode select pre-concatenate.",
+)
 # Mini subsampling
 @click.option(
     "--mini",
@@ -149,7 +158,7 @@ ROLL_PRESET_MAP: dict[str, tuple[str, str, str]] = {
     "-A",
     "--assembler",
     default="spades,megahit",
-    help="Assembler choice (spades,megahit,penguin). For multiple, give a comma-separated list",
+    help="Assembler choice (spades,spades_rnaviral,megahit,penguin). For multiple, give a comma-separated list. An explicit choice overrides the assembly preset.",
 )
 @click.option(
     "--no-rmdup",
@@ -357,6 +366,7 @@ def roll(
     log_level="INFO",
     filter_flag_only=False,
     filter_rrna=False,
+    multi_library_policy: str = "keep-separate",
 ):
     """End-to-end pipeline for RNA virus discovery from raw sequencing data.
 
@@ -423,6 +433,16 @@ def roll(
         setup_logging,
     )
 
+    roll_context = click.get_current_context()
+    explicit_assembly_options = {
+        name
+        for name, source_name in (
+            ("assembler", "assembler"), ("dereplicate", "no_rmdup")
+        )
+        if roll_context.get_parameter_source(source_name)
+        == click.core.ParameterSource.COMMANDLINE
+    }
+
     output_dir = Path(output_dir).absolute()
 
     if overwrite and output_dir.exists():
@@ -478,6 +498,13 @@ def roll(
         logger.info(
             "Roll preset 'fast' activates mini mode (read subsampling)."
         )
+    if mini or filter_preset == "fast" or assembly_preset == "fast":
+        if multi_library_policy != "pre-concatenate":
+            logger.info(
+                "Fast/mini mode selects multi-library policy pre-concatenate "
+                "(requested: %s)", multi_library_policy,
+            )
+        multi_library_policy = "pre-concatenate"
     logger.info(
         "Applied roll preset '%s': filter=%s assembly=%s",
         preset,
@@ -522,19 +549,13 @@ def roll(
                 shrink_reads,
                 input=input,
                 output=str(mini_input_dir),
-                subset_type=mini_subset_type,
+                subset_type="first_n" if mini_subset_type == "first" else mini_subset_type,
                 sample_size=mini_sample_size,
+                threads=threads,
                 log_file=str(log_file),
                 log_level=log_level.lower(),
             )
-        sampled_info = handle_input_fastq(str(mini_input_dir), logger=logger)
-        if sampled_info.get("R1_R2_pairs"):
-            first_pair = sampled_info["R1_R2_pairs"][0]
-            input_for_filter = f"{first_pair[0]},{first_pair[1]}"
-        elif sampled_info.get("interleaved_files") or sampled_info.get(
-            "single_end_files"
-        ):
-            input_for_filter = str(mini_input_dir)
+        input_for_filter = str(mini_input_dir)
         logger.info("Mini mode input prepared at %s", str(mini_input_dir))
 
     # Step: Filter Reads
@@ -543,10 +564,6 @@ def roll(
     filtered_reads = output_dir / "filtered_reads"
     if "filter_reads" in skip_steps:
         logger.info("Step %d: Skipping filter-reads (in --skip-steps)", step)
-    elif skip_existing and filtered_reads.exists():
-        logger.info(
-            "Filtered reads %s already exist, skipping step", filtered_reads
-        )
     else:
         filtered_reads.mkdir(parents=True, exist_ok=True)
         ctx = shared_command_context(filter_reads)
@@ -558,9 +575,13 @@ def roll(
             memory=memory,
             known_dna=known_dna,
             preset=filter_preset,
+            multi_library_policy=multi_library_policy,
             keep_tmp=keep_tmp,
+            skip_existing=skip_existing,
+            overwrite=overwrite,
             log_file=str(log_file),
             speed=15,
+            log_level=log_level,
             temp_dir=str(temp_base_dir / "filter_reads")
             if temp_base_dir
             else None,
@@ -660,6 +681,7 @@ def roll(
         )
     else:
         ctx = shared_command_context(assembly)
+        ctx.meta["rolypoly_explicit_assembly_options"] = explicit_assembly_options
         ctx.invoke(
             assembly,
             threads=threads,

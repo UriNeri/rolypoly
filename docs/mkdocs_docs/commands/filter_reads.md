@@ -16,6 +16,74 @@ configured steps and speed presets.
 Input can be a single file, paired files, or a directory of FASTQ files.
 Use `--skip-steps` and `--override-parameters` to tailor the workflow.
 
+### Multiple libraries
+
+Use `-mlp` / `--multi-lib-pol` / `--multilibrarypolicy` to choose:
+
+| Policy | Preprocessing and first deduplication | Final deduplication and outputs |
+| --- | --- | --- |
+| `keep-separate` (default) | Each detected R1/R2 pair, interleaved file, or single-end file is processed independently. | Deduplicate within each library; preserve one output library per input library. |
+| `single-output` | Process independently, including first deduplication and library-specific steps. | Pool corresponding streams **before** final sequence deduplication; identical reads across libraries can be removed. |
+| `pre-concatenate` | Append every input into one stream before filtering; sequence deduplication is pooled from the first pass. | One output library, with pooled final sequence deduplication. |
+
+`pre-concatenate` disables adapter discovery (`discover_merge_adapters`), both
+error-correction steps (`error_correct_1`, `error_correct_2`), and tile filtering.
+Tile filtering is currently disabled for every policy. Optical deduplication is
+disabled for pre-concatenated reads and for the pooled final pass in
+`single-output`, including when an optical override was supplied. The ordinary
+sequence-based deduplication remains active. Paired-only pooled input can still
+use mate-overlap merging; pooled mixed paired/single input is treated as unpaired
+and skips pair-aware operations to avoid manufacturing mates.
+
+The `fast` filter preset selects `pre-concatenate`, even if another policy was
+requested; the effective choice is logged and recorded. `roll` also selects it
+for mini mode and fast roll/filter/assembly presets.
+
+Libraries are identified by their input files, not inferred from flowcell,
+lane, coordinates, or barcodes. Headers are not tagged or renamed to implement
+this policy. The separate and single-output paths keep physical library
+boundaries throughout preprocessing rather than repeatedly splitting pooled
+reads. Independently processing libraries may repeat reference-loading and
+host-discovery work; production-scale performance has not been benchmarked.
+
+### Outputs and assembly handoff
+
+Paired libraries produce `dedupe_final_interleaved_<name>.fq.gz` for unmerged
+mates and, when merging runs, `dedupe_final_merged_<name>.fq.gz` for merged reads.
+Single-end libraries use the latter filename as an unpaired stream; its name
+does **not** imply that read merging occurred. Empty streams can occur after
+filtering or merging.
+
+When keeping multiple libraries, names have deterministic `_lib001`, `_lib002`,
+etc. suffixes. A single input or pooled output uses the sample name (or
+`--file-name`). [Assemble](assemble.md) associates streams by the shared name
+and adapts them to each backend without needing the policy option.
+
+`run_info/libraries.tsv` records one row per input library:
+
+| Column | Meaning |
+| --- | --- |
+| `input_library` | Deterministic input-library identifier. |
+| `input_files` | Absolute input filename, or comma-separated R1/R2 filenames. |
+| `output_interleaved` | Absolute published paired-stream path, or empty. |
+| `output_merged` | Absolute published unpaired-stream path, or empty. |
+| `multi_library_policy` | Effective policy. |
+
+Pooled policies map multiple input rows to the same output paths. Existing
+outputs are not silently mixed with a different policy. `--skip-existing`
+reuses a completed library set only when its manifest, input paths, policy,
+and output files match. It does not compare FASTQ contents or every filtering
+parameter; use a new directory or `--overwrite` after changing those.
+Legacy outputs without this manifest require a new directory or `--overwrite`.
+Partial intermediate-step resumption is not
+supported. `--zip-reports` archives the manifest with the other metadata and
+removes `run_info/`; automatic `--skip-existing` reuse requires that directory
+and therefore is unavailable while the metadata remains archived.
+
+Per-library effective preprocessing parameters are saved as
+`run_info/library_config_<name>.json`. Fetched host references are isolated
+by library so one library cannot reuse another library's inferred host set.
+
 ## Usage
 
 ```bash
@@ -25,13 +93,14 @@ rolypoly filter-reads [OPTIONS]
 <!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
-- `-o`, `-out`, `--output`: Output directory. Example: -o output (type: `PATH`; default: `/home/neri/Documents/Github/rolypoly`)
-- `-i`, `-in`, `--input`: Input raw reads file(s) or directory containing them. For paired-end reads, you can provide an interleaved file or the R1 and R2 files separated by comma. Example: -i sample_R1.fastq.gz,sample_R2.fastq.gz If --input is a directory, all fastq files in the directory will be used - paired end files of the same base name would be assumed as from the same sample, otherwise a fastq is assumed interleaved. All interleaved and R1/R2 files would be concatenated into a single file before processing, and certain processing steps would be skipped as they assume a single sequencing library (error_correct_1, error_correct_2). (type: `TEXT`; default: `Sentinel.UNSET`)
+- `-o`, `-out`, `--output`: Output directory. Example: -o output (type: `PATH`; default: `/home/neri/Documents/GitHub/rps/rolypoly`)
+- `-i`, `-in`, `--input`: Input raw reads file(s) or directory containing them. For paired-end reads, you can provide an interleaved file or the R1 and R2 files separated by comma. Example: -i sample_R1.fastq.gz,sample_R2.fastq.gz If --input is a directory, each detected R1/R2 pair, interleaved file, or single-end file is a library. --multi-lib-pol controls pooling; the default keeps libraries separate. (type: `TEXT`; default: `Sentinel.UNSET`)
+- `-mlp`, `--multi-lib-pol`, `--multilibrarypolicy`: pre-concatenate: pool before filtering and disable library-specific steps; keep-separate: process and output each library independently; single-output: process independently, then pool before final sequence deduplication. The fast preset selects pre-concatenate. (type: `CHOICE`; default: `keep-separate`)
 - `-D`, `--known-dna`: Fasta file of known DNA entities. Example: -D known_dna.fasta (type: `PATH`; default: `Sentinel.UNSET`)
 - `-s`, `--speed`: Set bbduk.sh speed value (0-15, where 0 uses all kmers and 15 skips most). Example: -s 5 (type: `INTEGER`; default: `0`)
 - `-se`, `--skip-existing`: Skip steps if output files already exist (type: `BOOLEAN`; default: `False`)
 - `-ss`, `--skip-steps`: Comma-separated list of steps to skip. Example: --skip-steps filter_by_tile,entropy_filter (type: `TEXT`; default: ``)
-- `--preset`: Apply a named read-filtering preset (overrides individual step parameters unless those are given explicitly via --override-parameters). 'rna_virus_metat': RNA virus metatranscriptome: rRNA removal (mincovfraction=0.6), known-DNA + identified-DNA filtering, adapter trim, lenient quality trim (trimq=5 minlen=25); no polyA trimming 'total_rna_ribodepleted': Experimentally ribo-depleted total RNA: residual rRNA filtering (mincovfraction=0.6, same as rna_virus_metat), known-DNA + identified-DNA filtering, adapter trim, lenient quality trim (trimq=5 minlen=20); no polyA trimming 'poly_a_selected': Poly-A selected mRNA: polyA tail trimming enabled (trimpolya=18), stricter quality trim (trimq=12 minlen=20); rRNA and DNA filtering still applied 'fast': Fast: skips overlap error correction (error_correct_1/2) and identified-DNA filtering; all other steps run at default parameters 'strict': Strict: aggressive quality trim (trimq=20 minlen=20), two-pass deduplication; all filtering steps enabled 'all_virus_metat': All-virus metatranscriptome: more aggressive rRNA removal (mincovfraction=0.5, versus default 0.6), skips identified-DNA filter, moderate quality trim (trimq=10 minlen=20); known-DNA filtering still applied 'all_virus_metag': All-virus metagenomics: skips rRNA and identified-DNA filtering entirely, moderate quality trim (trimq=10 minlen=20); known-DNA (host) filtering still applied if --known-dna is provided (type: `CHOICE`)
+- `--preset`: Apply a named read-filtering preset (overrides individual step parameters unless those are given explicitly via --override-parameters). 'rna_virus_metat': RNA virus metatranscriptome: rRNA removal (mincovfraction=0.6), known-DNA + identified-DNA filtering, adapter trim, lenient quality trim (trimq=5 minlen=25); no polyA trimming 'total_rna_ribodepleted': Total-RNA that went through ribo-depletion: residual rRNA filtering (mincovfraction=0.6, same as rna_virus_metat), known-DNA + identified-DNA filtering, adapter trim, lenient quality trim (trimq=5 minlen=20); no polyA trimming 'poly_a_selected': Poly-A selected mRNA: polyA tail trimming enabled (trimpolya=18), stricter quality trim (trimq=12 minlen=20); rRNA and DNA filtering still applied 'fast': Fast: pre-concatenates libraries and disables adapter discovery, overlap error correction (error_correct_1/2), optical deduplication, and identified-DNA filtering 'strict': Strict: aggressive quality trim (trimq=20 minlen=20), two-pass deduplication; all filtering steps enabled 'all_virus_metat': All-virus metatranscriptome: more aggressive rRNA removal (mincovfraction=0.5, versus default 0.6), skips identified-DNA filter, moderate quality trim (trimq=10 minlen=20); known-DNA filtering still applied 'all_virus_metag': All-virus metagenomics: skips rRNA and identified-DNA filtering entirely, moderate quality trim (trimq=10 minlen=20); known-DNA (host) filtering still applied if --known-dna is provided (type: `CHOICE`)
 - `--disable-auto`: Disable automatic trim/minlen tuning from detected read stats. (type: `BOOLEAN`; default: `False`)
 - `--trim-polya`, `--poly-selection`: Enable optional terminal polyA/polyT tail trimming after adapter trimming. Uses the trim_polya_tails preset and can be customized with --override-parameters. (type: `BOOLEAN`; default: `False`)
 - `--adapters`: Optional adapter FASTA to use instead of built-in (or discovered via bbmerge) adapters. (type: `PATH`)
@@ -41,7 +110,7 @@ rolypoly filter-reads [OPTIONS]
 - `--config-file`: Path to configuration file. Example: --config-file my_config.json (type: `PATH`; default: `Sentinel.UNSET`)
 - `-to`, `-timeout`, `--step-timeout`: Timeout for every step in the workflow in seconds. if you think the some processes are hanging (not terminated correctly) this would help debug that. Example: --timeout 600 (type: `INTEGER`; default: `3600`)
 - `-n`, `-name`, `--file-name`: Base name of the output files. Example: -file-name my_filtered_reads. If not set, default would be "rp_filtered_reads" unless the --input has a structure like somethingsomething_R1.fastq.gz,somethingsomething_R2.fastq.gz or somethingsomething.fastq.gz in which case it would be somethingsomething (type: `TEXT`; default: `Sentinel.UNSET`)
-- `-ow`, `--overwrite`: Do not overwrite the output directory if it already exists (type: `BOOLEAN`; default: `False`)
+- `-ow`, `--overwrite`: Replace existing filtered-read outputs. Without this flag, existing outputs require a matching --skip-existing library manifest. (type: `BOOLEAN`; default: `False`)
 - `-z`, `--zip-reports`: Zip the reports into a single file (type: `BOOLEAN`; default: `False`)
 - `-t`, `--threads`: Number of worker threads. (type: `INTEGER RANGE`; default: `1`)
 - `-M`, `-mem`, `--memory`: Memory limit, for example 8g. (type: `MEMORY`; default: `8g`)

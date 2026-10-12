@@ -1,5 +1,6 @@
 import os
 import shutil
+from copy import copy, deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Tuple, Union
@@ -28,6 +29,14 @@ output_tracker = OutputTracker()
 
 console = Console()
 config = None
+
+MULTI_LIBRARY_POLICIES = ("pre-concatenate", "keep-separate", "single-output")
+LIBRARY_SPECIFIC_STEPS = (
+    "filter_by_tile",
+    "discover_merge_adapters",
+    "error_correct_1",
+    "error_correct_2",
+)
 
 
 FILTER_READS_PRESETS: dict[str, dict[str, Any]] = {
@@ -68,7 +77,7 @@ FILTER_READS_PRESETS: dict[str, dict[str, Any]] = {
             "filter_identified_dna",
         ],
         "flags": {},
-        "description": "Fast: skips overlap error correction (error_correct_1/2) and identified-DNA filtering; all other steps run at default parameters",
+        "description": "Fast: pre-concatenates libraries and disables adapter discovery, overlap error correction (error_correct_1/2), optical deduplication, and identified-DNA filtering",
     },
     "strict": {
         "step_params": {"quality_trim_unmerged": {"trimq": 20, "minlen": 20}},
@@ -364,6 +373,10 @@ class ReadFilterConfig(BaseConfig):
         self.trim_polya = kwargs.get("trim_polya") or False
         self.disable_auto = kwargs.get("disable_auto") or False
         self.preset = kwargs.get("preset")
+        self.multi_library_policy: str = kwargs.get(
+            "multi_library_policy", "keep-separate"
+        )
+        self.input_interleaved: bool = False
         self.user_provided_adapters: Path | None = (
             Path(kwargs.get("adapters") or "").resolve()
             if kwargs.get("adapters") is not None
@@ -494,34 +507,234 @@ def check_existing_file(output_file: Path, min_size: int = 20) -> bool:
     return output_file.exists() and output_file.stat().st_size > min_size
 
 
-def process_reads(
-    config: ReadFilterConfig, output_tracker: OutputTracker
-) -> Union[OutputTracker, None]:
-    """Main function to orchestrate the preprocessing steps."""
+def process_reads(config: ReadFilterConfig, output_tracker: OutputTracker) -> None:
+    """Apply the library policy before preprocessing and final deduplication."""
+    import polars as pl
+    from bbmapy import reformat
+
+    file_info = handle_input_fastq(config.input, logger=config.logger, strict=True)
+    config.file_info = file_info
+    if config.multi_library_policy not in MULTI_LIBRARY_POLICIES:
+        raise click.ClickException(
+            f"Unknown multi-library policy: {config.multi_library_policy}"
+        )
+    if config.preset == "fast" and config.multi_library_policy != "pre-concatenate":
+        config.logger.info("Fast preset selects multi-library policy pre-concatenate")
+        config.multi_library_policy = "pre-concatenate"
+    sample_name = file_info["file_name"]
+    if config.file_name == "rp_filtered_reads":
+        config.file_name = sample_name
+    inputs = [
+        ("paired", pair) for pair in file_info["R1_R2_pairs"]
+    ] + [
+        ("interleaved", (path,)) for path in file_info["interleaved_files"]
+    ] + [
+        ("single", (path,)) for path in file_info["single_end_files"]
+    ]
+    if not inputs:
+        raise click.ClickException(f"No FASTQ libraries found in {config.input}")
+
+    existing_outputs = sorted(config.output_dir.glob("dedupe_final_*.fq.gz"))
+    if existing_outputs:
+        manifest = config.output_dir / "run_info" / "libraries.tsv"
+        if config.skip_existing and manifest.exists():
+            previous = pl.read_csv(manifest, separator="\t")
+            previous_inputs = previous["input_files"].to_list()
+            expected_inputs = [
+                ",".join(str(Path(path).resolve()) for path in paths)
+                for _, paths in inputs
+            ]
+            previous_outputs = {
+                path for column in ("output_interleaved", "output_merged")
+                for path in previous[column].drop_nulls().to_list()
+            }
+            if (
+                previous_inputs == expected_inputs
+                and set(previous["multi_library_policy"]) == {config.multi_library_policy}
+                and previous_outputs == {str(path.resolve()) for path in existing_outputs}
+                and all(check_existing_file(Path(path)) for path in previous_outputs)
+            ):
+                config.logger.info("Reusing completed filtered libraries from %s", manifest)
+                config.cleanup_temp()
+                return
+        if not config.overwrite:
+            raise click.ClickException(
+                "Existing filtered reads do not have a matching completed library "
+                "manifest. Use a new output directory or --overwrite; "
+                "--skip-existing requires matching inputs and multi-library policy."
+            )
+        for path in existing_outputs:
+            path.unlink()
+
+    config.logger.info(
+        "Processing %d input libraries; multi_library_policy=%s",
+        len(inputs), config.multi_library_policy,
+    )
+    if config.multi_library_policy == "pre-concatenate":
+        for step in LIBRARY_SPECIFIC_STEPS:
+            if step not in config.skip_steps:
+                config.skip_steps.append(step)
+        config.step_params["dedupe"]["optical"] = "f"
+        config.logger.info(
+            "Pre-concatenate disables library-specific steps: %s; "
+            "optical deduplication disabled; sequence deduplication is pooled.",
+            ", ".join(LIBRARY_SPECIFIC_STEPS),
+        )
+        tracker = OutputTracker()
+        process_read_library(config, tracker, file_info)
+        libraries = [(config, tracker)]
+    else:
+        libraries = []
+    for index, (kind, paths) in enumerate(
+        inputs if config.multi_library_policy != "pre-concatenate" else [], 1
+    ):
+        library_config = copy(config)
+        library_config.skip_steps = list(config.skip_steps)
+        library_config.step_params = deepcopy(config.step_params)
+        library_config.memory = dict(config.memory)
+        library_config.input = ",".join(str(path) for path in paths)
+        if len(inputs) > 1:
+            library_config.file_name = f"{config.file_name}_lib{index:03d}"
+        details = {
+            str(path): file_info["file_details"][str(path)] for path in paths
+        }
+        library_info = {
+            "R1_R2_pairs": [paths] if kind == "paired" else [],
+            "interleaved_files": list(paths) if kind == "interleaved" else [],
+            "single_end_files": list(paths) if kind == "single" else [],
+            "file_name": library_config.file_name,
+            "file_details": details,
+            "average_read_length": sum(
+                float(detail.get("average_read_length") or 0) for detail in details.values()
+            ) / len(details),
+            "average_read_quality": sum(
+                float(detail.get("average_read_quality") or 0) for detail in details.values()
+            ) / len(details),
+            "is_single_end_only": kind == "single",
+        }
+        library_tracker = OutputTracker()
+        config.logger.info(
+            "Library %s: %s", library_config.file_name, library_config.input
+        )
+        process_read_library(library_config, library_tracker, library_info)
+        libraries.append((library_config, library_tracker))
+
+    if config.multi_library_policy == "single-output" and len(libraries) > 1:
+        pooled_tracker = OutputTracker()
+        paired_pool = any(
+            library_config.input_interleaved
+            for library_config, _ in libraries
+        )
+        streams: dict[bool, list[str]] = {False: [], True: []}
+        for library_config, tracker in libraries:
+            merged = tracker.get_latest_merged_file()
+            unmerged = tracker.get_latest_non_merged_file()
+            if merged:
+                streams[True].append(merged)
+            if unmerged:
+                single = not library_config.input_interleaved
+                streams[paired_pool and single].append(unmerged)
+            output_tracker.df = pl.concat([output_tracker.df, tracker.df])
+        config.input_interleaved = paired_pool
+        config.step_params["dedupe"]["optical"] = "f"
+        config.logger.info(
+            "Single-output: optical final deduplication disabled on pooled reads"
+        )
+        for is_merged, paths in streams.items():
+            if not paths:
+                continue
+            label = "merged" if is_merged else "interleaved"
+            pooled = config.temp_dir / f"pooled_{label}_{config.file_name}.fq.gz"
+            for index, path in enumerate(paths):
+                stdout, stderr = reformat(
+                    in_file=path, out=str(pooled), capture_output=True,
+                    interleaved="t" if paired_pool and not is_merged else "f",
+                    overwrite="t" if index == 0 else "f",
+                    append="f" if index == 0 else "t",
+                    threads=config.threads, Xmx=str(config.memory["giga"]),
+                )
+                config.logger.info(format_bbmapy_output(stdout, stderr))
+            pooled_tracker.add_file(
+                str(pooled), "single_output", "reformat.sh",
+                is_merged=is_merged,
+                interleaved=paired_pool and not is_merged, is_gz=True,
+            )
+        config.logger.info("Collapsed library streams before final deduplication")
+        final_libraries = [(config, pooled_tracker)]
+    else:
+        final_libraries = libraries
+
+    final_paths: list[Path] = []
+    for library_config, tracker in final_libraries:
+        merged = tracker.get_latest_merged_file()
+        if merged is not None:
+            final_paths.append(dedupe(Path(merged), library_config, tracker, "final_merged"))
+        unmerged = tracker.get_latest_non_merged_file()
+        if unmerged is not None:
+            phase = "final_interleaved" if library_config.input_interleaved else "final_merged"
+            final_paths.append(dedupe(Path(unmerged), library_config, tracker, phase))
+        output_tracker.df = pl.concat([output_tracker.df, tracker.df])
+
+    falco_ready = generate_reports(
+        config.file_name, config.threads, config.skip_existing, config.logger,
+        fastq_paths=final_paths,
+    )
+    output_libraries = []
+    published_names = {path.name for path in final_paths}
+    for index, (_, paths) in enumerate(inputs, 1):
+        library_name = (
+            f"{config.file_name}_lib{index:03d}"
+            if len(inputs) > 1 and config.multi_library_policy == "keep-separate"
+            else config.file_name
+        )
+        outputs = {
+            kind: config.output_dir / f"dedupe_final_{kind}_{library_name}.fq.gz"
+            for kind in ("interleaved", "merged")
+        }
+        output_libraries.append({
+            "input_library": f"{config.file_name}_lib{index:03d}" if len(inputs) > 1 else config.file_name,
+            "input_files": ",".join(str(Path(path).resolve()) for path in paths),
+            "output_interleaved": str(outputs["interleaved"].resolve()) if outputs["interleaved"].name in published_names else None,
+            "output_merged": str(outputs["merged"].resolve()) if outputs["merged"].name in published_names else None,
+            "multi_library_policy": config.multi_library_policy,
+        })
+    run_info = config.output_dir / "run_info"
+    run_info.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(output_libraries).write_csv(run_info / "libraries.tsv", separator="\t")
+    cleanup_and_move_files(
+        config, output_tracker, falco_ready=falco_ready, final_paths=final_paths
+    )
+    config.logger.info("Read processing completed successfully.")
+
+
+def process_read_library(
+    config: ReadFilterConfig,
+    output_tracker: OutputTracker,
+    file_info: dict[str, Any],
+) -> None:
+    """Run preprocessing through quality trimming for one library."""
     import signal
 
-    # config.logger.info("Checking dependencies    ")
-    base_dir = Path(config.temp_dir)
-    config.save(output_path=base_dir / "rp_filter_reads_config.json")  # type: ignore
-
     # actual processing start here
-    fastq_file, config.file_name, file_info = process_input_fastq(config)
+    fastq_file, _, file_info = process_input_fastq(config, file_info)
     config.file_info = file_info
+    config.input_interleaved = bool(
+        file_info["R1_R2_pairs"] or file_info["interleaved_files"]
+    ) and not file_info["single_end_files"]
 
     config.logger.info(f"file_name: {config.file_name}")
     config.logger.info(f"fastq_file: {fastq_file}")
-    original_input = str(config.input).split(",", 1)[0].strip()
     # config.logger.info(f"remind citation is {os.environ.get('ROLYPOLY_REMIND_CITATION', 'not_set')}    ")
     # exit()
     # breakpoint()
     output_tracker.add_file(
-        filename=original_input,
+        filename=str(fastq_file),
         command="handle_input_fastq",
         command_name="reformat",
         is_merged=False,
         end_type=None,
-        interleaved=None,
-        is_gz=None,
+        interleaved=config.input_interleaved,
+        is_gz=True,
     )  # retroactive addition
 
     config.memory = ensure_memory(config.memory, fastq_file)  # type: ignore ------ this second ensure is because we now have the fastq file to check its size.
@@ -613,28 +826,19 @@ def process_reads(
                 config.logger.info(f"Starting step: {step_name}   ")
                 status.update(f"[bold green]Current Step: {step_name}   ")
 
-                # Check for existing output file
-                expected_output = Path(f"{step_name}_{config.file_name}.fq.gz")
-                if config.skip_existing and check_existing_file(
-                    expected_output
-                ):
-                    config.logger.info(
-                        f"Skipping {step_name} as output file already exists"
-                    )
-                    current_input = expected_output
-                    continue
-
                 signal.signal(signal.SIGALRM, timeout_handler)
                 signal.alarm(config.step_timeout)  # Set timeout to 10min
 
                 try:
                     # config.logger.info(f"Running step: {step_name}")
                     result = step(current_input, config, output_tracker)
-                except TimeoutError:
+                except TimeoutError as error:
                     config.logger.error(
                         f"Step {step_name} timed out after {config.step_timeout} seconds"
                     )
-                    continue
+                    raise click.ClickException(
+                        f"Library {config.file_name}: step {step_name} timed out"
+                    ) from error
                 finally:
                     signal.alarm(0)  # Disable the alarm
 
@@ -653,40 +857,7 @@ def process_reads(
             else:
                 config.logger.info(f"Skipping step: {step_name}")
 
-    # Final deduplication step
-    merged_file = output_tracker.get_latest_merged_file()
-    if merged_file is not None and not (
-        config.skip_existing
-        and check_existing_file(Path(f"dedup_merged_{config.file_name}.fq.gz"))
-    ):
-        dedup_merged = dedupe(
-            Path(merged_file), config, output_tracker, "final_merged"
-        )  # noqa (F841)
-
-    unmerged_file = output_tracker.get_latest_non_merged_file()
-    if not (
-        config.skip_existing
-        and check_existing_file(
-            Path(f"dedup_interleaved_{config.file_name}.fq.gz")
-        )
-    ):
-        dedup_interleaved = dedupe(
-            Path(unmerged_file), config, output_tracker, "final_interleaved"
-        )  # noqa (F841)
-
-    falco_ready = generate_reports(
-        config.file_name, config.threads, config.skip_existing, config.logger
-    )
-    cleanup_and_move_files(config, output_tracker, falco_ready=falco_ready)
-    # output_tracker.to_csv(f"{config.output_dir}/run_info/output_tracker.csv")
-    if not config.keep_tmp:
-        try:
-            os.unlink(fastq_file)
-        except Exception as e:
-            config.logger.error(
-                f"Error deleting input file {config.input}: {str(e)}"
-            )
-    config.logger.info("Read processing completed successfully.")
+    config.save(config.temp_dir / f"library_config_{config.file_name}.json")
 
 
 @click.command(no_args_is_help=True)
@@ -704,7 +875,13 @@ def process_reads(
     "--input",
     required=False,
     help="""Input raw reads file(s) or directory containing them. For paired-end reads, you can provide an interleaved file or the R1 and R2 files separated by comma. Example: -i sample_R1.fastq.gz,sample_R2.fastq.gz \n
-If --input is a directory, all fastq files in the directory will be used - paired end files of the same base name would be assumed as from the same sample, otherwise a fastq is assumed interleaved. All interleaved and R1/R2 files would be concatenated into a single file before processing, and certain processing steps would be skipped as they assume a single sequencing library (error_correct_1, error_correct_2).""",
+If --input is a directory, each detected R1/R2 pair, interleaved file, or single-end file is a library. --multi-lib-pol controls pooling; the default keeps libraries separate.""",
+)
+@click.option(
+    "-mlp", "--multi-lib-pol", "--multilibrarypolicy", "multi_library_policy",
+    type=click.Choice(MULTI_LIBRARY_POLICIES), default="keep-separate",
+    show_default=True,
+    help="pre-concatenate: pool before filtering and disable library-specific steps; keep-separate: process and output each library independently; single-output: process independently, then pool before final sequence deduplication. The fast preset selects pre-concatenate.",
 )
 @click.option(
     "-D",
@@ -814,7 +991,7 @@ If --input is a directory, all fastq files in the directory will be used - paire
     "--overwrite",
     is_flag=True,
     default=False,
-    help="Do not overwrite the output directory if it already exists",
+    help="Replace existing filtered-read outputs. Without this flag, existing outputs require a matching --skip-existing library manifest.",
 )
 @click.option(
     "-z",
@@ -856,6 +1033,7 @@ def filter_reads(
     log_level,
     max_genomes,
     temp_dir,
+    multi_library_policy: str = "keep-separate",
 ):
     """
     Process RNA-seq Illumina reads through the read-cleaning pipeline.
@@ -886,7 +1064,7 @@ def filter_reads(
             overwrite=overwrite,
             keep_tmp=keep_tmp,
             log_file=log_file,
-            input=os.path.abspath(input),
+            input=",".join(str(Path(path.strip()).resolve()) for path in input.split(",")),
             known_dna=known_dna,
             speed=speed,
             preset=preset,
@@ -905,6 +1083,7 @@ def filter_reads(
             max_genomes=max_genomes,
             temp_dir=temp_dir,
             zip_reports=zip_reports,
+            multi_library_policy=multi_library_policy,
         )
 
     if config.known_dna is None:
@@ -929,6 +1108,11 @@ def filter_reads(
         config.remove_synthetic_artifacts_enabled = False
     if not hasattr(config, "artifacts"):
         config.artifacts = "artifacts"
+    if (
+        click.get_current_context().get_parameter_source("multi_library_policy")
+        == click.core.ParameterSource.COMMANDLINE
+    ):
+        config.multi_library_policy = multi_library_policy
 
     active_preset = preset or getattr(config, "preset", None)
     config.preset = active_preset
@@ -970,13 +1154,19 @@ def probe_inputs(config: ReadFilterConfig) -> dict[str, Any]:
     )
 
 
-def generate_reports(file_name: str, threads: int, skip_existing: bool, logger) -> bool:
+def generate_reports(
+    file_name: str, threads: int, skip_existing: bool, logger,
+    *, fastq_paths: list[Path] | None = None,
+) -> bool:
     """Generate optional Falco QC and return whether complete reports are available.
 
     Failed runs warn and preserve previous reports. New reports replace them
     only after a successful exit and nonempty data, summary, and HTML outputs.
     """
-    all_remaining_fastqs = sorted(config.temp_dir.glob("*final*.fq.gz"))
+    all_remaining_fastqs = (
+        sorted(fastq_paths) if fastq_paths is not None
+        else sorted(config.temp_dir.glob("*final*.fq.gz"))
+    )
     if not all_remaining_fastqs:
         logger.warning("Skipping Falco: no final FASTQ files found in %s", config.temp_dir)
         return False
@@ -1043,8 +1233,9 @@ def generate_reports(file_name: str, threads: int, skip_existing: bool, logger) 
 # Using the file_detection module instead of local implementation, below takes the library detection from there.
 def process_input_fastq(
     config: ReadFilterConfig,
+    file_info: dict[str, Any] | None = None,
 ) -> tuple[Path, str, dict[str, Any]]:
-    """Process input FASTQ files and prepare them for filtering."""
+    """Append every input to one FASTQ, overwriting only the first write."""
     from bbmapy import reformat
     from bbmapy.update import (
         ensure_java_availability,  # eventually will need to make sure (upsteream in bbmappy) to get a JRE even if there is java on path but of version <17...
@@ -1052,99 +1243,33 @@ def process_input_fastq(
 
     ensure_java_availability()
 
-    # Create a temporary file for intermediate concatenation
-    temp_interleaved = config.output_dir / "temp_concat_interleaved.fq.gz"
-    final_interleaved = config.output_dir / "concat_interleaved.fq.gz"
-
-    # file detection functions now sourced from seperate script (21.08.2025)
-    file_info = handle_input_fastq(config.input, logger=config.logger)
-    file_name = file_info.get("file_name", "rolypoly_filtered_reads")
-
-    # Process paired-end files
-    if len(file_info["R1_R2_pairs"]) != 0:
-        for i, pair in enumerate(file_info["R1_R2_pairs"]):
-            out_file = temp_interleaved if i == 0 else final_interleaved
-            config.logger.info(f"Concatenating {pair[0]} and {pair[1]}")
-            bb_stdout, bb_stderr = reformat(
-                in1=str(pair[0]),
-                capture_output=True,
-                in2=str(pair[1]),
-                out=str(out_file),
-                threads=config.threads,
-                overwrite="t" if i == 0 else "f",
-                append="f" if i == 0 else "t",
-                Xmx=str(config.memory["giga"]),
-            )
-            config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
-
-    # Process interleaved files
-    if len(file_info["interleaved_files"]) != 0:
-        config.logger.info(
-            f"Interleaved files: {file_info['interleaved_files']}"
+    if file_info is None:
+        file_info = handle_input_fastq(config.input, logger=config.logger, strict=True)
+    file_name = file_info["file_name"]
+    output = config.temp_dir / f"concat_interleaved_{config.file_name}.fq.gz"
+    inputs = [
+        {"in1": str(r1), "in2": str(r2)}
+        for r1, r2 in file_info["R1_R2_pairs"]
+    ] + [
+        {"in_file": str(path), "interleaved": "t"}
+        for path in file_info["interleaved_files"]
+    ] + [
+        {"in_file": str(path), "interleaved": "f"}
+        for path in file_info.get("single_end_files", [])
+    ]
+    if not inputs:
+        raise click.ClickException(f"No FASTQ libraries found in {config.input}")
+    for index, parameters in enumerate(inputs):
+        config.logger.info("Preparing input: %s", parameters)
+        stdout, stderr = reformat(
+            **parameters, out=str(output), capture_output=True,
+            threads=config.threads,
+            overwrite="t" if index == 0 else "f",
+            append="f" if index == 0 else "t",
+            Xmx=str(config.memory["giga"]),
         )
-        for i, intfile in enumerate(file_info["interleaved_files"]):
-            out_file = temp_interleaved if i == 0 else final_interleaved
-            bb_stdout, bb_stderr = reformat(
-                in_file=str(intfile),
-                capture_output=True,
-                out=str(out_file),
-                threads=config.threads,
-                overwrite="t" if i == 0 else "f",
-                append="f" if i == 0 else "t",
-                Xmx=str(config.memory["giga"]),
-                int=True,
-            )
-            config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
-
-    # Process single-end files
-    if (
-        "single_end_files" in file_info
-        and len(file_info["single_end_files"]) != 0
-    ):
-        config.logger.info(f"Single-end files: {file_info['single_end_files']}")
-        for i, sefile in enumerate(file_info["single_end_files"]):
-            out_file = (
-                temp_interleaved
-                if i == 0 and not temp_interleaved.exists()
-                else final_interleaved
-            )
-
-            bb_stdout, bb_stderr = reformat(
-                in_file=str(sefile),
-                capture_output=True,
-                out=str(out_file),
-                threads=config.threads,
-                overwrite="t"
-                if i == 0 and not temp_interleaved.exists()
-                else "f",
-                append="f" if i == 0 and not temp_interleaved.exists() else "t",
-                Xmx=str(config.memory["giga"]),
-            )
-            config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
-
-    # Clean up temporary file if it exists
-    if temp_interleaved.exists():
-        if final_interleaved.exists():
-            temp_interleaved.unlink()
-        else:
-            temp_interleaved.rename(final_interleaved)
-
-    if (
-        len(file_info["R1_R2_pairs"]) > 1
-        or len(file_info["interleaved_files"]) > 1
-        or (
-            "single_end_files" in file_info
-            and len(file_info["single_end_files"]) > 1
-        )
-    ):
-        config.skip_steps.append("filter_by_tile")
-        config.skip_steps.append("error_correct_1")
-        config.skip_steps.append("error_correct_2")
-        config.logger.info(
-            "Tile filtering and Error correction steps will be skipped as we concatenated fastq files from (cowardly assuming) multiple samples."
-        )
-
-    return final_interleaved, file_name, file_info
+        config.logger.info(format_bbmapy_output(stdout, stderr))
+    return output, file_name, file_info
 
 
 def filter_known_dna(
@@ -1185,7 +1310,7 @@ def filter_known_dna(
             Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
-            interleaved="t",
+            interleaved="t" if config.input_interleaved else "f",
             stats=config.temp_dir
             / f"stats_filter_known_dna_{config.file_name}.txt",
         )
@@ -1197,7 +1322,7 @@ def filter_known_dna(
             "bbduk.sh",
             is_merged=False,
             end_type=None,
-            interleaved=True,
+            interleaved=config.input_interleaved,
             is_gz=True,
         )
         return Path(output_file)
@@ -1233,7 +1358,7 @@ def decontaminate_rrna(
             Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
-            interleaved="t",
+            interleaved="t" if config.input_interleaved else "f",
             stats=config.temp_dir
             / f"stats_decontaminate_rrna_{config.file_name}.txt",
             capture_output=True,
@@ -1246,7 +1371,7 @@ def decontaminate_rrna(
             "bbduk.sh",
             is_merged=False,
             end_type=None,
-            interleaved=True,
+            interleaved=config.input_interleaved,
             is_gz=True,
         )
         return Path(output_file)
@@ -1261,7 +1386,7 @@ def fetch_and_mask_genomes(config: ReadFilterConfig) -> Union[str, Path]:
     from rolypoly.utils.bio.genome_fetch import fetch_genomes_from_stats_file
 
     # Create a dedicated subfolder for fetched genomes using absolute paths
-    fetched_dna_dir = config.temp_dir / "fetched_dna" / "genomes"
+    fetched_dna_dir = config.temp_dir / "fetched_dna" / config.file_name / "genomes"
     fetched_dna_dir.mkdir(parents=True, exist_ok=True)
 
     # Get absolute paths
@@ -1279,7 +1404,7 @@ def fetch_and_mask_genomes(config: ReadFilterConfig) -> Union[str, Path]:
             return "host_empty"
 
         # Create a dedicated subfolder for fetched genomes using absolute paths
-        fetched_dna_dir = config.temp_dir / "fetched_dna" / "genomes"
+        fetched_dna_dir = config.temp_dir / "fetched_dna" / config.file_name / "genomes"
         fetched_dna_dir.mkdir(parents=True, exist_ok=True)
 
         # Get absolute paths
@@ -1358,7 +1483,7 @@ def filter_identified_dna(
             Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
-            interleaved="t",
+            interleaved="t" if config.input_interleaved else "f",
             stats=config.temp_dir
             / f"stats_filter_identified_dna_{config.file_name}.txt",
         )
@@ -1370,7 +1495,7 @@ def filter_identified_dna(
             "bbduk.sh",
             is_merged=False,
             end_type=None,
-            interleaved=True,
+            interleaved=config.input_interleaved,
             is_gz=True,
         )
         return Path(output_file)
@@ -1412,7 +1537,7 @@ def dedupe(
             Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
-            interleaved="t",
+            interleaved="t" if config.input_interleaved and not is_merged else "f",
         )
         config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
 
@@ -1422,7 +1547,7 @@ def dedupe(
             "clumpify.sh",
             is_merged=is_merged,
             end_type=None,
-            interleaved=True,
+            interleaved=config.input_interleaved and not is_merged,
             is_gz=True,
         )
         return Path(output_file)
@@ -1450,7 +1575,7 @@ def trim_adapters(
             Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
-            interleaved="t",
+            interleaved="t" if config.input_interleaved else "f",
             stats=config.temp_dir
             / f"stats_trim_adapters_{config.file_name}.txt",
         )
@@ -1462,7 +1587,7 @@ def trim_adapters(
             "bbduk.sh",
             is_merged=False,
             end_type=None,
-            interleaved=True,
+            interleaved=config.input_interleaved,
             is_gz=True,
         )
         return Path(output_file)
@@ -1498,7 +1623,7 @@ def remove_synthetic_artifacts(
             Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
-            interleaved="t",
+            interleaved="t" if config.input_interleaved else "f",
             stats=config.temp_dir
             / f"stats_remove_synthetic_artifacts_{config.file_name}.txt",
         )
@@ -1510,7 +1635,7 @@ def remove_synthetic_artifacts(
             "bbduk.sh",
             is_merged=False,
             end_type=None,
-            interleaved=True,
+            interleaved=config.input_interleaved,
             is_gz=True,
         )
         return Path(output_file)
@@ -1537,7 +1662,7 @@ def trim_polya_tails(
             Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
-            interleaved="t",
+            interleaved="t" if config.input_interleaved else "f",
             stats=config.temp_dir
             / f"stats_trim_polya_tails_{config.file_name}.txt",
         )
@@ -1549,7 +1674,7 @@ def trim_polya_tails(
             "bbduk.sh",
             is_merged=False,
             end_type=None,
-            interleaved=True,
+            interleaved=config.input_interleaved,
             is_gz=True,
         )
         return Path(output_file)
@@ -1576,7 +1701,7 @@ def entropy_filter(
             Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
-            interleaved="t",
+            interleaved="t" if config.input_interleaved else "f",
         )
         config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
 
@@ -1586,7 +1711,7 @@ def entropy_filter(
             "bbduk.sh",
             is_merged=False,
             end_type=None,
-            interleaved=True,
+            interleaved=config.input_interleaved,
             is_gz=True,
         )
         return Path(output_file)
@@ -1702,8 +1827,8 @@ def merge_reads(
             "merge_reads",
             "bbmerge.sh",
             is_merged=True,
-            end_type="paired",
-            interleaved=True,
+            end_type="single",
+            interleaved=False,
             is_gz=True,
         )
         output_tracker.add_file(
@@ -1711,8 +1836,8 @@ def merge_reads(
             "merge_reads_unmerged",
             "bbmerge.sh",
             is_merged=False,
-            end_type="single",
-            interleaved=False,
+            end_type="paired",
+            interleaved=True,
             is_gz=True,
         )
         return Path(output_file), Path(unmerged_file)
@@ -1740,7 +1865,7 @@ def quality_trim_unmerged(
             Xmx=get_reduced_memory(config.memory),
             threads=str(config.threads),
             overwrite="t",
-            interleaved="t",
+            interleaved="t" if config.input_interleaved else "f",
         )
         config.logger.info(format_bbmapy_output(bb_stdout, bb_stderr))
 
@@ -1749,8 +1874,8 @@ def quality_trim_unmerged(
             "quality_trim_unmerged",
             "bbduk.sh",
             is_merged=False,
-            end_type="single",
-            interleaved=False,
+            end_type="paired" if config.input_interleaved else "single",
+            interleaved=config.input_interleaved,
             is_gz=True,
         )
         return Path(output_file)
@@ -1761,7 +1886,8 @@ def quality_trim_unmerged(
 
 
 def cleanup_and_move_files(
-    config: ReadFilterConfig, output_tracker: OutputTracker, *, falco_ready: bool = True
+    config: ReadFilterConfig, output_tracker: OutputTracker, *,
+    falco_ready: bool = True, final_paths: list[Path] | None = None,
 ):
     """Clean up and move files to their final locations.
     Args:
@@ -1803,6 +1929,7 @@ def cleanup_and_move_files(
         "out_adapter_*.txt",
         "bbmerge_discovered_*.fa",
         "validated_bbmerge_discovered_*.fa",
+        "library_config_*.json",
     ]:
         for stat_file in temp_dir.glob(pattern):
             if stat_file.exists():
@@ -1815,22 +1942,18 @@ def cleanup_and_move_files(
                         f"Could not move {stat_file} to run_info: {str(e)}"
                     )
 
-    # Get final output files
-    final_merged = output_tracker.get_latest_merged_file()
-    final_interleaved = output_tracker.get_latest_non_merged_file()
-
     # Move final output files to the output directory
-    for item in [final_merged, final_interleaved]:
-        if item and Path(item).exists():
-            try:
-                target = output_dir / Path(item).name
-                if target.exists():
-                    target.unlink()
+    files = final_paths if final_paths is not None else [
+        output_tracker.get_latest_merged_file(),
+        output_tracker.get_latest_non_merged_file(),
+    ]
+    for item in files:
+        if item:
+            if not Path(item).is_file():
+                raise FileNotFoundError(f"Final filtered reads are missing: {item}")
+            target = output_dir / Path(item).name
+            if Path(item).resolve() != target.resolve():
                 shutil.move(str(item), str(target))
-            except Exception as e:
-                config.logger.warning(
-                    f"Could not move {item} to output directory: {str(e)}"
-                )
 
     # If keeping temporary files, move fetched_dna to run_info
     if config.keep_tmp:

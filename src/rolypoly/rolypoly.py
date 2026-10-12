@@ -140,6 +140,8 @@ CONTEXT_SETTINGS = dict(
                 "fastx-stats": "rolypoly.commands.misc.fastx_stats.fastx_stats",
                 "detect-seq-layout": "rolypoly.commands.misc.detect_seq_layout.detect_seq_layout",
                 "detect-layout": "hidden:rolypoly.commands.misc.detect_seq_layout.detect_seq_layout",
+                "dereplicate-seqs": "rolypoly.commands.misc.dereplicate_seqs.dereplicate_seqs",
+                "extract-seqs": "rolypoly.commands.misc.extract_seqs.extract_seqs",
                 "fastx-calc": "rolypoly.commands.misc.fastx_calc.fastx_calc",
                 "rename-seqs": "rolypoly.commands.misc.rename_seqs.rename_seqs",
                 "translate": "rolypoly.commands.misc.translate.translate",

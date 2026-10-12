@@ -38,6 +38,14 @@ interleaved or single FASTQ files. Detection scans the directory itself, not
 nested temporary folders. Use explicit library numbers when orphan reads
 must be associated with particular external pairs.
 
+For the `filter-reads` default `keep-separate` policy, each `_libNNN` name
+remains a separate discovered library, with its interleaved and merged streams
+associated together. `single-output` and `pre-concatenate` produce one named
+output library. No assembly policy switch is needed: the read policy has
+already been applied upstream. Standalone `assemble` likewise preserves the
+supplied files and adapts their layout per backend. A merged-only output
+(including a filtered single-end library) is passed as unpaired reads.
+
 metaSPAdes requires one logical paired-end library. When multiple paired
 libraries are supplied, RolyPoly pools their file lists into one dataset entry
 and logs a warning. Mate pairing is preserved, but the original libraries and
