@@ -11,10 +11,33 @@ Process RNA-seq Illumina reads through the read-cleaning pipeline.
 
 The workflow combines host/contaminant removal, optional fetched-reference
 filtering, adapter/quality trimming, and optional error correction based on
-configured steps and speed presets.
+configured steps and filtering presets.
 
 Input can be a single file, paired files, or a directory of FASTQ files.
 Use `--skip-steps` and `--override-parameters` to tailor the workflow.
+
+### Defaults shared with roll
+
+The default preset is `rna_virus_metat`, matching the read-filtering stage of
+default `roll` (`--preset rna_virus`). Both keep libraries separate, leave
+Poly(A) trimming and synthetic-artifact removal disabled, and use lenient
+quality trimming (`trimq=5`, `minlen=25`) with adapter `minlen=20`.
+Preset parameters are protected from automatic tuning; explicit
+`--override-parameters` still take precedence.
+
+This changes the former standalone default. To retain its unprotected
+automatic tuning, use `--preset auto`: sampled average quality below 25 gives
+`trimq=10`, from 25 to below 30 gives `trimq=12`, and at least 30 gives
+`trimq=15`, with `minlen=20`. `--disable-auto` disables tuning; it is not
+equivalent to the old automatic behavior. Saved configuration-file presets
+remain in effect unless `--preset` is explicitly supplied.
+
+Effective per-library parameters and skipped steps are logged after tuning
+and input-layout adjustments, and saved in the library configuration files.
+The legacy `--speed` option is retained for compatibility but has no effect:
+it is not forwarded to BBDuk. Nonzero values produce a warning.
+Use `--preset fast` for a reduced workflow, not as an equivalent k-mer
+sampling setting.
 
 ### Multiple libraries
 
@@ -84,6 +107,32 @@ Per-library effective preprocessing parameters are saved as
 `run_info/library_config_<name>.json`. Fetched host references are isolated
 by library so one library cannot reuse another library's inferred host set.
 
+### Resume with roll on another node
+
+For large datasets or samples needing more memory for preprocessing, use:
+
+```bash
+rolypoly filter-reads -i /shared/raw/sample_1 \
+  -o /shared/results/sample_1/filtered_reads --threads 16 --memory 64g
+rolypoly roll --skip-existing -i /shared/raw/sample_1 \
+  -o /shared/results/sample_1 --threads 32 --memory 32g
+```
+
+Keep the original input and the complete filtering output, including
+`run_info/libraries.tsv`, at the same absolute paths for automatic reuse.
+Do not archive metadata with `--zip-reports` or use `--overwrite`.
+Match any nondefault presets, references, and library policy.
+The roll output is the parent folder; roll input remains the original reads.
+See [staging large or uneven datasets](roll.md#staging-large-or-uneven-datasets-across-machines)
+for changed-path handoffs, standalone assembly/taxonomy, and memory-versus-CPU
+scheduling recommendations.
+
+Alternatively, run `roll` with every post-filtering stage in `--skip-steps`.
+It completes successfully after filtering and creates the expected layout
+for a later `roll --skip-existing`. See the
+[filtering-only roll example](roll.md#alternatively-run-only-filtering-through-roll)
+for the exact skip list, including the separate `length_filter` stage.
+
 ## Usage
 
 ```bash
@@ -97,10 +146,10 @@ rolypoly filter-reads [OPTIONS]
 - `-i`, `-in`, `--input`: Input raw reads file(s) or directory containing them. For paired-end reads, you can provide an interleaved file or the R1 and R2 files separated by comma. Example: -i sample_R1.fastq.gz,sample_R2.fastq.gz If --input is a directory, each detected R1/R2 pair, interleaved file, or single-end file is a library. --multi-lib-pol controls pooling; the default keeps libraries separate. (type: `TEXT`; default: `Sentinel.UNSET`)
 - `-mlp`, `--multi-lib-pol`, `--multilibrarypolicy`: pre-concatenate: pool before filtering and disable library-specific steps; keep-separate: process and output each library independently; single-output: process independently, then pool before final sequence deduplication. The fast preset selects pre-concatenate. (type: `CHOICE`; default: `keep-separate`)
 - `-D`, `--known-dna`: Fasta file of known DNA entities. Example: -D known_dna.fasta (type: `PATH`; default: `Sentinel.UNSET`)
-- `-s`, `--speed`: Set bbduk.sh speed value (0-15, where 0 uses all kmers and 15 skips most). Example: -s 5 (type: `INTEGER`; default: `0`)
+- `-s`, `--speed`: Deprecated compatibility option; currently has no effect. Use --preset fast for a reduced workflow. (type: `INTEGER`; default: `0`)
 - `-se`, `--skip-existing`: Skip steps if output files already exist (type: `BOOLEAN`; default: `False`)
 - `-ss`, `--skip-steps`: Comma-separated list of steps to skip. Example: --skip-steps filter_by_tile,entropy_filter (type: `TEXT`; default: ``)
-- `--preset`: Apply a named read-filtering preset (overrides individual step parameters unless those are given explicitly via --override-parameters). 'rna_virus_metat': RNA virus metatranscriptome: rRNA removal (mincovfraction=0.6), known-DNA + identified-DNA filtering, adapter trim, lenient quality trim (trimq=5 minlen=25); no polyA trimming 'total_rna_ribodepleted': Total-RNA that went through ribo-depletion: residual rRNA filtering (mincovfraction=0.6, same as rna_virus_metat), known-DNA + identified-DNA filtering, adapter trim, lenient quality trim (trimq=5 minlen=20); no polyA trimming 'poly_a_selected': Poly-A selected mRNA: polyA tail trimming enabled (trimpolya=18), stricter quality trim (trimq=12 minlen=20); rRNA and DNA filtering still applied 'fast': Fast: pre-concatenates libraries and disables adapter discovery, overlap error correction (error_correct_1/2), optical deduplication, and identified-DNA filtering 'strict': Strict: aggressive quality trim (trimq=20 minlen=20), two-pass deduplication; all filtering steps enabled 'all_virus_metat': All-virus metatranscriptome: more aggressive rRNA removal (mincovfraction=0.5, versus default 0.6), skips identified-DNA filter, moderate quality trim (trimq=10 minlen=20); known-DNA filtering still applied 'all_virus_metag': All-virus metagenomics: skips rRNA and identified-DNA filtering entirely, moderate quality trim (trimq=10 minlen=20); known-DNA (host) filtering still applied if --known-dna is provided (type: `CHOICE`)
+- `--preset`: Apply a named read-filtering preset (overrides individual step parameters unless those are given explicitly via --override-parameters). The default matches roll's rna_virus read filtering; use auto for the former standalone defaults. 'auto': Legacy standalone defaults: automatic quality trim (trimq=10/12/15 from sampled quality, minlen=20), without preset-protected parameters 'rna_virus_metat': RNA virus metatranscriptome: rRNA removal (mincovfraction=0.6), known-DNA + identified-DNA filtering, adapter trim, lenient quality trim (trimq=5 minlen=25); no polyA trimming 'total_rna_ribodepleted': Total-RNA that went through ribo-depletion: residual rRNA filtering (mincovfraction=0.6, same as rna_virus_metat), known-DNA + identified-DNA filtering, adapter trim, lenient quality trim (trimq=5 minlen=20); no polyA trimming 'poly_a_selected': Poly-A selected mRNA: polyA tail trimming enabled (trimpolya=18), stricter quality trim (trimq=12 minlen=20); rRNA and DNA filtering still applied 'fast': Fast: pre-concatenates libraries and disables adapter discovery, overlap error correction (error_correct_1/2), optical deduplication, and identified-DNA filtering 'strict': Strict: aggressive quality trim (trimq=20 minlen=20), two-pass deduplication; all filtering steps enabled 'all_virus_metat': All-virus metatranscriptome: more aggressive rRNA removal (mincovfraction=0.5, versus default 0.6), skips identified-DNA filter, moderate quality trim (trimq=10 minlen=20); known-DNA filtering still applied 'all_virus_metag': All-virus metagenomics: skips rRNA and identified-DNA filtering entirely, moderate quality trim (trimq=10 minlen=20); known-DNA (host) filtering still applied if --known-dna is provided (type: `CHOICE`; default: `rna_virus_metat`)
 - `--disable-auto`: Disable automatic trim/minlen tuning from detected read stats. (type: `BOOLEAN`; default: `False`)
 - `--trim-polya`, `--poly-selection`: Enable optional terminal polyA/polyT tail trimming after adapter trimming. Uses the trim_polya_tails preset and can be customized with --override-parameters. (type: `BOOLEAN`; default: `False`)
 - `--adapters`: Optional adapter FASTA to use instead of built-in (or discovered via bbmerge) adapters. (type: `PATH`)

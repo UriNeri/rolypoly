@@ -18,7 +18,8 @@ from rolypoly.commands.reads.filter_reads import (
 
 
 @pytest.mark.parametrize("as_json", [False, True])
-def test_filter_overrides_survive_preset_and_auto_tuning(tmp_path, as_json):
+@pytest.mark.parametrize("quality", [24, 25, 29, 30, 35])
+def test_filter_overrides_survive_preset_and_auto_tuning(tmp_path, as_json, quality):
     overrides = {
         "quality_trim_unmerged": {"trimq": 17},
         "decontaminate_rrna": {"mincovfraction": 0.83},
@@ -35,13 +36,34 @@ def test_filter_overrides_survive_preset_and_auto_tuning(tmp_path, as_json):
     )
     config.protected_step_params.update(protected)
     auto_tune_params(
-        {"average_read_length": 150, "average_read_quality": 35},
+        {"average_read_length": 150, "average_read_quality": quality},
         config,
         config.protected_step_params,
     )
     assert config.step_params["quality_trim_unmerged"]["trimq"] == 17
     assert config.step_params["quality_trim_unmerged"]["minlen"] == 25
     assert config.step_params["decontaminate_rrna"]["mincovfraction"] == 0.83
+
+
+@pytest.mark.parametrize("quality,trimq", [(24, 10), (25, 12), (29, 12), (30, 15), (35, 15)])
+def test_filter_auto_preset_retains_legacy_tuning(tmp_path, caplog, quality, trimq):
+    config = ReadFilterConfig(
+        input=str(tmp_path), output=str(tmp_path / "out"),
+        log_file=str(tmp_path / "test.log"),
+        adapters=str(tmp_path / "adapters.fa"),
+    )
+    protected = apply_filter_reads_preset(
+        "auto", click.Context(click.Command("test")), config
+    )
+    assert not protected
+    auto_tune_params(
+        {"average_read_length": 150, "average_read_quality": quality},
+        config, protected,
+    )
+    assert config.step_params["quality_trim_unmerged"]["trimq"] == trimq
+    assert config.step_params["quality_trim_unmerged"]["minlen"] == 20
+    assert config.step_params["trim_adapters"]["minlen"] == 20
+    assert f"effective quality_trim_unmerged trimq={trimq} minlen=20" in caplog.text
 
 
 @pytest.mark.parametrize("as_json", [False, True])

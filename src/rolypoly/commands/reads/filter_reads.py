@@ -31,6 +31,7 @@ console = Console()
 config = None
 
 MULTI_LIBRARY_POLICIES = ("pre-concatenate", "keep-separate", "single-output")
+DEFAULT_FILTER_READS_PRESET = "rna_virus_metat"
 LIBRARY_SPECIFIC_STEPS = (
     "filter_by_tile",
     "discover_merge_adapters",
@@ -40,6 +41,12 @@ LIBRARY_SPECIFIC_STEPS = (
 
 
 FILTER_READS_PRESETS: dict[str, dict[str, Any]] = {
+    "auto": {
+        "step_params": {},
+        "skip_steps": [],
+        "flags": {},
+        "description": "Legacy standalone defaults: automatic quality trim (trimq=10/12/15 from sampled quality, minlen=20), without preset-protected parameters",
+    },
     "rna_virus_metat": {
         "step_params": {
             "quality_trim_unmerged": {"trimq": 5, "minlen": 25},
@@ -224,11 +231,13 @@ def auto_tune_params(
         config.step_params["trim_adapters"]["minlen"] = minlen
 
     config.logger.info(
-        "Auto-detected avg_read_length=%s, avg_quality=%s → adjusting trimq=%s, minlen=%s",
+        "Auto-detected avg_read_length=%s, avg_quality=%s; effective "
+        "quality_trim_unmerged trimq=%s minlen=%s; trim_adapters minlen=%s",
         round(avg_read_length, 2),
         round(avg_quality, 2),
-        trimq,
-        minlen,
+        config.step_params.get("quality_trim_unmerged", {}).get("trimq"),
+        config.step_params.get("quality_trim_unmerged", {}).get("minlen"),
+        config.step_params.get("trim_adapters", {}).get("minlen"),
     )
 
 
@@ -792,6 +801,12 @@ def process_read_library(
         # dedupe, # removes duplicates (second round - after the above processing some reads may have been "corrected"/modified and are now duplicates) NOTE! this is now done as part of process_reads (see Final deduplication step at the end of the pipeline.)
     ]
 
+    config.logger.info(
+        "Library %s effective filtering: preset=%s auto_tuning=%s "
+        "step_params=%s skip_steps=%s",
+        config.file_name, config.preset, not config.disable_auto,
+        config.step_params, sorted(config.skip_steps),
+    )
     current_input = fastq_file
 
     from rich.spinner import SPINNERS  # type: ignore
@@ -895,7 +910,7 @@ If --input is a directory, each detected R1/R2 pair, interleaved file, or single
     "--speed",
     default=0,
     type=int,
-    help="Set bbduk.sh speed value (0-15, where 0 uses all kmers and 15 skips most). Example: -s 5",
+    help="Deprecated compatibility option; currently has no effect. Use --preset fast for a reduced workflow.",
 )
 @click.option(
     "-se",
@@ -912,10 +927,12 @@ If --input is a directory, each detected R1/R2 pair, interleaved file, or single
 @click.option(
     "--preset",
     type=click.Choice(sorted(FILTER_READS_PRESETS.keys())),
-    default=None,
+    default=DEFAULT_FILTER_READS_PRESET,
+    show_default=True,
     help=(
         "Apply a named read-filtering preset (overrides individual step parameters unless "
         "those are given explicitly via --override-parameters). "
+        "The default matches roll's rna_virus read filtering; use auto for the former standalone defaults. "
         + "  ".join(
             f"'{name}': {p['description']}"
             for name, p in FILTER_READS_PRESETS.items()
@@ -1040,7 +1057,8 @@ def filter_reads(
 
     The workflow combines host/contaminant removal, optional fetched-reference
     filtering, adapter/quality trimming, and optional error correction based on
-    configured steps and speed presets.
+    configured steps and filtering presets. Default filtering matches roll's
+    rna_virus preset; --preset auto retains the former standalone defaults.
 
     Input can be a single file, paired files, or a directory of FASTQ files.
     Use `--skip-steps` and `--override-parameters` to tailor the workflow.
@@ -1114,11 +1132,21 @@ def filter_reads(
     ):
         config.multi_library_policy = multi_library_policy
 
-    active_preset = preset or getattr(config, "preset", None)
-    config.preset = active_preset
     ctx = click.get_current_context()
+    active_preset = (
+        getattr(config, "preset", None)
+        if config_file is not None
+        and ctx.get_parameter_source("preset") == click.core.ParameterSource.DEFAULT
+        else preset or getattr(config, "preset", None)
+    )
+    config.preset = active_preset
     preset_protected = apply_filter_reads_preset(active_preset, ctx, config)
     config.protected_step_params.update(preset_protected)
+    if config.speed:
+        config.logger.warning(
+            "--speed is deprecated and has no effect; no BBDuk k-mer sampling "
+            "is applied. Use --preset fast for a reduced workflow."
+        )
 
     log_start_info(config.logger, config.__dict__)
     try:

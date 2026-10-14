@@ -743,6 +743,111 @@ def multi_library_reads(directory: Path) -> Path:
     return directory
 
 
+@pytest.mark.parametrize("quality", [24, 25, 29, 30, 35])
+def test_roll_and_filter_reads_default_parameters(
+    runner: CliRunner, tmp_path: Path, monkeypatch, quality: int,
+) -> None:
+    from copy import deepcopy
+
+    from rolypoly.commands.reads import filter_reads
+
+    inputs = multi_library_reads(tmp_path / "inputs")
+    output = tmp_path / "roll"
+    assembly = output / "assembly"
+    assembly.mkdir(parents=True)
+    (assembly / "final_assembly.fasta").write_text(">CID_1\n" + "ACGT" * 100 + "\n")
+    captured = []
+
+    def process_reads(config, tracker):
+        filter_reads.auto_tune_params(
+            {"average_read_length": 100, "average_read_quality": quality},
+            config, config.protected_step_params,
+        )
+        captured.append({
+            "preset": config.preset,
+            "params": deepcopy(config.step_params),
+            "skips": sorted(config.skip_steps),
+            "policy": config.multi_library_policy,
+            "speed": config.speed,
+            "trim_polya": config.trim_polya,
+            "artifacts": config.remove_synthetic_artifacts_enabled,
+        })
+        config.cleanup_temp()
+
+    monkeypatch.setattr(filter_reads, "process_reads", process_reads)
+    standalone = runner.invoke(
+        rolypoly,
+        ["filter-reads", "-i", str(inputs), "-o", str(tmp_path / "filtered"),
+         "-g", str(tmp_path / "filter.log")],
+        catch_exceptions=False,
+    )
+    assert standalone.exit_code == 0, standalone.output
+    rolled = runner.invoke(
+        rolypoly,
+        ["roll", "-i", str(inputs), "-o", str(output), "--skip-existing",
+         "--cluster-backend", "none", "--skip-steps",
+         "filter_contigs,marker_search,nucleic_search,map_reads,annotate,"
+         "rdrp_motif_search,taxonomy,report",
+         "-g", str(tmp_path / "roll.log")],
+        catch_exceptions=False,
+    )
+    assert rolled.exit_code == 0, rolled.output
+    assert len(captured) == 2
+    assert captured[0] == captured[1]
+    assert captured[0]["params"]["quality_trim_unmerged"] == {
+        "qtrim": "rl", "trimq": 5, "minlen": 25,
+    }
+    for log in ("filter.log", "roll.log"):
+        assert "effective quality_trim_unmerged trimq=5 minlen=25" in (
+            tmp_path / log
+        ).read_text()
+
+
+@pytest.mark.parametrize("saved_preset", [None, "strict"])
+@pytest.mark.parametrize("explicit_preset", [None, "auto"])
+def test_filter_reads_config_preset_precedence(
+    runner: CliRunner, tmp_path: Path, monkeypatch,
+    saved_preset: str | None, explicit_preset: str | None,
+) -> None:
+    from rolypoly.commands.reads import filter_reads
+
+    config_file = tmp_path / "config.json"
+    config_file.write_text(json.dumps({
+        "input": str(tmp_path), "output": str(tmp_path / "out"),
+        "preset": saved_preset, "log_file": str(tmp_path / "filter.log"),
+    }))
+    captured = []
+
+    def process_reads(config, tracker):
+        captured.append(config.preset)
+        config.cleanup_temp()
+
+    monkeypatch.setattr(filter_reads, "process_reads", process_reads)
+    args = ["filter-reads", "--config-file", str(config_file)]
+    if explicit_preset:
+        args.extend(["--preset", explicit_preset])
+    result = runner.invoke(rolypoly, args, catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    assert captured == [explicit_preset or saved_preset]
+
+
+def test_filter_reads_warns_about_inactive_speed(
+    runner: CliRunner, tmp_path: Path, monkeypatch,
+) -> None:
+    from rolypoly.commands.reads import filter_reads
+
+    monkeypatch.setattr(filter_reads, "process_reads", lambda config, tracker: config.cleanup_temp())
+    log = tmp_path / "filter.log"
+    result = runner.invoke(
+        rolypoly,
+        ["filter-reads", "-i", str(tmp_path), "-o", str(tmp_path / "out"),
+         "--speed", "15", "-g", str(log)],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert "--speed is deprecated and has no effect" in log.read_text()
+
+
 @pytest.mark.parametrize(
     "policy,preset,zip_reports",
     [
@@ -764,7 +869,7 @@ def test_filter_reads_multi_library_policy(
     if not shutil.which("java"):
         pytest.skip("BBMap runtime requires Java")
     inputs = multi_library_reads(tmp_path / "inputs")
-    output = tmp_path / "output"
+    output = tmp_path / "roll" / "filtered_reads"
     calls = []
     original_clumpify = bbmapy.clumpify
     library_steps = []
@@ -846,12 +951,195 @@ def test_filter_reads_multi_library_policy(
         return
     assert resumed.exit_code == 0, resumed.output
     assert not calls
+    from rolypoly.commands.assembly import assemble
+
+    backends = []
+
+    def backend(config, libraries):
+        backends.append(len(libraries))
+        contigs = config.output_dir / "backend.fa"
+        contigs.write_text(">contig\n" + "ACGT" * 100 + "\n")
+        return contigs
+
+    def unexpected_filtering(*args, **kwargs):
+        pytest.fail("roll reprocessed completed standalone filtered libraries")
+
+    monkeypatch.setattr(filter_reads, "process_read_library", unexpected_filtering)
+    monkeypatch.setattr(assemble, "run_megahit", backend)
+    filtering_only = runner.invoke(
+        rolypoly,
+        ["roll", "-i", str(inputs), "-o", str(output.parent),
+         "--skip-existing", "-mlp", policy,
+         "-g", str(tmp_path / "filter_only.log"), "--skip-steps",
+         "assemble,filter_contigs,cluster,length_filter,marker_search,"
+         "nucleic_search,map_reads,annotate,rdrp_motif_search,taxonomy,report",
+         *(["--filter-preset", preset] if preset else [])],
+        catch_exceptions=False,
+    )
+    assert filtering_only.exit_code == 0, filtering_only.output
+    assert not (output.parent / "assembly").exists()
+    assert not list(output.parent.glob("rolypoly__*"))
+    assert not backends and not calls
+    roll_args = [
+        "roll", "-i", str(inputs), "-o", str(output.parent),
+        "--skip-existing", "-mlp", policy, "--assembler", "megahit",
+        "--no-rmdup", "--cluster-backend", "none", "-M", "1g", "-t", "1",
+        "-g", str(tmp_path / "roll.log"), "--skip-steps",
+        "filter_contigs,marker_search,nucleic_search,map_reads,annotate,"
+        "rdrp_motif_search,taxonomy,report",
+    ]
+    if preset:
+        roll_args.extend(["--filter-preset", preset])
+    for _ in range(2):
+        rolled = runner.invoke(rolypoly, roll_args, catch_exceptions=False)
+        assert rolled.exit_code == 0, rolled.output
+    assert backends == [2 if policy == "keep-separate" else 1]
+    assert not calls
+    assert (output.parent / "assembly/final_assembly.fasta").is_file()
+    assert "Reusing completed filtered libraries" in (tmp_path / "roll.log").read_text()
     changed = runner.invoke(
         rolypoly, args + ["--skip-existing", "--preset", "strict", "-mlp",
                          "single-output" if policy != "single-output" else "keep-separate"],
     )
     assert changed.exit_code != 0
     assert "matching completed library manifest" in changed.output
+    transferred_inputs = inputs.rename(tmp_path / "transferred_inputs")
+    transferred_output = tmp_path / "transferred_roll"
+    shutil.copytree(output.parent, transferred_output, symlinks=False)
+    transferred_args = [
+        str(transferred_inputs) if arg == str(inputs)
+        else str(transferred_output) if arg == str(output.parent)
+        else arg
+        for arg in roll_args
+    ]
+    automatic = runner.invoke(rolypoly, transferred_args)
+    assert automatic.exit_code != 0
+    assert "matching completed library manifest" in automatic.output
+    explicit = runner.invoke(
+        rolypoly, transferred_args + ["--skip-steps", "filter_reads,"
+        "filter_contigs,marker_search,nucleic_search,map_reads,annotate,"
+        "rdrp_motif_search,taxonomy,report"],
+        catch_exceptions=False,
+    )
+    assert explicit.exit_code == 0, explicit.output
+    assert backends == [2 if policy == "keep-separate" else 1]
+    assert not calls
+
+
+@pytest.mark.parametrize("keep_tmp", [False, True])
+@pytest.mark.parametrize("mini", [False, True])
+def test_roll_filtering_only_fresh_run(
+    runner: CliRunner, tmp_path: Path, monkeypatch, keep_tmp: bool, mini: bool,
+) -> None:
+    from rolypoly.commands.reads import filter_reads
+
+    inputs = multi_library_reads(tmp_path / "inputs")
+    output = tmp_path / "roll"
+    seen = []
+
+    def process_reads(config, tracker):
+        seen.append(Path(config.input))
+        assert config.skip_steps == ["trim_polya_tails", "filter_known_dna"]
+        (config.output_dir / "completed.txt").write_text("filtering completed")
+        config.cleanup_temp()
+
+    monkeypatch.setattr(filter_reads, "process_reads", process_reads)
+    args = [
+        "roll", "-i", str(inputs), "-o", str(output),
+        "-g", str(tmp_path / "roll.log"), "--skip-steps",
+        "subsample,assemble,filter_contigs,cluster,length_filter,marker_search,"
+        "nucleic_search,map_reads,annotate,rdrp_motif_search,taxonomy,report",
+    ]
+    if keep_tmp:
+        args.append("--keep-tmp")
+    if mini:
+        args.append("--mini")
+    result = runner.invoke(rolypoly, args, catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    assert seen == [inputs.resolve()]
+    assert (output / "filtered_reads/completed.txt").exists()
+    assert not (output / "assembly").exists()
+    assert not (output / "mini_input").exists()
+    assert bool(list(output.glob("rolypoly__*"))) == keep_tmp
+    assert "Filtering-only roll completed" in (tmp_path / "roll.log").read_text()
+    assert "ROLYPOLY_SUPPRESS_CITATIONS_WRITE" not in os.environ
+
+
+@pytest.mark.parametrize("skipped", [
+    set(), {"filter_contigs"}, {"cluster"}, {"length_filter"},
+    {"filter_contigs", "cluster", "length_filter"},
+])
+@pytest.mark.parametrize("cached", [False, True])
+def test_roll_contig_processing_skip_steps(
+    runner: CliRunner, tmp_path: Path, monkeypatch, skipped: set[str], cached: bool,
+) -> None:
+    from rolypoly.commands.misc import end_2_end
+
+    query = tmp_path / "contigs.fa"
+    query.write_text(">short\n" + "ACGT" * 50 + "\n>long\n" + "ACGT" * 100 + "\n")
+    output = tmp_path / "roll"
+    assembly = output / "assembly"
+    assembly.mkdir(parents=True)
+    paths = {
+        "filter_contigs": assembly / "filtered_assembly.fasta",
+        "cluster": assembly / "clustered_assembly.fasta",
+        "length_filter": assembly / "length_filtered.fasta",
+    }
+    if cached:
+        for stage in skipped:
+            paths[stage].write_text(">stale\n" + "G" * 500 + "\n")
+    calls = []
+    annotation_input = []
+
+    class CommandContext:
+        def invoke(self, command, **kwargs):
+            calls.append(command.name)
+            if command.name == "filter-contigs":
+                shutil.copyfile(kwargs["input"], kwargs["output"])
+            elif command.name == "cluster":
+                shutil.copyfile(kwargs["input_path"], kwargs["representatives_fasta"])
+            elif command.name == "annotate":
+                annotation_input.append(Path(kwargs["input"]))
+            else:
+                pytest.fail(f"Unexpected command {command.name}")
+
+    monkeypatch.setattr(end_2_end, "shared_command_context", lambda command: CommandContext())
+    result = runner.invoke(
+        rolypoly,
+        ["roll", "-i", str(query), "-o", str(output), "--host", str(query),
+         "--min-len", "300", "--skip-steps",
+         ",".join(["filter_reads", "assemble", "marker_search", "nucleic_search",
+                   "map_reads", "rdrp_motif_search", "taxonomy", "report", *sorted(skipped)]),
+         "-g", str(tmp_path / "roll.log"), *(["--skip-existing"] if cached else [])],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert ("filter-contigs" in calls) == ("filter_contigs" not in skipped)
+    assert ("cluster" in calls) == ("cluster" not in skipped)
+    expected = assembly / "final_assembly.fasta"
+    for stage in ("filter_contigs", "cluster", "length_filter"):
+        if stage not in skipped:
+            expected = paths[stage]
+    assert annotation_input == [expected]
+    text = expected.read_text()
+    assert ">CID_2" in text and ">stale" not in text
+    assert (">CID_1" in text) == ("length_filter" in skipped)
+    for stage in skipped:
+        assert paths[stage].exists() == cached
+        if cached:
+            assert ">stale" in paths[stage].read_text()
+
+
+def test_roll_rejects_unknown_skip_step(runner: CliRunner, tmp_path: Path) -> None:
+    output = tmp_path / "roll"
+    result = runner.invoke(
+        rolypoly, ["roll", "-i", str(tmp_path), "-o", str(output),
+                   "--skip-steps", "length_filer"],
+    )
+    assert result.exit_code == 2, result.output
+    assert "Unknown steps: length_filer" in result.output
+    assert "length_filter" in result.output
+    assert not output.exists()
 
 
 def test_filter_reads_input_append_retains_every_library(tmp_path: Path) -> None:

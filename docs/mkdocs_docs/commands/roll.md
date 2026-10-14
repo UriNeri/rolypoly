@@ -13,14 +13,15 @@ The pipeline follows these stages, subject to the selected preset and skipped st
 
 1. Filter reads and perform quality control, with optional subsampling.
 2. Assemble reads into contigs and dereplicate the assembly unless disabled.
-3. Filter contigs against a supplied host reference, optionally screen rRNA, then cluster contigs and apply the minimum-length cutoff.
-4. Search for protein markers and nucleotide matches to identify candidate viral contigs.
-5. Combine candidates from either search into `all_matched_contigs.fasta`.
-6. Map the original reads to the selected contigs, unless mapping is disabled.
-7. Annotate proteins and RNAs on the candidate contigs.
-8. Search for RdRp motifs.
-9. Assign ICTV taxonomy with `mmtax`, unless the taxonomy step is skipped.
-10. Generate the interactive `roll_report.html`, unless reporting is disabled.
+3. Filter contigs against a supplied host reference, optionally screen rRNA.
+4. Cluster contigs, then independently apply the minimum-length cutoff.
+5. Search for protein markers and nucleotide matches to identify candidate viral contigs.
+6. Combine candidates from either search into `all_matched_contigs.fasta`.
+7. Map the original reads to the selected contigs, unless mapping is disabled.
+8. Annotate proteins and RNAs on the candidate contigs.
+9. Search for RdRp motifs.
+10. Assign ICTV taxonomy with `mmtax`, unless the taxonomy step is skipped.
+11. Generate the interactive `roll_report.html`, unless reporting is disabled.
 
 Virus-characteristic prediction is planned but is not implemented.
 
@@ -50,6 +51,221 @@ rolypoly roll -i raw_reads/sample_1 -o results/sample_1 \
 
 This requests MEGAHIT only, with independently preprocessed libraries.
 Preset-specific per-tool parameters still apply to the selected assembler.
+
+### Default read filtering
+
+Default `roll` (`--preset rna_virus`) and default standalone `filter-reads`
+use the same `rna_virus_metat` filtering preset, automatic-tuning policy,
+and `keep-separate` library policy. With the same input, references, overrides,
+and resource settings, they select the same filtering parameters and steps.
+Quality trimming uses `trimq=5`, `minlen=25`; adapter trimming uses `minlen=20`.
+These preset parameters are protected from automatic tuning. Poly(A) trimming
+and synthetic-artifact removal remain disabled by default.
+
+Standalone filtering formerly used unprotected automatic quality tuning.
+Use `filter-reads --preset auto` (or `roll --filter-preset auto`) to retain
+that behavior. Changing defaults does not invalidate old cached results:
+`--skip-existing` does not compare every filtering parameter.
+
+For other roll presets, select the corresponding standalone presets:
+
+| Roll preset | Filter Reads preset | Assemble preset |
+| --- | --- | --- |
+| `rna_virus` (default) | `rna_virus_metat` (default) | `rna_virus` |
+| `ribodepleted` | `total_rna_ribodepleted` | `rna_virus` |
+| `poly_a` | `poly_a_selected` | `metatranscriptome` |
+| `all_virus_metat` | `all_virus_metat` | `rna_virus` |
+| `DNA_virus` | `all_virus_metag` | `metag` |
+| `complete` | `rna_virus_metat` | `complete` |
+| `fast` | `fast` | `fast` |
+
+`roll --preset fast` also subsamples reads and narrows search databases;
+standalone `filter-reads --preset fast` does not subsample. Explicit
+`--filter-preset` and `--assembly-preset` replace the mapped choices.
+
+## Staging large or uneven datasets across machines
+
+Prefer one raw-input folder and one result folder per sample. This lets you
+schedule unusually complex samples separately without rerunning completed
+stages for the others. Read filtering, assembly, and MMseqs-backed `mmtax`
+can benefit from high-memory servers/nodes. Marker searches and annotation
+can benefit from CPU-rich nodes or PCs when their databases and memory needs
+fit. These are scheduling recommendations, not measured resource guarantees;
+requirements depend on sample complexity, backend, and database size.
+Set `--memory` and `--threads` separately for each invocation.
+
+### Standalone filtering, then roll
+
+On the filtering node, write directly into the layout expected by roll:
+
+```bash
+rolypoly filter-reads -i /shared/raw/sample_1 \
+  -o /shared/results/sample_1/filtered_reads --threads 16 --memory 64g
+```
+
+Then, on the next machine:
+
+```bash
+rolypoly roll --skip-existing -i /shared/raw/sample_1 \
+  -o /shared/results/sample_1 --threads 32 --memory 32g
+```
+
+No new handoff format or conversion is needed. **Roll's input is still the
+original raw-read folder**, not the filtered-read folder. Its output is the
+**parent** of the standalone filtering output. Roll checks the completed
+`filtered_reads/run_info/libraries.tsv` manifest, reuses the published
+libraries, assembles them, and keeps the original reads available for mapping.
+Keep all published FASTQs and `run_info/`; do not use `--zip-reports` for
+automatic reuse. Match the multi-library policy and any nondefault presets
+or host-reference choices (standalone `--known-dna` corresponds to roll `--host`).
+Do not use `--overwrite`, which would remove the roll output tree.
+
+### Alternatively, run only filtering through roll
+
+To keep roll's preset selection and output layout from the start, skip every
+stage after filtering. This works in a fresh output directory without an
+assembly:
+
+```bash
+rolypoly roll -i /shared/raw/sample_1 -o /shared/results/sample_1 \
+  --threads 16 --memory 64g \
+  --skip-steps assemble,filter_contigs,cluster,length_filter,marker_search,nucleic_search,map_reads,annotate,rdrp_motif_search,taxonomy,report
+```
+
+This exits successfully after publishing filtered reads and metadata, with
+the usual temporary cleanup (unless `--keep-tmp` is supplied). Later, omit
+that skip list and resume:
+
+```bash
+rolypoly roll --skip-existing -i /shared/raw/sample_1 \
+  -o /shared/results/sample_1 --threads 32 --memory 32g
+```
+
+Use the same presets, references, and library policy in both invocations.
+The default does not subsample. With `--mini` or `--preset fast`, add
+`subsample` to the skip list if you want to filter the original reads instead
+of a subset; the remaining mini/fast preset choices still apply.
+The same path and metadata requirements as standalone filtering apply.
+
+### Transferring completed results
+
+Automatic filtering reuse requires the same absolute input and output paths,
+so shared storage mounted at the same location is simplest. When transferring
+results, copy the complete sample result tree and retain the raw inputs.
+Dereference symlinks during a changed-path transfer (for example,
+`rsync -aL /old/results/sample_1/ /new/results/sample_1/`): assembly and
+downstream FASTA outputs can be absolute symlinks into the old tree.
+Moving those links unchanged would leave broken outputs after the old
+location becomes unavailable.
+If paths change, after verifying that filtering completed and the transferred
+files are the intended libraries, explicitly bypass filtering:
+
+```bash
+rolypoly roll --skip-existing --skip-steps filter_reads \
+  -i /new/raw/sample_1 -o /new/results/sample_1 --threads 32 --memory 32g
+```
+
+This is a deliberate handoff, not manifest validation: it trusts
+`/new/results/sample_1/filtered_reads`. Merely pointing ordinary roll at
+filtered FASTQs would filter them again. If the original reads are unavailable,
+do not substitute the filtered reads and claim raw-read mapping equivalence.
+
+### Also offload assembly
+
+Run assembly on a memory-rich node using the same result tree and preset:
+
+```bash
+rolypoly assemble --input-dir /shared/results/sample_1/filtered_reads \
+  --preset rna_virus -o /shared/results/sample_1/assembly \
+  --threads 16 --memory 128g
+rolypoly roll --skip-existing -i /shared/raw/sample_1 \
+  -o /shared/results/sample_1 --threads 32 --memory 32g
+```
+
+Roll reuses `assembly/final_assembly.fasta` and continues downstream.
+Transfer the complete assembly directory, including identifier mappings and
+metadata, rather than only the FASTA. Use the table above for nondefault
+assembly presets; standalone `assemble` does not default to `rna_virus`.
+
+### Also offload taxonomy
+
+Taxonomy now defaults to DIAMOND for all presets, including fast/mini.
+Use `--taxonomy-backend mmseqs` to choose the previous backend. DIAMOND
+does not enforce `--memory`; MMseqs2 receives a split-memory budget after
+reserving the larger of 5% or 1 GiB, not a hard process RAM cap.
+See [mmtax memory behavior and local baselines](mmtax.md#memory-behavior).
+
+On the CPU-rich machine, run roll with `--skip-steps taxonomy,report`.
+After candidate discovery and annotation finish, run standalone `mmtax`
+on the memory-rich node. For the default annotated output:
+
+```bash
+mkdir -p /shared/results/sample_1/taxonomy
+rolypoly mmtax -i /shared/results/sample_1/all_matched_contigs.fasta \
+  --proteins /shared/results/sample_1/annotation_results/protein_annotation/predicted_orfs.faa \
+  --protein-gff /shared/results/sample_1/annotation_results/protein_annotation/predicted_orfs.gff \
+  -o /shared/results/sample_1/taxonomy/mmtax.tsv \
+  --database ncbi_virus --backend diamond --sensitivity normal \
+  --threads 16 --memory 64g
+rolypoly roll --skip-existing -i /shared/raw/sample_1 \
+  -o /shared/results/sample_1 --threads 32 --memory 32g
+```
+
+Reuse the same taxonomy backend/database/sensitivity as the intended roll run.
+If annotation was skipped, omit the protein options so `mmtax` predicts
+proteins itself; only run this stage when candidate contigs exist.
+The last roll invocation reuses the taxonomy table and creates the deferred
+report. If a report already exists, `--skip-existing` will not refresh it.
+
+Only hand off successfully completed stages. Filtering validates its library
+manifest, but other roll stages generally reuse expected files or directories
+by existence, not by validating parameters or partial-run completeness.
+After changing scientific settings, use a new result directory rather than
+assuming `--skip-existing` will detect the change. These handoffs are tested
+with small fixtures; production-scale performance still needs benchmarking.
+
+## Selecting workflow steps
+
+`--skip-steps` accepts a comma-separated list using underscores, not CLI
+command hyphens. Unknown names are rejected before processing.
+
+| Step string | Effect when skipped |
+| --- | --- |
+| `subsample` | In mini/fast mode, filter original reads instead of a subset. Other mini/fast settings remain active. |
+| `filter_reads` | Use existing `<output>/filtered_reads` for assembly; no filtering-manifest validation is performed. |
+| `assemble` | Require existing `<output>/assembly/final_assembly.fasta`, except for filtering-only runs or contigs-input mode. |
+| `filter_contigs` | Pass current contigs through without host/rRNA filtering. |
+| `cluster` | Pass current contigs through without clustering. |
+| `length_filter` | Pass current contigs through without the `--min-len` cutoff. |
+| `marker_search` | Do not search or use cached protein-marker hits. |
+| `nucleic_search` | Do not search or use cached nucleotide hits. |
+| `map_reads` | Do not map original reads or compress existing mapping outputs. |
+| `annotate` | Do not run annotation. Taxonomy can predict proteins when annotation proteins are unavailable. |
+| `rdrp_motif_search` | Do not search for RdRp motifs. |
+| `taxonomy` | Do not run `mmtax`. |
+| `report` | Do not generate a report. |
+
+`filter_contigs`, `cluster`, and `length_filter` are independent transformations.
+An explicit skip bypasses the transformation **and its cached result**, even
+with `--skip-existing`; downstream steps receive the current upstream contigs.
+Existing skipped-stage files remain untouched. When reusing downstream results,
+remember that their settings/input provenance is not comprehensively checked:
+use a new output directory if changing transformations should trigger new searches.
+
+Skipping both `filter_reads` and `assemble` selects contigs-input mode:
+`-i` must be a contig FASTA, identifiers are normalized with a mapping, and
+mapping reads is automatically skipped. Skipping only assembly normally
+requires an existing assembly; it does not mean “stop after filtering.”
+The filtering-only exception requires **every** stage from `assemble` through
+`report` to appear in the skip list shown above.
+
+When both discovery searches are skipped, current contigs become the input
+for downstream steps. If active searches find no candidates, downstream
+processing is skipped automatically. Combining search candidates, maintaining
+identifier mappings, preparing directories, and cleanup are required workflow
+plumbing, not independently skippable scientific steps. Assembly dereplication
+already has `--no-rmdup`; mapping compression has `--compression-policy none`.
+For finer read-cleaning or annotation controls, use the standalone commands.
 
 ## Workflow
 
@@ -148,7 +364,7 @@ ratios and performance have not been benchmarked.
 <!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
-- `-i`, `--input`: Input path to raw RNA-seq data (fastq/gz file or directory with fastq/gz files) (type: `TEXT`; required; default: `Sentinel.UNSET`)
+- `-i`, `--input`: Input path to raw RNA-seq data (fastq/gz file or directory with fastq/gz files). To reuse standalone filter-reads, keep this original input and write filtered reads to <output-dir>/filtered_reads, then use --skip-existing. (type: `TEXT`; required; default: `Sentinel.UNSET`)
 - `-o`, `--output-dir`: Output directory (type: `TEXT`; default: `/home/neri/Documents/GitHub/rps/rolypoly_rp_e2e`)
 - `-D`, `--host`: Path to the user-supplied host/contamination fasta /// Fasta file of known DNA entities expected in the sample. If not provided some steps will be skippted. (type: `TEXT`)
 - `--preset`: Preset that selects both a filter-reads and an assemble preset suited to the library type. 'rna_virus': RNA virus metatranscriptome (default): rRNA removal (mincovfraction=0.6), host + identified-DNA filtering, no polyA trim; rnaviralSPAdes+MEGAHIT assembly 'ribodepleted': Total-RNA that went through ribo-depletion: residual rRNA filtering (mincovfraction=0.6, same as rna_virus), host + identified-DNA filtering, no polyA trim; rnaviralSPAdes+MEGAHIT assembly 'poly_a': Poly-A selected mRNA: polyA tail trimming (trimpolya=18), stricter quality trim (trimq=12); rnaSPAdes+MEGAHIT assembly 'all_virus_metat': All-virus metatranscriptome / RNA virome: more aggressive rRNA removal (mincovfraction=0.5, versus default 0.6), skips identified-DNA filter; rnaviralSPAdes+MEGAHIT assembly 'DNA_virus': DNA virome / metagenomics: skips rRNA and identified-DNA filtering entirely; metaSPAdes only 'complete': Expansive: rna_virus_metat read filtering + all three assemblers (metaSPAdes+rnaviralSPAdes+MEGAHIT) 'fast': Quick preview / mini mode: subsamples reads, skips error correction and identified-DNA filter; MEGAHIT only with narrow k-mer range; narrowed marker/nucleic/annotation databases (type: `CHOICE`; default: `rna_virus`)
@@ -180,10 +396,11 @@ ratios and performance have not been benchmarked.
 - `--dont-mask`: If set, host fasta won't be masked for potential RNA virus-like seqs (type: `BOOLEAN`; default: `False`)
 - `--mmseqs-args`: Additional arguments to pass to MMseqs2 search command during filtering of potential host/contamination sequences (type: `TEXT`; default: `--min-seq-id 0.5 --min-aln-len 80`)
 - `--diamond-args`: Additional arguments to pass to Diamond search command during filtering of potential host/contamination sequences (type: `TEXT`; default: `--id 50 --min-orf 50`)
+- `--skip-steps`: Comma-separated steps to skip: subsample,filter_reads,assemble,filter_contigs,cluster,length_filter,marker_search,nucleic_search,map_reads,annotate,rdrp_motif_search,taxonomy,report. Skipping all steps from assemble through report runs filtering only. Skipping both filter_reads and assemble treats input as contigs and skips mapping. Otherwise, skipping assemble requires an existing assembly. Skipped filter_contigs, cluster and length_filter pass through the current contigs and ignore cached outputs. subsample only applies to mini/fast mode. (type: `TEXT`)
 - `--dbm`, `--db-marker`: Database(s) to use for marker gene search (type: `TEXT`; default: `rvmt,genomad,Pfam_RTs_RdRp`)
 - `--dbn`, `--db-nucleic`: Database(s) to use for nucleic acid search (type: `TEXT`; default: `all`)
 - `--dba`, `--db-annotation`: Database(s) to use for protein annotation. (type: `TEXT`; default: `all`)
-- `-txb`, `--taxonomy-backend`: No description provided. (type: `CHOICE`; default: `mmseqs`)
+- `-txb`, `--taxonomy-backend`: Taxonomy search backend for all presets, including fast/mini. DIAMOND does not enforce --memory. (type: `CHOICE`; default: `diamond`)
 - `-txd`, `--taxonomy-db`: Built-in mmtax database name or custom backend database path. (type: `TEXT`; default: `ncbi_virus`)
 - `-txt`, `--taxonomy-taxdump`: Taxdump required when --taxonomy-db is a custom path. (type: `DIRECTORY`)
 - `-txs`, `--taxonomy-sensitivity`: Shared mmtax sensitivity preset or level 1-8. (type: `TEXT`; default: `normal`)
