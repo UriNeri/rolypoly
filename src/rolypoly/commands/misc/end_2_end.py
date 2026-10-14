@@ -11,6 +11,11 @@ from rolypoly.commands.reads.filter_reads import (
     FILTER_READS_PRESETS,
     MULTI_LIBRARY_POLICIES,
 )
+from rolypoly.commands.reads.map import (
+    COMPRESSION_POLICIES,
+    MAPPER_SPECS,
+    compress_sam_outputs,
+)
 from rolypoly.utils.cli_options import shared_command_context
 
 ### TODOs:
@@ -170,8 +175,22 @@ ROLL_PRESET_MAP: dict[str, tuple[str, str, str]] = {
     "--mapper",
     multiple=True,
     default=("bbmap",),
-    type=click.Choice(["bbmap", "mmseqs", "bwa-mem2", "minimap2", "none"]),
+    type=click.Choice((*MAPPER_SPECS, "none")),
     help="Mapper backend(s) for standalone read mapping. Use multiple -m flags for multiple mappers. select 'none' to skip mapping. ",
+)
+@click.option(
+    "--include-unmapped",
+    is_flag=True,
+    default=False,
+    help="Also retain fully unmapped reads/pairs where supported. By default, retain both mates if either maps; resumed outputs are not refiltered.",
+)
+@click.option(
+    "-cp",
+    "--compression-policy",
+    type=click.Choice(COMPRESSION_POLICIES),
+    default="sam_only",
+    show_default=True,
+    help="Read-mapping SAM compression: sam_only (gzip, default) or none (plain SAM). Other outputs are unchanged.",
 )
 @click.option(
     "--cluster-backend",
@@ -367,6 +386,8 @@ def roll(
     filter_flag_only=False,
     filter_rrna=False,
     multi_library_policy: str = "keep-separate",
+    compression_policy: str = "sam_only",
+    include_unmapped: bool = False,
 ):
     """End-to-end pipeline for RNA virus discovery from raw sequencing data.
 
@@ -455,6 +476,13 @@ def roll(
         log_file = output_dir / "rolypoly_pipeline.log"
     logger = setup_logging(log_file, log_level.upper())
     log_start_info(logger, dict(zip(sys.argv[1::2], sys.argv[2::2])))
+    if (
+        compression_policy != "none"
+        and "map_reads" not in skip_steps
+        and "none" not in mapper
+        and not shutil.which("pigz")
+    ):
+        raise click.ClickException("SAM compression requires pigz on PATH.")
 
     if temp_dir is None:
         temp_dir = (
@@ -1059,6 +1087,12 @@ def roll(
             "Read mapping output %s already exists, skipping step",
             mapping_output,
         )
+        if compression_policy != "none" and "none" not in mapper:
+            compress_sam_outputs(
+                [str(path) for path in sorted(mapping_output.rglob("*.sam"))],
+                compression_policy,
+                threads,
+            )
     elif "none" in mapper:
         logger.info(
             "Step %d: Skipping read mapping as 'none' was selected as mapper",
@@ -1075,6 +1109,8 @@ def roll(
             reference=str(matched_contigs_file),
             output=str(mapping_output),
             mapper=mapper,
+            compression_policy=compression_policy,
+            include_unmapped=include_unmapped,
             threads=threads,
             memory=memory,
             keep_tmp=keep_tmp,

@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import io
 import json
 import os
+from contextlib import contextmanager
 from pathlib import Path
 import random
 import shutil
 import subprocess
+import sys
 import tomllib
 
 import click
@@ -29,6 +32,695 @@ def runner() -> CliRunner:
 
 def sequence_fixture(name: str) -> Path:
     return repo_root() / "testing_folder/inputs/sequences" / name
+
+
+@pytest.mark.parametrize("mapper", ["minimap2", "bwa-mem2"])
+@pytest.mark.parametrize("include_unmapped", [False, True])
+@pytest.mark.parametrize(
+    "options,compressed",
+    [([], True), (["-cp", "sam_only"], True),
+     (["-cp", "none"], False), (["--compressed"], True)],
+)
+def test_map_sam_compression(
+    runner: CliRunner, tmp_path: Path, monkeypatch, mapper: str,
+    options: list[str], compressed: bool, include_unmapped: bool,
+) -> None:
+    from rolypoly.commands.reads import map as mapping
+
+    if not shutil.which("pigz") or (mapper == "bwa-mem2" and not shutil.which(mapper)):
+        pytest.skip("Mapping/compression executable unavailable")
+    rng = random.Random(218)
+    sequence = "".join(rng.choices("ACGT", k=600))
+    reference = tmp_path / "ref.fa"
+    reference.write_text(f">contig\n{sequence}\n")
+    reads = tmp_path / "reads.fq"
+    reads.write_text(
+        f"@mapped\n{sequence[100:250]}\n+\n{'I' * 150}\n"
+        f"@unmapped\n{'N' * 150}\n+\n{'I' * 150}\n"
+    )
+    output = tmp_path / "mapping output"
+    args = ["map", "-i", str(reads), "-r", str(reference), "-o", str(output),
+            "-m", mapper, "-t", "1", "-g", str(tmp_path / "map.log")]
+    if include_unmapped:
+        args.append("--include-unmapped")
+    originals = []
+    open_output = mapping.sam_output
+
+    @contextmanager
+    def capture_output(path, threads):
+        with open_output(path, threads) as destination:
+            buffer = io.StringIO()
+            yield buffer
+            content = buffer.getvalue()
+            originals.append(content.encode())
+            destination.write(content)
+
+    monkeypatch.setattr(mapping, "sam_output", capture_output)
+    result = runner.invoke(rolypoly, args + options, catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    files = list(output.rglob("*.sam.gz" if compressed else "*.sam"))
+    assert len(files) == 1
+    assert not list(output.rglob("*.sam" if compressed else "*.sam.gz"))
+    opener = gzip.open if compressed else open
+    with opener(files[0], "rt") as handle:
+        content = handle.read()
+    assert "@SQ\tSN:contig" in content
+    assert "mapped\t" in content
+    if mapper == "bwa-mem2":
+        assert any(line.startswith("unmapped\t") and int(line.split("\t")[1]) & 4
+                   for line in content.splitlines()) == include_unmapped
+    if not include_unmapped:
+        assert all(not int(line.split("\t")[1]) & 4
+                   for line in content.splitlines() if not line.startswith("@"))
+    if compressed:
+        assert originals == [content.encode()]
+
+
+@pytest.mark.parametrize("mapper", ["bbmap", "bwa-mem2", "minimap2"])
+@pytest.mark.parametrize("layout", ["paired", "interleaved"])
+@pytest.mark.parametrize("include_unmapped", [False, True])
+def test_map_retains_both_mates_when_either_maps(
+    runner: CliRunner, tmp_path: Path, mapper: str,
+    layout: str, include_unmapped: bool,
+) -> None:
+    required = ["pigz"]
+    if mapper == "bbmap":
+        required.append("java")
+    elif mapper == "bwa-mem2":
+        required.append(mapper)
+    if any(not shutil.which(tool) for tool in required):
+        pytest.skip("Mapping/compression executable unavailable")
+    rng = random.Random(981)
+    sequence = "".join(rng.choices("ACGT", k=1200))
+    reference = tmp_path / "ref.fa"
+    reference.write_text(f">contig\n{sequence}\n")
+    mapped1 = sequence[100:250]
+    mapped2 = sequence[400:550].translate(str.maketrans("ACGT", "TGCA"))[::-1]
+    libraries = [
+        ("left_only", mapped1, "N" * 150),
+        ("right_only", "N" * 150, mapped2),
+        ("neither", "N" * 150, "N" * 150),
+    ]
+    read1, read2 = tmp_path / "R1.fq", tmp_path / "R2.fq"
+    interleaved = tmp_path / "interleaved.fq"
+    first, second, combined = [], [], []
+    for name, seq1, seq2 in libraries:
+        r1 = f"@{name}/1\n{seq1}\n+\n{'I' * 150}\n"
+        r2 = f"@{name}/2\n{seq2}\n+\n{'I' * 150}\n"
+        first.append(r1)
+        second.append(r2)
+        combined.extend([r1, r2])
+    read1.write_text("".join(first))
+    read2.write_text("".join(second))
+    interleaved.write_text("".join(combined))
+    output = tmp_path / "mapped"
+    args = [
+        "map", "-r", str(reference), "-o", str(output), "-m", mapper,
+        "-t", "1", "-M", "1g", "-cp", "sam_only",
+        "-g", str(tmp_path / "map.log"),
+    ]
+    if layout == "paired":
+        args.extend(["--paired-end", "1", str(read1), str(read2)])
+    else:
+        args.extend(["-i", str(interleaved)])
+    if include_unmapped:
+        args.append("--include-unmapped")
+    result = runner.invoke(rolypoly, args, catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    with gzip.open(next(output.rglob("*.sam.gz")), "rt") as handle:
+        records = [line.rstrip("\n").split("\t") for line in handle
+                   if not line.startswith("@")]
+    assert not list(output.rglob("*.sam"))
+    assert not list(output.rglob("*.tmp"))
+    expected = {"left_only", "right_only", "neither"} if include_unmapped else {
+        "left_only", "right_only",
+    }
+    assert {fields[0] for fields in records} == expected
+    for name, seq1, seq2 in libraries:
+        if name not in expected:
+            continue
+        pair = [fields for fields in records if fields[0] == name]
+        assert len(pair) == 2
+        flags = [int(fields[1]) for fields in pair]
+        assert all(flag & 1 for flag in flags)
+        assert sum(bool(flag & 64) for flag in flags) == 1
+        assert sum(bool(flag & 128) for flag in flags) == 1
+        if name != "neither":
+            assert sum(bool(flag & 4) for flag in flags) == 1
+            mapped = next(fields for fields in pair if not int(fields[1]) & 4)
+            unmapped = next(fields for fields in pair if int(fields[1]) & 4)
+            assert int(mapped[1]) & 8
+            assert not int(unmapped[1]) & 8
+            assert unmapped[6] in {"=", mapped[2]}
+            assert unmapped[7] == mapped[3]
+            assert unmapped[9] == ("N" * 150)
+            # BBMap sets qualities of N bases to zero.
+            assert unmapped[10] == ("!" if mapper == "bbmap" else "I") * 150
+        else:
+            assert all(flag & 4 and flag & 8 for flag in flags)
+
+
+@pytest.mark.parametrize("command", ["map", "roll"])
+def test_mapping_rejects_removed_compression_policy(runner: CliRunner, command: str) -> None:
+    required = ["-r", "reference.fa"] if command == "map" else ["-i", "reads.fq"]
+    result = runner.invoke(
+        rolypoly, [command, *required, "-cp", "over_10gb"],
+    )
+    assert result.exit_code != 0
+    assert "Invalid value" in result.output and "over_10gb" in result.output
+
+
+@pytest.mark.parametrize(
+    "mapper,option",
+    [("bbmap", "--concordant"), ("bbmap", "--proper"),
+     ("bwa-mem2", "--concordant"), ("bwa-mem2", "--proper"),
+     ("minimap2", "--concordant")],
+)
+def test_map_pair_filters_on_gzip(
+    runner: CliRunner, tmp_path: Path, mapper: str, option: str,
+) -> None:
+    required = ["pigz"]
+    if mapper == "bbmap":
+        required.append("java")
+    elif mapper == "bwa-mem2":
+        required.append(mapper)
+    if any(not shutil.which(tool) for tool in required):
+        pytest.skip("Mapping/compression executable unavailable")
+    rng = random.Random(14)
+    sequence = "".join(rng.choices("ACGT", k=1200))
+    reference = tmp_path / "ref.fa"
+    reference.write_text(f">ref\n{sequence}\n")
+    read1, read2 = tmp_path / "R1.fq", tmp_path / "R2.fq"
+    read1.write_text(f"@pair/1\n{sequence[100:250]}\n+\n{'I' * 150}\n")
+    read2.write_text(f"@pair/2\n{'N' * 150}\n+\n{'I' * 150}\n")
+    output = tmp_path / "mapped"
+    result = runner.invoke(rolypoly, [
+        "map", "-r", str(reference), "-o", str(output), "-m", mapper,
+        "--paired-end", "1", str(read1), str(read2), option,
+        "--include-unmapped", "-t", "1", "-M", "1g",
+        "-g", str(tmp_path / "map.log"),
+    ], catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    with gzip.open(next(output.rglob("*.sam.gz")), "rt") as handle:
+        content = handle.read()
+    assert "@SQ\tSN:ref" in content
+    assert all(line.startswith("@") for line in content.splitlines())
+    assert not list(output.rglob("*.sam"))
+
+
+@pytest.mark.parametrize("failure", ["mapper", "invalid-sam", "compressor", "broken-pipe"])
+def test_mapping_stream_failure_does_not_publish_output(
+    tmp_path: Path, monkeypatch, failure: str,
+) -> None:
+    from rolypoly.commands.reads.map import run_sam_command
+
+    if not shutil.which("pigz"):
+        pytest.skip("pigz unavailable")
+    output = tmp_path / "output.sam.gz"
+    content = "@HD\tVN:1.6\nmapped\t0\tref\t1\t60\t4M\t*\t0\t0\tACGT\tIIII\n"
+    code = f"import sys; sys.stdout.write({content!r}); sys.exit(7)"
+    if failure == "invalid-sam":
+        code = "print('invalid SAM')"
+    elif failure in {"compressor", "broken-pipe"}:
+        fake = tmp_path / "bin"
+        fake.mkdir()
+        compressor = fake / "pigz"
+        read_input = "sys.stdin.buffer.read(); " if failure == "compressor" else ""
+        compressor.write_text(
+            f"#!{sys.executable}\nimport sys\n{read_input}sys.exit(8)\n"
+        )
+        compressor.chmod(0o755)
+        monkeypatch.setenv("PATH", str(fake) + os.pathsep + os.environ["PATH"])
+        code = f"import sys; sys.stdout.write({content!r} * 10000)"
+    with pytest.raises(click.ClickException):
+        run_sam_command([sys.executable, "-c", code], output, 1, mapped_templates_only=True)
+    assert not output.exists()
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_mapping_stream_preserves_existing_staging_file(tmp_path: Path) -> None:
+    from rolypoly.commands.reads.map import sam_output
+
+    output = tmp_path / "output.sam"
+    staging = tmp_path / ".output.sam.tmp"
+    staging.write_text("previous work")
+    with pytest.raises(click.ClickException, match="Failed to write"):
+        with sam_output(output, 1):
+            pytest.fail("Existing staging file should not be opened.")
+    assert staging.read_text() == "previous work"
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("compressed", [False, True])
+def test_mapping_stream_filters_losslessly(tmp_path: Path, compressed: bool) -> None:
+    from rolypoly.commands.reads.map import run_sam_command
+
+    if compressed and not shutil.which("pigz"):
+        pytest.skip("pigz unavailable")
+    header = "@HD\tVN:1.6\n@SQ\tSN:ref\tLN:100\n@CO\tcustom provenance\n"
+    mapped = "pair\t73\tref\t1\t60\t4M\t*\t0\t0\tACGT\tIIII\tZZ:Z:custom\n"
+    mate = "pair\t133\tref\t1\t0\t*\t=\t1\t0\tNNNN\tIIII\tRG:Z:library\n"
+    secondary = "other\t256\tref\t2\t10\t4M\t*\t0\t0\tACGT\tIIII\tAS:i:4\n"
+    removed = "unmapped\t77\t*\t0\t0\t*\t*\t0\t0\tNNNN\tIIII\n"
+    content = header + mapped + mate + removed + secondary
+    output = tmp_path / ("out.sam.gz" if compressed else "out.sam")
+    run_sam_command(
+        [sys.executable, "-c", f"import sys; sys.stdout.write({content!r})"],
+        output, 1, mapped_templates_only=True,
+    )
+    opener = gzip.open if compressed else open
+    with opener(output, "rt") as handle:
+        assert handle.read() == header + mapped + mate + secondary
+    assert not list(tmp_path.glob("*.tmp"))
+    if compressed:
+        assert not list(tmp_path.glob("*.sam"))
+
+
+@pytest.mark.parametrize("flags", ["-o redirected.sam", "'unclosed"])
+def test_map_rejects_bwa_output_flags_before_indexing(
+    runner: CliRunner, tmp_path: Path, monkeypatch, flags: str,
+) -> None:
+    from rolypoly.commands.reads import map as mapping
+
+    reference, reads = tmp_path / "ref.fa", tmp_path / "reads.fq"
+    reference.write_text(">ref\nACGTACGT\n")
+    reads.write_text("@read\nACGT\n+\nIIII\n")
+
+    def unexpected_index(*args, **kwargs):
+        pytest.fail("Invalid extra flags must be rejected before indexing.")
+
+    monkeypatch.setattr(mapping, "run_command_comp", unexpected_index)
+    result = runner.invoke(rolypoly, [
+        "map", "-i", str(reads), "-r", str(reference),
+        "-o", str(tmp_path / "output"), "-m", "bwa-mem2", "-cp", "none",
+        "--bwa-mem2-extra-flags", flags, "-g", str(tmp_path / "map.log"),
+    ])
+    assert result.exit_code != 0
+    assert "--bwa-mem2-extra-flags" in result.output
+
+
+@pytest.mark.parametrize("policy", [None, "none"])
+def test_map_mmseqs_gzip_output(
+    runner: CliRunner, tmp_path: Path, monkeypatch, policy: str | None,
+) -> None:
+    from rolypoly.commands.reads import map as mapping
+
+    if not shutil.which("mmseqs") or not shutil.which("pigz"):
+        pytest.skip("MMseqs or pigz unavailable")
+    rng = random.Random(14)
+    sequence = "".join(rng.choices("ACGT", k=1200))
+    reference = tmp_path / "ref.fa"
+    reference.write_text(f">ref\n{sequence}\n")
+    reads = tmp_path / "reads.fq"
+    reads.write_text(f"@mapped\n{sequence[100:250]}\n+\n{'I' * 150}\n")
+    original_run = mapping.run_command_comp
+
+    def tiny_index(base_cmd, **kwargs):
+        if base_cmd == "mmseqs":
+            # Keep the synthetic nucleotide index small.
+            kwargs["positional_args"] = [*kwargs["positional_args"], "-k", "8"]
+        return original_run(base_cmd, **kwargs)
+
+    monkeypatch.setattr(mapping, "run_command_comp", tiny_index)
+    output = tmp_path / "mapping"
+    args = [
+        "map", "-i", str(reads), "-r", str(reference), "-o", str(output),
+        "-m", "mmseqs", "-t", "1", "-M", "1g",
+        "-g", str(tmp_path / "map.log"),
+    ]
+    if policy:
+        args.extend(["-cp", policy])
+    result = runner.invoke(rolypoly, args, catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    suffix = "*.sam" if policy == "none" else "*.sam.gz"
+    files = list(output.rglob(suffix))
+    assert len(files) == 1
+    opener = open if policy == "none" else gzip.open
+    with opener(files[0], "rt") as handle:
+        content = handle.read()
+    assert content.startswith("@HD\t")
+    assert "\nmapped\t" in content
+    assert "\tAS:i:" in content and "\tNM:i:" in content
+    assert not list(output.glob("mmseqs/*tmp*"))
+    if policy != "none":
+        assert not list(output.rglob("*.sam"))
+
+
+def test_map_bbmap_appends_gzip_libraries(runner: CliRunner, tmp_path: Path) -> None:
+    if not shutil.which("java") or not shutil.which("pigz"):
+        pytest.skip("Java or pigz unavailable")
+    rng = random.Random(22)
+    sequence = "".join(rng.choices("ACGT", k=1200))
+    reference = tmp_path / "ref.fa"
+    reference.write_text(f">ref\n{sequence}\n")
+    output = tmp_path / "mapping"
+    args = [
+        "map", "-r", str(reference), "-o", str(output), "-m", "bbmap",
+        "-t", "1", "-M", "1g", "-g", str(tmp_path / "map.log"),
+    ]
+    for library in ("A", "B"):
+        read1, read2 = tmp_path / f"{library}_R1.fq", tmp_path / f"{library}_R2.fq"
+        read1.write_text(f"@{library}/1\n{sequence[100:250]}\n+\n{'I' * 150}\n")
+        read2.write_text(f"@{library}/2\n{'N' * 150}\n+\n{'I' * 150}\n")
+        args.extend(["--paired-end", library, str(read1), str(read2)])
+    result = runner.invoke(rolypoly, args, catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    files = list(output.rglob("*.sam.gz"))
+    assert len(files) == 1
+    with gzip.open(files[0], "rt") as handle:
+        content = handle.read()
+    records = [line.split("\t") for line in content.splitlines() if not line.startswith("@")]
+    assert len(records) == 4
+    assert {fields[0] for fields in records} == {"A", "B"}
+    assert sum(bool(int(fields[1]) & 4) for fields in records) == 2
+    assert content.count("@HD\t") == 1
+    assert not list(output.rglob("*.sam"))
+    assert not (output / "bbmap/.bbmap.sam.gz").exists()
+
+
+@pytest.mark.parametrize("mapper", ["bbmap", "bwa-mem2", "mmseqs"])
+def test_map_backend_failure_is_explicit(
+    runner: CliRunner, tmp_path: Path, monkeypatch, mapper: str,
+) -> None:
+    import bbmapy
+    from rolypoly.commands.reads import map as mapping
+
+    if not shutil.which("pigz"):
+        pytest.skip("pigz unavailable")
+    reference, reads = tmp_path / "ref.fa", tmp_path / "reads.fq"
+    reference.write_text(">ref\nACGTACGT\n")
+    reads.write_text("@read\nACGT\n+\nIIII\n")
+    output = tmp_path / "output"
+
+    def fail_bbmap(**kwargs):
+        Path(kwargs["outm"]).write_bytes(b"partial gzip")
+        raise RuntimeError("synthetic tool failure")
+
+    monkeypatch.setattr(bbmapy, "bbmap", fail_bbmap)
+    monkeypatch.setattr(mapping, "run_command_comp", lambda *a, **kw: False)
+    result = runner.invoke(rolypoly, [
+        "map", "-i", str(reads), "-r", str(reference), "-o", str(output),
+        "-m", mapper, "-g", str(tmp_path / "map.log"),
+    ])
+    assert result.exit_code != 0
+    assert "failed" in result.output
+    assert not list(output.rglob("*.sam.gz"))
+
+
+@pytest.mark.parametrize("failure", ["command", "conflict", "missing-pigz"])
+def test_sam_compression_retains_original_on_failure(
+    tmp_path: Path, monkeypatch, failure: str,
+) -> None:
+    from rolypoly.commands.reads import map as mapping
+
+    sam = tmp_path / "original.sam"
+    sam.write_text("@HD\tVN:1.6\n")
+    if failure == "missing-pigz":
+        monkeypatch.setattr(mapping.shutil, "which", lambda name: None)
+        message = "requires pigz"
+    else:
+        monkeypatch.setattr(mapping.shutil, "which", lambda name: "/pigz")
+        if failure == "command":
+            monkeypatch.setattr(mapping, "run_command_comp", lambda *a, **kw: False)
+            message = "original SAM retained"
+        else:
+            Path(str(sam) + ".gz").write_bytes(b"existing archive")
+            message = "Refusing to overwrite"
+    with pytest.raises(click.ClickException, match=message):
+        mapping.compress_sam_outputs([str(sam)], "sam_only", 1)
+    assert sam.read_text() == "@HD\tVN:1.6\n"
+    if failure == "conflict":
+        assert Path(str(sam) + ".gz").read_bytes() == b"existing archive"
+
+
+@pytest.mark.parametrize("mapper_name", ["bbmap", "mmseqs"])
+def test_mapper_specs_route_invocation_and_stream_filter(
+    runner: CliRunner, tmp_path: Path, monkeypatch, mapper_name: str,
+) -> None:
+    from rolypoly.commands.reads import map as mapping
+
+    if not shutil.which("pigz"):
+        pytest.skip("pigz unavailable")
+    monkeypatch.setitem(
+        mapping.MAPPER_SPECS, mapper_name, mapping.MAPPER_SPECS["bwa-mem2"].copy(),
+    )
+    reference = tmp_path / "reference.fa"
+    reference.write_text(">ref\nACGTACGT\n")
+    read1, read2 = tmp_path / "R1.fq", tmp_path / "R2.fq"
+    read1.write_text("@pair/1\nACGT\n+\nIIII\n")
+    read2.write_text("@pair/2\nNNNN\n+\nIIII\n")
+    output = tmp_path / "mapping"
+    header = "@HD\tVN:1.6\n@SQ\tSN:ref\tLN:8\n"
+    mapped = "pair\t73\tref\t1\t60\t4M\t*\t0\t0\tACGT\tIIII\tZZ:Z:custom\n"
+    mate = "pair\t133\tref\t1\t0\t*\t=\t1\t0\tNNNN\tIIII\n"
+    absent = "neither\t77\t*\t0\t0\t*\t*\t0\t0\tNNNN\tIIII\n"
+    content = header + mapped + mate + absent
+    real_stream = mapping.run_sam_command
+    commands = []
+
+    def stream(command, path, threads, **filters):
+        commands.append(command)
+        assert command[:2] == ["bwa-mem2", "mem"]
+        real_stream(
+            [sys.executable, "-c", f"import sys; sys.stdout.write({content!r})"],
+            path, threads, **filters,
+        )
+
+    def no_posthoc(*args, **kwargs):
+        pytest.fail("A stream-capable spec must not route through file compression.")
+
+    monkeypatch.setattr(mapping, "run_command_comp", lambda *a, **kw: True)
+    monkeypatch.setattr(mapping, "run_sam_command", stream)
+    monkeypatch.setattr(mapping, "compress_sam_outputs", no_posthoc)
+    args = [
+        "map", "-r", str(reference), "-m", mapper_name, "-t", "1",
+        "--paired-end", "1", str(read1), str(read2),
+        "-g", str(tmp_path / "map.log"),
+    ]
+    for strict in (False, True):
+        destination = output / ("strict" if strict else "default")
+        options = ["--concordant"] if strict else []
+        result = runner.invoke(
+            rolypoly, [*args, "-o", str(destination), *options],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, result.output
+        files = list((destination / mapper_name).glob("*.sam.gz"))
+        assert len(files) == 1
+        with gzip.open(files[0], "rt") as handle:
+            assert handle.read() == (header if strict else header + mapped + mate)
+        assert not list(destination.rglob("*.sam"))
+        assert not (destination / mapper_name / "bwa_index").exists()
+    assert len(commands) == 2
+
+
+@pytest.mark.parametrize("output_mode", ["native_gzip", "sam_stream", "sam_file"])
+@pytest.mark.parametrize("policy", ["none", "sam_only"])
+@pytest.mark.parametrize("strict", [False, True])
+def test_mapper_specs_compose_custom_invocation_processing(
+    runner: CliRunner, tmp_path: Path, monkeypatch,
+    output_mode: str, policy: str, strict: bool,
+) -> None:
+    from rolypoly.commands.reads import map as mapping
+
+    if policy == "sam_only" and not shutil.which("pigz"):
+        pytest.skip("pigz unavailable")
+    header = "@HD\tVN:1.6\n@SQ\tSN:ref\tLN:8\n"
+    mapped = "pair\t73\tref\t1\t60\t4M\t*\t0\t0\tACGT\tIIII\tZZ:Z:custom\n"
+    mate = "pair\t133\tref\t1\t0\t*\t=\t1\t0\tNNNN\tIIII\n"
+    calls: list[mapping.MapperRun] = []
+
+    def invoke(run: mapping.MapperRun, spec: mapping.MapperSpec) -> list[str]:
+        calls.append(run)
+        path = run["output"] / f"custom{run['suffix']}"
+        with mapping.sam_output(path, run["threads"]) as handle:
+            handle.write(header + mapped + mate)
+        (run["output"] / "custom_index").mkdir()
+        (run["output"] / "retained_directory").mkdir()
+        return [str(path)]
+
+    spec = mapping.MAPPER_SPECS["bbmap"].copy()
+    spec["run"] = invoke
+    if output_mode == "native_gzip":
+        spec["output_mode"] = "native_gzip"
+    elif output_mode == "sam_stream":
+        spec["output_mode"] = "sam_stream"
+    else:
+        spec["output_mode"] = "sam_file"
+    spec["pair_filter_stage"] = "posthoc"
+    spec["temporary_patterns"] = ("custom_index",)
+    monkeypatch.setitem(mapping.MAPPER_SPECS, "bbmap", spec)
+    reference = tmp_path / "reference.fa"
+    reference.write_text(">ref\nACGTACGT\n")
+    read1, read2 = tmp_path / "R1.fq", tmp_path / "R2.fq"
+    read1.write_text("@pair/1\nACGT\n+\nIIII\n")
+    read2.write_text("@pair/2\nNNNN\n+\nIIII\n")
+    output = tmp_path / "mapping"
+    result = runner.invoke(rolypoly, [
+        "map", "-r", str(reference), "-o", str(output), "-m", "bbmap",
+        "--paired-end", "1", str(read1), str(read2), "-cp", policy,
+        "-g", str(tmp_path / "map.log"), *(["--concordant"] if strict else []),
+    ], catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    suffix = ".sam.gz" if policy == "sam_only" else ".sam"
+    path = output / "bbmap" / f"custom{suffix}"
+    if policy == "sam_only":
+        with gzip.open(path, "rt") as handle:
+            content = handle.read()
+        assert not list(output.rglob("*.sam"))
+    else:
+        content = path.read_text()
+    assert content == (header if strict else header + mapped + mate)
+    assert len(calls) == 1
+    assert calls[0]["suffix"] == (".sam" if output_mode == "sam_file" else suffix)
+    assert not (output / "bbmap" / "custom_index").exists()
+    assert (output / "bbmap" / "retained_directory").is_dir()
+
+
+@pytest.mark.parametrize("stage", ["stream", "posthoc"])
+@pytest.mark.parametrize("layout", ["paired", "interleaved"])
+def test_mapper_specs_select_mappy_filter_stage(
+    runner: CliRunner, tmp_path: Path, monkeypatch, stage: str, layout: str,
+) -> None:
+    from rolypoly.commands.reads import map as mapping
+    from rolypoly.utils.bio import alignments
+
+    spec = mapping.MAPPER_SPECS["minimap2"].copy()
+    spec["pair_filter_stage"] = "stream" if stage == "stream" else "posthoc"
+    monkeypatch.setitem(mapping.MAPPER_SPECS, "minimap2", spec)
+    rng = random.Random(14)
+    sequence = "".join(rng.choices("ACGT", k=1200))
+    reference = tmp_path / "reference.fa"
+    reference.write_text(f">ref\n{sequence}\n")
+    first = f"@pair/1\n{sequence[100:250]}\n+\n{'I' * 150}\n"
+    second = f"@pair/2\n{'N' * 150}\n+\n{'I' * 150}\n"
+    output = tmp_path / "mapping"
+    read1, read2 = tmp_path / "R1.fq", tmp_path / "R2.fq"
+    if layout == "paired":
+        read1.write_text(first)
+        read2.write_text(second)
+        inputs = ["--paired-end", "1", str(read1), str(read2)]
+    else:
+        # Include an odd trailing read to preserve interleaved serialization.
+        read1.write_text(first + second + first.replace("@pair/1", "@trailing"))
+        monkeypatch.setattr(
+            mapping, "handle_input_fastq",
+            lambda *args, **kwargs: {"interleaved_files": [read1]},
+        )
+        inputs = ["-i", str(read1)]
+
+    posthoc = alignments.filter_sam_by_pair_status
+    calls = []
+
+    def filter_file(*args, **kwargs):
+        calls.append(args)
+        return posthoc(*args, **kwargs)
+
+    monkeypatch.setattr(alignments, "filter_sam_by_pair_status", filter_file)
+    result = runner.invoke(rolypoly, [
+        "map", "-r", str(reference), "-o", str(output), "-m", "minimap2",
+        *inputs, "--concordant", "--include-unmapped", "-cp", "none",
+        "-g", str(tmp_path / "map.log"),
+    ], catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    path = next(output.rglob("*.sam"))
+    content = path.read_text()
+    assert "@SQ\tSN:ref" in content
+    assert all(line.startswith("@") for line in content.splitlines())
+    assert len(calls) == (0 if stage == "stream" else 1)
+
+
+@pytest.mark.parametrize(
+    "capability,option",
+    [("supports_concordant", "--concordant"), ("supports_proper", "--proper")],
+)
+def test_mapper_specs_drive_capability_validation(
+    runner: CliRunner, tmp_path: Path, monkeypatch, capability: str, option: str,
+) -> None:
+    from rolypoly.commands.reads import map as mapping
+
+    spec = mapping.MAPPER_SPECS["bbmap"].copy()
+    if capability == "supports_concordant":
+        spec["supports_concordant"] = False
+    else:
+        spec["supports_proper"] = False
+    monkeypatch.setitem(mapping.MAPPER_SPECS, "bbmap", spec)
+    reference = tmp_path / "ref.fa"
+    reference.write_text(">ref\nACGTACGT\n")
+    read1, read2 = tmp_path / "R1.fq", tmp_path / "R2.fq"
+    read1.write_text("@pair/1\nACGT\n+\nIIII\n")
+    read2.write_text("@pair/2\nACGT\n+\nIIII\n")
+    output = tmp_path / "mapping"
+    result = runner.invoke(rolypoly, [
+        "map", "-r", str(reference), "-o", str(output), "-m", "bbmap",
+        "--paired-end", "1", str(read1), str(read2), option, "-cp", "none",
+        "-g", str(tmp_path / "map.log"),
+    ])
+    assert result.exit_code != 0
+    assert option in result.output and "bbmap adapter" in result.output
+    assert not (output / "bbmap").exists()
+
+
+def test_mapper_specs_define_map_and_roll_cli_choices() -> None:
+    from rolypoly.commands.misc.end_2_end import roll
+    from rolypoly.commands.reads.map import MAPPER_SPECS, map as map_reads
+
+    for command, expected in (
+        (map_reads, tuple(MAPPER_SPECS)), (roll, (*MAPPER_SPECS, "none")),
+    ):
+        parameter = next(param for param in command.params if param.name == "mapper")
+        assert isinstance(parameter.type, click.Choice)
+        assert tuple(parameter.type.choices) == expected
+
+
+@pytest.mark.parametrize("resume_mapping", [False, True])
+@pytest.mark.parametrize("include_unmapped", [False, True])
+def test_roll_sam_compression(
+    runner: CliRunner, tmp_path: Path, resume_mapping: bool,
+    include_unmapped: bool,
+) -> None:
+    if not shutil.which("pigz") or not shutil.which("bwa-mem2"):
+        pytest.skip("pigz or bwa-mem2 unavailable")
+    rng = random.Random(218)
+    sequence = "".join(rng.choices("ACGT", k=600))
+    reads = tmp_path / "reads.fq"
+    reads.write_text(
+        f"@mapped\n{sequence[100:250]}\n+\n{'I' * 150}\n"
+        f"@unmapped\n{'N' * 150}\n+\n{'I' * 150}\n"
+    )
+    output = tmp_path / "roll"
+    assembly = output / "assembly"
+    assembly.mkdir(parents=True)
+    (assembly / "final_assembly.fasta").write_text(f">contig\n{sequence}\n")
+    sam = output / "read_mapping/bwa-mem2/previous.sam"
+    previous = b"@HD\tVN:1.6\nunmapped\t4\t*\t0\t0\t*\t*\t0\t0\tACGT\tIIII\n"
+    if resume_mapping:
+        sam.parent.mkdir(parents=True)
+        sam.write_bytes(previous)
+    args = [
+        "roll", "-i", str(reads), "-o", str(output), "-t", "1",
+        "--skip-existing", "--cluster-backend", "none", "-m", "bwa-mem2",
+        "-g", str(tmp_path / "roll.log"),
+        "--skip-steps",
+        "filter_reads,filter_contigs,marker_search,nucleic_search,"
+        "annotate,rdrp_motif_search,taxonomy,report",
+    ]
+    if include_unmapped:
+        args.append("--include-unmapped")
+    result = runner.invoke(rolypoly, args, catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    archives = list((output / "read_mapping").rglob("*.sam.gz"))
+    assert len(archives) == 1
+    assert not list((output / "read_mapping").rglob("*.sam"))
+    with gzip.open(archives[0], "rb") as handle:
+        content = handle.read()
+    assert content == previous if resume_mapping else b"mapped\t" in content
+    if not resume_mapping:
+        assert (b"\nunmapped\t" in content) == include_unmapped
+    resumed = runner.invoke(rolypoly, args, catch_exceptions=False)
+    assert resumed.exit_code == 0, resumed.output
+    with gzip.open(archives[0], "rb") as handle:
+        assert handle.read() == content
 
 
 def multi_library_reads(directory: Path) -> Path:

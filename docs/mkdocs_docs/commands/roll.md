@@ -92,6 +92,59 @@ input instead. See [Report](report.md) for interpreting the output and its
 rolypoly roll [OPTIONS]
 ```
 
+### Reducing mapping storage
+
+```bash
+rolypoly roll -i raw_reads/sample_1 -o results/sample_1 \
+  --compression-policy sam_only
+```
+
+`-cp` / `--compression-policy` uses the existing `pigz` executable and the
+requested thread count to losslessly write read-mapping SAMs as `.sam.gz`:
+
+- `sam_only` (default): gzip every final read-mapping SAM, for every mapper.
+- `none`: write new mapping outputs as plain SAM.
+
+The size-dependent `over_10gb` policy has been removed.
+
+Headers, alignments, sequences, qualities, tags, and any unmapped records are
+preserved byte-for-byte on decompression. Originals are removed only after
+compression succeeds; existing `.sam.gz` destinations are never overwritten.
+With `--skip-existing`, the policy also applies to existing read-mapping SAMs
+without remapping. Already compressed files are left alone; `none` does not
+decompress them. Explicitly skipping mapping leaves mapping outputs untouched.
+
+New read-mapping SAMs **retain both mates if either maps**. Unmapped single
+reads and fully unmapped pairs (including flags 77 and 141) are omitted;
+half-mapped pairs and secondary/supplementary alignments remain.
+This deliberately removes fully unmapped templates before compression;
+gzip itself is lossless. Use `--include-unmapped` to also retain fully unmapped
+reads/pairs with BBMap, BWA-MEM2, and minimap2/mappy.
+MMseqs searches reads independently and emits only hits, so it cannot retain
+unmapped mates; the command logs this limitation.
+See [Map](map.md) for backend details. Reusing mapping with `--skip-existing`
+does **not** refilter old SAMs; compression preserves those existing files.
+
+This policy only affects read-mapping SAMs, not assemblies, filtered reads,
+search results, or reports. `--keep-tmp` controls temporary cleanup, not these
+retained outputs. To avoid mapping storage altogether, use `--mapper none`
+or `--skip-steps map_reads` when alignments are unnecessary. Other retained
+outputs are not automatically deleted or archived because they can be used
+for resuming and downstream analysis.
+
+BWA-MEM2 streams SAM stdout through the template/pair filters into `pigz`.
+Minimap2/mappy generates records directly into `pigz`, and BBMap uses native
+gzip output. These backends do not write a plain SAM intermediate.
+MMseqs still writes a SAM before gzip: `easy-search` tries to open
+`/dev/stdout.0` when given `/dev/stdout`, so a direct stdout pipeline is not
+supported by the installed version. It therefore temporarily needs space
+for both the original SAM and its gzip output, as does compression of
+resumed plain SAMs. See [Map](map.md#lossless-sam-compression) for backend
+details and optional pair-filter behavior.
+
+This is not a SAM-to-BAM/CRAM implementation, and production-scale compression
+ratios and performance have not been benchmarked.
+
 <!-- BEGIN GENERATED CLI OPTIONS -->
 ## Options
 
@@ -111,6 +164,8 @@ rolypoly roll [OPTIONS]
 - `-A`, `--assembler`: Assembler choice (spades,spades_rnaviral,megahit,penguin). For multiple, give a comma-separated list. An explicit choice overrides the assembly preset. (type: `TEXT`; default: `spades,megahit`)
 - `--no-rmdup`: Disable default assembly dereplication before downstream analysis. (type: `BOOLEAN`; default: `False`)
 - `-m`, `--mapper`: Mapper backend(s) for standalone read mapping. Use multiple -m flags for multiple mappers. select 'none' to skip mapping. (type: `CHOICE`; default: `bbmap`)
+- `--include-unmapped`: Also retain fully unmapped reads/pairs where supported. By default, retain both mates if either maps; resumed outputs are not refiltered. (type: `BOOLEAN`; default: `False`)
+- `-cp`, `--compression-policy`: Read-mapping SAM compression: sam_only (gzip, default) or none (plain SAM). Other outputs are unchanged. (type: `CHOICE`; default: `sam_only`)
 - `--cluster-backend`: ANI backend for contig clustering. Use 'none' to skip clustering entirely. (type: `CHOICE`; default: `linclust`)
 - `--cluster-method`: Clustering method passed to the cluster command. (type: `CHOICE`; default: `centroid`)
 - `--cluster-min-identity`: Minimum identity threshold for clustering. (type: `FLOAT`; default: `99.0`)

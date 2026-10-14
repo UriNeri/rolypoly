@@ -2,6 +2,7 @@
 
 import gzip
 
+import pytest
 from click.testing import CliRunner
 
 from rolypoly.utils.bio.alignments import (
@@ -67,6 +68,63 @@ def test_proper_uses_mapper_defined_sam_flag():
     assert not sam_record_matches_pair_filters(
         same_reference_without_proper_flag, proper=True
     )
+
+
+@pytest.mark.parametrize("flag", [0, 8, 73, 256, 2048, 4, 77, 141, 260])
+def test_mapped_only_uses_read_flag_not_mate_flag(flag):
+    assert sam_record_matches_pair_filters(
+        sam_fields(flag), mapped_only=True
+    ) == (not bool(flag & 0x4))
+
+
+@pytest.mark.parametrize(
+    "flag,retained",
+    [(0, True), (73, True), (133, True), (69, True),
+     (256, True), (2048, True), (4, False), (77, False), (141, False)],
+)
+def test_mapped_templates_retain_either_mapped_mate(flag, retained):
+    assert sam_record_matches_pair_filters(
+        sam_fields(flag), mapped_templates_only=True
+    ) == retained
+
+
+def test_mapped_templates_preserve_unmapped_mate_and_tags(tmp_path):
+    sam_path = tmp_path / "paired.sam.gz"
+    header = "@HD\tVN:1.6\n@SQ\tSN:contig_a\tLN:500\n"
+    mapped = "\t".join(sam_fields(73)) + "\tZZ:Z:custom\n"
+    mate = "\t".join(sam_fields(133)) + "\tRG:Z:library\n"
+    removed = "\t".join(sam_fields(77)) + "\n"
+    with gzip.open(sam_path, "wt") as handle:
+        handle.write(header + mapped + mate + removed)
+    assert filter_sam_by_pair_status(
+        sam_path, mapped_templates_only=True
+    ) == (3, 2)
+    with gzip.open(sam_path, "rt") as handle:
+        assert handle.read() == header + mapped + mate
+    assert not sam_record_matches_pair_filters(
+        sam_fields(133), concordant=True, mapped_templates_only=True
+    )
+
+
+def test_mapped_only_preserves_headers_and_mapped_records(tmp_path):
+    sam_path = tmp_path / "reads.sam"
+    header = "@HD\tVN:1.6\n@SQ\tSN:contig_a\tLN:500\n"
+    kept = "\t".join(sam_fields(73)) + "\n"
+    secondary = "\t".join(sam_fields(256)) + "\n"
+    unmapped = "\t".join(sam_fields(77)) + "\n"
+    sam_path.write_text(header + kept + unmapped + secondary)
+    assert filter_sam_by_pair_status(sam_path, mapped_only=True) == (3, 2)
+    assert sam_path.read_text() == header + kept + secondary
+
+
+def test_invalid_sam_preserves_original_when_filtering(tmp_path):
+    sam_path = tmp_path / "invalid.sam"
+    content = "@HD\tVN:1.6\ninvalid\n"
+    sam_path.write_text(content)
+    with pytest.raises(ValueError, match="Invalid SAM record"):
+        filter_sam_by_pair_status(sam_path, mapped_only=True)
+    assert sam_path.read_text() == content
+    assert not list(tmp_path.glob("*.tmp"))
 
 
 def test_pair_filter_preserves_header_and_supports_gzip(tmp_path):

@@ -7,7 +7,7 @@ import logging
 import re
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, Iterable, List, Optional, TextIO, Union
 
 import polars as pl
 import pyhmmer
@@ -18,7 +18,9 @@ from rolypoly.utils.various import find_files_by_extension, run_command_comp
 
 
 def sam_record_matches_pair_filters(
-    fields: list[str], concordant: bool = False, proper: bool = False
+    fields: list[str], concordant: bool = False, proper: bool = False,
+    mapped_only: bool = False,
+    mapped_templates_only: bool = False,
 ) -> bool:
     """Return whether one SAM record satisfies requested mate-pair filters.
 
@@ -26,7 +28,20 @@ def sam_record_matches_pair_filters(
     inward-facing FR orientation. ``proper`` follows the mapper-defined SAM
     proper-pair flag (0x2), which may additionally enforce an inferred fragment
     length distribution.
+
+    ``mapped_only`` removes records flagged unmapped (0x4), not mapped reads
+    whose mates are unmapped (0x8). Secondary/supplementary hits remain.
+    ``mapped_templates_only`` also retains unmapped paired reads whose mates
+    map, dropping only unmapped single reads and fully unmapped pairs.
     """
+    if mapped_only or mapped_templates_only:
+        if len(fields) < 11:
+            raise ValueError("Invalid SAM record: expected at least 11 fields.")
+        flag = int(fields[1])
+        if flag & 0x4 and (
+            mapped_only or not flag & 0x1 or flag & 0x8
+        ):
+            return False
     if not concordant and not proper:
         return True
     if len(fields) < 9:
@@ -59,34 +74,51 @@ def sam_record_matches_pair_filters(
     )
 
 
-def filter_sam_by_pair_status(
-    sam_path: str | Path, concordant: bool = False, proper: bool = False
+def filter_sam_stream(
+    source: Iterable[str], destination: TextIO,
+    concordant: bool = False, proper: bool = False,
+    mapped_only: bool = False, mapped_templates_only: bool = False,
 ) -> tuple[int, int]:
-    """Filter a SAM or gzip-compressed SAM in place by mate-pair status."""
+    """Copy SAM lines through shared record filters without buffering records."""
+    read_count = 0
+    written_count = 0
+    for line in source:
+        if line.startswith("@"):
+            destination.write(line)
+            continue
+        read_count += 1
+        fields = line.rstrip("\n").split("\t")
+        if sam_record_matches_pair_filters(
+            fields, concordant=concordant, proper=proper,
+            mapped_only=mapped_only,
+            mapped_templates_only=mapped_templates_only,
+        ):
+            destination.write(line)
+            written_count += 1
+    return read_count, written_count
+
+
+def filter_sam_by_pair_status(
+    sam_path: str | Path, concordant: bool = False, proper: bool = False,
+    mapped_only: bool = False,
+    mapped_templates_only: bool = False,
+) -> tuple[int, int]:
+    """Filter SAM records in place by mapping and optional mate-pair status."""
     sam_path = Path(sam_path)
     compressed = sam_path.suffix.lower() == ".gz"
     temporary_path = sam_path.with_name(f".{sam_path.name}.pair-filter.tmp")
     open_input = gzip.open if compressed else open
     open_output = gzip.open if compressed else open
-    read_count = 0
-    written_count = 0
-
     try:
         with (
             open_input(sam_path, "rt", encoding="utf-8") as source,
             open_output(temporary_path, "wt", encoding="utf-8") as destination,
         ):
-            for line in source:
-                if line.startswith("@"):
-                    destination.write(line)
-                    continue
-                read_count += 1
-                fields = line.rstrip("\n").split("\t")
-                if sam_record_matches_pair_filters(
-                    fields, concordant=concordant, proper=proper
-                ):
-                    destination.write(line)
-                    written_count += 1
+            read_count, written_count = filter_sam_stream(
+                source, destination, concordant=concordant, proper=proper,
+                mapped_only=mapped_only,
+                mapped_templates_only=mapped_templates_only,
+            )
         temporary_path.replace(sam_path)
     except Exception:
         temporary_path.unlink(missing_ok=True)
