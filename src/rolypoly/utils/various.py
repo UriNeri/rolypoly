@@ -1574,7 +1574,7 @@ def run_command_comp(
     from pathlib import Path
     from time import sleep, time
 
-    from psutil import NoSuchProcess, Process, cpu_percent
+    from psutil import NoSuchProcess, Process
 
     if logger is None:
         logger = Logger(__name__, level=INFO)
@@ -1627,33 +1627,64 @@ def run_command_comp(
     cmd_str = " ".join(cmd)
 
     logger.info(f"Running command: {cmd_str}")
+    import threading
+    from collections import deque
+
+    tail: deque = deque(maxlen=20)
+    start_time = time()
     try:
+        # stderr is merged into stdout so lines are logged live, in order
+        process = subprocess.Popen(
+            cmd_str,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            errors="replace",
+            bufsize=1,
+        )
+        logger.info(f"Command started (PID {process.pid})")
+
+        def _pump() -> None:
+            for line in process.stdout:  # type: ignore[union-attr]
+                line = line.rstrip()
+                if line:
+                    tail.append(line)
+                    logger.info(f"[{base_cmd}] {line}")
+
+        reader = threading.Thread(target=_pump, daemon=True)
+        reader.start()
         if resource_monitoring:
-            start_time = time()
-            process = subprocess.Popen(cmd_str, shell=True)
             while process.poll() is None:
                 try:
                     proc = Process(process.pid)
-                    cpu_percent = proc.cpu_percent()
-                    memory_info = sum(
+                    cpu = proc.cpu_percent()
+                    mem = proc.memory_info().rss + sum(
                         child.memory_info().rss
                         for child in proc.children(recursive=True)
                     )
-                    memory_info += proc.memory_info().rss
-                    logger.info(f"Current CPU Usage: {cpu_percent}%")
-                    logger.info(
-                        f"Current Memory Usage: {memory_info / 1024:.2f} KB"
-                    )
-                    sleep(0.01)
+                    logger.info(f"Current CPU Usage: {cpu}%")
+                    logger.info(f"Current Memory Usage: {mem / 1024:.2f} KB")
                 except NoSuchProcess:
                     break
-            end_time = time()
-            logger.info(f"Time taken: {end_time - start_time:.2f} seconds")
-            process.wait()
-            if process.returncode != 0 and check_status:
-                raise subprocess.CalledProcessError(process.returncode, cmd_str)
-        else:
-            subprocess.run(cmd_str, check=check_status, shell=True)
+                sleep(1)
+        process.wait()
+        reader.join()
+        elapsed = time() - start_time
+        rc = process.returncode
+        logger.info(f"Command finished in {elapsed:.2f}s with exit code {rc}")
+        if rc != 0:
+            sig = ""
+            if rc < 0:
+                sig = f" (terminated by signal {-rc})"
+            elif rc > 128:
+                sig = f" (possibly signal {rc - 128}; 137 = SIGKILL, often OOM)"
+            logger.error(
+                f"Command failed with exit code {rc}{sig} after {elapsed:.2f}s: {cmd_str}\n"
+                "Last output lines:\n" + "\n".join(tail)
+            )
+            if check_status:
+                raise subprocess.CalledProcessError(rc, cmd_str)
     except subprocess.CalledProcessError as e:
         logger.warning(f"Error: {e}")
         return False
