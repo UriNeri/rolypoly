@@ -165,3 +165,4 @@ test_roll/
 
 local_tmp/
 **/*.fxi
+feature_requests/
