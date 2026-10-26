@@ -230,6 +230,24 @@ FEATURE_PROJECTION_COLUMNS = (
 )
 
 
+def read_annotated_marker_databases(feature_path: Path) -> set[str]:
+    """Return lower-cased marker database names that have sidecar feature rows.
+
+    Projection is enabled per database, so any profile library (RVMT, Pfam
+    companions, ...) is projected once its validated rows are in the sidecar.
+    """
+    import polars as pl
+
+    if not feature_path.exists():
+        return set()
+    names = (
+        pl.read_csv(feature_path, separator="\t", columns=["marker_db"])
+        .get_column("marker_db")
+        .drop_nulls()
+    )
+    return {str(name).strip().lower() for name in names.unique()}
+
+
 def project_marker_features(
     hit_df, feature_path: Path, output_path: Path, backend: str, logger=None
 ) -> None:
@@ -432,8 +450,8 @@ def project_marker_features(
         }
         profile_aliases.discard("")
         profile_id = next(iter(profile_aliases), "")
-        # The currently bundled sidecar is specifically for RVMT.  Other
-        # marker DBs remain ordinary broad detection results.
+        # The sidecar lists annotated marker DBs; unannotated DBs remain
+        # ordinary broad detection results.
         candidate_keys = {
             (database_key, alias)
             for alias in profile_aliases
@@ -1215,8 +1233,12 @@ def marker_search(
             )
         database_paths = {db: db_paths[db.lower()] for db in databases}
 
-    feature_projection_enabled = marker_features_path.exists() and any(
-        db_name.lower() == "rvmt" for db_name in database_paths
+    annotated_marker_databases = read_annotated_marker_databases(
+        marker_features_path
+    )
+    feature_projection_enabled = any(
+        db_name.lower() in annotated_marker_databases
+        for db_name in database_paths
     )
 
     input_alpha = guess_fasta_alpha(input)
@@ -1283,7 +1305,8 @@ def marker_search(
 
         tmp_output = config.temp_dir / f"raw_{config.name}_vs_{db_name}.tsv"
         retain_feature_path = (
-            feature_projection_enabled and db_name.lower() == "rvmt"
+            feature_projection_enabled
+            and db_name.lower() in annotated_marker_databases
         )
         if config.search_tool == "mmseqs2":
             search_mmseqs_marker_db(

@@ -87,3 +87,15 @@ rolypoly marker-search [OPTIONS]
 - `-td`, `-tempdir`, `-tmp`, `--temp-dir`: Temporary working directory. (type: `DIRECTORY`)
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
 <!-- END GENERATED CLI OPTIONS -->
+
+## Caveats
+
+### Motif labels on negative-strand polymerases
+
+Projected motif labels depend on the profile database. For the negative-strand
+polymerase profiles (Arena, influenza, Mononegavirales, Bunyavirales), motif A
+may be a single conserved Asp rather than the `D-x(4,5)-D` pair familiar from
+positive-strand RdRps. See
+[Non-classical motif A and the Arena/influenza anchors](rdrp_motif_search.md#non-classical-motif-a-and-the-arenainfluenza-anchors)
+for the structural evidence, an anchor-window figure, and references. Labels
+mark catalytic residue positions, not validated motif extents.

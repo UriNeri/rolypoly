@@ -643,17 +643,29 @@ def find_best_motif_combination(
     return best_combination
 
 
+def motif_interval(hit: Dict) -> tuple[int, int]:
+    """Return the interval used to compare motif hits.
+
+    Projected motif positions (``feature_from``/``feature_to``) take
+    precedence; otherwise the contextual detector bounds are used, which keeps
+    behaviour for profiles without a validated feature map unchanged.
+    """
+    start = hit.get("feature_from")
+    end = hit.get("feature_to")
+    if start is None or end is None:
+        return hit.get("ali_from", 0), hit.get("ali_to", 0)
+    return start, end
+
+
 def is_within_distance(
     existing_hits: List[Dict], new_hit: Dict, max_distance: int
 ) -> bool:
     """Check if new hit is within distance of existing hits"""
 
-    new_start = new_hit.get("ali_from", 0)
-    new_end = new_hit.get("ali_to", 0)
+    new_start, new_end = motif_interval(new_hit)
 
     for hit in existing_hits:
-        hit_start = hit.get("ali_from", 0)
-        hit_end = hit.get("ali_to", 0)
+        hit_start, hit_end = motif_interval(hit)
 
         # Check for overlap (not allowed)
         if not (new_end < hit_start or new_start > hit_end):

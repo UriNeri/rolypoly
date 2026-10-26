@@ -4,9 +4,49 @@ import polars as pl
 
 from rolypoly.commands.identify_virus.marker_search import (
     project_marker_features,
+    read_annotated_marker_databases,
     search_mmseqs_marker_db,
 )
+from rolypoly.commands.identify_virus.rdrp_motif_search import (
+    find_best_motif_combination,
+)
 from rolypoly.utils.bio import alignments
+
+
+def test_annotated_marker_databases_are_read_from_sidecar(tmp_path):
+    sidecar = tmp_path / "marker_features.tsv"
+    sidecar.write_text(
+        "marker_db\tprofile_id\nRVMT\ta\nPfam_RTs_RdRp\tb\nrvmt\tc\n"
+    )
+    assert read_annotated_marker_databases(sidecar) == {
+        "rvmt",
+        "pfam_rts_rdrp",
+    }
+    assert read_annotated_marker_databases(tmp_path / "missing.tsv") == set()
+
+
+def test_motif_combination_uses_projected_positions_over_context_bounds():
+    # Contextual flanks of A and C overlap, but their motif residues do not.
+    def hit(motif, start, end, score, feature=None):
+        row = {"motif_type": motif, "ali_from": start, "ali_to": end, "score": score}
+        if feature:
+            row["feature_from"], row["feature_to"] = feature
+        return row
+
+    legacy = find_best_motif_combination(
+        {"A": [hit("A", 10, 90, 30)], "C": [hit("C", 70, 120, 20)]}, 250
+    )
+    assert [h["motif_type"] for h in legacy] == ["A"]
+
+    projected = find_best_motif_combination(
+        {
+            "A": [hit("A", 10, 90, 30, (40, 44))],
+            "C": [hit("C", 70, 120, 20, (95, 97))],
+        },
+        250,
+    )
+    assert sorted(h["motif_type"] for h in projected) == ["A", "C"]
+
 
 
 def test_search_mmseqs_marker_db_writes_marker_schema(tmp_path, monkeypatch):
