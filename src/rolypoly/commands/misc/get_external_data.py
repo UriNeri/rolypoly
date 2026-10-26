@@ -17,7 +17,7 @@ NERSC_DATA_URL = (
     "https://portal.nersc.gov/dna/microbial/prokpubs/rolypoly/data/data.tar.gz"
 )
 ZENODO_DATA_URL = (
-    "https://zenodo.org/records/22636256/files/data.tar.gz?download=1"
+    "https://zenodo.org/records/23664735/files/data.tar.gz?download=1"
 )
 DATA_URLS = (ZENODO_DATA_URL, NERSC_DATA_URL)
 

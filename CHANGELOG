@@ -4,6 +4,7 @@
 
 ### Added
 - `marker-search`: project labelled features for any marker database that has rows in `marker_features.tsv.gz` (not only RVMT), enabling Pfam companion profiles once a bundle provides them. `rdrp-motif-search` compares motif hits by projected feature coordinates when present.
+- `get-data`: download the 2026-10-26 data bundle (Zenodo 10.5281/zenodo.23664735): 16-profile Pfam RdRp/RT companion set, 1,375 projected-feature rows including negative-strand structural motif labels and single-Asp motif A for Arena/influenza profiles, and Rfam 15.1 family metadata.
 - Documentation: caveat on non-classical (single-Asp) motif A in negative-strand polymerases, with structure evidence, an anchor-window figure and references, linked from `marker-search`.
 - `filter-reads`, `roll`: add `-mlp` / `--multi-lib-pol` / `--multilibrarypolicy` with `keep-separate` (default), `single-output`, and `pre-concatenate` policies, per-input library manifests, and effective preprocessing configurations.
 - `dereplicate-seqs`: expose existing streaming cross-input sequence/ID/header deduplication, reverse-complement and case policies, discarded-record output, and the legacy duplicate list.
