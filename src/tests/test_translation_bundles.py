@@ -114,6 +114,28 @@ def test_empty_bundle_is_valid(tmp_path):
     assert (tmp_path / 'bundle/predicted_orfs.gff').read_text() == '##gff-version 3\n'
 
 
+@pytest.mark.filterwarnings("error::DeprecationWarning")
+def test_pyrodigal_spawn_workers_preserve_predictions_and_ids(tmp_path):
+    dna = tmp_path / 'input.fa'
+    sequence = 'ATG' + 'GCT' * 100 + 'TAA'
+    dna.write_text(
+        f'>contig original description\n{sequence}\n'
+        f'>contig duplicate description\n{sequence}\n'
+    )
+    single = tmp_path / 'single.faa'
+    parallel = tmp_path / 'parallel.faa'
+
+    translation.pyro_predict_orfs(dna, single, threads=1)
+    translation.pyro_predict_orfs(dna, parallel, threads=2)
+
+    assert single.stat().st_size > 0
+    assert parallel.read_bytes() == single.read_bytes()
+    assert parallel.with_suffix('.gff').read_bytes() == single.with_suffix('.gff').read_bytes()
+    headers = [header for header, _ in translation.translation_records(parallel)]
+    assert any(header.startswith('contig_1 ') for header in headers)
+    assert any(header.startswith('contig_seq2_1 ') for header in headers)
+
+
 def test_canonical_search_does_not_guess_using_colliding_native_ids(tmp_path):
     source = tmp_path / 'proteins.fa'
     source.write_text('>protein\nMAKPEPTIDE\n>protein_protein_1 second description\nMAKPEPTIDE\n')

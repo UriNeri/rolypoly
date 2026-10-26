@@ -83,6 +83,36 @@ For other roll presets, select the corresponding standalone presets:
 standalone `filter-reads --preset fast` does not subsample. Explicit
 `--filter-preset` and `--assembly-preset` replace the mapped choices.
 
+### Existing assemblies and cached results
+
+`--skip-existing` reuses stage outputs without fully validating input contents
+or all processing settings. It does not automatically invalidate downstream
+results when inputs, presets, databases, or filtering/clustering settings change.
+Roll logs a warning when this option is used; the warning does not change reuse
+behavior.
+
+To start downstream analysis from an existing assembly, use a new output directory:
+
+```bash
+rolypoly roll -i existing_assembly.fasta -o results/new_assembly_analysis \
+  --skip-steps filter_reads,assemble
+```
+
+This contigs mode also skips read mapping. It restages/renames the supplied
+assembly, **even with `--skip-existing`**, and warns if the staged assembly
+already exists. Existing downstream outputs are not automatically invalidated.
+Use a new output directory for a different assembly or changed analysis settings,
+rather than mixing new input with cached results. Do not use `--overwrite` to
+preserve an existing result directory: it removes that directory.
+
+For the same input and settings, `--skip-existing` remains useful for resuming
+an interrupted run, but missing outputs can cause stages to execute. To regenerate
+only the HTML without re-entering pipeline stages:
+
+```bash
+rolypoly report -i results/sample_1 -o results/sample_1/roll_report.html
+```
+
 ## Staging large or uneven datasets across machines
 
 Prefer one raw-input folder and one result folder per sample. This lets you
@@ -415,7 +445,17 @@ ratios and performance have not been benchmarked.
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
 <!-- END GENERATED CLI OPTIONS -->
 
+## Poly-A-selected library warning
 
+!!! warning "Poly(A) selection does not guarantee safe trimming"
+
+    The `poly_a` preset enables terminal poly(A)/poly(T) read trimming. Choosing
+    poly(A) selection during library preparation does not, by itself, mean that
+    terminal sequence is safe to discard when viral genome recovery is the
+    goal. Consider whether you need complete viral termini before using that
+    preset, and retain the original FASTQs if trimming is enabled. See the
+    [filter-reads poly(A) caveat](filter_reads.md#polya-trimming-and-genome-termini)
+    for the biological context, trade-offs, and sources.
 
 
 

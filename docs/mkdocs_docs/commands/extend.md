@@ -21,6 +21,9 @@ for example when combining data from multiple experiments or samples.
 Supports multiple input files, e.g. one file with contigs from sample A and
 another file with contigs/reads-derived contigs from sample B.
 
+With the Parasail backend and `--threads > 1`, pileup workers use spawned
+processes rather than forking a process with active native-library threads.
+
 ## Usage
 
 ```bash

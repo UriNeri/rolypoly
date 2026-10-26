@@ -1,6 +1,6 @@
 """Translation and ORF prediction functions."""
 
-import multiprocessing.pool
+from multiprocessing import get_context
 import re
 from contextlib import nullcontext
 from functools import lru_cache
@@ -137,7 +137,7 @@ def pyro_predict_orfs(
         ),  # Ensure max_overlap < min_gene
     )  # a single gv gene finder object
 
-    with multiprocessing.pool.Pool(processes=threads) as pool:
+    with get_context("spawn").Pool(processes=threads) as pool:
         orfs = pool.map(gene_finder.find_genes, sequences)
 
     with open(output_path, "w") as dst:

@@ -168,13 +168,60 @@ rolypoly filter-reads [OPTIONS]
 - `-g`, `--log-file`: Path to the log file. (type: `FILE`; default: `rolypoly.log`)
 <!-- END GENERATED CLI OPTIONS -->
 
+## Poly(A) trimming
+
+!!! warning "Use caution when recovering viral genome termini"
+
+    The `poly_a_selected` preset enables terminal poly(A)/poly(T) trimming.
+    Poly(A) selection during library preparation does not, by itself, mean that
+    viral terminal sequence is safe to discard. Consider your analysis goal and
+    retain the original FASTQs if trimming is enabled. See the
+    [poly(A) trimming caveat](#polya-trimming-and-genome-termini) for sources
+    and trade-offs.
+
+`--trim-polya` trims terminal poly(A)/poly(T) runs from reads with BBDuk; it
+does not remove matching runs from the middle of a read. The `poly_a_selected`
+filter preset enables this step with `trimpolya=18`. A poly(A)-selected
+library, however, is not by itself a reason to enable trimming when viral
+genome recovery is the goal: library selection is an upstream enrichment, while
+trimming changes the sequenced read data. See the
+[poly(A) trimming caveat](#polya-trimming-and-genome-termini) before choosing
+that preset.
+
 ## Caveats
 
 ### Poly(A) trimming and genome termini
 
-Terminal poly(A)/poly(T) trimming can remove genuine viral terminal sequence,
-leaving an assembled genome with shortened or missing 5'/3' untranslated regions (UTRs). polyA trimming can be valuble for removing unwanted polyA sequences (e.g., from host transcripts), and reduce potential time spent on attempted assembly of reads with long homopolymer tails.  A practical approach is to keep the reads from before poly(A) trimming, and "post-hoc" mapping those reads back to contigs - this may help investigate missing termini, but homopolymer
-length and ambiguous alignments may require careful interpretation. Mapping can also
-help assess termini when no poly(A) trimming was performed. 
+The `poly_a_selected` filter preset enables BBDuk's terminal poly(A)/poly(T)
+trimming (`trimpolya=18`). This acts on read ends, not arbitrary internal
+A-rich genome regions ([BBDuk documentation](https://bbmap.org/tools/bbduk)).
+However, genuine viral genome termini can themselves contain poly(A) or
+poly(U)-complementary sequence. For example, Picornaviridae genomes are
+polyadenylated at the 3' end ([ViralZone](https://viralzone.expasy.org/33)).
+Non-segmented negative-strand RNA viruses also use short genomic U-rich gene-end
+signals to make poly(A)-tailed viral mRNAs by polymerase stuttering; those
+mRNA tails should not be confused with long poly(A) runs in the viral genome
+([Ogino and Green, 2019](https://doi.org/10.3389/fmicb.2019.01490)).
 
-I'm still not implementing automatic mapping-based termini rescue, though a likely candidate would be to use the `extend` (or `termini`) commands to use the post-hoc mapped reads in the pile-up approach for reconstructing missing terminal sequences. This requires testing, leaving as a TODO.
+There are therefore reasonable goals on both sides. Trimming may remove
+non-genomic transcript tails or very low-complexity terminal sequence that
+otherwise contributes little unique assembly or mapping information, and may
+reduce low-complexity k-mers in some datasets. It can also remove genuine
+terminal genome bases or shorten reads below the minimum length. Its benefit
+for assembly graph complexity is dataset- and assembler-dependent, not a
+guaranteed improvement. Poly(A) selection is a separate library-preparation
+choice and does not establish whether a sequenced tail is expendable; it can
+also bias viral representation ([Gann et al., 2021](https://doi.org/10.3389/fmicb.2021.664189)).
+
+For viral discovery or full-genome recovery, leave poly(A)/poly(T) trimming
+disabled unless there is evidence that the affected read-end tails are unwanted
+for the analysis. The viral `roll` presets do not enable this trimming by
+default. Keep the original FASTQs if trimming is enabled. Mapping those raw
+reads back to contigs or a reference can help inspect terminal support, but it
+does not automatically restore trimmed sequence or establish exact
+homopolymer length; ambiguous alignments and sequencing uncertainty still
+matter. RolyPoly does not currently perform automatic mapping-based termini
+rescue.
+
+For `roll`, see the [preset warning](roll.md#poly-a-selected-library-warning)
+before using the `poly_a` preset for viral genome recovery.

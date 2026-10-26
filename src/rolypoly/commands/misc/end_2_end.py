@@ -535,6 +535,14 @@ def roll(
         log_file = output_dir / "rolypoly_pipeline.log"
     logger = setup_logging(log_file, log_level.upper())
     log_start_info(logger, dict(zip(sys.argv[1::2], sys.argv[2::2])))
+    if skip_existing:
+        logger.warning(
+            "--skip-existing reuses stage outputs without fully validating input "
+            "contents or processing settings. Changed inputs, presets, databases, "
+            "or filtering/clustering settings can leave stale downstream results. "
+            "Use a new output directory for changed inputs or analysis settings; "
+            "use 'rolypoly report' for HTML-only regeneration."
+        )
     if (
         compression_policy != "none"
         and "map_reads" not in skip_steps
@@ -697,6 +705,14 @@ def roll(
         logger.info(
             "Step %d: Using provided input as assembly (contigs mode)", step
         )
+        if final_assembly_file.exists() or final_assembly_file.is_symlink():
+            logger.warning(
+                "Contigs mode restages the supplied assembly at %s even with "
+                "--skip-existing; existing downstream outputs are not "
+                "automatically invalidated. Use a new output directory if "
+                "the supplied assembly has changed.",
+                final_assembly_file,
+            )
         assembly_output.mkdir(parents=True, exist_ok=True)
         try:
             from rolypoly.utils.bio.sequences import (

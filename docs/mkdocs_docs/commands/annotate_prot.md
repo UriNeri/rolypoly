@@ -23,6 +23,9 @@ Currently supported tools and databases:
 
 - custom: user supplied database. Needs to be in tool appropriate format, or a directory of aligned fasta files (for hmmsearch)
 
+Pyrodigal prediction uses spawned worker processes to avoid forking with
+active native-library threads. `--threads` controls the worker count.
+
 ## Usage
 
 ```bash

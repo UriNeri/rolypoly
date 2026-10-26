@@ -1086,6 +1086,7 @@ def test_roll_contig_processing_skip_steps(
         "length_filter": assembly / "length_filtered.fasta",
     }
     if cached:
+        (assembly / "final_assembly.fasta").write_text(">previous_input\nAAAA\n")
         for stage in skipped:
             paths[stage].write_text(">stale\n" + "G" * 500 + "\n")
     calls = []
@@ -1114,6 +1115,9 @@ def test_roll_contig_processing_skip_steps(
         catch_exceptions=False,
     )
     assert result.exit_code == 0, result.output
+    log_text = (tmp_path / "roll.log").read_text()
+    assert ("without fully validating input" in log_text) == cached
+    assert ("Contigs mode restages the supplied assembly" in log_text) == cached
     assert ("filter-contigs" in calls) == ("filter_contigs" not in skipped)
     assert ("cluster" in calls) == ("cluster" not in skipped)
     expected = assembly / "final_assembly.fasta"

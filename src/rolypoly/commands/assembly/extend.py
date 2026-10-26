@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ProcessPoolExecutor
 from functools import lru_cache
+from multiprocessing import get_context
 from pathlib import Path
 from time import perf_counter
 from typing import Any  # , Tuple
@@ -2211,6 +2212,7 @@ def run_pileup_extension(
         )
         with ProcessPoolExecutor(
             max_workers=threads,
+            mp_context=get_context("spawn"),
             initializer=init_ani_cluster_pileup_worker,
             initargs=(
                 representative_mode,
