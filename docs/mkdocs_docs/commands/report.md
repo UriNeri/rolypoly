@@ -11,12 +11,40 @@ Render an interactive per-contig genome-map report from RolyPoly outputs.
 
 Tabs appear only when data is present: Table / Genome maps (protein domains +
 RNA + nucleic tracks), Nucleic hits, Run stats, and any --extra-tab layers.
+
 Toggle all-hits vs best-only and pick the best-by criterion in the toolbar;
 protein and RNA hits are resolved separately, sourcing rolypoly's
 consolidate_hits. RNA discrete features are classified (rRNA / tRNA / IRES /
 ribozyme / riboswitch / frameshift / UTR / CRE / motif). The "source" criterion
 applies a precedence order (RVMT > NVPC > Pfam > genomad > VFAM by default)
 without excluding lower-priority sources.
+
+### Assembly / contig statistics
+
+The Run stats tab has one table for available assembly and contig populations,
+sorted by **contig count, largest first** (ties use source path and label).
+Each row includes its stage/source artifact, contig count, total bp, N50,
+minimum, maximum, and mean length in bp. N50 is the contig length at which
+descending cumulative lengths reach at least half that row's total bases.
+
+Directory discovery covers raw assembler outputs (MEGAHIT, SPAdes scaffolds or
+transcripts, PenguiN), combined/renamed raw assemblies, dereplicated assemblies,
+the assembly-command endpoint, contig-filter and clustering outputs,
+length-filtered assemblies, workflow-selected candidate contigs, and
+marker-matched nucleotide inputs. When raw FASTAs were cleaned up,
+`contigs_id_map.tsv` can supply raw totals and per-assembler lengths. These
+raw map totals are not reused as candidate-only or post-filter statistics.
+
+Missing/skipped stages are omitted, not reconstructed from another population.
+Unreadable artifacts are shown as **Unavailable**, with a warning in the
+report-generation log. Empty artifacts show 0 contigs and 0 bp, with
+**N/A - empty population** for length statistics. Symbolic-link stages are
+labelled as aliases, since a stage artifact can point to unchanged input.
+Candidate matches do not establish confirmed viral status; these counts are
+not viral-genome counts or abundance. The table does not infer missing filter
+thresholds, upstream populations for standalone inputs, or retention fractions.
+Only recognized artifacts inside the report directory are discovered; an
+arbitrary user-supplied FASTA outside it is not assumed to be a full assembly.
 
 ## Usage
 

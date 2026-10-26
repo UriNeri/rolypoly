@@ -68,6 +68,123 @@ def test_fasta_lengths_streams_valid_records(tmp_path):
     assert fasta_lengths(fasta) == [4, 2]
 
 
+def test_assembly_populations_use_each_source_and_sort_by_contig_count(tmp_path):
+    assembly = tmp_path / "assembly"
+    assembly.mkdir()
+    populations = {
+        "all_contigs.fasta": [10, 6, 4, 2],
+        "dereplicated_contigs.fasta": [10, 6, 4],
+        "filtered_assembly.fasta": [10, 6],
+        "clustered_assembly.fasta": [10],
+        "length_filtered.fasta": [6, 4],
+    }
+    for name, lengths in populations.items():
+        (assembly / name).write_text(
+            "".join(f">c{i}\n{'A' * length}\n" for i, length in enumerate(lengths))
+        )
+    (tmp_path / "all_matched_contigs.fasta").write_text(">viral_candidate\nAAAA\n")
+    (assembly / "contigs_id_map.tsv").write_text(
+        "new_id\tassembler\tlength\n"
+        "c1\tmegahit\t10\nc2\tmegahit\t6\nc3\tspades\t4\nc4\tspades\t2\n"
+    )
+    # Protein FASTAs and arbitrary input files must not masquerade as assemblies.
+    (tmp_path / "predicted_orfs.faa").write_text(">orf\nMPEPTIDE\n")
+    (tmp_path / "unrelated.fasta").write_text(">other\nACGT\n")
+    rows = load_run_stats(tmp_path)["assembly_sources"]
+    assert [row["n_contigs"] for row in rows] == [4, 3, 2, 2, 2, 2, 1, 1]
+    by_source = {row["source"]: row for row in rows if "ID map" not in row["name"]}
+    raw = by_source["assembly/all_contigs.fasta"]
+    assert {key: raw[key] for key in ("n_contigs", "total_bp", "n50", "min", "max", "mean")} == {
+        "n_contigs": 4, "total_bp": 22, "n50": 6, "min": 2, "max": 10, "mean": 5.5,
+    }
+    selected = by_source["all_matched_contigs.fasta"]
+    assert selected["n_contigs"] == 1
+    assert selected["total_bp"] == selected["n50"] == 4
+    assert "candidates (not confirmed)" in selected["name"]
+    assert "predicted_orfs.faa" not in by_source
+    assert "unrelated.fasta" not in by_source
+
+
+def test_assembly_sources_work_without_an_id_map_and_include_empty_candidates(tmp_path):
+    (tmp_path / "length_filtered.fasta").write_text(">c1\nAAAAAA\n")
+    (tmp_path / "all_matched_contigs.fasta").write_text("")
+    stats = load_run_stats(tmp_path)
+    rows = stats["assembly_sources"]
+    assert [row["n_contigs"] for row in rows] == [1, 0]
+    empty = rows[1]
+    assert empty["state"] == "available"
+    assert empty["total_bp"] == 0
+    assert all(empty[key] is None for key in ("n50", "min", "max", "mean"))
+    assert not any("raw assembly" in row["name"] for row in rows)
+    report = write_report_for_dir(tmp_path, initial_tab="stats")
+    assert report is not None
+    html = report.read_text()
+    assert 'id="assemblyStatsTable"' in html
+    assert "N/A - empty population" in html
+    assert "<th>Minimum (bp)</th>" in html
+    assert '<div class="l">N50</div>' not in html
+
+
+def test_assembly_sources_show_unreadable_artifacts_after_available_rows(tmp_path, caplog):
+    (tmp_path / "length_filtered.fasta").write_text(">c1\nAAAA\n")
+    (tmp_path / "clustered_assembly.fasta").symlink_to(tmp_path / "missing.fasta")
+    rows = load_run_stats(tmp_path)["assembly_sources"]
+    assert rows[0]["source"] == "length_filtered.fasta"
+    assert rows[1]["source"] == "clustered_assembly.fasta"
+    assert rows[1]["state"] == "unavailable"
+    assert "Unavailable" in rows[1]["note"]
+    assert "could not read FASTA" in caplog.text
+
+
+def test_assembly_sources_deduplicate_supplied_input_map_aliases(tmp_path):
+    (tmp_path / "contigs_id_map.tsv").write_text(
+        "old_id\tnew_id\tassembler\tlength\n"
+        "original1\tc1\tinput\t10\noriginal2\tc1\tinput\t10\n"
+        "original3\tc2\tinput\t6\n"
+    )
+    stats = load_run_stats(tmp_path)
+    assert stats["assembly_sources"] == [{
+        "name": "User-supplied assembly (ID map)", "source": "contigs_id_map.tsv",
+        "state": "available", "n_contigs": 2, "total_bp": 16,
+        "n50": 10, "max": 10, "min": 6, "mean": 8.0,
+    }]
+    assert stats["assembly"]["n_contigs"] == 2
+
+
+def test_assembly_sources_recover_pruned_assemblers_and_available_raw_fastas(tmp_path):
+    megahit = tmp_path / "megahit_custom_out"
+    megahit.mkdir()
+    (megahit / "final.contigs.fa").write_text(">m1\nAAAA\n")
+    (tmp_path / "contigs_id_map.tsv").write_text(
+        "new_id\tassembler\tlength\nm1\tmegahit\t4\ns1\tspades\t10\n"
+    )
+    (tmp_path / "dereplicated_contigs.fasta").write_text(">s1\nAAAAAAAAAA\n")
+    (tmp_path / "final_assembly.fasta").symlink_to(tmp_path / "dereplicated_contigs.fasta")
+    rows = load_run_stats(tmp_path)["assembly_sources"]
+    assert len(rows) == 5
+    assert sum("megahit" in row["name"] for row in rows) == 1
+    assert any(row["name"] == "Assembler: spades (raw, ID map)" for row in rows)
+    alias = next(row for row in rows if row["source"] == "final_assembly.fasta")
+    assert "Alias of dereplicated_contigs.fasta" in alias["note"]
+
+
+def test_assembly_sources_include_distinct_spades_outputs(tmp_path):
+    for directory, filename, sequence in (
+        ("spades_rna_output", "transcripts.fasta", "AAAA"),
+        ("spades_rnaviral_output", "scaffolds.fasta", "AAAAAA"),
+    ):
+        source = tmp_path / directory
+        source.mkdir()
+        (source / filename).write_text(f">c1\n{sequence}\n")
+    (tmp_path / "contigs_id_map.tsv").write_text(
+        "new_id\tassembler\tlength\nc1\tspades\t4\nc2\tspades_rnaviral\t6\n"
+    )
+    rows = load_run_stats(tmp_path)["assembly_sources"]
+    assert len(rows) == 3
+    assert len([row for row in rows if row["name"].startswith("Assembler:")]) == 2
+    assert {row["total_bp"] for row in rows} == {4, 6, 10}
+
+
 def test_load_run_stats_falls_back_to_id_map_when_endpoint_fasta_unreadable(
     tmp_path, monkeypatch
 ):

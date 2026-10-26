@@ -1228,12 +1228,13 @@ def compute_n50(lengths):
     return lengths[-1]
 
 
-def summarize_lengths(lengths):
+def summarize_lengths(lengths: list[int]) -> dict[str, int | float | None]:
     """Return a small stats dict (n_contigs, total_bp, max, min, mean, n50) for a
-    list of contig lengths. Empty input yields zeros."""
+    list of contig lengths. Empty populations have undefined length metrics."""
     lengths = [int(x) for x in lengths if x]
     if not lengths:
-        return {"n_contigs": 0, "total_bp": 0, "max": 0, "min": 0, "mean": 0, "n50": 0}
+        return {"n_contigs": 0, "total_bp": 0, "max": None, "min": None,
+                "mean": None, "n50": None}
     return {
         "n_contigs": len(lengths),
         "total_bp": sum(lengths),
@@ -1248,6 +1249,8 @@ def fasta_lengths(path):
     """Stream a FASTA and return sequence lengths without loading all records."""
     lengths = []
     try:
+        if Path(path).stat().st_size == 0:
+            return lengths
         for record in parse_fastx_file(path):
             lengths.append(len(record.seq))
     except Exception as exc:
@@ -1322,11 +1325,15 @@ def enrich_rrna_with_mapping(rows, mapping_path):
     return rows
 
 
-def load_run_stats(output_dir, rrna_mapping_path=None):
+def load_run_stats(
+    output_dir: str | Path, rrna_mapping_path: str | Path | None = None,
+) -> dict | None:
     """Collect optional reads-filtering and assembly statistics from a roll/annotate
     output directory. Returns a dict with keys ``reads``, ``rrna_top``,
-    ``rrna_domain`` (total euk/prok/unknown %), ``assembly``, ``files`` (any may be
-    empty), or None if nothing is found.
+    ``rrna_domain`` (total euk/prok/unknown %), ``assembly``, ``assembly_sources``,
+    ``files`` (any may be empty), or None if nothing is found. Assembly sources
+    are independent populations, sorted by descending contig count, then source.
+    Missing stages are omitted; unreadable artifacts are marked unavailable.
 
     ``rrna_mapping_path`` (or the env var ``ROLYPOLY_DATA`` ->
     ``contam/rrna/rrna_to_genome_mapping.parquet``) optionally enriches the top
@@ -1344,7 +1351,7 @@ def load_run_stats(output_dir, rrna_mapping_path=None):
     """
     output_dir = Path(output_dir)
     stats: dict = {"reads": [], "rrna_top": [], "rrna_domain": {},
-                   "assembly": {}, "files": [], "falco": [], "merge": {},
+                   "assembly": {}, "assembly_sources": [], "files": [], "falco": [], "merge": {},
                    "adapters": []}
 
     if rrna_mapping_path is None:
@@ -1445,10 +1452,50 @@ def load_run_stats(output_dir, rrna_mapping_path=None):
         stats["files"] = files
         break
 
-    # assembly stats. The headline numbers are the *final* assembly (after any
-    # dereplication / clustering / length filtering); when the run used more than
-    # one assembler we also report each assembler's own contigs (from
-    # contigs_id_map.tsv, which lists every raw contig with its assembler).
+    fasta_specs = (
+        ("all_contigs.fasta", "Combined raw assembly"),
+        ("all_contigs_renamed.fasta", "Combined raw assembly (renamed IDs)"),
+        ("dereplicated_contigs.fasta", "Dereplicated assembly"),
+        ("final_assembly.fasta", "Assembly command endpoint / supplied assembly"),
+        ("filtered_assembly.fasta", "Contig-filter output"),
+        ("clustered_assembly.fasta", "Clustering output"),
+        ("length_filtered.fasta", "Length-filtered assembly"),
+        ("all_matched_contigs.fasta", "Workflow-selected viral candidates (not confirmed)"),
+        ("marker_search_matched_input_seqs.fna", "Marker-matched nucleotide inputs"),
+        ("megahit_custom_out/final.contigs.fa", "Assembler: megahit (raw)"),
+        ("spades_*_output/scaffolds.fasta", "Assembler: SPAdes scaffolds (raw)"),
+        ("spades_*_output/transcripts.fasta", "Assembler: SPAdes transcripts (raw)"),
+        ("penguin_Fguided_1_nuclassemble_c0.fasta", "Assembler: penguin (raw)"),
+    )
+    fasta_rows = {}
+    lengths_by_path = {}
+    for pattern, name in fasta_specs:
+        for path in sorted(output_dir.glob(f"**/{pattern}")):
+            if path in fasta_rows or not (path.is_file() or path.is_symlink()):
+                continue
+            resolved = path.resolve()
+            if resolved not in lengths_by_path:
+                lengths_by_path[resolved] = fasta_lengths(path)
+            lengths = lengths_by_path[resolved]
+            row = {"name": name, "source": path.relative_to(output_dir).as_posix(),
+                   "state": "available" if lengths is not None else "unavailable"}
+            if lengths is not None:
+                row.update(summarize_lengths(lengths))
+            else:
+                row["note"] = "Unavailable: source could not be read; see report-generation log."
+            if path.parent.name.startswith("spades_"):
+                row["name"] = f"Assembler: {path.parent.name} (raw {path.stem})"
+            if path.is_symlink():
+                row["note"] = (
+                    row.get("note", "") + " Alias of "
+                    + os.path.relpath(path.resolve(), output_dir)
+                    + "; this artifact does not establish that the stage changed the population."
+                ).strip()
+            fasta_rows[path] = row
+            stats["assembly_sources"].append(row)
+
+    # ID maps retain raw lengths even after assembler FASTAs have been pruned.
+    # Keep the legacy endpoint summary for callers, but the UI uses all sources.
     for path in sorted(output_dir.glob("**/contigs_id_map.tsv")):
         assembly_dir = path.parent
         assembly = {}
@@ -1464,14 +1511,61 @@ def load_run_stats(output_dir, rrna_mapping_path=None):
             logger.warning(
                 "genome_maps: could not read assembly lengths from %s (%s)", path, exc
             )
+            stats["assembly_sources"].append({
+                "name": "Raw assembly lengths (ID map)",
+                "source": path.relative_to(output_dir).as_posix(),
+                "state": "unavailable",
+                "note": "Unavailable: invalid or unreadable ID-map lengths; see report-generation log.",
+            })
         else:
             raw_lengths = length_column.to_list()
+            if "assembler" in amap.columns and set(amap["assembler"].to_list()) == {"input"}:
+                if "new_id" in amap.columns:
+                    if amap.height and amap.group_by("new_id").agg(pl.col("length").n_unique())["length"].max() > 1:
+                        logger.warning("genome_maps: conflicting input lengths in %s; omitting map statistics", path)
+                        continue
+                    amap = amap.unique("new_id", maintain_order=True)
+                    raw_lengths = amap["length"].cast(pl.Int64).to_list()
+            source = path.relative_to(output_dir).as_posix()
+            if not any(
+                (assembly_dir / name) in fasta_rows
+                and fasta_rows[assembly_dir / name]["state"] == "available"
+                for name in ("all_contigs.fasta", "all_contigs_renamed.fasta")
+            ):
+                supplied = "assembler" in amap.columns and set(amap["assembler"].to_list()) == {"input"}
+                stats["assembly_sources"].append(dict(
+                    name="User-supplied assembly (ID map)" if supplied else "Combined raw assembly (ID map)",
+                    source=source, state="available", **summarize_lengths(raw_lengths),
+                ))
             # Per-assembler stats describe raw, pre-dereplication contigs.
             if "assembler" in amap.columns:
                 assemblers = amap["assembler"].to_list()
                 per = {}
                 for asm, length in zip(assemblers, raw_lengths):
                     per.setdefault(asm or "unknown", []).append(length)
+                for asm, vals in sorted(per.items()):
+                    if asm == "input":
+                        continue
+                    raw_fasta = (
+                        assembly_dir / "megahit_custom_out/final.contigs.fa" if asm == "megahit"
+                        else assembly_dir / "penguin_Fguided_1_nuclassemble_c0.fasta" if asm == "penguin"
+                        else None
+                    )
+                    spades_present = asm.startswith("spades") and any(
+                        p.parent.parent == assembly_dir
+                        and p.parent.name.startswith("spades_")
+                        and (p.parent.name == "spades_rnaviral_output") == (asm == "spades_rnaviral")
+                        and fasta_rows[p]["state"] == "available"
+                        for p in fasta_rows
+                    )
+                    if spades_present or (
+                        raw_fasta in fasta_rows and fasta_rows[raw_fasta]["state"] == "available"
+                    ):
+                        continue
+                    stats["assembly_sources"].append(dict(
+                        name=f"Assembler: {asm} (raw, ID map)", source=source,
+                        state="available", **summarize_lengths(vals),
+                    ))
                 if len(per) > 1:
                     assembly["assemblers"] = [
                         dict(name=asm, **summarize_lengths(vals))
@@ -1487,17 +1581,22 @@ def load_run_stats(output_dir, rrna_mapping_path=None):
             None,
         )
         if final_fasta is not None:
-            lengths = fasta_lengths(final_fasta)
-            if lengths is not None:
-                assembly.update(summarize_lengths(lengths))
+            final_row = fasta_rows.get(final_fasta)
+            if final_row and final_row["state"] == "available":
+                assembly.update({key: final_row[key] for key in (
+                    "n_contigs", "total_bp", "max", "min", "mean", "n50")})
                 assembly["source"] = final_fasta.name
         if "source" not in assembly and raw_lengths is not None:
             # No readable endpoint FASTA found: use only a fully validated map.
             assembly.update(summarize_lengths(raw_lengths))
             assembly["source"] = "contigs_id_map.tsv"
-        if assembly.get("n_contigs") or assembly.get("assemblers"):
+        if "source" in assembly and not stats["assembly"]:
             stats["assembly"] = assembly
-        break
+
+    stats["assembly_sources"].sort(key=lambda row: (
+        row.get("n_contigs") is None, -row.get("n_contigs", 0),
+        row["source"], row["name"],
+    ))
 
     # Falco uses bare FastQC-compatible filenames for one input, and prefixes
     # each filename with <input>_ for multiple inputs in the same output folder.
@@ -1619,7 +1718,7 @@ def load_run_stats(output_dir, rrna_mapping_path=None):
             stats["merge"] = {"pairs": pairs, "joined": joined, "pct": pct}
             break
 
-    if not (stats["reads"] or stats["assembly"] or stats["files"] or stats["falco"]):
+    if not (stats["reads"] or stats["assembly_sources"] or stats["files"] or stats["falco"]):
         return None
     return stats
 
@@ -2044,7 +2143,7 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
                     predicted_orf_counts[row["source_seq_id"]] = row["len"]
 
     if marker_table is None:
-        if rna_table is None and not nucleic_tables and not extra_tabs and not marker_evidence and not filter_warning_tables:
+        if rna_table is None and not nucleic_tables and not extra_tabs and not marker_evidence and not filter_warning_tables and not run_stats:
             logger.warning("genome_maps: no annotation tables under %s; skipping report", output_dir)
             return None
         contigs = attach_marker_evidence([], marker_evidence, extra_tabs, contig_lengths)
@@ -2739,24 +2838,18 @@ function renderNucleic(){
 function renderStats(){
   if(!STATS){document.getElementById('statsbox').innerHTML='';return;}
   let html='';
-  const a=STATS.assembly||{};
-  if(a&&(a.n_contigs||a.assemblers)){
-    const sub=a.source?` <span class="legend-note">(${esc(a.source)})</span>`:'';
-    html+=`<div class="card"><h2>Assembly${sub}</h2><div class="statcards">`+
-      `<div class="statcard"><div class="v">${(a.n_contigs||0).toLocaleString()}</div><div class="l">contigs</div></div>`+
-      `<div class="statcard"><div class="v">${(a.total_bp||0).toLocaleString()}</div><div class="l">total bp</div></div>`+
-      `<div class="statcard"><div class="v">${(a.n50||0).toLocaleString()}</div><div class="l">N50</div></div>`+
-      `<div class="statcard"><div class="v">${(a.max||0).toLocaleString()}</div><div class="l">max</div></div>`+
-      `<div class="statcard"><div class="v">${(a.mean||0).toLocaleString()}</div><div class="l">mean</div></div></div>`;
-    // When more than one assembler ran, show each assembler's own contigs too.
-    if(a.assemblers&&a.assemblers.length){
-      html+=`<table style="margin-top:10px"><thead><tr><th>Assembler</th><th>Contigs</th><th>Total bp</th><th>N50</th><th>Max</th><th>Mean</th></tr></thead><tbody>`;
-      a.assemblers.forEach(s=>{html+=`<tr><td>${esc(s.name)}</td><td>${s.n_contigs.toLocaleString()}</td>`+
-        `<td>${s.total_bp.toLocaleString()}</td><td>${s.n50.toLocaleString()}</td>`+
-        `<td>${s.max.toLocaleString()}</td><td>${s.mean.toLocaleString()}</td></tr>`;});
-      html+=`</tbody></table><div class="legend-note">Per-assembler counts are raw contigs (before dereplication / clustering / length filtering).</div>`;
-    }
-    html+=`</div>`;
+  const assemblies=STATS.assembly_sources||[];
+  if(assemblies.length){
+    html+=`<div class="card"><h2>Assembly / contig populations</h2>`+
+      `<div class="legend-note">Sorted by contig count (largest first). Each row describes its own source, not confirmed viral genomes. Missing stages are omitted; aliases may describe unchanged populations.</div>`+
+      `<table id="assemblyStatsTable"><thead><tr><th>Step / assembly source</th><th>Source artifact</th><th>Contigs</th><th>Total bp</th><th>N50 (bp)</th><th>Minimum (bp)</th><th>Maximum (bp)</th><th>Mean (bp)</th></tr></thead><tbody>`;
+    assemblies.forEach(s=>{
+      const value=key=>s[key]!=null?s[key].toLocaleString():s.state==='unavailable'?'Unavailable':'N/A - empty population';
+      html+=`<tr><td>${esc(s.name)}</td><td class="mono">${esc(s.source)}${s.note?'<div class="legend-note">'+esc(s.note)+'</div>':''}</td>`+
+        `<td>${value('n_contigs')}</td><td>${value('total_bp')}</td><td>${value('n50')}</td>`+
+        `<td>${value('min')}</td><td>${value('max')}</td><td>${value('mean')}</td></tr>`;
+    });
+    html+=`</tbody></table></div>`;
   }
   const mg=STATS.merge||null;
   if((STATS.reads&&STATS.reads.length)||(mg&&mg.pct!=null)){
