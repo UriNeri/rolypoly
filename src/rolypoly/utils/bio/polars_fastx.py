@@ -536,6 +536,9 @@ def count_kmers_df(
 ) -> pl.DataFrame:
     """Calculate k-mer counts for all sequences in a DataFrame.
 
+    Sequences without complete k-mers (including empty/null sequences) are
+    omitted from the result.
+
     Args:
         df: Input DataFrame with sequence and ID columns.
         seq_col: Column containing sequences.
@@ -547,7 +550,6 @@ def count_kmers_df(
             the result strand-agnostic.
     """
     # Keep this vectorized in Polars; this is faster than Python UDF-based splitting.
-    # NOTE: On Polars 1.43.0, empty_as_null is not exposed on str.split yet.
     split_chars_expr = pl.col(seq_col).str.split("").alias("chars")
 
     # Create k-mers by shifting and concatenating
@@ -560,7 +562,7 @@ def count_kmers_df(
 
     base_df = (
         df.with_columns(split_chars_expr)
-        .explode("chars")
+        .explode("chars", empty_as_null=True)
         .with_columns(create_kmers_expr)
         .filter(filter_complete_kmers_expr)
     )
