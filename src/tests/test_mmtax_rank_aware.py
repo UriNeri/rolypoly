@@ -1,14 +1,83 @@
+import logging
+from pathlib import Path
+
 import polars as pl
 import pytest
 import taxopy
+import rich_click as click
 
 from rolypoly.commands.virotype.mmtax import (
     assign_contig_taxonomy,
     rank_vote_metrics,
     read_single_cds_coordinates,
+    search_mmseqs,
     weighted_majority_taxid,
 )
 from rolypoly.utils.bio.polars_fastx import read_protein_gff_map
+
+
+@pytest.mark.parametrize(
+    "memory,expected_bytes",
+    [
+        ("30g", 30 * 1024**3 * 95 // 100),
+        ("20GB", 19 * 1024**3),
+        ("10g", 9 * 1024**3),
+        ("8g", 7 * 1024**3),
+        ("1536m", 512 * 1024**2),
+        ("2g", 1024**3),
+        (str(30 * 1024**3 + 1), 30 * 1024**3 * 95 // 100),
+    ],
+)
+def test_mmseqs_taxonomy_reserves_memory(monkeypatch, caplog, memory, expected_bytes):
+    calls = []
+
+    def run_command(**kwargs):
+        calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr("rolypoly.utils.various.run_command_comp", run_command)
+    with caplog.at_level(logging.INFO):
+        search_mmseqs(
+            Path("proteins.faa"), Path("reference"), Path("hits.tsv"),
+            Path("work"), 2, memory, 1e-5, 0.1, 30, "normal",
+            logging.getLogger(__name__),
+        )
+    assert len(calls) == 1
+    assert calls[0]["params"]["split-memory-limit"] == f"{expected_bytes}B"
+    assert "not a hard process memory limit" in caplog.text
+
+
+@pytest.mark.parametrize("memory", ["0", "512m", "1g", "1024mb"])
+def test_mmseqs_taxonomy_rejects_insufficient_memory(monkeypatch, memory):
+    def unexpected_search(**kwargs):
+        pytest.fail("MMseqs2 must not start without room for the safety reserve")
+
+    monkeypatch.setattr("rolypoly.utils.various.run_command_comp", unexpected_search)
+    with pytest.raises(click.BadParameter, match="greater than 1"):
+        search_mmseqs(
+            Path("proteins.faa"), Path("reference"), Path("hits.tsv"),
+            Path("work"), 2, memory, 1e-5, 0.1, 30, "normal",
+            logging.getLogger(__name__),
+        )
+
+
+@pytest.mark.parametrize("command_name", ["mmtax", "roll"])
+@pytest.mark.parametrize("explicit_backend", [None, "mmseqs"])
+def test_taxonomy_cli_defaults_to_diamond(tmp_path, command_name, explicit_backend):
+    from rolypoly.rolypoly import rolypoly
+
+    input_path = tmp_path / "input.fasta"
+    input_path.write_text(">protein\nMPEPTIDE\n")
+    output_flag = "--output" if command_name == "mmtax" else "--output-dir"
+    backend_flag = "--backend" if command_name == "mmtax" else "--taxonomy-backend"
+    backend_name = "backend" if command_name == "mmtax" else "taxonomy_backend"
+    command = rolypoly.get_command(click.Context(rolypoly), command_name)
+    assert command is not None
+    args = ["--input", str(input_path), output_flag, str(tmp_path / "output")]
+    if explicit_backend:
+        args += [backend_flag, explicit_backend]
+    with command.make_context(command_name, args) as ctx:
+        assert ctx.params[backend_name] == (explicit_backend or "diamond")
 
 
 def make_taxdb(tmp_path):
@@ -163,3 +232,43 @@ def test_assignment_reports_resolved_and_informative_support(tmp_path):
     assert row["projected_alignment_genome_fraction"] == pytest.approx(
         273 / 1000
     )
+
+
+def test_assignment_accepts_rank_metrics_first_resolved_after_100_proteins(tmp_path):
+    taxdb = make_taxdb(tmp_path)
+    proteins = [f"p{i}" for i in range(101)]
+    hits = pl.DataFrame({
+        "protein": proteins,
+        "target": proteins,
+        "identity": [0.9] * 101,
+        "alignment_length": [30] * 101,
+        "bitscore": [100.0] * 101,
+        "evalue": [1e-20] * 101,
+        "taxid": ["1"] * 100 + ["5"],
+    })
+    mapping = pl.DataFrame({"protein": proteins, "contig": proteins})
+
+    result = assign_contig_taxonomy(hits, mapping, taxdb, backend="diamond")
+
+    assert result.height == 101
+    resolved = result.filter(pl.col("query") == "p100").row(0, named=True)
+    assert resolved["taxid"] == "5"
+    assert resolved["family_support"] == 1.0
+    assert resolved["informative_fraction"] == 1.0
+    assert result.filter(pl.col("query") != "p100")["family_support"].null_count() == 100
+
+
+def test_assignment_with_no_mapped_hits_returns_typed_empty_table(tmp_path):
+    taxdb = make_taxdb(tmp_path)
+    hits = pl.DataFrame({
+        "protein": ["unmapped"], "target": ["target"], "identity": [0.9],
+        "alignment_length": [30], "bitscore": [100.0],
+        "evalue": [1e-20], "taxid": ["5"],
+    })
+    mapping = pl.DataFrame({"protein": ["other"], "contig": ["c1"]})
+
+    result = assign_contig_taxonomy(hits, mapping, taxdb)
+
+    assert result.is_empty()
+    assert result.schema["family_support"] == pl.Float64
+    assert result.schema["query"] == pl.String

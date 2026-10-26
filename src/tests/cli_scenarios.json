@@ -944,7 +944,7 @@
   },
   {
     "id": "mmtax_diamond_custom_taxonomy",
-    "description": "Assign contig taxonomy from precomputed ORFs with a tiny custom DIAMOND taxonomy database",
+    "description": "Assign contig taxonomy with the default DIAMOND backend and normal sensitivity using a tiny custom taxonomy database",
     "required_commands": [
       "diamond"
     ],
@@ -965,10 +965,6 @@
       "{tmp}/mmtax_fixture/ncbi_virus.dmnd",
       "--taxdump",
       "testing_folder/inputs/mmtax/taxonomy",
-      "--backend",
-      "diamond",
-      "--sensitivity",
-      "faster",
       "--min-aln-len",
       "10",
       "--output",

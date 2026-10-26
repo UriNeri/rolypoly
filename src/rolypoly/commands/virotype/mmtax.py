@@ -17,6 +17,8 @@ from rolypoly.utils.bio.polars_fastx import (
     scan_protein_gff_records,
     validate_protein_to_contig_map,
 )
+from rolypoly.utils.cli_options import MEMORY
+from rolypoly.utils.logging.config import DEFAULT_MEMORY
 
 DEFAULT_DATABASE_ALIASES = {"ncbi_virus", "ncbi_nr_ictv", "ncbi-nr-ictv"} # all these are the same
 PLACEHOLDER_DATABASES = {"rvmt", "nvpc"}
@@ -587,8 +589,17 @@ def assign_contig_taxonomy(
             )
         protein_assignments.append(protein_assignment)
 
+    protein_schema = {
+        "protein": pl.String,
+        "contig": pl.String,
+        "taxid": pl.String,
+        "weight": pl.Float64,
+        "hit_count": pl.Int64,
+    }
+    for rank in ICTV_RANKS:
+        protein_schema[f"{rank}_informative_fraction"] = pl.Float64
     rows = []
-    for group in pl.DataFrame(protein_assignments).partition_by(
+    for group in pl.DataFrame(protein_assignments, schema=protein_schema).partition_by(
         "contig", maintain_order=True
     ):
         contig_id = str(group["contig"][0])
@@ -846,8 +857,22 @@ def search_mmseqs(
     logger,
 ) -> None:
     """Run MMseqs2 easy-search and write headered taxonomic protein hits."""
-    from rolypoly.utils.various import run_command_comp
+    from rolypoly.utils.various import parse_memory, run_command_comp
 
+    requested_bytes = parse_memory(memory)
+    reserved_bytes = max((requested_bytes + 19) // 20, 1024**3)
+    if requested_bytes <= reserved_bytes:
+        raise click.BadParameter(
+            "MMseqs2 taxonomy requires --memory greater than 1 GiB "
+            "to leave room for its safety reserve.",
+            param_hint="--memory",
+        )
+    split_memory_limit = f"{requested_bytes - reserved_bytes}B"
+    logger.info(
+        "MMseqs2 taxonomy memory budget: %s; reserved: %d bytes; "
+        "--split-memory-limit: %s (not a hard process memory limit)",
+        memory, reserved_bytes, split_memory_limit,
+    )
     success = run_command_comp(
         base_cmd="mmseqs easy-search",
         positional_args=[
@@ -859,7 +884,7 @@ def search_mmseqs(
         positional_args_location="start",
         params={
             "threads": threads,
-            "split-memory-limit": memory.upper(),
+            "split-memory-limit": split_memory_limit,
             "e": evalue,
             "min-seq-id": identity,
             "min-aln-len": min_aln_len,
@@ -1120,8 +1145,17 @@ def read_search_hits(
     "-b",
     "--backend",
     type=click.Choice(["mmseqs", "diamond"], case_sensitive=False),
-    default="mmseqs",
+    default="diamond",
     show_default=True,
+)
+@click.option(
+    "-M",
+    "--memory",
+    type=MEMORY,
+    default=DEFAULT_MEMORY,
+    show_default=True,
+    help="MMseqs2 split-memory budget, reserving max(5%, 1 GiB). "
+    "Not a hard RAM cap; DIAMOND does not enforce this value.",
 )
 @click.option(
     "-s",
@@ -1216,8 +1250,9 @@ def mmtax(
     """Assign ICTV taxonomy using weighted protein-to-contig LCA voting.
 
     Nucleotide contigs are translated with pyrodigal-rv unless --proteins and a
-    protein-to-contig mapping are supplied. Both MMseqs2 and DIAMOND searches
-    feed the same post-search top-score filter and taxopy assignment logic.
+    protein-to-contig mapping are supplied. DIAMOND is the default; both search
+    backends feed the same post-search top-score filter and taxopy assignment
+    logic. --memory is not a hard process memory limit.
     """
     import taxopy
 
@@ -1288,6 +1323,12 @@ def mmtax(
                 logger,
             )
         else:
+            logger.info(
+                "DIAMOND taxonomy uses its default block-size and index-chunks; "
+                "--memory %s is not enforced. Use an external OS/container "
+                "memory limit when a hard RAM cap is required.",
+                memory,
+            )
             search_diamond(
                 protein_fasta,
                 database_path,

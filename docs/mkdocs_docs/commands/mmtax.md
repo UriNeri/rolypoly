@@ -3,7 +3,10 @@
 ## Summary
 
 Assign ICTV taxonomy to virus contigs from protein matches made by MMseqs2 or
-DIAMOND.
+DIAMOND. DIAMOND is the default for standalone `mmtax` and every `roll` preset,
+including fast/mini. Select `mmtax --backend mmseqs` or
+`roll --taxonomy-backend mmseqs` to retain the previous backend. There is no
+automatic fallback: the selected backend needs its own taxonomy-enabled database.
 
 Both search backends feed the same post-search classifier:
 
@@ -31,7 +34,7 @@ With the built-in database:
 rolypoly mmtax \
   --input contigs.fasta \
   --output taxonomy.tsv \
-  --backend mmseqs \
+  --backend diamond \
   --threads 8
 ```
 
@@ -86,6 +89,59 @@ before calculating the rank-aware assignment.
 and `--tax-lineage 0` omits the compact lineage. Named ICTV-rank columns are
 always retained for reporting.
 
+## Memory behavior
+
+`--memory` is **not a hard process RAM cap** for either taxonomy backend.
+The default is `8g`; RolyPoly interprets `g`/`GB` as binary GiB.
+
+- **MMseqs2:** RolyPoly reserves the larger of 5% of the requested budget or
+  1 GiB, then passes the remainder as `--split-memory-limit`, in bytes rounded
+  down. For example, `30g` passes 28.5 GiB and `8g` passes 7 GiB. Budgets of
+  1 GiB or less are rejected. This leaves headroom but cannot guarantee that
+  total process memory stays within the original budget.
+- **DIAMOND:** `--memory` is logged but is not passed as a memory limit.
+  RolyPoly retains DIAMOND's default block and index settings rather than
+  guessing a hard limit from them. For normal sensitivity these are
+  `--block-size 2.0` and `--index-chunks 4`.
+
+DIAMOND's [official memory and performance documentation](https://github.com/bbuchfink/diamond/wiki/3.-Command-line-options#memory--performance-options)
+describes `--block-size` in billions of sequence letters, with approximate
+memory usage of six times that value in GB. Smaller blocks reduce memory and
+temporary storage at a possible runtime cost, but can also change search
+results. `--index-chunks` controls partitioning of the seed index; using one
+chunk instead of the default four increases memory use. Very/ultra-sensitive
+presets have different defaults (block size 0.4, one index chunk). These are
+tuning controls, not enforceable RAM limits.
+
+### Local baseline (2026-10-14)
+
+Two bounded `diamond blastp` searches used DIAMOND 2.2.8, normal sensitivity,
+default block/index/algorithm settings, and the local full `ncbi_virus.dmnd`:
+3,589,746 proteins, 2,684,726,080 residues, and 3,011,057,792 bytes on disk.
+Queries were the first 100 or 1,000 proteins from the local
+`refseq_ribovirus_genomes_orfs_cleaned.faa.gz`. Both selected the query-indexed
+algorithm automatically. `/usr/bin/time -v` measured each search:
+
+| Query proteins | Query residues | Threads | Peak RSS | Wall time |
+| --- | --- | --- | --- | --- |
+| 100 | 58,236 | 1 | 3.86 GiB | 32.48 s |
+| 1,000 | 437,737 | 10 | 4.50 GiB | 7.93 s |
+
+Search options matched the current adapter: `--evalue 1e-5 --id 10
+--min-orf 20 --min-query-len 20 --header simple`, with output columns
+`qseqid sseqid pident length bitscore evalue staxids qstart qend qlen`.
+The second run benefited from a warm filesystem cache; the wall times are
+not a scaling comparison. Measurements cover the external protein search,
+not protein prediction, Polars/taxopy classification, or the complete pipeline.
+
+These small-query baselines fit below the default 8 GiB budget, so no automatic
+block-size reduction has been introduced. They do **not** establish a memory
+guarantee for larger inputs, larger/custom references, other sensitivity
+presets, or concurrent jobs, nor an assignment-quality comparison with MMseqs2.
+When a hard cap is required, use an OS/container/job-scheduler memory limit
+and allow for failure if the search cannot fit. On a smaller-memory machine,
+benchmark separately before running the full pipeline.
+
 ## Output
 
 The headered TSV contains the assigned `query`, `taxid`, `rank`, `taxon_name`,
@@ -131,7 +187,7 @@ Current defaults in the command implementation are:
 
 | Control | Default | Meaning |
 | --- | --- | --- |
-| `--backend` | `mmseqs` | Protein similarity search backend |
+| `--backend` | `diamond` | Protein similarity search backend |
 | `--sensitivity` | `normal` | MMseqs2 sensitivity 4; DIAMOND default preset |
 | `--evalue` | `1e-5` | Maximum hit E-value |
 | `--identity` | `0.1` | Minimum aligned amino-acid identity: 10% |
