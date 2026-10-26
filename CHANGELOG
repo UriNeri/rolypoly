@@ -10,11 +10,19 @@
 - `translate`: expose the native IUPAC-aware NumPy six-frame translator as a miscellaneous CLI command. Support configurable genetic codes, stop and defline policies, optional start/stop-delimited ORF extraction, coding-orientation FNA output, and GFF3 with an optional embedded reference FASTA.
 
 ### Changed
+- `mmtax`: default to DIAMOND, matching `roll`; explicit MMseqs2 selection remains supported. Document backend-specific memory behavior and reserve max(5%, 1 GiB) from MMseqs2 split-memory budgets.
+- `annotate-rna`, `report`: classify Rfam hits by accession and curated family categories, export Sequence Ontology types with preserved Infernal evidence, and use conservative mappings when metadata is unavailable.
+- `report`: show separate assembly and contig populations with source-specific length statistics, including empty and unavailable artifacts, instead of conflating upstream assemblies with selected viral candidates.
 - `filter-reads`: preprocess and first-deduplicate libraries independently by default. `single-output` pools streams before final sequence deduplication; `pre-concatenate` pools before preprocessing and disables library-specific adapter discovery, error correction, and optical deduplication.
 - Fast filtering presets and fast/mini `roll` modes select `pre-concatenate`, logging policy overrides. Assemblers discover and consume all published library streams without a separate policy option.
 - `filter-reads`: reuse complete outputs only with matching input paths, library policy, manifest, and output files; legacy outputs require explicit overwrite or a new directory. Partial intermediate-step resumption is no longer supported.
 
 ### Fixed
+- `mmtax`: preserve typed rank-support columns when informative assignments first appear after the schema-inference window or no hits map to contigs.
+- `annotate-prot`, `extend`: spawn prediction and pileup workers rather than forking processes with active native-library threads.
+- `roll`: warn that cached outputs are not fully validated against changed inputs/settings and that contigs mode restages supplied assemblies even with `--skip-existing`.
+- Sequence utilities: preserve k-mer output schemas for empty, null, and shorter-than-k sequences without Polars explode deprecation warnings.
+- Documentation: clarify poly(A)/poly(T) trimming risks, retained assembly populations, and backend resource limits.
 - `filter-reads`: retain the first read pair and every subsequent input during concatenation, publish all library outputs, and preserve paired/unpaired stream handling and tracker metadata.
 - `roll`, `assemble`: preserve explicit assembler and dereplication choices through nested preset invocation and normalize assembler selections to validated lists.
 - Mini `roll`: include every sampled library, map the `first` sampling option correctly, and propagate sampling threads.
