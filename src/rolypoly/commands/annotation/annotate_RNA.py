@@ -1,9 +1,12 @@
 import logging
 import os
 from pathlib import Path
-from typing import Union
+from typing import TYPE_CHECKING, Union
 
 import rich_click as click
+
+if TYPE_CHECKING:
+    import polars as pl
 
 from rolypoly.utils.bio.sequences import guess_fasta_alpha
 from rolypoly.utils.logging.citation_reminder import remind_citations
@@ -65,6 +68,8 @@ class RNAAnnotationConfig(BaseConfig):
         self.skip_steps = skip_steps or []
         self.resolve_mode = resolve_mode
         self.min_overlap_positions = min_overlap_positions
+        self.rfam_metadata: "pl.DataFrame | None" = None
+        self.rfam_metadata_loaded = False
 
         self.step_params = {
             "RNAfold": {
@@ -506,13 +511,13 @@ def predict_secondary_structure_linearfold(config, input_fasta, output_file):
 
 
 def search_ribozymes(config):
-    """Search for ribozymes using Rfam or a custom cm database."""
+    """Search for RNA families using Rfam or a custom covariance-model database."""
     import os
     from pathlib import Path
 
     from rolypoly.utils.various import run_command_comp
 
-    config.logger.info(f"Searching for ribozymes using {config.cm_db}")
+    config.logger.info(f"Searching for RNA families using {config.cm_db}")
     input_fasta = config.input
     output_file = config.output_dir / "ribozymes.out"
 
@@ -903,6 +908,32 @@ def search_rna_motifs(config):  # py
     # return True
 
 
+def type_rfam_results(
+    config: RNAAnnotationConfig, data: "pl.DataFrame",
+) -> "pl.DataFrame":
+    """Apply bundled family metadata, with conservative support for older bundles."""
+    import polars as pl
+
+    from rolypoly.utils.bio.polars_fastx import annotate_rfam_hits
+
+    if not config.rfam_metadata_loaded:
+        if config.cm_db == "Rfam":
+            path = Path(os.environ.get("ROLYPOLY_DATA", "")) / "profiles/rfam_family.tsv.gz"
+        else:
+            path = Path(str(config.custom_cm_db) + ".families.tsv.gz")
+        if path.is_file():
+            config.rfam_metadata = pl.read_csv(path, separator="\t", infer_schema=False)
+            config.logger.info("Using Rfam family metadata from %s", path)
+        else:
+            config.rfam_metadata = None
+            config.logger.warning(
+                "RNA family metadata %s is unavailable; using exact known-family "
+                "mappings and nucleotide_match for unclassified models", path,
+            )
+        config.rfam_metadata_loaded = True
+    return annotate_rfam_hits(data, config.rfam_metadata)
+
+
 def process_ribozymes_data(config, ribozymes_file):
     """Process ribozymes data from cmscan output.
     Returns an empty DataFrame if the file is empty or has no valid data.
@@ -1064,13 +1095,28 @@ def process_ribozymes_data(config, ribozymes_file):
         )
 
         data = create_minimal_annotation_schema(
-            raw_data,
-            annotation_type="ribozyme",
+            raw_data.with_columns(
+                pl.col("seq_from").alias("seq_from_raw"),
+                pl.col("seq_to").alias("seq_to_raw"),
+            ),
+            annotation_type="nucleotide_match",
             source=config.cm_db,
             tool_specific_cols=[
                 "profile_name",
+                "rfam_id",
                 "evalue",
                 "ribozyme_description",
+                "qaccession",
+                "mdl",
+                "mdl_from",
+                "mdl_to",
+                "seq_from_raw",
+                "seq_to_raw",
+                "trunc",
+                "pass",
+                "gc",
+                "bias",
+                "inc",
             ],
         )
 
@@ -1102,10 +1148,12 @@ def process_ribozymes_data(config, ribozymes_file):
                 dropped_rows,
             )
 
+        data = type_rfam_results(config, data)
+        data.write_csv(config.output_dir / "ribozymes_annotations.tsv", separator="\t")
         return data
     except Exception as e:
         config.logger.error(f"Error processing ribozymes data: {str(e)}")
-        return pl.DataFrame()
+        raise
 
 
 def process_ires_iresfinder(ires_file):
@@ -1414,9 +1462,11 @@ def resolve_rna_element_overlaps(config):
                 }
                 resolve_mode_dict[config.resolve_mode] = True
                 resolved_df = consolidate_hits(
-                    input=element_df,
+                    input=element_df.with_columns(
+                        pl.lit("ribozyme").alias("_overlap_type")
+                    ),
                     min_overlap_positions=config.min_overlap_positions,
-                    column_specs="sequence_id,type",
+                    column_specs="sequence_id,_overlap_type",
                     rank_columns="-score,+evalue",
                     alphabet="nucl",
                     **resolve_mode_dict,
@@ -1429,6 +1479,8 @@ def resolve_rna_element_overlaps(config):
             resolved_file = (
                 element_file.parent / f"{element_file.stem}_resolved.out"
             )
+            if "_overlap_type" in resolved_df.columns:
+                resolved_df = resolved_df.drop("_overlap_type")
             resolved_df.write_csv(resolved_file, separator="\t")
 
             config.logger.info(
@@ -1471,7 +1523,8 @@ def combine_results(config):
                     ribozymes_resolved_file, separator="\t"
                 )
                 if not ribozymes_data.is_empty():
-                    all_results.append(("ribozyme", ribozymes_data))
+                    ribozymes_data = type_rfam_results(config, ribozymes_data)
+                    all_results.append(("nucleotide_match", ribozymes_data))
                     config.logger.debug(
                         f"Added resolved ribozyme data:\n{ribozymes_data.head()}"
                     )
@@ -1481,7 +1534,7 @@ def combine_results(config):
             ):
                 ribozymes_data = process_ribozymes_data(config, ribozymes_file)
                 if not ribozymes_data.is_empty():
-                    all_results.append(("ribozyme", ribozymes_data))
+                    all_results.append(("nucleotide_match", ribozymes_data))
                     config.logger.debug(
                         f"Added ribozyme data:\n{ribozymes_data.head()}"
                     )

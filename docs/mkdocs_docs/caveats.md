@@ -4,6 +4,7 @@ Some quirks and practical limitations to keep in mind if you use rolypoly.
     
 <!-- BEGIN GENERATED CAVEATS INDEX -->
 
+- [Annotate Rna](commands/annotate_rna.md#caveats) — Older bundles and custom models.
 - [Assemble](commands/assemble.md#caveats) — Effects of digital read depth normalization; Mate-Pair Scaffolding alone is not implicitly reliable.
 - [Dereplicate sequences](commands/dereplicate_seqs.md#caveats) — Existing backend semantics.
 - [Detect sequence layout](commands/detect_seq_layout.md#caveats) — Sampled inference, not full validation.

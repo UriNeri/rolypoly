@@ -42,6 +42,8 @@ from typing import Callable
 import polars as pl
 from needletail import parse_fastx_file
 
+from rolypoly.utils.bio.polars_fastx import RNA_FEATURE_TYPES, classify_rfam_feature
+
 try:
     from rolypoly.utils.logging.loggit import get_logger
 
@@ -79,7 +81,7 @@ RNA_TYPE_COLORS: dict[str, str] = {
     "rRNA": "#C44E52", "Host match": "#C44E52", "tRNA": "#1F77B4", "IRES": "#9467BD",
     "ribozyme": "#D62728", "riboswitch": "#E377C2", "frameshift": "#BCBD22",
     "UTR": "#17BECF", "CRE": "#FF7F0E", "motif": "#8C564B",
-    "structure": "#9aa2b1", "other": "#7F7F7F",
+    "structure": "#9aa2b1", "ncRNA": "#8C564B", "other": "#7F7F7F",
 }
 NUCLEIC_COLORS: dict[str, str] = {
     "rvmt": "#C44E52", "ncbi_ribovirus": "#3d6fb4", "other": "#6b7280",
@@ -718,6 +720,9 @@ class RnaFeatureSpec:
     source: str = "source"
     strand: str = "strand"
     profile: str = "profile_name"
+    rfam_id: str = "rfam_id"
+    rfam_type: str = "rfam_type"
+    rna_class: str = "rna_class"
     evalue: str = "evalue"
     ribozyme_desc: str = "ribozyme_description"
     trna_type: str = "tRNA_type"
@@ -729,37 +734,23 @@ class RnaFeatureSpec:
     max_seq_preview: int = 60
 
 
-def classify_rna_feature(rtype, profile="", descr="", motif=""):
-    """Classify an annotate-rna discrete feature into a display class.
-
-    annotate-rna often labels cmsearch/Rfam hits generically (e.g. ``type ==
-    'ribozyme'``) while the real class lives in ``profile_name`` /
-    ``ribozyme_description`` (IRES, rRNA, 5'/3'UTR, frameshift element, ...). Maps
-    to: rRNA / tRNA / IRES / ribozyme / riboswitch / frameshift / UTR / CRE / motif
-    / structure / other. Do NOT assume tRNA.
-    """
-    text = f"{rtype} {profile} {descr} {motif}".lower()
-    if "ires" in text:
-        return "IRES"
-    if any(k in text for k in ("rrna", "ribosomal", "ssu", "lsu",
-                               "16s", "18s", "23s", "28s", "5.8s")):
-        return "rRNA"
-    if "trna" in text:
-        return "tRNA"
-    if "riboswitch" in text:
-        return "riboswitch"
-    if "frameshift" in text or "fse" in text:
-        return "frameshift"
-    if "utr" in text:
-        return "UTR"
-    if any(k in text for k in ("ribozyme", "hammerhead", "hdv", "hairpin",
-                               "twister", "pistol", "hatchet", "glms")):
-        return "ribozyme"
-    if "cre" in text or "cis-acting" in text or "cis-regulatory" in text:
-        return "CRE"
-    if (rtype or "").strip() == "RNA_secondary_structure":
+def classify_rna_feature(
+    rtype: str, profile: str = "", descr: str = "", motif: str = "",
+    accession: str = "", family_type: str = "", rna_class: str = "",
+) -> str:
+    """Use exported SO types or shared curated Rfam typing, never substring guesses."""
+    rtype = (rtype or "").strip()
+    if rtype == "RNA_secondary_structure":
         return "structure"
-    return (rtype or "other").strip() or "other"
+    if rna_class and rtype in RNA_FEATURE_TYPES:
+        return rna_class
+    if accession or family_type or rtype == "ribozyme" and not rna_class:
+        return classify_rfam_feature(accession, profile, family_type)[1]
+    if rtype in RNA_FEATURE_TYPES:
+        return rna_class or RNA_FEATURE_TYPES[rtype][1]
+    return {
+        "IRES": "IRES", "RNA_motif": "motif", "RNA_element": "CRE",
+    }.get(rtype, "other")
 
 
 def rna_feature_note(klass, spec, row, get):
@@ -901,7 +892,12 @@ def build_rna_by_contig(data, spec=None, nbins=150, criteria=tuple(BEST_CRITERIA
             profile = nonempty(get(row, spec.profile)) or ""
             descr = nonempty(get(row, spec.ribozyme_desc)) or ""
             motif = nonempty(get(row, spec.motif_type)) or ""
-            klass = classify_rna_feature(rtype, profile, descr, motif)
+            klass = classify_rna_feature(
+                rtype, profile, descr, motif,
+                accession=nonempty(get(row, spec.rfam_id)) or "",
+                family_type=nonempty(get(row, spec.rfam_type)) or "",
+                rna_class=nonempty(get(row, spec.rna_class)) or "",
+            )
             preview = sequence[: spec.max_seq_preview] + ("…" if len(sequence) > spec.max_seq_preview else "")
             entry["features"].append({
                 "type": rtype or "other", "klass": klass, "start": start, "end": end,

@@ -1,0 +1,9 @@
+# Synthetic Infernal --tblout records; no biological sequences or databases.
+LSU_rRNA_eukarya RF02543 contig1 - cm 1 80 1 80 + no 1 0.50 0.0 80.0 1e-20 ! Eukaryotic large subunit ribosomal RNA
+LSU_rRNA_bacteria RF02541 contig1 - cm 1 80 100 179 + no 1 0.50 0.0 70.0 1e-18 ! Bacterial large subunit ribosomal RNA
+5_8S_rRNA RF00002 contig1 - cm 1 60 250 191 - no 1 0.50 0.0 60.0 1e-16 ! 5.8S ribosomal RNA
+SSU_rRNA_eukarya RF01960 contig1 - cm 1 80 270 349 + no 1 0.50 0.0 90.0 1e-22 ! Eukaryotic small subunit ribosomal RNA
+tRNA RF00005 contig1 - cm 1 70 360 429 + no 1 0.50 0.0 50.0 1e-12 ! Transfer RNA
+Cobalamin RF00174 contig1 - cm 1 70 440 509 + no 1 0.50 0.0 55.0 1e-14 ! Cobalamin riboswitch
+Hammerhead_3 RF00008 contig1 - cm 1 60 520 579 + no 1 0.50 0.0 45.0 1e-10 ! Hammerhead ribozyme
+unmapped RF99999 contig1 - cm 1 60 590 649 + no 1 0.50 0.0 40.0 1e-8 ! Hairpin ribosomal IRES-like description is not classification evidence

@@ -1191,6 +1191,171 @@ def normalize_column_names(df):
     return df
 
 
+# Names and is_a ancestry validated against Sequence Ontology 2026-08-07.
+RNA_FEATURE_TYPES: dict[str, tuple[str, str]] = {
+    "rRNA": ("SO:0000252", "rRNA"),
+    "cytosolic_LSU_rRNA": ("SO:0000651", "rRNA"),
+    "cytosolic_SSU_rRNA": ("SO:0000650", "rRNA"),
+    "cytosolic_5_8S_rRNA": ("SO:0000375", "rRNA"),
+    "mt_LSU_rRNA": ("SO:0002345", "rRNA"),
+    "mt_SSU_rRNA": ("SO:0002344", "rRNA"),
+    "tRNA": ("SO:0000253", "tRNA"),
+    "ncRNA": ("SO:0000655", "ncRNA"),
+    "snRNA": ("SO:0000274", "ncRNA"),
+    "snoRNA": ("SO:0000275", "ncRNA"),
+    "C_D_box_snoRNA": ("SO:0000593", "ncRNA"),
+    "H_ACA_box_snoRNA": ("SO:0000594", "ncRNA"),
+    "scaRNA": ("SO:0002095", "ncRNA"),
+    "miRNA": ("SO:0000276", "ncRNA"),
+    "lncRNA": ("SO:0001877", "ncRNA"),
+    "antisense_RNA": ("SO:0000644", "ncRNA"),
+    "ribozyme": ("SO:0000374", "ribozyme"),
+    "riboswitch": ("SO:0000035", "riboswitch"),
+    "internal_ribosome_entry_site": ("SO:0000243", "IRES"),
+    "cis_regulatory_frameshift_element": ("SO:0001427", "frameshift"),
+    "RNA_thermometer": ("SO:0002168", "CRE"),
+    "regulatory_region": ("SO:0005836", "CRE"),
+    "intron": ("SO:0000188", "other"),
+    "nucleotide_match": ("SO:0000347", "other"),
+}
+
+# Exact curated identities from Rfam 15.1, used by older bundles without metadata.
+RFAM_KNOWN_FAMILIES: dict[str, tuple[str, str]] = {
+    "RF00001": ("5S_rRNA", "rRNA"),
+    "RF00002": ("5_8S_rRNA", "cytosolic_5_8S_rRNA"),
+    "RF00005": ("tRNA", "tRNA"),
+    "RF00008": ("Hammerhead_3", "ribozyme"),
+    "RF00010": ("RNaseP_bact_a", "ribozyme"),
+    "RF00011": ("RNaseP_bact_b", "ribozyme"),
+    "RF00163": ("Hammerhead_1", "ribozyme"),
+    "RF00174": ("Cobalamin", "riboswitch"),
+    "RF00177": ("SSU_rRNA_bacteria", "cytosolic_SSU_rRNA"),
+    "RF01959": ("SSU_rRNA_archaea", "cytosolic_SSU_rRNA"),
+    "RF01960": ("SSU_rRNA_eukarya", "cytosolic_SSU_rRNA"),
+    "RF02540": ("LSU_rRNA_archaea", "cytosolic_LSU_rRNA"),
+    "RF02541": ("LSU_rRNA_bacteria", "cytosolic_LSU_rRNA"),
+    "RF02542": ("SSU_rRNA_microsporidia", "cytosolic_SSU_rRNA"),
+    "RF02543": ("LSU_rRNA_eukarya", "cytosolic_LSU_rRNA"),
+    "RF02545": ("SSU_trypano_mito", "mt_SSU_rRNA"),
+    "RF02546": ("LSU_trypano_mito", "mt_LSU_rRNA"),
+    "RF02547": ("mtPerm-5S", "rRNA"),
+    "RF02554": ("ppoRNA", "rRNA"),
+    "RF02555": ("hveRNA", "rRNA"),
+}
+
+
+def classify_rfam_feature(
+    accession: str = "", profile: str = "", family_type: str = "",
+) -> tuple[str, str]:
+    """Return an SO feature type and display class from curated Rfam identity.
+
+    Rfam TP categories, not descriptions, establish biological class. An
+    unclassified model match is not evidence of catalytic or noncoding activity.
+    """
+    accession = accession.split(".", 1)[0]
+    known = RFAM_KNOWN_FAMILIES.get(accession)
+    if not accession or accession == "-":
+        known = next(
+            (entry for entry in RFAM_KNOWN_FAMILIES.values() if entry[0] == profile),
+            None,
+        )
+    categories = {part.strip() for part in family_type.split(";")}
+    if not categories.difference({""}) and known:
+        feature_type = known[1]
+    elif "rRNA" in categories:
+        feature_type = known[1] if known and known[1] in (
+            "rRNA", "cytosolic_LSU_rRNA", "cytosolic_SSU_rRNA",
+            "cytosolic_5_8S_rRNA", "mt_LSU_rRNA", "mt_SSU_rRNA",
+        ) else "rRNA"
+    else:
+        category_types = (
+            ("tRNA", "tRNA"), ("ribozyme", "ribozyme"),
+            ("riboswitch", "riboswitch"), ("IRES", "internal_ribosome_entry_site"),
+            ("frameshift_element", "cis_regulatory_frameshift_element"),
+            ("thermoregulator", "RNA_thermometer"),
+            ("scaRNA", "scaRNA"), ("CD-box", "C_D_box_snoRNA"),
+            ("HACA-box", "H_ACA_box_snoRNA"),
+            ("snoRNA", "snoRNA"), ("snRNA", "snRNA"), ("miRNA", "miRNA"),
+            ("lncRNA", "lncRNA"), ("antisense", "antisense_RNA"),
+            ("Cis-reg", "regulatory_region"), ("Intron", "intron"),
+            ("Gene", "ncRNA"),
+        )
+        feature_type = next(
+            (term for category, term in category_types if category in categories),
+            "nucleotide_match",
+        )
+    return feature_type, RNA_FEATURE_TYPES[feature_type][1]
+
+
+def annotate_rfam_hits(
+    dataframe: pl.DataFrame, metadata: pl.DataFrame | None = None,
+) -> pl.DataFrame:
+    """Type Infernal hits while preserving identity, evidence, and curated metadata.
+
+    Metadata uses rfam_id, profile_name, rfam_type, rfam_description, rfam_release,
+    and metadata_source. Optional Ontology_term values remain attributes, never
+    GFF3 feature types. Existing typed sidecars retain their curated categories.
+    """
+    if dataframe.is_empty():
+        return dataframe
+    if "rfam_id" not in dataframe.columns:
+        dataframe = dataframe.with_columns(pl.lit("").alias("rfam_id"))
+    if metadata is not None:
+        required = {
+            "rfam_id", "profile_name", "rfam_type", "rfam_description",
+            "rfam_release", "metadata_source",
+        }
+        missing = required.difference(metadata.columns)
+        if missing:
+            raise ValueError(f"Rfam metadata is missing columns: {sorted(missing)}")
+        if metadata["rfam_id"].n_unique() != metadata.height:
+            raise ValueError("Rfam metadata contains duplicate accessions")
+        columns = [
+            "rfam_id", "rfam_type", "rfam_description",
+            "rfam_release", "metadata_source",
+        ]
+        if "Ontology_term" in metadata.columns:
+            columns.append("Ontology_term")
+        dataframe = dataframe.drop(
+            [col for col in columns if col != "rfam_id" and col in dataframe.columns]
+        ).with_columns(
+            pl.col("rfam_id").str.split(".").list.first().alias("_rfam_key")
+        ).join(
+            metadata.select(columns).rename({"rfam_id": "_rfam_key"}),
+            on="_rfam_key", how="left", maintain_order="left",
+        ).drop("_rfam_key")
+    for col in ("profile_name", "rfam_type", "rfam_description",
+                "rfam_release", "metadata_source"):
+        if col not in dataframe.columns:
+            dataframe = dataframe.with_columns(pl.lit("").alias(col))
+    classifications = dataframe.select(
+        "rfam_id", "profile_name", "rfam_type",
+    ).unique(maintain_order=True)
+    typed = [
+        classify_rfam_feature(accession or "", profile or "", category or "")
+        for accession, profile, category in classifications.iter_rows()
+    ]
+    classifications = classifications.with_columns(
+        pl.Series("type", [term for term, _ in typed], dtype=pl.String),
+        pl.Series("rna_class", [klass for _, klass in typed], dtype=pl.String),
+        pl.Series("so_accession", [RNA_FEATURE_TYPES[term][0] for term, _ in typed],
+                  dtype=pl.String),
+    )
+    return dataframe.drop(
+        [col for col in ("type", "rna_class", "so_accession") if col in dataframe.columns]
+    ).join(
+        classifications, on=["rfam_id", "profile_name", "rfam_type"],
+        how="left", nulls_equal=True, maintain_order="left",
+    ).with_columns(
+        pl.when(pl.col("metadata_source").fill_null("") != "")
+        .then(pl.col("metadata_source"))
+        .when(pl.col("type") != "nucleotide_match")
+        .then(pl.lit("builtin:Rfam15.1"))
+        .otherwise(pl.lit("unclassified"))
+        .alias("metadata_source"),
+    )
+
+
 def create_minimal_annotation_schema(
     df, annotation_type, source, tool_specific_cols=None
 ):
@@ -1311,6 +1476,11 @@ def ensure_unified_schema(dataframes):
         "structure": pl.Utf8,
         "sequence": pl.Utf8,
     }
+    # Preserve additional evidence/ontology columns without changing older schemas.
+    for _, dataframe in dataframes:
+        for column, dtype in dataframe.schema.items():
+            if column not in unified_schema and column not in tool_specific_columns:
+                tool_specific_columns[column] = dtype
 
     # Combine schemas
     full_schema = {**unified_schema, **tool_specific_columns}
@@ -1335,6 +1505,8 @@ def ensure_unified_schema(dataframes):
                     default_val = "+"
                 elif col == "phase":
                     default_val = "."
+                elif dtype != pl.String:
+                    default_val = None
                 else:
                     default_val = ""
 

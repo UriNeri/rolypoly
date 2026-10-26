@@ -723,6 +723,99 @@ def test_roll_sam_compression(
         assert handle.read() == content
 
 
+@pytest.mark.parametrize("output_format", ["tsv", "csv", "gff3"])
+@pytest.mark.parametrize("resolved", [False, True])
+@pytest.mark.parametrize("with_metadata", [False, True])
+def test_annotate_rna_family_types(
+    runner: CliRunner, tmp_path: Path, monkeypatch,
+    output_format: str, resolved: bool, with_metadata: bool,
+) -> None:
+    from urllib.parse import unquote
+
+    from rolypoly.utils import various
+    from rolypoly.utils.viz.genome_maps import attach_rna, build_rna_by_contig, render_html
+
+    fixture = repo_root() / "testing_folder/inputs/annotations/rfam_typing.tblout"
+    output = tmp_path / "annotation"
+    fasta = tmp_path / "input.fna"
+    fasta.write_text(">contig1\n" + "ACGT" * 200 + "\n")
+    bundle = tmp_path / "bundle"
+    monkeypatch.setenv("ROLYPOLY_DATA", str(bundle))
+    if with_metadata:
+        profiles = bundle / "profiles"
+        profiles.mkdir(parents=True)
+        metadata = pl.DataFrame({
+            "rfam_id": ["RF99999"], "profile_name": ["curated_model"],
+            "rfam_type": ["Gene; sRNA;"], "rfam_description": ["Curated noncoding RNA"],
+            "rfam_release": ["15.1"], "metadata_source": ["synthetic:curated"],
+            "Ontology_term": ["GO:0003723"],
+        })
+        with gzip.open(profiles / "rfam_family.tsv.gz", "wb") as handle:
+            metadata.write_csv(handle, separator="\t")
+
+    def infernal(**kwargs):
+        assert kwargs["base_cmd"] == "cmscan"
+        Path(kwargs["output_file"]).write_text(fixture.read_text())
+        return True
+
+    monkeypatch.setattr(various, "run_command_comp", infernal)
+    skips = "predict_secondary_structure,predict_trnas"
+    if not resolved:
+        skips += ",resolve_rna_element_overlaps"
+    result = runner.invoke(rolypoly, [
+        "annotate-rna", "-i", str(fasta), "-o", str(output),
+        "--output-format", output_format, "--skip-steps", skips,
+        "-g", str(tmp_path / "rna.log"),
+    ], catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    expected = [
+        "cytosolic_LSU_rRNA", "cytosolic_LSU_rRNA", "cytosolic_5_8S_rRNA",
+        "cytosolic_SSU_rRNA", "tRNA", "riboswitch", "ribozyme", "nucleotide_match",
+    ]
+    if with_metadata:
+        expected[-1] = "ncRNA"
+    raw = pl.read_csv(output / "ribozymes_annotations.tsv", separator="\t")
+    assert raw["type"].to_list() == expected
+    assert raw["rfam_id"].to_list()[-1] == "RF99999"
+    reverse = raw.filter(pl.col("rfam_id") == "RF00002").row(0, named=True)
+    assert (reverse["start"], reverse["end"], reverse["strand"]) == (191, 250, "-")
+    assert (reverse["seq_from_raw"], reverse["seq_to_raw"]) == (250, 191)
+    if resolved:
+        selected = pl.read_csv(output / "ribozymes_resolved.out", separator="\t")
+        assert selected.sort("start")["type"].to_list() == expected
+    if output_format == "gff3":
+        lines = (output / "combined_annotations.gff3").read_text().split("##FASTA")[0]
+        records = [line.split("\t") for line in lines.splitlines() if not line.startswith("#")]
+        assert sorted(record[2] for record in records) == sorted(expected)
+        attributes = [
+            dict(unquote(item).split("=", 1) for item in record[8].split(";"))
+            for record in records
+        ]
+        assert {attrs["rfam_id"] for attrs in attributes} == set(raw["rfam_id"])
+        assert all(attrs["so_accession"].startswith("SO:") for attrs in attributes)
+        if with_metadata:
+            assert next(attrs for attrs in attributes if attrs["rfam_id"] == "RF99999")[
+                "Ontology_term"
+            ] == "GO:0003723"
+    else:
+        table = pl.read_csv(
+            output / f"combined_annotations.{output_format}",
+            separator="\t" if output_format == "tsv" else ",",
+        )
+        assert table.sort("start")["type"].to_list() == expected
+        assert set(raw.columns).issubset(table.columns)
+        raw = table
+    rna = build_rna_by_contig(raw)["contig1"]
+    assert [feature["klass"] for feature in sorted(rna["features"], key=lambda f: f["start"])] == [
+        "rRNA", "rRNA", "rRNA", "rRNA", "tRNA", "riboswitch", "ribozyme",
+        "ncRNA" if with_metadata else "other",
+    ]
+    contigs = []
+    attach_rna(contigs, {"contig1": rna})
+    html = render_html(contigs)
+    assert "cytosolic_LSU_rRNA" in html and expected[-1] in html
+
+
 def multi_library_reads(directory: Path) -> Path:
     """Create tiny paired libraries with within- and cross-library duplicates."""
     directory.mkdir()
