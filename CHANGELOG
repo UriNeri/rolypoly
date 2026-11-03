@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.8.2
+
+### Fixed
+- `mmtax`: read DIAMOND and MMseqs2 hit tables with string columns and cast numeric fields explicitly, so fractional values such as `bitscore` `90.9` no longer fail Polars integer type inference.
+
 ## Unreleased
 
 ### Added
