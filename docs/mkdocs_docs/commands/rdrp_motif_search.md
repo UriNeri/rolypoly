@@ -48,6 +48,22 @@ rolypoly rdrp-motif-search [OPTIONS]
 
 ## Caveats
 
+### Detector spans and projected motif states
+
+The detector alignment is context, not an exact motif boundary. When
+`marker_features.tsv.gz` contains source-backed `rvmt_motifs` state maps for
+the selected backend, the command projects those states through the search
+alignment and records the positions, residues, approximate span and projection
+status. Full projection evidence is written to
+`<input>_rdrp_motif_evidence.tsv`. Without a map, projection is reported as
+unavailable; the detector span is not substituted for a projected motif.
+
+For nucleotide input translated in six frames, `<input>_rdrp_motifs.gff3`
+contains `protein_match` detector spans and `polypeptide_motif` children for
+available projections. Projected spans are display hulls, not experimentally
+validated exact boundaries. The currently distributed bundle does not contain
+short-profile state maps.
+
 ### Non-classical motif A and the Arena/influenza anchors
 
 Motif A in positive-strand RdRps is usually a pair of Asp residues,

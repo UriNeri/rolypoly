@@ -90,6 +90,15 @@ rolypoly marker-search [OPTIONS]
 
 ## Caveats
 
+### Motif projection output
+
+For annotated profiles, `marker_evidence.tsv` records projected profile states
+and their query residues, including partial and unavailable projections. When
+nucleotide translation coordinates are available, `marker_motifs.gff3`
+contains the retained marker detector spans and projected motif children.
+The child span is the approximate hull of the projected positions, not an
+experimentally validated exact motif boundary.
+
 ### Motif labels on negative-strand polymerases
 
 Projected motif labels depend on the profile database. For the negative-strand

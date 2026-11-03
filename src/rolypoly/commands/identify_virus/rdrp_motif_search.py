@@ -78,6 +78,7 @@ class RdRpMotifSearchConfig(BaseConfig):
         self.motif_metadata_path = (
             data_dir_path / "profiles" / "motif_metadata.json"
         )
+        self.marker_features_path = data_dir_path / "profiles" / "marker_features.tsv.gz"
 
         if self.search_tool == "hmmsearch":
             self.motif_db_path = (
@@ -299,12 +300,17 @@ def process_rdrp_motif_search(config: RdRpMotifSearchConfig):
     processed_results = process_motif_results(
         config, search_results, motif_metadata
     )
+    processed_results = project_short_motif_features(config, processed_results)
 
     # Apply distance filtering
     filtered_results = apply_distance_filtering(config, processed_results)
 
     # Create summary output
     create_summary_output(config, filtered_results)
+    if alphabet == "nucl" and config.aa_method == "six_frame":
+        write_motif_search_gff(config, filtered_results)
+    else:
+        config.logger.info("Motif GFF requires nucleotide input and six-frame translation")
 
     # Cleanup temporary files
     if not config.keep_tmp:
@@ -392,6 +398,11 @@ def search_motifs(
     config.logger.info("Searching for RdRp motifs")
 
     output_file = os.path.join(config.temp_dir, f"{config.name}_motif_hits.tsv")
+    from rolypoly.commands.identify_virus.marker_search import read_annotated_marker_databases
+
+    retain_path = "rvmt_motifs" in read_annotated_marker_databases(
+        config.marker_features_path
+    )
 
     # Use pyhmmer bindings through rolypoly utility
     if config.search_tool == "hmmsearch":
@@ -406,6 +417,7 @@ def search_motifs(
             ali_str=True,
             inc_e=config.evalue,
             mscore=None,  # Use E-value filtering
+            include_alignment_path=retain_path,
         )
     if config.search_tool == "mmseqs":
         output_path = os.path.join(
@@ -419,7 +431,7 @@ def search_motifs(
             threads=config.threads,
             evalue=config.evalue,
             format_mode=4,
-            format_output="qheader,theader,qlen,tlen,qstart,qend,tstart,tend,alnlen,mismatch,qcov,tcov,bits,evalue,gapopen,pident,nident,qaln".split(","),
+            format_output="qheader,theader,qlen,tlen,qstart,qend,tstart,tend,alnlen,mismatch,qcov,tcov,bits,evalue,gapopen,pident,nident,qaln".split(",") + (["taln"] if retain_path else []),
             logger=config.logger,
         )
         if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
@@ -435,8 +447,13 @@ def search_motifs(
                     "qend": "ali_to",
                     "bits": "score",
                     "qaln": "aligned_region",
+                    "tstart": "hmm_from",
+                    "tend": "hmm_to",
                 }
-            ).with_columns(
+            )
+            if retain_path:
+                mmseqs_results = mmseqs_results.rename({"taln": "profile_alignment"})
+            mmseqs_results = mmseqs_results.with_columns(
                 # mmseqs profile theader is "<marker> <representative_seq_id>/<range>"; keep just the marker
                 pl.col("target_name").str.split(" ").list.first()
             )
@@ -540,6 +557,101 @@ def process_motif_results(
         )
 
     return results
+
+
+def project_short_motif_features(
+    config: RdRpMotifSearchConfig, results: pl.DataFrame
+) -> pl.DataFrame:
+    """Project source-backed short-profile states through retained alignments."""
+    if results.is_empty():
+        return results
+    from rolypoly.commands.identify_virus.marker_search import (
+        project_marker_features,
+        read_annotated_marker_databases,
+    )
+
+    if "rvmt_motifs" not in read_annotated_marker_databases(config.marker_features_path):
+        config.logger.info("No annotated short motif profile states are installed; projection is unavailable")
+        return results.with_columns(pl.lit("unavailable").alias("projection_status"))
+
+    hits = results.with_row_index("marker_path_id").with_columns(
+        pl.col("marker_path_id").cast(pl.String),
+        pl.lit("rvmt_motifs").alias("database_id"),
+        pl.col("query_name").alias("query_full_name"),
+        pl.col("target_name").alias("hmm_full_name"),
+        pl.col("target_length").alias("hmm_len"),
+        pl.col("ali_from").alias("q1"),
+        pl.col("ali_to").alias("q2"),
+        pl.col("score").alias("full_hmm_score"),
+        pl.col("evalue").alias("full_hmm_evalue"),
+    )
+    if config.search_tool == "mmseqs":
+        hits = hits.with_columns(pl.col("aligned_region").alias("query_alignment"))
+    evidence_path = Path(config.output_dir) / f"{config.name}_rdrp_motif_evidence.tsv"
+    project_marker_features(
+        hits, config.marker_features_path, evidence_path,
+        "mmseqs2" if config.search_tool == "mmseqs" else "hmmsearch",
+        config.logger,
+    )
+    evidence = pl.read_csv(
+        evidence_path, separator="\t",
+        schema_overrides={
+            "marker_path_id": pl.String,
+            "feature_query_start_1based": pl.Int64,
+            "feature_query_end_1based": pl.Int64,
+            "projected_query_positions_1based": pl.String,
+            "projected_query_residues": pl.String,
+        },
+    )
+    evidence = evidence.filter(
+        pl.col("canonical_term_id").str.contains(r"^modern_structural:[A-D]$")
+        & pl.col("projected_query_positions_1based").is_not_null()
+    )
+    if evidence.is_empty():
+        return results.with_columns(pl.lit("unavailable").alias("projection_status"))
+    evidence = evidence.with_columns(
+        pl.col("canonical_term_id").str.extract(r":([A-D])$", 1).alias("motif_type")
+    ).group_by("marker_path_id", "motif_type", maintain_order=True).agg(
+        pl.col("feature_query_start_1based").min().alias("feature_from"),
+        pl.col("feature_query_end_1based").max().alias("feature_to"),
+        pl.col("projected_query_positions_1based").str.join(";").alias("projected_positions"),
+        pl.col("projected_query_residues").str.join(";").alias("projected_residues"),
+        pl.col("projection_status").str.join(";").alias("projection_status"),
+    )
+    return hits.join(evidence, on=["marker_path_id", "motif_type"], how="left").with_columns(
+        pl.col("projection_status").fill_null("unavailable")
+    )
+
+
+def write_motif_search_gff(config: RdRpMotifSearchConfig, results: pl.DataFrame) -> None:
+    """Write nucleotide detector spans and available projected motif features."""
+    from rolypoly.utils.bio.motif_gff import write_motif_gff
+    from rolypoly.utils.bio.translation import translation_records
+    from rolypoly.utils.viz.genome_maps import attach_motifs, parse_frame_header
+
+    motifs_by_contig = {}
+    for row in results.iter_rows(named=True):
+        contig, frame = parse_frame_header(row["query_name"])
+        entry = motifs_by_contig.setdefault(contig, {"conformation": "", "motifs": []})
+        entry["motifs"].append({
+            "letter": row["motif_type"], "frame": frame, "source": "short motif",
+            "aa_from": row["ali_from"], "aa_to": row["ali_to"],
+            "score": row["score"], "evalue": row["evalue"],
+            "profile": row["motif_profile"], "alignment": row.get("aligned_region", ""),
+            "feature_from": row.get("feature_from"), "feature_to": row.get("feature_to"),
+            "projected_positions": row.get("projected_positions"),
+            "projected_residues": row.get("projected_residues"),
+            "projection_status": row.get("projection_status", "unavailable"),
+        })
+    contigs = [
+        {"contig": header.split()[0], "length": len(sequence), "motifs": None}
+        for header, sequence in translation_records(config.input)
+        if header.split()[0] in motifs_by_contig
+    ]
+    attach_motifs(contigs, motifs_by_contig)
+    gff_path = Path(config.output_dir) / f"{config.name}_rdrp_motifs.gff3"
+    write_motif_gff(contigs, gff_path)
+    config.logger.info("Motif footprints written to %s", gff_path)
 
 
 def apply_distance_filtering(
@@ -753,7 +865,7 @@ def create_summary_output(config: RdRpMotifSearchConfig, results: pl.DataFrame):
         motif_conformation = ",".join(sorted(set(motif_types)))
 
         # Calculate sequence length (approximate from alignment coordinates)
-        max_coord = query_hits["ali_to"].max() if len(query_hits) > 0 else 0
+        max_coord = query_hits["query_length"][0]
 
         if config.output_structure == "flat":
             # Flat structure with separate columns per motif
@@ -772,6 +884,11 @@ def create_summary_output(config: RdRpMotifSearchConfig, results: pl.DataFrame):
                 row[f"motif_{motif}_evalue"] = None
                 # row[f"motif_{motif}_taxon"] = None  # DISABLED: no taxon data yet
                 row[f"motif_{motif}_profile"] = None
+                row[f"motif_{motif}_feature_from"] = None
+                row[f"motif_{motif}_feature_to"] = None
+                row[f"motif_{motif}_projected_positions"] = None
+                row[f"motif_{motif}_projected_residues"] = None
+                row[f"motif_{motif}_projection_status"] = None
                 if config.include_alignment:
                     row[f"motif_{motif}_alignment"] = None
 
@@ -809,6 +926,11 @@ def create_summary_output(config: RdRpMotifSearchConfig, results: pl.DataFrame):
                         "evalue": hit.get("evalue", 0),
                         # "taxon": hit.get("taxon", "unknown"),  # DISABLED: no taxon data
                         "profile": hit.get("motif_profile", "unknown"),
+                        "feature_from": hit.get("feature_from"),
+                        "feature_to": hit.get("feature_to"),
+                        "projected_positions": hit.get("projected_positions"),
+                        "projected_residues": hit.get("projected_residues"),
+                        "projection_status": hit.get("projection_status", "unavailable"),
                     }
                     if config.include_alignment:
                         hit_entry["alignment"] = hit.get("ali_seq", "")
@@ -846,6 +968,8 @@ def create_summary_output(config: RdRpMotifSearchConfig, results: pl.DataFrame):
                         row[f"motif_{motif_type}_profile"] = hit.get(
                             "motif_profile", "unknown"
                         )
+                        for field in ("feature_from", "feature_to", "projected_positions", "projected_residues", "projection_status"):
+                            row[f"motif_{motif_type}_{field}"] = hit.get(field)
                         if config.include_alignment:
                             row[f"motif_{motif_type}_alignment"] = hit.get(
                                 "aligned_region", ""
@@ -861,6 +985,11 @@ def create_summary_output(config: RdRpMotifSearchConfig, results: pl.DataFrame):
                                 "evalue": hit.get("evalue", 0),
                                 # "taxon": hit.get("taxon", "unknown"),  # DISABLED: no taxon data
                                 "profile": hit.get("motif_profile", "unknown"),
+                                "feature_from": hit.get("feature_from"),
+                                "feature_to": hit.get("feature_to"),
+                                "projected_positions": hit.get("projected_positions"),
+                                "projected_residues": hit.get("projected_residues"),
+                                "projection_status": hit.get("projection_status", "unavailable"),
                             }
                             if config.include_alignment:
                                 hit_entry["alignment"] = hit.get(
@@ -935,6 +1064,11 @@ def create_summary_output(config: RdRpMotifSearchConfig, results: pl.DataFrame):
                     "evalue": hit.get("evalue", 0),
                     # "taxon": hit.get("taxon", "unknown"),  # DISABLED: no taxon data
                     "profile": hit.get("motif_profile", "unknown"),
+                    "feature_from": hit.get("feature_from"),
+                    "feature_to": hit.get("feature_to"),
+                    "projected_positions": hit.get("projected_positions"),
+                    "projected_residues": hit.get("projected_residues"),
+                    "projection_status": hit.get("projection_status", "unavailable"),
                 }
                 if config.include_alignment:
                     hit_entry["alignment"] = hit.get("aligned_region", "")

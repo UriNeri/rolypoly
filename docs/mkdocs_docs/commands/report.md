@@ -46,6 +46,22 @@ thresholds, upstream populations for standalone inputs, or retention fractions.
 Only recognized artifacts inside the report directory are discovered; an
 arbitrary user-supplied FASTA outside it is not assumed to be a full assembly.
 
+### RdRp motif evidence
+
+Directory reports combine retained marker-profile projections with short
+motif-search hits, listing marker projections first without hiding short
+profile evidence. The map displays the projected span and a lighter detector
+footprint; the table and hover show projected residues and the aligned region.
+Mapped states and their inclusive span are approximate localization evidence,
+not experimentally validated exact motif boundaries. A short-profile hit
+without a state map remains a detector span and is labelled as having no
+projection.
+
+When motif evidence is present, the report also writes
+`<report-stem>_motifs.gff3`: `protein_match` records describe detector
+footprints, and `polypeptide_motif` children describe available projected
+spans. Attributes retain the state positions, residues and projection status.
+
 ## Usage
 
 ```bash

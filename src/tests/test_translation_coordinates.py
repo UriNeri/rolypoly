@@ -98,6 +98,36 @@ def test_gff_mapping_and_export_escape_metadata(tmp_path):
     assert text.split('##FASTA', 1)[1].lstrip().startswith('>contig')
 
 
+def test_annotation_gff_includes_available_marker_motif_evidence(tmp_path):
+    from rolypoly.commands.annotation.annotate_prot import write_combined_results_to_gff
+    from rolypoly.utils.logging.loggit import get_logger
+
+    dna = tmp_path / "dna.fa"
+    dna.write_text(">contig\n" + "A" * 50 + "\n")
+    marker = tmp_path / "marker"
+    marker.mkdir()
+    (marker / "marker_motifs.gff3").write_text(
+        "##gff-version 3\n"
+        "contig\trolypoly\tprotein_match\t11\t40\t.\t-\t.\tID=m1\n"
+        "contig\trolypoly\tpolypeptide_motif\t20\t25\t.\t-\t.\tID=f1;Parent=m1\n"
+        "other\trolypoly\tprotein_match\t1\t10\t.\t+\t.\tID=m2\n"
+    )
+    hits = pl.DataFrame({
+        "source_seq_id": ["contig"], "nt_start": [11], "nt_end": [40],
+        "strand": [-1], "sequence_id": ["orf"],
+    })
+    config = SimpleNamespace(
+        output_dir=tmp_path, input=dna, logger=get_logger(), reuse_marker_search_from=marker,
+    )
+    write_combined_results_to_gff(config, hits)
+    text = (tmp_path / "combined_annotations.gff3").read_text()
+    records, fasta = text.split("##FASTA\n")
+    assert "\tprotein_match\t11\t40\t" in records
+    assert "\tpolypeptide_motif\t20\t25\t" in records
+    assert "other\trolypoly" not in records
+    assert fasta.lstrip().startswith(">contig\n")
+
+
 def test_protein_only_does_not_invent_genomic_mapping(tmp_path):
     proteins = tmp_path / 'input.faa'
     proteins.write_text('>contig_1 # 11 # 40 # -1\nMAKPEPTID\n')

@@ -97,6 +97,13 @@ rolypoly annotate-prot [OPTIONS]
 
 ## Coordinate provenance
 
+When a marker-search directory is supplied by the workflow and contains
+`marker_motifs.gff3`, protein-annotation GFF3 includes its detector footprints
+and projected motif features for contigs present in the annotation input.
+These remain marker-search evidence; they are not re-projected from annotation
+alignments. Without that marker output, annotation alone does not generate
+motif projections.
+
 Before search, protein annotation and marker search normalize translated queries
 into `predicted_orfs.faa` and `predicted_orfs.gff`. IDs are consistent across both
 files: `<contig>_orf_<ordinal>` for predicted ORFs, `<contig>_frame_p1` through

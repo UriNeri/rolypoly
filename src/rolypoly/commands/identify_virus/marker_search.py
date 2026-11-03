@@ -1649,6 +1649,23 @@ def marker_search(
     # Write to a file in the output directory instead of the directory itself
     testdf.write_csv(results_file, separator="\t")
 
+    if feature_projection_enabled and {"source_seq_id", "contig_length"}.issubset(testdf.columns):
+        from rolypoly.utils.bio.motif_gff import write_motif_gff
+        from rolypoly.utils.viz.genome_maps import attach_projected_marker_motifs
+
+        contigs = [
+            {"contig": row["source_seq_id"], "length": row["contig_length"], "motifs": None}
+            for row in testdf.select("source_seq_id", "contig_length").unique().iter_rows(named=True)
+            if row["source_seq_id"] is not None and row["contig_length"] is not None
+        ]
+        if contigs:
+            attach_projected_marker_motifs(contigs, [results_file])
+            gff_path = Path(output) / "marker_motifs.gff3"
+            write_motif_gff(contigs, gff_path)
+            config.logger.info("Marker motif footprints written to %s", gff_path)
+        else:
+            config.logger.info("Marker motif GFF unavailable without nucleotide translation coordinates")
+
     # Remove temporary directory if keep_tmp is False
     if not config.keep_tmp:
         import shutil

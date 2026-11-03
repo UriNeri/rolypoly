@@ -8,7 +8,9 @@ from rolypoly.commands.identify_virus.marker_search import (
     search_mmseqs_marker_db,
 )
 from rolypoly.commands.identify_virus.rdrp_motif_search import (
+    create_summary_output,
     find_best_motif_combination,
+    project_short_motif_features,
 )
 from rolypoly.utils.bio import alignments
 
@@ -46,6 +48,62 @@ def test_motif_combination_uses_projected_positions_over_context_bounds():
         250,
     )
     assert sorted(h["motif_type"] for h in projected) == ["A", "C"]
+
+
+def test_short_motif_projects_annotated_states(tmp_path):
+    import json
+    import logging
+    from types import SimpleNamespace
+
+    feature_path = tmp_path / "marker_features.tsv"
+    pl.DataFrame({
+        "marker_db": ["rvmt_motifs"], "profile_id": ["motifC_example"],
+        "feature_id": ["example:C"], "canonical_term_id": ["modern_structural:C"],
+        "raw_source_label": ["C"], "hmmer_states_1based": ["2;4"],
+        "mmseqs_states_1based": ["1;3"],
+    }).write_csv(feature_path, separator="\t")
+    config = SimpleNamespace(
+        marker_features_path=feature_path, search_tool="hmmsearch",
+        output_dir=tmp_path, name="example", logger=logging.getLogger(__name__),
+    )
+    hits = pl.DataFrame({
+        "query_name": ["q"], "target_name": ["motifC_example"],
+        "target_length": [4], "ali_from": [5], "ali_to": [8],
+        "query_length": [20], "motif_profile": ["motifC_example"],
+        "hmm_from": [1], "hmm_to": [4], "score": [30.],
+        "evalue": [1e-5], "motif_type": ["C"],
+        "profile_alignment": ["ACDE"], "query_alignment": ["AGDE"],
+    })
+    projected_hits = project_short_motif_features(config, hits)
+    projected = projected_hits.row(0, named=True)
+    assert (projected["feature_from"], projected["feature_to"]) == (6, 8)
+    assert projected["projected_positions"] == "6;8"
+    assert projected["projected_residues"] == "GE"
+    assert projected["projection_status"] == "complete"
+    assert (tmp_path / "example_rdrp_motif_evidence.tsv").exists()
+
+    config.output_format = "tsv"
+    config.output_structure = "nested"
+    config.include_alignment = False
+    create_summary_output(config, projected_hits)
+    summary = pl.read_csv(tmp_path / "example_rdrp_motif_results.tsv", separator="\t")
+    feature = json.loads(summary["motif_details"][0])["C"][0]
+    assert feature["projected_positions"] == "6;8"
+    assert feature["feature_from"] == 6
+    assert summary["sequence_length"][0] == 20
+
+    mixed = pl.concat([hits, hits.with_columns(pl.lit("unannotated").alias("target_name"))])
+    mixed_projection = project_short_motif_features(config, mixed)
+    assert mixed_projection.schema["feature_from"] == pl.Int64
+    assert mixed_projection["feature_from"].to_list() == [6, None]
+
+    config.search_tool = "mmseqs"
+    mmseqs_hits = hits.drop("query_alignment").with_columns(
+        pl.lit("AGDE").alias("aligned_region")
+    )
+    projected = project_short_motif_features(config, mmseqs_hits).row(0, named=True)
+    assert projected["projected_positions"] == "5;7"
+    assert projected["projected_residues"] == "AD"
 
 
 

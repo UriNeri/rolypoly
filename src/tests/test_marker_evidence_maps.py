@@ -1,6 +1,10 @@
 from pathlib import Path
 import polars as pl
-from rolypoly.utils.viz.genome_maps import attach_marker_evidence, write_report_for_dir
+from rolypoly.utils.viz.genome_maps import (
+    attach_marker_evidence,
+    attach_projected_marker_motifs,
+    write_report_for_dir,
+)
 
 
 def marker_table(tmp_path, **changes):
@@ -82,3 +86,91 @@ def test_explicit_marker_coordinates_are_parsed_before_sequence_slice(tmp_path):
     models=attach_marker_evidence([], [path], [], {'CID':30})
 
     assert models[0]['orfs'][0]['hits'][0]['matched_sequence']=='AKLM'
+
+
+def test_projected_motifs_use_marker_path_and_reverse_translation(tmp_path):
+    marker = marker_table(
+        tmp_path, marker_path_id=1, source_seq_id="CID", frame_id=-2,
+        translation_nt_start=2, translation_nt_end=100, strand=-1,
+        nt_start=68, nt_end=97, aligned_region="ABCDEFGHIJ",
+    )
+    pl.DataFrame({
+        "marker_path_id": [1, 1, 1],
+        "canonical_term_id": ["modern_structural:C", "modern_structural:A", "modern_structural:B"],
+        "projected_query_positions_1based": ["3;5", "6;7", None],
+        "projected_query_residues": ["GD", "DD", None],
+        "projection_status": ["complete", "partial", "absent"],
+    }).write_csv(tmp_path / "marker_evidence.tsv", separator="\t")
+    contigs = [{"contig": "CID", "length": 101, "motifs": None}]
+    attach_projected_marker_motifs(contigs, [marker])
+    motifs = contigs[0]["motifs"]
+    assert motifs["conformation"] == "A,C"
+    by_letter = {m["letter"]: m for m in motifs["motifs"]}
+    assert (by_letter["C"]["nt_from"], by_letter["C"]["nt_to"]) == (86, 94)
+    assert (by_letter["C"]["context_nt_from"], by_letter["C"]["context_nt_to"]) == (68, 97)
+    assert by_letter["C"]["projected_positions"] == "3;5"
+    assert by_letter["C"]["alignment"] == "ABCDEFGHIJ"
+    assert by_letter["A"]["projection_status"] == "partial"
+
+    from rolypoly.utils.bio.motif_gff import write_motif_gff
+    gff = tmp_path / "motifs.gff3"
+    write_motif_gff(contigs, gff)
+    lines = gff.read_text().splitlines()
+    assert lines[0] == "##gff-version 3"
+    assert any("\tprotein_match\t68\t97\t" in line for line in lines)
+    assert any("\tpolypeptide_motif\t86\t94\t" in line and "query_aa_positions=3%3B5" in line for line in lines)
+    assert any("projection_status=partial" in line for line in lines)
+
+
+def test_flat_motif_table_preserves_projection_and_context(tmp_path):
+    from rolypoly.utils.viz.genome_maps import build_motifs_by_contig, attach_motifs
+
+    path = tmp_path / "flat.tsv"
+    pl.DataFrame({
+        "sequence_id": ["CID_frame=-2"], "motif_conformation": ["C"],
+        "motif_a_start": [None], "motif_c_start": [3], "motif_c_end": [9],
+        "motif_c_score": [25.0], "motif_c_evalue": [1e-5], "motif_c_profile": ["C1"],
+        "motif_c_alignment": ["ABCDEFG"], "motif_c_feature_from": [5],
+        "motif_c_feature_to": [6], "motif_c_projected_positions": ["5;6"],
+        "motif_c_projected_residues": ["GD"], "motif_c_projection_status": ["complete"],
+    }).write_csv(path, separator="\t")
+    contigs = [{"contig": "CID", "length": 101, "motifs": None}]
+    attach_motifs(contigs, build_motifs_by_contig(path))
+    motif = contigs[0]["motifs"]["motifs"][0]
+    assert (motif["nt_from"], motif["nt_to"]) == (83, 88)
+    assert (motif["context_nt_from"], motif["context_nt_to"]) == (74, 94)
+    assert motif["projected_residues"] == "GD"
+
+
+def test_directory_report_exports_marker_feature_gff(tmp_path):
+    marker_table(
+        tmp_path, marker_path_id=1, source_seq_id="CID", frame_id=-2,
+        translation_nt_start=2, translation_nt_end=100, strand=-1,
+        nt_start=68, nt_end=97, aligned_region="ABCDEFGHIJ", contig_length=101,
+    )
+    pl.DataFrame({
+        "marker_path_id": [1], "canonical_term_id": ["modern_structural:C"],
+        "projected_query_positions_1based": ["3;5"],
+        "projected_query_residues": ["GD"], "projection_status": ["complete"],
+    }).write_csv(tmp_path / "marker_evidence.tsv", separator="\t")
+    report = write_report_for_dir(tmp_path, with_stats=False)
+    assert '"source": "marker projection"' in report.read_text()
+    assert "\tpolypeptide_motif\t86\t94\t" in (tmp_path / "genome_maps_motifs.gff3").read_text()
+
+
+def test_changed_alignment_does_not_inherit_stale_projection(tmp_path, caplog):
+    marker = marker_table(
+        tmp_path, marker_path_id=1, source_seq_id="CID", frame_id=-2,
+        translation_nt_start=2, translation_nt_end=100, strand=-1,
+        nt_start=68, nt_end=97,
+    )
+    pl.DataFrame({
+        "marker_path_id": [1], "canonical_term_id": ["modern_structural:C"],
+        "projected_query_positions_1based": ["3;5"],
+        "projected_query_residues": ["GD"], "projection_status": ["complete"],
+        "q1": [3], "q2": [11],
+    }).write_csv(tmp_path / "marker_evidence.tsv", separator="\t")
+    contigs = [{"contig": "CID", "length": 101, "motifs": None}]
+    attach_projected_marker_motifs(contigs, [marker])
+    assert contigs[0]["motifs"] is None
+    assert "coordinates differ" in caplog.text

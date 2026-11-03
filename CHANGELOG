@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.8.3
+
+### Added
+- `report`: display marker-projected RdRp motifs alongside short-profile hits, distinguishing detector alignment footprints from approximate projected feature spans.
+- `marker-search`, `rdrp-motif-search`, `report`: export motif footprints and available projected features as GFF3 when nucleotide coordinates are available. Protein annotation GFFs can include compatible reused marker-search motif evidence.
+- `rdrp-motif-search`: project short-profile states with either HMMER or MMseqs2 when the installed data bundle supplies the corresponding feature maps.
+
+### Fixed
+- `rdrp-motif-search`: report the translated query's actual sequence length instead of the endpoint of its last selected motif.
+- `report`: preserve projected marker coordinates for reverse-strand translations and avoid attaching projections to marker hits whose retained alignment coordinates changed.
+
+### Limitations
+- The current data bundle has no short-profile feature maps, so short-profile projections remain unavailable until a compatible bundle provides them.
+- Standalone annotation searches do not project their own motif states; motif-search nucleotide GFF export currently requires six-frame translation.
+
 ## v0.8.2
 
 ### Fixed

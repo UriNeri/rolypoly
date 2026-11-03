@@ -1528,7 +1528,7 @@ def enrich_with_info_tables(dataframe: pl.DataFrame, logger: logging.Logger):
 
 def write_combined_results_to_gff(config, combined_data):
     """Write combined results to GFF3 format."""
-    from rolypoly.utils.bio.polars_fastx import write_gff3_dataframe
+    from rolypoly.utils.bio.polars_fastx import append_fasta_to_gff, write_gff3_dataframe
 
     if combined_data["nt_start"].null_count():
         raise ValueError("Cannot export nucleotide GFF without a protein-to-contig coordinate mapping")
@@ -1542,10 +1542,36 @@ def write_combined_results_to_gff(config, combined_data):
     write_gff3_dataframe(
         combined_data,
         output_file,
-        input_fasta=config.input,
         default_type="protein_domain",
         default_score=0.0,
     )
+    marker_dir = getattr(config, "reuse_marker_search_from", None)
+    if marker_dir:
+        marker_gff = Path(marker_dir) / "marker_motifs.gff3"
+        if marker_gff.exists():
+            from rolypoly.utils.bio.translation import translation_records
+
+            input_ids = {header.split()[0] for header, _ in translation_records(config.input)}
+            skipped = 0
+            with marker_gff.open() as source, output_file.open("a") as dest:
+                for line in source:
+                    if line.startswith("#") or not line.strip():
+                        continue
+                    fields = line.rstrip("\n").split("\t")
+                    if len(fields) != 9:
+                        raise ValueError(f"Invalid marker motif GFF record in {marker_gff}")
+                    if fields[0] in input_ids:
+                        dest.write(line)
+                    else:
+                        skipped += 1
+            if skipped:
+                config.logger.warning(
+                    "Skipped %d marker motif records whose contigs are absent from annotation input",
+                    skipped,
+                )
+        else:
+            config.logger.warning("Marker motif GFF is unavailable at %s", marker_gff)
+    append_fasta_to_gff(config.input, output_file)
     config.logger.info(f"Combined annotation results written to {output_file}")
 
 

@@ -632,6 +632,8 @@ def attach_marker_evidence(contigs, tables, extra_tabs, contig_lengths=None):
                            nt_start=start, nt_end=end, aa_start=row["q1"], aa_end=row["q2"],
                            strand=1 if frame > 0 else -1, translation_method="six-frame", frame_id=frame)
             query_id = row.get("translation_id") or str(row.get("query_full_name", "")).split()[0]
+            if not row.get("translation_id") and row.get("source_seq_id") and row.get("translation_nt_start") is not None:
+                row.update(translation_id=query_id, aa_start=row.get("q1"), aa_end=row.get("q2"))
             protein = proteins.get(query_id) or row.get("full_qseq")
             a, b = row.get("aa_start"), row.get("aa_end")
             try:
@@ -1137,25 +1139,38 @@ def build_motifs_by_contig(tables, spec=None):
     for data in tables:
         df = data if isinstance(data, pl.DataFrame) else read_hit_table(data)
         cols = set(df.columns)
-        if spec.seq_id not in cols or spec.details not in cols:
+        if spec.seq_id not in cols or (
+            spec.details not in cols and "motif_a_start" not in cols
+        ):
             continue
         for row in df.iter_rows(named=True):
             contig, frame = parse_frame_header(row[spec.seq_id])
-            raw = row[spec.details] or ""
-            try:
-                details = json.loads(raw) if raw else {}
-            except (TypeError, ValueError):
-                # The details column is CSV-quoted (wrapped in "..." with inner
-                # quotes doubled as ""); our reader keeps quotes literal, so undo
-                # that escaping before parsing.
-                text = str(raw).strip()
-                if text.startswith('"') and text.endswith('"'):
-                    text = text[1:-1]
-                text = text.replace('""', '"')
+            raw = row.get(spec.details) or ""
+            if spec.details not in cols:
+                details = {}
+                for letter in "ABCD":
+                    prefix = f"motif_{letter.lower()}_"
+                    if row.get(prefix + "start") is not None:
+                        details[letter] = [{
+                            field: row.get(prefix + field)
+                            for field in ("start", "end", "score", "evalue", "profile",
+                                          "alignment", "feature_from", "feature_to",
+                                          "projected_positions", "projected_residues",
+                                          "projection_status")
+                        }]
+            else:
                 try:
-                    details = json.loads(text)
+                    details = json.loads(raw) if raw else {}
                 except (TypeError, ValueError):
-                    details = {}
+                    text = str(raw).strip()
+                    if text.startswith('"') and text.endswith('"'):
+                        text = text[1:-1]
+                    text = text.replace('""', '"')
+                    try:
+                        details = json.loads(text)
+                    except (TypeError, ValueError):
+                        logger.warning("Cannot parse motif details for %s", row[spec.seq_id])
+                        continue
             motifs = []
             for letter, hits in details.items():
                 for hit in hits if isinstance(hits, list) else [hits]:
@@ -1164,10 +1179,16 @@ def build_motifs_by_contig(tables, spec=None):
                         "aa_from": int(to_float(hit.get("start"), 0)),
                         "aa_to": int(to_float(hit.get("end"), 0)),
                         "frame": frame,
+                        "source": "short motif",
                         "score": round(to_float(hit.get("score"), 0.0), 1),
                         "evalue": hit.get("evalue", ""),
                         "profile": hit.get("profile", ""),
                         "alignment": hit.get("alignment", ""),
+                        "feature_from": hit.get("feature_from"),
+                        "feature_to": hit.get("feature_to"),
+                        "projected_positions": hit.get("projected_positions"),
+                        "projected_residues": hit.get("projected_residues"),
+                        "projection_status": hit.get("projection_status", "unavailable"),
                     })
             if not motifs:
                 continue
@@ -1203,13 +1224,129 @@ def attach_motifs(contigs, motifs_by_contig):
             else:
                 nt_to = length - offset - (aa_from - 1) * 3
                 nt_from = length - offset - aa_to * 3 + 1
+            context_nt_from, context_nt_to = nt_from, nt_to
+            if motif.get("feature_from") is not None and motif.get("feature_to") is not None:
+                feature_from, feature_to = int(motif["feature_from"]), int(motif["feature_to"])
+                if frame >= 0:
+                    nt_from = offset + (feature_from - 1) * 3 + 1
+                    nt_to = offset + feature_to * 3
+                else:
+                    nt_to = length - offset - (feature_from - 1) * 3
+                    nt_from = length - offset - feature_to * 3 + 1
             nt_from = max(1, min(nt_from, length or nt_from))
             nt_to = max(1, min(nt_to, length or nt_to))
             placed.append({**motif,
+                           "aa_from": int(motif["feature_from"]) if motif.get("feature_from") is not None else aa_from,
+                           "aa_to": int(motif["feature_to"]) if motif.get("feature_to") is not None else aa_to,
+                           "context_aa_from": aa_from, "context_aa_to": aa_to,
+                           "context_nt_from": context_nt_from,
+                           "context_nt_to": context_nt_to,
                            "nt_from": int(min(nt_from, nt_to)),
                            "nt_to": int(max(nt_from, nt_to))})
         placed.sort(key=lambda m: m["nt_from"])
         contig["motifs"] = {"conformation": entry["conformation"], "motifs": placed}
+    return contigs
+
+
+def attach_projected_marker_motifs(contigs, marker_tables):
+    """Attach projected marker features using their original translated query."""
+    from rolypoly.utils.bio.interval_ops import amino_to_nucleotide
+
+    by_contig = {contig["contig"]: contig for contig in contigs}
+    for marker_path in marker_tables or []:
+        marker_path = Path(marker_path)
+        feature_path = marker_path.parent / "marker_evidence.tsv"
+        if not feature_path.exists():
+            continue
+        markers = read_hit_table(marker_path)
+        features = read_hit_table(feature_path)
+        required_marker = {
+            "marker_path_id", "source_seq_id", "translation_nt_start",
+            "translation_nt_end", "strand", "nt_start", "nt_end",
+        }
+        required_feature = {
+            "marker_path_id", "canonical_term_id", "projected_query_positions_1based",
+            "projected_query_residues", "projection_status",
+        }
+        if not required_marker.issubset(markers.columns) or not required_feature.issubset(features.columns):
+            logger.warning("Cannot place projected marker features from %s: missing coordinate columns", feature_path)
+            continue
+        markers = markers.with_columns(pl.col("marker_path_id").cast(pl.String))
+        features = features.with_columns(pl.col("marker_path_id").cast(pl.String))
+        if markers["marker_path_id"].n_unique() != markers.height:
+            raise ValueError(f"Duplicate marker_path_id in {marker_path}")
+        joined = features.join(markers, on="marker_path_id", how="inner", suffix="_marker")
+        for row in joined.iter_rows(named=True):
+            for identity in ("query_full_name", "hmm_full_name", "database_id"):
+                left, right = row.get(identity), row.get(f"{identity}_marker")
+                if left is not None and right is not None and str(left).strip().lower() != str(right).strip().lower():
+                    raise ValueError(
+                        f"Marker feature {row['marker_path_id']} disagrees with {identity} in {marker_path}"
+                    )
+            changed_span = any(
+                row.get(key) not in (None, "") and row.get(f"{key}_marker") not in (None, "")
+                and int(float(row[key])) != int(float(row[f"{key}_marker"]))
+                for key in ("q1", "q2", "hmm_from", "hmm_to")
+            )
+            if changed_span:
+                logger.warning(
+                    "Skipping marker feature %s: retained hit coordinates differ from the projected alignment",
+                    row["marker_path_id"],
+                )
+                continue
+            term = str(row.get("canonical_term_id") or "")
+            match = re.fullmatch(r"modern_structural:([A-G])", term)
+            positions = str(row.get("projected_query_positions_1based") or "")
+            if not match or not positions or row.get("projection_status") not in {"complete", "partial"}:
+                continue
+            parent = row.get("source_seq_id")
+            contig = by_contig.get(parent)
+            if contig is None:
+                continue
+            try:
+                query_positions = [int(value) for value in positions.split(";")]
+                aa_from = int(row.get("feature_query_start_1based") or min(query_positions))
+                aa_to = int(row.get("feature_query_end_1based") or max(query_positions))
+                nt_from, nt_to = amino_to_nucleotide(
+                    aa_from, aa_to, row["translation_nt_start"],
+                    row["translation_nt_end"], row["strand"],
+                )
+            except (TypeError, ValueError, KeyError) as exc:
+                logger.warning("Cannot place marker feature %s: %s", row.get("marker_path_id"), exc)
+                continue
+            motif = {
+                "letter": match.group(1), "source": "marker projection",
+                "frame": int(row["frame_id"]) if row.get("frame_id") not in (None, "") else None,
+                "strand": int(row["strand"]),
+                "aa_from": aa_from, "aa_to": aa_to, "nt_from": nt_from, "nt_to": nt_to,
+                "context_nt_from": int(row["nt_start"]), "context_nt_to": int(row["nt_end"]),
+                "context_aa_from": row.get("q1_marker"), "context_aa_to": row.get("q2_marker"),
+                "score": to_float(row.get("full_hmm_score"), None),
+                "evalue": to_float(row.get("full_hmm_evalue"), None),
+                "profile": row.get("hmm_full_name"), "database": row.get("database_id"),
+                "alignment": row.get("aligned_region_marker") or row.get("aligned_region") or "",
+                "projected_positions": positions,
+                "projected_residues": row.get("projected_query_residues") or "",
+                "profile_states": row.get("profile_states_1based"),
+                "unresolved_positions": row.get("unresolved_query_positions_1based"),
+                "deleted_states": row.get("deleted_profile_states_1based"),
+                "out_of_span_states": row.get("out_of_span_profile_states_1based"),
+                "insertion_positions": row.get("insertion_query_positions_1based"),
+                "projection_status": row.get("projection_status"),
+                "projection_reason": row.get("projection_reason"),
+                "feature_id": row.get("feature_id"),
+                "source_label": row.get("raw_source_label"),
+                "query_id": row.get("query_full_name"),
+            }
+            entry = contig.setdefault("motifs", None)
+            if entry is None:
+                entry = contig["motifs"] = {"conformation": "", "motifs": []}
+            entry["motifs"].append(motif)
+    for contig in contigs:
+        entry = contig.get("motifs")
+        if entry:
+            entry["motifs"].sort(key=lambda m: (m.get("source") != "marker projection", m["nt_from"]))
+            entry["conformation"] = ",".join(sorted({m["letter"] for m in entry["motifs"]}))
     return contigs
 
 
@@ -2002,7 +2139,8 @@ def write_genome_maps(data, output, spec=None, palette=None,
                       initial_mode="all", initial_criterion=None, initial_tab="table",
                       original_ids=None, contig_lengths=None,
                       command_line=None, log_text=None,
-                      source_files=None, marker_evidence=None, predicted_orf_counts=None, filter_warning_tables=None):
+                      source_files=None, marker_evidence=None, predicted_orf_counts=None, filter_warning_tables=None,
+                      marker_feature_tables=None):
     """Read a protein table (+ optional annotate-rna, nucleic-search, rdrp-motif
     tables, a run-stats dict, and extra tabs) and write a standalone interactive
     HTML report. Returns Path."""
@@ -2031,6 +2169,7 @@ def write_genome_maps(data, output, spec=None, palette=None,
         contigs = attach_nucleic(contigs, nucleic_map)
     if motifs is not None:
         contigs = attach_motifs(contigs, build_motifs_by_contig(motifs, motif_spec))
+    contigs = attach_projected_marker_motifs(contigs, marker_feature_tables)
     contigs = attach_filter_warnings(contigs, filter_warning_tables)
     apply_contig_metadata(contigs, original_ids, contig_lengths)
     contigs.sort(key=lambda c: -c["best_score"])
@@ -2042,6 +2181,9 @@ def write_genome_maps(data, output, spec=None, palette=None,
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(html, encoding="utf-8")
+    if any(c.get("motifs") for c in contigs):
+        from rolypoly.utils.bio.motif_gff import write_motif_gff
+        write_motif_gff(contigs, output.with_name(f"{output.stem}_motifs.gff3"))
     logger.info("genome_maps: wrote %s (%.0f KB, %d contigs)",
                 output, output.stat().st_size / 1024, len(contigs))
     return output
@@ -2095,6 +2237,9 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
     filter_warning_tables = sorted(output_dir.glob("**/*.filter_hits.tsv"))
     marker_evidence = sorted(output_dir.glob("**/marker_search_results.tsv"))
     marker_evidence = [p for p in marker_evidence if marker_table is None or p.resolve() != Path(marker_table).resolve()]
+    marker_feature_tables = list(marker_evidence)
+    if marker_table is not None and Path(marker_table).name == "marker_search_results.tsv":
+        marker_feature_tables.append(Path(marker_table))
     if nucleic_tables is None:
         nucleic_tables = find_nucleic_tables(output_dir) or None
     if motif_tables is None:
@@ -2131,6 +2276,13 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
         import os
         source_files["tables"].append({"label": "Contig filter evidence" if path in filter_warning_tables else "Original marker-search hits", "kind": "rna" if path in filter_warning_tables else "protein",
             "path": os.path.relpath(path.resolve(), output.parent.resolve())})
+    for path in marker_feature_tables:
+        feature_path = Path(path).parent / "marker_evidence.tsv"
+        if feature_path.exists():
+            source_files["tables"].append({
+                "label": "Projected marker feature evidence", "kind": "motif",
+                "path": os.path.relpath(feature_path.resolve(), output.parent.resolve()),
+            })
 
     predicted_orf_counts = None
     if marker_table is not None:
@@ -2154,6 +2306,7 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
             contigs = attach_nucleic(contigs, nucleic_map)
         if motif_tables:
             contigs = attach_motifs(contigs, build_motifs_by_contig(list(motif_tables)))
+        contigs = attach_projected_marker_motifs(contigs, marker_feature_tables)
         contigs = attach_filter_warnings(contigs, filter_warning_tables)
         apply_contig_metadata(contigs, original_ids, contig_lengths)
         contigs.sort(key=lambda c: -c["length"])
@@ -2164,11 +2317,15 @@ def write_report_for_dir(output_dir, output=None, *, title="RolyPoly — Genome 
                            source_files=source_files, predicted_orf_counts=predicted_orf_counts)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(html, encoding="utf-8")
+        if any(c.get("motifs") for c in contigs):
+            from rolypoly.utils.bio.motif_gff import write_motif_gff
+            write_motif_gff(contigs, output.with_name(f"{output.stem}_motifs.gff3"))
         logger.info("genome_maps: wrote %s (no protein table; %d contigs)", output, len(contigs))
         return output
 
     return write_genome_maps(
         str(marker_table), output, title=title, marker_evidence=marker_evidence,
+        marker_feature_tables=marker_feature_tables,
         predicted_orf_counts=predicted_orf_counts, filter_warning_tables=filter_warning_tables,
         rna=str(rna_table) if rna_table else None,
         nucleic=nucleic_tables,
@@ -2729,6 +2886,8 @@ function render(){
    const {rows}=packLanes(cmot);
    rows.forEach(({h,lane})=>{const dy=my+lane*15,xf=x(h.nt_from),xt=x(h.nt_to),w=Math.max(6,xt-xf),col=motifColors[h.letter]||motifColors.other||'#7F7F7F';
      const meta=JSON.stringify(Object.assign({kind:'motif'},h)).replace(/"/g,'&quot;');
+     if(h.context_nt_from!=null&&h.context_nt_to!=null){const cx=x(h.context_nt_from),cw=Math.max(1,x(h.context_nt_to)-cx);
+       s+=`<rect x="${cx}" y="${dy+4}" width="${cw}" height="4" fill="${col}" fill-opacity="0.25" pointer-events="none"/>`;}
      s+=`<rect class="motif" data-m="${meta}" x="${xf}" y="${dy}" width="${w}" height="12" rx="2" fill="${col}" fill-opacity="0.9" stroke="${col}"/>`;
      s+=`<text x="${xf+Math.max(2,w/2-3)}" y="${dy+9.5}" font-size="9" fill="#fff" pointer-events="none">${esc(h.letter)}</text>`;});
   }
@@ -2774,8 +2933,11 @@ function render(){
   document.querySelectorAll('rect.motif').forEach(el=>{el.style.cursor='pointer';
    el.addEventListener('mousemove',ev=>{const m=JSON.parse(el.getAttribute('data-m').replace(/&quot;/g,'"'));
     let html=`<b>RdRp motif ${esc(m.letter)}</b>`+(m.profile?` <span class="k">(${esc(m.profile)})</span>`:'')+
-     `<br><span class="k">frame</span> ${m.frame} · <span class="k">score</span> ${m.score} · <span class="k">E</span> ${fmtE(m.evalue)}`+
-     `<br><span class="k">aa</span> ${m.aa_from}–${m.aa_to} · <span class="k">nt</span> ${(m.nt_from||0).toLocaleString()}–${(m.nt_to||0).toLocaleString()}`;
+    `<br><span class="k">source</span> ${esc(m.source||'short motif')}`+
+    `<br><span class="k">frame</span> ${m.frame} · <span class="k">score</span> ${m.score} · <span class="k">E</span> ${fmtE(m.evalue)}`+
+    `<br><span class="k">aa</span> ${m.aa_from}–${m.aa_to} · <span class="k">nt</span> ${(m.nt_from||0).toLocaleString()}–${(m.nt_to||0).toLocaleString()}`;
+    if(m.projected_positions)html+=`<br><span class="k">projected states</span> ${esc(m.projected_positions)} · ${esc(m.projected_residues||'')} (${esc(m.projection_status||'')}; approximate span)`;
+    if(m.context_nt_from!=null)html+=`<br><span class="k">detector alignment nt</span> ${m.context_nt_from}–${m.context_nt_to}`;
     if(m.alignment)html+=`<span class="aln">${esc(m.alignment)}</span>`;
     showTip(html,ev.clientX,ev.clientY);});
    el.addEventListener('mouseleave',hideTip);});
@@ -2807,11 +2969,11 @@ function render(){
      `<td class="mono">${h.qstart.toLocaleString()}–${h.qend.toLocaleString()}</td><td>${h.strand||''}</td></tr>`;});
    t+=`</tbody></table>`;}
   if(cmot.length){t+=`<h2 style="margin-top:14px">RdRp motifs${c.motifs.conformation?' ('+esc(c.motifs.conformation)+')':''}</h2>`+
-     `<table><thead><tr><th>Motif</th><th>Frame</th><th>Score</th><th>E</th><th>nt span</th><th>Profile</th><th>Alignment</th></tr></thead><tbody>`;
+     `<table><thead><tr><th>Motif</th><th>Evidence</th><th>Frame</th><th>Score</th><th>E</th><th>Motif / detector nt span</th><th>Profile</th><th>Projected states</th><th>Detector alignment</th></tr></thead><tbody>`;
    cmot.forEach(m=>{t+=`<tr><td><span class="pill" style="background:${motifColors[m.letter]||'#7F7F7F'}">${esc(m.letter)}</span></td>`+
-     `<td>${m.frame}</td><td>${m.score}</td><td class="mono">${fmtE(m.evalue)}</td>`+
-     `<td class="mono">${(m.nt_from||0).toLocaleString()}–${(m.nt_to||0).toLocaleString()}</td>`+
-     `<td class="mono" style="font-size:11px">${esc(m.profile||'')}</td><td class="mono" style="font-size:11px;word-break:break-all">${esc(m.alignment||'')}</td></tr>`;});
+     `<td>${esc(m.source||'short motif')}</td><td>${m.frame??'–'}</td><td>${m.score??'–'}</td><td class="mono">${fmtE(m.evalue)}</td>`+
+     `<td class="mono">${(m.nt_from||0).toLocaleString()}–${(m.nt_to||0).toLocaleString()}${m.context_nt_from!=null?'<br>alignment: '+m.context_nt_from+'–'+m.context_nt_to:''}</td>`+
+     `<td class="mono" style="font-size:11px">${esc(m.profile||'')}</td><td class="mono">${m.projected_positions?esc(m.projected_positions)+'<br>'+esc(m.projected_residues||'')+' ('+esc(m.projection_status||'')+'; approximate)':'not available'}</td><td class="mono" style="font-size:11px;word-break:break-all">${esc(m.alignment||'')}</td></tr>`;});
    t+=`</tbody></table>`;}
   document.getElementById('tablebox').innerHTML=t;
 }
