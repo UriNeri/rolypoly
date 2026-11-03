@@ -966,7 +966,7 @@ def read_search_hits(
             }
         )
     if backend == "mmseqs":
-        frame = pl.read_csv(path, separator="\t")
+        frame = pl.read_csv(path, separator="\t", infer_schema_length=0)
         frame = frame.rename(
             {
                 "query": "protein",
@@ -993,8 +993,10 @@ def read_search_hits(
         with path.open() as handle:
             first_line = handle.readline()
             has_header = first_line.startswith(("qseqid\t", "qtitle\t"))
+        # Hit tables are read as strings and cast below: polars infers dtypes
+        # from a head sample, so e.g. integer-looking bitscores fail on "90.9".
         if has_header:
-            frame = pl.read_csv(path, separator="\t")
+            frame = pl.read_csv(path, separator="\t", infer_schema_length=0)
             rename_columns = {
                 "qseqid": "protein",
                 "qtitle": "protein",
@@ -1020,6 +1022,7 @@ def read_search_hits(
                 separator="\t",
                 has_header=False,
                 new_columns=diamond_columns,
+                infer_schema_length=0,
             )
         frame = frame.with_columns(
             pl.col("protein")
@@ -1043,19 +1046,21 @@ def read_search_hits(
                 pl.lit(None, dtype=pl.Int64).alias(column)
             )
     return (
-        frame.with_columns(pl.col("taxid").cast(pl.String).str.split(";"))
-        .explode("taxid", empty_as_null=True)
-        .filter(
-            pl.col("taxid").str.contains(r"^\d+$")
-            & (pl.col("taxid") != "0")
-            & (pl.col("alignment_length") >= min_aln_len)
-        )
-        .with_columns(
+        frame.with_columns(
+            pl.col("identity").cast(pl.Float64),
+            pl.col("alignment_length").cast(pl.Int64),
             pl.col("bitscore").cast(pl.Float64),
             pl.col("evalue").cast(pl.Float64),
             pl.col("query_start").cast(pl.Int64, strict=False),
             pl.col("query_end").cast(pl.Int64, strict=False),
             pl.col("query_length").cast(pl.Int64, strict=False),
+            pl.col("taxid").cast(pl.String).str.split(";"),
+        )
+        .explode("taxid", empty_as_null=True)
+        .filter(
+            pl.col("taxid").str.contains(r"^\d+$")
+            & (pl.col("taxid") != "0")
+            & (pl.col("alignment_length") >= min_aln_len)
         )
     )
 
